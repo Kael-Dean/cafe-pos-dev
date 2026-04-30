@@ -4,8 +4,9 @@
   "private": true,
   "description": "Cafe / coffee shop POS system — Next.js 16 + tRPC + Prisma + PostgreSQL",
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
