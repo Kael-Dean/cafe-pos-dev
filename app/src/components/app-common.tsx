@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import { useState, useCallback, createContext, useContext } from 'react';
 import Icon from './icons';
 
 // ---------- Toast ----------
@@ -179,6 +179,3 @@ export const Tag = ({ children, tone = 'neutral' }: TagProps) => {
 };
 
 export const baht = (n: number) => `฿${(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
-
-// suppress unused import warning — useEffect is available for consumers that import this file
-void useEffect;

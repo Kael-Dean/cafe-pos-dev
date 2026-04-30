@@ -5,6 +5,7 @@
   "description": "Cafe / coffee shop POS system — Next.js 16 + tRPC + Prisma + PostgreSQL",
   "scripts": {
     "postinstall": "prisma generate",
+    "vercel-build": "prisma generate && next build",
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
