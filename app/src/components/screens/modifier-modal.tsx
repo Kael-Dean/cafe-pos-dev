@@ -1,30 +1,80 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import Icon from '../icons';
-import { STD_DRINK_MODIFIERS } from '../data/mock-data';
+import { useModifierGroups, type ModifierGroup } from '@/hooks/use-modifier-groups';
+
+// Fallback shown when the backend has no modifier groups configured
+const FALLBACK_MODIFIERS: ModifierGroup[] = [
+  {
+    id: 'size', label: 'ขนาด', required: true, type: 'radio',
+    options: [
+      { id: 's', label: 'S',  diff: -5 },
+      { id: 'm', label: 'M',  diff: 0, default: true },
+      { id: 'l', label: 'L',  diff: 10 },
+    ],
+  },
+  {
+    id: 'milk', label: 'นม', required: true, type: 'radio',
+    options: [
+      { id: 'fresh',  label: 'นมสด',       diff: 0, default: true },
+      { id: 'oat',    label: 'นมโอ๊ต',     diff: 10 },
+      { id: 'almond', label: 'นมอัลมอนด์', diff: 15 },
+      { id: 'skim',   label: 'นมพร่อง',    diff: 0 },
+    ],
+  },
+  {
+    id: 'sweet', label: 'ความหวาน', required: false, type: 'radio',
+    options: [
+      { id: 'no',  label: 'ไม่หวาน', diff: 0 },
+      { id: 'low', label: 'น้อย',    diff: 0 },
+      { id: 'std', label: 'ปกติ',    diff: 0, default: true },
+      { id: 'much', label: 'มาก',    diff: 0 },
+    ],
+  },
+  {
+    id: 'addons', label: 'เพิ่มเติม', required: false, type: 'check',
+    options: [
+      { id: 'shot',  label: 'เพิ่มช็อต', diff: 15 },
+      { id: 'whip',  label: 'วิปครีม',   diff: 10 },
+      { id: 'pearl', label: 'มุก',       diff: 10 },
+      { id: 'jelly', label: 'เยลลี่',   diff: 5  },
+    ],
+  },
+];
 
 interface MenuItem { id: string; name: string; nameEn: string; price: number; color: string; }
 interface CartLine { menuId: string; name: string; basePrice: number; unitPrice: number; qty: number; mods: string[]; modKey: string; }
 interface Props { item: MenuItem; onClose: () => void; onAdd: (line: CartLine) => void; }
 
 export default function ModifierModal({ item, onClose, onAdd }: Props) {
-  const groups = STD_DRINK_MODIFIERS;
+  const { data: apiGroups } = useModifierGroups();
+  const groups = (apiGroups && apiGroups.length > 0) ? apiGroups : FALLBACK_MODIFIERS;
 
-  const [sel, setSel] = useState<Record<string, string | string[]>>(() => {
+  const buildDefaultSel = (gs: ModifierGroup[]) => {
     const s: Record<string, string | string[]> = {};
-    groups.forEach((g) => {
+    gs.forEach((g) => {
       if (g.type === 'radio') {
-        const def = g.options.find((o) => o.default) || g.options[0];
-        s[g.id] = def.id;
+        const def = g.options.find((o) => o.default) ?? g.options[0];
+        s[g.id] = def?.id ?? '';
       } else {
         s[g.id] = [];
       }
     });
     return s;
-  });
+  };
+
+  const [sel, setSel] = useState<Record<string, string | string[]>>(() => buildDefaultSel(groups));
   const [qty, setQty] = useState(1);
   const [note, setNote] = useState('');
+
+  // Re-initialise selections when real API groups load (replaces fallback)
+  const initialised = useRef(false);
+  useEffect(() => {
+    if (!apiGroups || apiGroups.length === 0 || initialised.current) return;
+    initialised.current = true;
+    setSel(buildDefaultSel(apiGroups));
+  }, [apiGroups]);
 
   const priceDelta = useMemo(() => {
     let d = 0;

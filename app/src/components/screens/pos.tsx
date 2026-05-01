@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Icon from '../icons';
 import { useToast, baht } from '../app-common';
-import { MENU, CATEGORIES } from '../data/mock-data';
+import { useAllProducts, useCategories, type MenuItem } from '@/hooks/use-products';
+import { useModifierGroups } from '@/hooks/use-modifier-groups';
+import { useProductDetail } from '@/hooks/use-bom';
 import ModifierModal from './modifier-modal';
 import PaymentModal from './payment-modal';
 
@@ -11,38 +13,67 @@ interface CartLine { menuId: string; name: string; basePrice: number; unitPrice:
 
 export default function POSTerminal() {
   const toast = useToast();
-  const [category, setCategory] = useState('hot');
+  const [category, setCategory] = useState('fav');
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [billNo, setBillNo] = useState(48);
-  const [modifierItem, setModifierItem] = useState<typeof MENU[0] | null>(null);
+  const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
   const [payment, setPayment] = useState<string | null>(null);
 
+  const { data: categories, isLoading: catsLoading } = useCategories();
+  const { data: products, isLoading: prodLoading, isError } = useAllProducts();
+  const { data: modifierGroups } = useModifierGroups();
+  const storeHasModifiers = (modifierGroups?.length ?? 0) > 0;
+
+  // Prefetch product detail when hovered so click is instant
+  const [pendingModifierId, setPendingModifierId] = useState<string | null>(null);
+  const { data: pendingDetail } = useProductDetail(pendingModifierId);
+
+  // Once detail loads, decide: show modifier modal or add directly
+  useEffect(() => {
+    if (!pendingModifierId || !pendingDetail) return;
+    const item = products?.find(p => p.id === pendingModifierId);
+    if (!item) return;
+    if (pendingDetail.hasModifiers) {
+      setModifierItem(item);
+    } else {
+      addLine({ menuId: item.id, name: item.name, basePrice: item.price, unitPrice: item.price, qty: 1, mods: [], modKey: '' });
+      toast({ kind: 'success', title: 'เพิ่มลงตะกร้า', msg: item.name, duration: 1600 });
+    }
+    setPendingModifierId(null);
+  }, [pendingDetail, pendingModifierId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-select first real category if fav is empty after load
+  useEffect(() => {
+    if (category === 'fav' && !prodLoading && products?.every(p => !p.hot) && categories?.[0]) {
+      setCategory(categories[0].id);
+    }
+  }, [products, prodLoading, categories, category]);
+
   const filtered = useMemo(() => {
-    let list = MENU;
-    if (category === 'fav') list = list.filter((m) => m.hot);
-    else list = list.filter((m) => m.cat === category);
+    if (!products) return [];
     if (search.trim()) {
       const s = search.toLowerCase();
-      list = MENU.filter((m) =>
-        m.name.toLowerCase().includes(s) || m.nameEn.toLowerCase().includes(s)
-      );
+      return products.filter(m => m.name.toLowerCase().includes(s) || m.nameEn.toLowerCase().includes(s));
     }
-    return list;
-  }, [category, search]);
+    if (category === 'fav') return products.filter(m => m.hot);
+    return products.filter(m => m.cat === category);
+  }, [products, category, search]);
 
   const subtotal = cart.reduce((s, l) => s + l.unitPrice * l.qty, 0);
   const discount = 0;
   const vat = Math.round((subtotal - discount) * 0.07);
   const total = subtotal - discount + vat;
 
-  const onMenuClick = (item: typeof MENU[0]) => {
-    if (item.cat === 'hot' || item.cat === 'cold' || item.cat === 'tea') {
-      setModifierItem(item);
-      return;
+  const onMenuClick = (item: MenuItem) => {
+    if (storeHasModifiers) {
+      // Fetch product detail to check if this specific product has modifier groups.
+      // useProductDetail result is cached — second tap on same item is instant.
+      setPendingModifierId(item.id);
+    } else {
+      addLine({ menuId: item.id, name: item.name, basePrice: item.price, unitPrice: item.price, qty: 1, mods: [], modKey: '' });
+      toast({ kind: 'success', title: 'เพิ่มลงตะกร้า', msg: item.name, duration: 1600 });
     }
-    addLine({ menuId: item.id, name: item.name, basePrice: item.price, unitPrice: item.price, qty: 1, mods: [], modKey: '' });
-    toast({ kind: 'success', title: 'เพิ่มลงตะกร้า', msg: item.name, duration: 1600 });
   };
 
   const addLine = (line: CartLine) => {
@@ -102,21 +133,38 @@ export default function POSTerminal() {
           </div>
           <div style={{display: 'flex', gap: 6, overflowX: 'auto'}} className="scroll">
             <CategoryTab label="★ ขายดี" active={category === 'fav'} onClick={() => { setCategory('fav'); setSearch(''); }} highlight />
-            {CATEGORIES.filter((c) => c.id !== 'fav').map((c) => (
-              <CategoryTab key={c.id} label={c.label} active={category === c.id} onClick={() => { setCategory(c.id); setSearch(''); }} />
-            ))}
+            {catsLoading && !categories ? (
+              <div style={{ padding: '8px 14px', fontSize: 13, color: 'var(--color-text-muted)' }}>กำลังโหลด...</div>
+            ) : (
+              (categories ?? []).map((c) => (
+                <CategoryTab key={c.id} label={c.label} active={category === c.id} onClick={() => { setCategory(c.id); setSearch(''); }} />
+              ))
+            )}
           </div>
         </div>
 
         <div className="scroll" style={{flex: 1, overflow: 'auto', padding: 20}}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
-            {filtered.map((m) => <MenuCard key={m.id} item={m} onClick={() => onMenuClick(m)} />)}
-          </div>
-          {filtered.length === 0 && (
-            <div style={{textAlign: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
-              <div style={{marginBottom: 8}}><Icon name="search" size={32}/></div>
-              ไม่พบเมนูที่ค้นหา
+          {isError ? (
+            <div style={{textAlign: 'center', padding: 60, color: 'var(--color-danger)'}}>
+              <div style={{marginBottom: 8}}><Icon name="warning" size={32}/></div>
+              ไม่สามารถโหลดเมนูได้ กรุณาตรวจสอบการเชื่อมต่อ
             </div>
+          ) : prodLoading ? (
+            <div style={{textAlign: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
+              กำลังโหลดเมนู...
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+                {filtered.map((m) => <MenuCard key={m.id} item={m} onClick={() => onMenuClick(m)} />)}
+              </div>
+              {filtered.length === 0 && (
+                <div style={{textAlign: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
+                  <div style={{marginBottom: 8}}><Icon name="search" size={32}/></div>
+                  ไม่พบเมนูที่ค้นหา
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -210,7 +258,7 @@ const CategoryTab = ({ label, active, onClick, highlight }: { label: string; act
   }}>{label}</button>
 );
 
-const MenuCard = ({ item, onClick }: { item: typeof MENU[0]; onClick: () => void }) => (
+const MenuCard = ({ item, onClick }: { item: MenuItem; onClick: () => void }) => (
   <button onClick={onClick} style={{
     background: 'var(--color-surface)', border: '1px solid var(--color-border)',
     borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column',

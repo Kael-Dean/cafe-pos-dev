@@ -3,10 +3,18 @@
 import { useState, useMemo } from 'react';
 import Icon from '../icons';
 import { useToast, Tag, baht } from '../app-common';
-import { INVENTORY, WASTAGE_REASONS, STOCK_MOVEMENTS } from '../data/mock-data';
+import {
+  useInventory, useInventoryMovements, useReceiveStock, useWasteStock,
+  type InventoryItem, type Movement, type WastageReason,
+} from '@/hooks/use-inventory';
 
-type InventoryItem = typeof INVENTORY[0];
-type Movement = typeof STOCK_MOVEMENTS[0] & { reason?: string };
+const WASTAGE_REASONS = [
+  { id: 'EXPIRED', label: 'หมดอายุ' },
+  { id: 'SPILLED', label: 'หก' },
+  { id: 'TRIAL',   label: 'ทดลอง' },
+  { id: 'DAMAGED', label: 'เสีย' },
+  { id: 'OTHER',   label: 'อื่นๆ' },
+] as const;
 
 const stockStatusOf = (it: InventoryItem) => {
   if (it.stock < it.parLevel * 0.5) return { tone: 'danger' as const,  label: 'Critical' };
@@ -27,16 +35,21 @@ const formatRelative = (ts: number) => {
 export default function Inventory() {
   const toast = useToast();
   const [tab, setTab] = useState('items');
-  const [inventory, setInventory] = useState(() => INVENTORY.map(x => ({ ...x })));
-  const [movements, setMovements] = useState<Movement[]>(() => [...STOCK_MOVEMENTS]);
-
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [wastageOpen, setWastageOpen] = useState(false);
   const [presetItemId, setPresetItemId] = useState<string | null>(null);
 
-  const items = useMemo(() => inventory.map(it => ({ ...it, status: stockStatusOf(it) })), [inventory]);
+  const { data: inventoryItems, isLoading: invLoading } = useInventory();
+  const { data: movementsData } = useInventoryMovements();
+  const receiveStock = useReceiveStock();
+  const wasteStock = useWasteStock();
+
+  const items = useMemo(() =>
+    (inventoryItems ?? []).map(it => ({ ...it, status: stockStatusOf(it) })),
+    [inventoryItems]
+  );
 
   const counts = useMemo(() => ({
     total: items.length,
@@ -52,34 +65,39 @@ export default function Inventory() {
     return true;
   }), [items, search, statusFilter]);
 
+  const movements = movementsData ?? [];
   const recentReceives = useMemo(() => movements.filter(m => m.type === 'RECEIVE').sort((a, b) => b.at - a.at), [movements]);
   const recentWastage = useMemo(() => movements.filter(m => m.type === 'WASTE').sort((a, b) => b.at - a.at), [movements]);
 
   const wastageThisMonth = useMemo(() => {
     const cutoff = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
     return recentWastage.filter(m => m.at >= cutoff).reduce((s, m) => {
-      const inv = inventory.find(i => i.id === m.invId);
+      const inv = inventoryItems?.find(i => i.id === m.invId);
       return s + (inv ? inv.costPerUnit * m.qty : 0);
     }, 0);
-  }, [recentWastage, inventory]);
+  }, [recentWastage, inventoryItems]);
 
-  const submitReceive = ({ invId, qty, costPerUnit, supplier, note }: { invId: string; qty: number; costPerUnit: number; supplier: string; note: string }) => {
-    const id = `mv${Date.now()}`;
-    setMovements(m => [{ id, type: 'RECEIVE', invId, qty, costPerUnit, supplier, note, user: 'แพรว ส.', at: Date.now() }, ...m]);
-    setInventory(inv => inv.map(it => it.id === invId ? { ...it, stock: it.stock + qty, costPerUnit } : it));
-    setReceiveOpen(false); setPresetItemId(null);
-    const inv = inventory.find(i => i.id === invId);
-    toast({ kind: 'success', title: 'รับเข้าสต็อกแล้ว', msg: `${inv?.name} +${qty.toLocaleString()} ${inv?.unit}` });
+  const submitReceive = async ({ invId, qty, costPerUnit, supplier, note }: { invId: string; qty: number; costPerUnit: number; supplier: string; note: string }) => {
+    try {
+      await receiveStock.mutateAsync({ item_id: invId, qty, cost_per_unit: costPerUnit, supplier: supplier || undefined, note: note || undefined });
+      setReceiveOpen(false); setPresetItemId(null);
+      const inv = inventoryItems?.find(i => i.id === invId);
+      toast({ kind: 'success', title: 'รับเข้าสต็อกแล้ว', msg: `${inv?.name} +${qty.toLocaleString()} ${inv?.unit}` });
+    } catch (err) {
+      toast({ kind: 'warning', title: 'เกิดข้อผิดพลาด', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+    }
   };
 
-  const submitWastage = ({ invId, qty, reason, note }: { invId: string; qty: number; reason: string; note: string }) => {
-    const id = `mv${Date.now()}`;
-    setMovements(m => [{ id, type: 'WASTE', invId, qty, reason, note, user: 'แพรว ส.', at: Date.now() }, ...m]);
-    setInventory(inv => inv.map(it => it.id === invId ? { ...it, stock: it.stock - qty } : it));
-    setWastageOpen(false); setPresetItemId(null);
-    const inv = inventory.find(i => i.id === invId);
-    const reasonLabel = WASTAGE_REASONS.find(r => r.id === reason)?.label || reason;
-    toast({ kind: 'warning', title: 'บันทึก Wastage แล้ว', msg: `${inv?.name} -${qty.toLocaleString()} ${inv?.unit} • ${reasonLabel}` });
+  const submitWastage = async ({ invId, qty, reason, note }: { invId: string; qty: number; reason: string; note: string }) => {
+    try {
+      await wasteStock.mutateAsync({ item_id: invId, qty, reason: reason as WastageReason, note: note || undefined });
+      setWastageOpen(false); setPresetItemId(null);
+      const inv = inventoryItems?.find(i => i.id === invId);
+      const reasonLabel = WASTAGE_REASONS.find(r => r.id === reason)?.label || reason;
+      toast({ kind: 'warning', title: 'บันทึก Wastage แล้ว', msg: `${inv?.name} -${qty.toLocaleString()} ${inv?.unit} • ${reasonLabel}` });
+    } catch (err) {
+      toast({ kind: 'warning', title: 'เกิดข้อผิดพลาด', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+    }
   };
 
   const openReceive = (itemId?: string) => { setPresetItemId(itemId || null); setReceiveOpen(true); };
@@ -95,30 +113,36 @@ export default function Inventory() {
         <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 4 }}>วัตถุดิบ · รับเข้า · บันทึก Wastage</div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
-        <KPISmall label="วัตถุดิบทั้งหมด" value={`${counts.total} รายการ`} />
-        <KPISmall label="ใกล้หมด (Low)" value={`${counts.low} รายการ`} />
-        <KPISmall label="ต่ำกว่าครึ่ง par (Critical)" value={`${counts.critical} รายการ`} />
-      </div>
+      {invLoading ? (
+        <div style={{ padding: 60, textAlign: 'center', color: 'var(--color-text-muted)' }}>กำลังโหลดข้อมูลคลัง...</div>
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+            <KPISmall label="วัตถุดิบทั้งหมด" value={`${counts.total} รายการ`} />
+            <KPISmall label="ใกล้หมด (Low)" value={`${counts.low} รายการ`} />
+            <KPISmall label="ต่ำกว่าครึ่ง par (Critical)" value={`${counts.critical} รายการ`} />
+          </div>
 
-      <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--color-surface-2)', borderRadius: 10, marginBottom: 16, width: 'fit-content' }}>
-        {[{ id: 'items', label: 'วัตถุดิบ' }, { id: 'receive', label: 'รับเข้าสต็อก' }, { id: 'waste', label: 'บันทึก Wastage' }].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            padding: '8px 16px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer',
-            background: tab === t.id ? 'var(--color-surface)' : 'transparent',
-            color: tab === t.id ? 'var(--color-text)' : 'var(--color-text-secondary)',
-            boxShadow: tab === t.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-            fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)',
-          }}>{t.label}</button>
-        ))}
-      </div>
+          <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--color-surface-2)', borderRadius: 10, marginBottom: 16, width: 'fit-content' }}>
+            {[{ id: 'items', label: 'วัตถุดิบ' }, { id: 'receive', label: 'รับเข้าสต็อก' }, { id: 'waste', label: 'บันทึก Wastage' }].map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{
+                padding: '8px 16px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer',
+                background: tab === t.id ? 'var(--color-surface)' : 'transparent',
+                color: tab === t.id ? 'var(--color-text)' : 'var(--color-text-secondary)',
+                boxShadow: tab === t.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)',
+              }}>{t.label}</button>
+            ))}
+          </div>
 
-      {tab === 'items' && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onReceive={openReceive} onWaste={openWastage} />}
-      {tab === 'receive' && <ReceiveTab items={inventory} movements={recentReceives} onAdd={() => openReceive()} />}
-      {tab === 'waste' && <WastageTab items={inventory} movements={recentWastage} totalCost={wastageThisMonth} onAdd={() => openWastage()} />}
+          {tab === 'items' && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onReceive={openReceive} onWaste={openWastage} />}
+          {tab === 'receive' && <ReceiveTab items={inventoryItems ?? []} movements={recentReceives} onAdd={() => openReceive()} />}
+          {tab === 'waste' && <WastageTab items={inventoryItems ?? []} movements={recentWastage} totalCost={wastageThisMonth} onAdd={() => openWastage()} />}
+        </>
+      )}
 
-      {receiveOpen && <ReceiveStockModal items={inventory} presetItemId={presetItemId} onClose={() => { setReceiveOpen(false); setPresetItemId(null); }} onSubmit={submitReceive} />}
-      {wastageOpen && <WastageModal items={inventory} presetItemId={presetItemId} onClose={() => { setWastageOpen(false); setPresetItemId(null); }} onSubmit={submitWastage} />}
+      {receiveOpen && <ReceiveStockModal items={inventoryItems ?? []} presetItemId={presetItemId} onClose={() => { setReceiveOpen(false); setPresetItemId(null); }} onSubmit={submitReceive} />}
+      {wastageOpen && <WastageModal items={inventoryItems ?? []} presetItemId={presetItemId} onClose={() => { setWastageOpen(false); setPresetItemId(null); }} onSubmit={submitWastage} />}
     </div>
   );
 }
@@ -227,7 +251,7 @@ const ReceiveTab = ({ items, movements, onAdd }: { items: InventoryItem[]; movem
         <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>ยังไม่มีรายการรับเข้า</div>
       ) : movements.map((m, idx) => {
         const inv = items.find(i => i.id === m.invId);
-        const totalCost = m.qty * (m.costPerUnit || 0);
+        const totalCost = m.qty * (m.costPerUnit ?? 0);
         return (
           <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '140px 1.5fr 110px 110px 1fr 1fr', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === movements.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{formatRelative(m.at)}</div>
