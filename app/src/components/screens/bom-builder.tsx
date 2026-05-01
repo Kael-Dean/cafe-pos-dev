@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Icon from '../icons';
 import { useToast, Tag, baht } from '../app-common';
-import { useAllProducts, type MenuItem } from '@/hooks/use-products';
+import { useAllProducts, useCategories, useCreateProduct, type MenuItem } from '@/hooks/use-products';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
 import { useProductDetail, useUpdateRecipe, type RecipeItem } from '@/hooks/use-bom';
 
@@ -12,14 +12,17 @@ export default function BOMBuilder() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [picker, setPicker] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
 
   const [editedRecipe, setEditedRecipe] = useState<RecipeItem[]>([]);
   const [editedPrice, setEditedPrice] = useState(0);
 
   const { data: products, isLoading: productsLoading } = useAllProducts();
+  const { data: categories } = useCategories();
   const { data: inventoryItems } = useInventory();
   const { data: productDetail, isLoading: detailLoading } = useProductDetail(selectedId);
   const updateRecipe = useUpdateRecipe();
+  const createProduct = useCreateProduct();
 
   // Auto-select first product
   useEffect(() => {
@@ -70,6 +73,17 @@ export default function BOMBuilder() {
     }
   };
 
+  const submitAddMenu = async ({ name, categoryId, price, description }: { name: string; categoryId: string; price: number; description: string }) => {
+    try {
+      const created = await createProduct.mutateAsync({ name, category_id: categoryId || undefined, price, description: description || undefined });
+      setAddMenuOpen(false);
+      setSelectedId(created.id);
+      toast({ kind: 'success', title: 'เพิ่มเมนูแล้ว', msg: `${name} ถูกเพิ่มแล้ว` });
+    } catch (err) {
+      toast({ kind: 'warning', title: 'เกิดข้อผิดพลาด', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+    }
+  };
+
   const filteredProducts = (products ?? []).filter(m =>
     !search || m.name.includes(search) || m.nameEn.toLowerCase().includes(search.toLowerCase())
   );
@@ -82,7 +96,10 @@ export default function BOMBuilder() {
       <div style={{ width: 320, flexShrink: 0, background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--color-border)' }}>
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 4 }}>P1 — Inventory</div>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}>BOM Builder</h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}>BOM Builder</h2>
+            <button onClick={() => setAddMenuOpen(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)', flexShrink: 0 }} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={12} /> เพิ่มเมนู</button>
+          </div>
           <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>สูตรอาหาร · ต้นทุน · margin</div>
         </div>
         <div style={{ padding: 12, borderBottom: '1px solid var(--color-border)', position: 'relative' }}>
@@ -149,6 +166,7 @@ export default function BOMBuilder() {
       </div>
 
       {picker && <IngredientPicker existingIds={editedRecipe.map(r => r.invId)} inventory={inventoryItems ?? []} onSelect={addItem} onClose={() => setPicker(false)} />}
+      {addMenuOpen && <AddMenuModal categories={categories ?? []} onClose={() => setAddMenuOpen(false)} onSubmit={submitAddMenu} />}
     </div>
   );
 }
@@ -312,5 +330,66 @@ const IngredientPicker = ({ existingIds, inventory, onSelect, onClose }: { exist
         </div>
       </div>
     </div>
+  );
+};
+
+// ── Shared modal helpers (mirrors the pattern in inventory.tsx) ───────────────
+
+const bomInputStyle = (): React.CSSProperties => ({
+  width: '100%', padding: '10px 12px',
+  border: '1px solid var(--color-border)', borderRadius: 8,
+  fontSize: 14, fontFamily: 'inherit', outline: 'none',
+  boxSizing: 'border-box', background: 'var(--color-surface)',
+});
+
+const BomFormField = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <div style={{ marginBottom: 14 }}>
+    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{label}</div>
+    {children}
+  </div>
+);
+
+const BomModalActions = ({ children }: { children: React.ReactNode }) => (
+  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid var(--color-border)', marginTop: 8 }}>{children}</div>
+);
+
+const BomModalShell = ({ title, subtitle, onClose, children }: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode }) => (
+  <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.55)', display: 'grid', placeItems: 'center', zIndex: 100, padding: 20, animation: 'backdrop-in 200ms var(--ease-out)' }} onClick={onClose}>
+    <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.25)', animation: 'modal-in 220ms var(--ease-out)' }}>
+      <div style={{ padding: 20, borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>{title}</div>
+          {subtitle && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{subtitle}</div>}
+        </div>
+        <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8, display: 'grid', placeItems: 'center' }}><Icon name="x" size={18} /></button>
+      </div>
+      <div className="scroll" style={{ overflow: 'auto', padding: 20, flex: 1 }}>{children}</div>
+    </div>
+  </div>
+);
+
+const AddMenuModal = ({ categories, onClose, onSubmit }: { categories: import('@/hooks/use-products').Category[]; onClose: () => void; onSubmit: (v: { name: string; categoryId: string; price: number; description: string }) => void }) => {
+  const [name, setName] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [price, setPrice] = useState('');
+  const [description, setDescription] = useState('');
+  const canSubmit = name.trim().length > 0 && price !== '' && Number(price) >= 0;
+  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), categoryId, price: Number(price), description: description.trim() }); };
+  return (
+    <BomModalShell title="เพิ่มเมนูใหม่" subtitle="สร้างรายการเมนูในระบบ" onClose={onClose}>
+      <BomFormField label="ชื่อเมนู *"><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="เช่น Flat White, ครัวซองต์เนย" style={bomInputStyle()} autoFocus /></BomFormField>
+      <BomFormField label="หมวดหมู่">
+        <select value={categoryId} onChange={e => setCategoryId(e.target.value)} style={{ ...bomInputStyle(), appearance: 'auto' }}>
+          <option value="">— ไม่ระบุหมวดหมู่ —</option>
+          {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+        </select>
+      </BomFormField>
+      <BomFormField label="ราคาขาย (฿) *"><input type="number" min={0} step={5} value={price} onChange={e => setPrice(e.target.value)} placeholder="0" style={bomInputStyle()} /></BomFormField>
+      <BomFormField label="รายละเอียด"><textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} placeholder="ไม่บังคับ" style={{ ...bomInputStyle(), resize: 'vertical', fontFamily: 'inherit' }} /></BomFormField>
+      <BomModalActions>
+        <button onClick={onClose} style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
+        <button onClick={submit} disabled={!canSubmit} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, cursor: canSubmit ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canSubmit ? 1 : 0.45, transition: 'background 150ms var(--ease-out)' }} onMouseEnter={e => { if (canSubmit) e.currentTarget.style.background = 'var(--color-primary-700)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-primary)'; }}><Icon name="plus" size={14} /> เพิ่มเมนู</button>
+      </BomModalActions>
+    </BomModalShell>
   );
 };

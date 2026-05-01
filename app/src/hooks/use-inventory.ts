@@ -168,3 +168,22 @@ export function useAdjustStock() {
     },
   });
 }
+
+interface InventoryItemCreatePayload {
+  name: string;
+  unit: string;
+  par_level: number;
+  cost_per_unit: number;
+  is_active?: boolean;
+}
+
+export function useCreateInventoryItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (p: InventoryItemCreatePayload) =>
+      api.post<InventoryItemRead>('/api/v1/inventory', p),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+}

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 
 // ── Backend shapes (exact field names from schemas/catalog.py) ────────────────
@@ -104,5 +104,24 @@ export function useProducts(categoryId?: string, search?: string) {
       return data.map(mapProduct);
     },
     enabled: !!categoryId,
+  });
+}
+
+interface ProductCreatePayload {
+  name: string;
+  category_id?: string;
+  description?: string;
+  price: number;
+  is_active?: boolean;
+}
+
+export function useCreateProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (p: ProductCreatePayload) =>
+      api.post<ProductRead>('/api/v1/products', p),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['products'] });
+    },
   });
 }

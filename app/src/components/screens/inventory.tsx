@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import Icon from '../icons';
 import { useToast, Tag, baht } from '../app-common';
 import {
-  useInventory, useInventoryMovements, useReceiveStock, useWasteStock,
+  useInventory, useInventoryMovements, useReceiveStock, useWasteStock, useCreateInventoryItem,
   type InventoryItem, type Movement, type WastageReason,
 } from '@/hooks/use-inventory';
 
@@ -39,12 +39,14 @@ export default function Inventory() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [wastageOpen, setWastageOpen] = useState(false);
+  const [addIngredientOpen, setAddIngredientOpen] = useState(false);
   const [presetItemId, setPresetItemId] = useState<string | null>(null);
 
   const { data: inventoryItems, isLoading: invLoading } = useInventory();
   const { data: movementsData } = useInventoryMovements();
   const receiveStock = useReceiveStock();
   const wasteStock = useWasteStock();
+  const createItem = useCreateInventoryItem();
 
   const items = useMemo(() =>
     (inventoryItems ?? []).map(it => ({ ...it, status: stockStatusOf(it) })),
@@ -100,6 +102,16 @@ export default function Inventory() {
     }
   };
 
+  const submitAddIngredient = async ({ name, unit, parLevel, costPerUnit }: { name: string; unit: string; parLevel: number; costPerUnit: number }) => {
+    try {
+      await createItem.mutateAsync({ name, unit, par_level: parLevel, cost_per_unit: costPerUnit });
+      setAddIngredientOpen(false);
+      toast({ kind: 'success', title: 'เพิ่มวัตถุดิบแล้ว', msg: `${name} (${unit}) ถูกเพิ่มในคลังแล้ว` });
+    } catch (err) {
+      toast({ kind: 'warning', title: 'เกิดข้อผิดพลาด', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+    }
+  };
+
   const openReceive = (itemId?: string) => { setPresetItemId(itemId || null); setReceiveOpen(true); };
   const openWastage = (itemId?: string) => { setPresetItemId(itemId || null); setWastageOpen(true); };
 
@@ -135,7 +147,7 @@ export default function Inventory() {
             ))}
           </div>
 
-          {tab === 'items' && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onReceive={openReceive} onWaste={openWastage} />}
+          {tab === 'items' && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onReceive={openReceive} onWaste={openWastage} onAddIngredient={() => setAddIngredientOpen(true)} />}
           {tab === 'receive' && <ReceiveTab items={inventoryItems ?? []} movements={recentReceives} onAdd={() => openReceive()} />}
           {tab === 'waste' && <WastageTab items={inventoryItems ?? []} movements={recentWastage} totalCost={wastageThisMonth} onAdd={() => openWastage()} />}
         </>
@@ -143,6 +155,7 @@ export default function Inventory() {
 
       {receiveOpen && <ReceiveStockModal items={inventoryItems ?? []} presetItemId={presetItemId} onClose={() => { setReceiveOpen(false); setPresetItemId(null); }} onSubmit={submitReceive} />}
       {wastageOpen && <WastageModal items={inventoryItems ?? []} presetItemId={presetItemId} onClose={() => { setWastageOpen(false); setPresetItemId(null); }} onSubmit={submitWastage} />}
+      {addIngredientOpen && <AddIngredientModal onClose={() => setAddIngredientOpen(false)} onSubmit={submitAddIngredient} />}
     </div>
   );
 }
@@ -172,11 +185,12 @@ const primaryBtnStyle = (): React.CSSProperties => ({
   fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)',
 });
 
-const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatusFilter, onReceive, onWaste }: {
+const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatusFilter, onReceive, onWaste, onAddIngredient }: {
   items: (InventoryItem & { status: ReturnType<typeof stockStatusOf> })[];
   totalCount: number; search: string; setSearch: (v: string) => void;
   statusFilter: string; setStatusFilter: (v: string) => void;
   onReceive: (id: string) => void; onWaste: (id: string) => void;
+  onAddIngredient: () => void;
 }) => (
   <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
     <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -199,6 +213,7 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
         ))}
       </div>
       <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{items.length}/{totalCount} รายการ</div>
+      <button onClick={onAddIngredient} style={primaryBtnStyle()} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={14} /> เพิ่มวัตถุดิบ</button>
     </div>
 
     <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 70px 110px 110px 100px 110px 110px 200px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
@@ -380,6 +395,29 @@ const ReceiveStockModal = ({ items, presetItemId, onClose, onSubmit }: { items: 
       <ModalActions>
         <button onClick={onClose} style={ghostBtnStyle()}>ยกเลิก</button>
         <button onClick={submit} disabled={!canSubmit} style={{ ...primaryBtnStyle(), opacity: canSubmit ? 1 : 0.45, cursor: canSubmit ? 'pointer' : 'not-allowed' }}><Icon name="check" size={14} /> บันทึก</button>
+      </ModalActions>
+    </ModalShell>
+  );
+};
+
+const AddIngredientModal = ({ onClose, onSubmit }: { onClose: () => void; onSubmit: (v: { name: string; unit: string; parLevel: number; costPerUnit: number }) => void }) => {
+  const [name, setName] = useState('');
+  const [unit, setUnit] = useState('');
+  const [parLevel, setParLevel] = useState('0');
+  const [costPerUnit, setCostPerUnit] = useState('0');
+  const canSubmit = name.trim().length > 0 && unit.trim().length > 0;
+  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), unit: unit.trim(), parLevel: Number(parLevel), costPerUnit: Number(costPerUnit) }); };
+  return (
+    <ModalShell title="เพิ่มวัตถุดิบใหม่" subtitle="สร้างรายการวัตถุดิบในคลัง" onClose={onClose}>
+      <FormField label="ชื่อวัตถุดิบ *"><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="เช่น นมสด, กาแฟอาราบิก้า" style={inputStyle()} autoFocus /></FormField>
+      <FormField label="หน่วย *"><input type="text" value={unit} onChange={e => setUnit(e.target.value)} placeholder="เช่น ml, g, ea, kg" style={inputStyle()} /></FormField>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <FormField label="Par Level (จุดสั่งซื้อ)"><input type="number" min={0} value={parLevel} onChange={e => setParLevel(e.target.value)} placeholder="0" style={inputStyle()} /></FormField>
+        <FormField label="ต้นทุน/หน่วย (฿)"><input type="number" min={0} step={0.01} value={costPerUnit} onChange={e => setCostPerUnit(e.target.value)} placeholder="0.00" style={inputStyle()} /></FormField>
+      </div>
+      <ModalActions>
+        <button onClick={onClose} style={ghostBtnStyle()}>ยกเลิก</button>
+        <button onClick={submit} disabled={!canSubmit} style={{ ...primaryBtnStyle(), opacity: canSubmit ? 1 : 0.45, cursor: canSubmit ? 'pointer' : 'not-allowed' }}><Icon name="plus" size={14} /> เพิ่มวัตถุดิบ</button>
       </ModalActions>
     </ModalShell>
   );

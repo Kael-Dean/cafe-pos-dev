@@ -53,9 +53,9 @@ export const NAV = [
   { id: 'settings',  label: 'Settings',      icon: 'settings', soft: true },
 ];
 
-interface SidebarProps { current: string; onNavigate: (id: string) => void; branchName?: string; }
+interface SidebarProps { current: string; onNavigate: (id: string) => void; onLogout?: () => void; branchName?: string; }
 
-export const Sidebar = ({ current, onNavigate, branchName = 'Sukhumvit 49' }: SidebarProps) => {
+export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit 49' }: SidebarProps) => {
   return (
     <aside style={{
       width: 240, flexShrink: 0,
@@ -102,22 +102,43 @@ export const Sidebar = ({ current, onNavigate, branchName = 'Sukhumvit 49' }: Si
         })}
       </nav>
 
-      <div style={{
-        padding: 12, margin: 12,
-        background: 'rgba(255,255,255,0.05)',
-        borderRadius: 10,
-        display: 'flex', alignItems: 'center', gap: 10,
-      }}>
+      <div style={{ padding: '8px 12px', marginBottom: 4 }}>
         <div style={{
-          width: 32, height: 32, borderRadius: 999,
-          background: 'var(--color-accent)', color: 'var(--color-primary-700)',
-          display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13,
-        }}>พ</div>
-        <div style={{flex: 1, minWidth: 0}}>
-          <div style={{fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>แพรว ส.</div>
-          <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)'}}>บาริสต้า • กะเช้า</div>
+          padding: 12,
+          background: 'rgba(255,255,255,0.05)',
+          borderRadius: 10,
+          display: 'flex', alignItems: 'center', gap: 10,
+          marginBottom: 8,
+        }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 999,
+            background: 'var(--color-accent)', color: 'var(--color-primary-700)',
+            display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13,
+            flexShrink: 0,
+          }}>พ</div>
+          <div style={{flex: 1, minWidth: 0}}>
+            <div style={{fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>แพรว ส.</div>
+            <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)'}}>บาริสต้า • กะเช้า</div>
+          </div>
         </div>
-        <Icon name="settings" size={16} color="rgba(255,255,255,0.5)" />
+        {onLogout && (
+          <button
+            onClick={onLogout}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+              padding: '9px 12px', borderRadius: 8,
+              background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
+              color: 'rgba(255,255,255,0.65)', fontSize: 13, fontWeight: 500,
+              cursor: 'pointer', fontFamily: 'inherit',
+              transition: 'all 150ms var(--ease-out)',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.18)'; e.currentTarget.style.color = '#fca5a5'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.65)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; }}
+          >
+            <Icon name="x" size={15} />
+            ออกจากระบบ
+          </button>
+        )}
       </div>
     </aside>
   );
