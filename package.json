@@ -1,0 +1,8 @@
+{
+  "name": "cafe-pos",
+  "private": true,
+  "version": "0.0.0",
+  "devDependencies": {
+    "next": "16.2.4"
+  }
+}
