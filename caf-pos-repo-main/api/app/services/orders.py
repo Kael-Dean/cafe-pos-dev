@@ -42,12 +42,11 @@ async def create_order(
     user_id: str,
     req: CreateOrderRequest,
 ) -> Order:
-    existing = await _find_by_idempotency(db, store_id=store_id, key=req.idempotency_key)
-    if existing:
-        raise Conflict("Duplicate idempotency_key — order already exists")
-
     try:
         async with db.begin():
+            existing = await _find_by_idempotency(db, store_id=store_id, key=req.idempotency_key)
+            if existing:
+                raise Conflict("Duplicate idempotency_key — order already exists")
             line_data = []
             grand_total = Decimal("0")
 
