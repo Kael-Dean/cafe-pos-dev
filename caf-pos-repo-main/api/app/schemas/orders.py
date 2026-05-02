@@ -73,3 +73,11 @@ class OrdersPage(BaseModel):
     total: int
     page: int
     limit: int
+
+
+class PromptPayQRResponse(BaseModel):
+    order_id: str
+    order_number: int
+    amount: Decimal
+    payload: str
+    qr_image_base64: str

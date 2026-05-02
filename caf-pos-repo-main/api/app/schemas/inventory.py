@@ -39,6 +39,14 @@ class InventoryItemRead(InventoryItemBase):
         return self
 
 
+class InventoryItemCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    unit: str = Field(min_length=1, max_length=24)
+    par_level: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("9999999.999"))
+    cost_per_unit: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("99999.9999"))
+    is_active: bool = True
+
+
 class InventoryItemUpdate(BaseModel):
     par_level: Decimal | None = Field(None, ge=0, le=Decimal("9999999.999"))
     cost_per_unit: Decimal | None = Field(None, ge=0, le=Decimal("99999.9999"))

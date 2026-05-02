@@ -104,6 +104,7 @@ async def _ensure_store(db: AsyncSession, tenant_id: str) -> Store:
             slug=STORE_SLUG,
             vat_enabled=False,
             vat_rate=Decimal("0.0700"),
+            promptpay_id="0812345678",  # placeholder — replace with real PromptPay phone/ID
         )
         db.add(store)
     return store

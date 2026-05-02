@@ -29,5 +29,6 @@ class Store(Base, TimestampMixin):
     slug: Mapped[str] = mapped_column(String(60), nullable=False)
     vat_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     vat_rate: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False, default=Decimal("0.0700"))
+    promptpay_id: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     tenant: Mapped[Tenant] = relationship(back_populates="stores")

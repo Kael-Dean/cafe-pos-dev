@@ -13,6 +13,7 @@ from app.models import InventoryItem, StockMovement, User
 from app.schemas.inventory import (
     AdjustRequest,
     CreatedBy,
+    InventoryItemCreate,
     InventoryItemUpdate,
     MovementsPage,
     ReceiveStockRequest,
@@ -25,6 +26,33 @@ logger = logging.getLogger(__name__)
 _RECEIVE_PREFIX = "RECEIVE"
 _DEFAULT_PAGE = 50
 _MAX_PAGE = 200
+
+
+async def create_item(
+    db: AsyncSession,
+    *,
+    store_id: str,
+    payload: InventoryItemCreate,
+) -> InventoryItem:
+    async with db.begin():
+        existing = await db.execute(
+            select(InventoryItem).where(
+                InventoryItem.store_id == store_id,
+                InventoryItem.name == payload.name,
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise Conflict("An inventory item with this name already exists")
+        item = InventoryItem(
+            store_id=store_id,
+            name=payload.name,
+            unit=payload.unit,
+            par_level=payload.par_level,
+            cost_per_unit=payload.cost_per_unit,
+            is_active=payload.is_active,
+        )
+        db.add(item)
+    return item
 
 
 async def list_items(

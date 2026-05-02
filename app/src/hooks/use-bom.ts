@@ -90,3 +90,16 @@ export function useUpdateRecipe() {
     },
   });
 }
+
+export function useLinkModifierGroups() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ productId, groupIds }: { productId: string; groupIds: string[] }) =>
+      api.put<void>(`/api/v1/products/${productId}/modifier-groups`, {
+        modifier_group_ids: groupIds,
+      }),
+    onSuccess: (_data, { productId }) => {
+      qc.invalidateQueries({ queryKey: ['product-detail', productId] });
+    },
+  });
+}

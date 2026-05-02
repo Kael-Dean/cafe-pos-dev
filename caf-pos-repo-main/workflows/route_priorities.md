@@ -2,7 +2,7 @@
 
 > **Source:** [resources/BACKEND_HANDOFF.md](../resources/BACKEND_HANDOFF.md)
 > **Purpose:** Single reference list of every route the backend must ship to fully complete the handoff. Ordered by build tier so future sessions can pick up where the last one stopped.
-> **Last updated:** 2026-04-30 (Tier 7 complete — Customers CRM, 5 routes)
+> **Last updated:** 2026-05-02 (Tier 3d setup workflow documented — drink modifier groups handoff)
 
 ## How to read this doc
 
@@ -64,6 +64,7 @@ Self-contained module. Frontend prototype already implements the screen ([`proto
 | 2.6 | `POST`  | `/inventory/adjust` | manager+ | Audit correction — signed `delta`, required reason text, append `ADJUST` movement | 2.1 | [x] |
 | 2.7 | `GET`   | `/inventory/movements` | any | Paginated movement log (cursor-based; filter by `item_id`) | 2.4–2.6 | [x] |
 | 2.8 | `GET`   | `/inventory/low-stock` | any | Items where `stock_on_hand < par_level` (for dashboard tile) | 2.1 | [x] |
+| 2.9 | `POST`  | `/inventory` | manager+ | Create a new inventory item (name unique per store; no migration required) | 2.1 | [x] |
 
 **Acceptance tests** (pytest, all in `tests/test_inventory_service.py`):
 1. Receive increments stock + creates movement
@@ -120,6 +121,22 @@ The prototype's product detail screen (per handoff `prototype/data.js` reference
 | 3.15 | `PUT`    | `/products/{id}/modifier-groups` | manager+ | Bulk attach/reorder groups on a product | 3.6, 3.11 | [x] |
 
 > **Status:** "likely needed" — will be confirmed when [resources/prototype/data.js](../resources/prototype/) lands. Track as an open question for the FE engineer.
+
+### 3d setup — Drink modifier groups (one-time data setup)
+
+All routes above are `[x]`. The following is a **runtime data-setup task**, not a code change.
+
+Frontend logic (no frontend changes needed):
+- `GET /products/{id}` → if `modifier_groups.length > 0` → show options modal
+- `GET /modifier-groups` → modal fetches store-wide groups to display
+
+Setup steps (run `api/scripts/setup_modifier_groups.py` once per store):
+1. `POST /modifier-groups` — create **Sweetness** group (`required: false, max_select: 1`, 4 options: ไม่หวาน/น้อย/ปกติ/มาก, all `price_delta: 0`)
+2. `POST /modifier-groups` — create **Size** group (`required: true, min_select: 1, max_select: 1`, options: S −5 / M 0 / L +10)
+3. `PUT /products/{id}/modifier-groups` — link both groups to every drink product (skip bakery/food items)
+
+Rule: `max_select: 1` → radio buttons; `max_select: null or > 1` → checkboxes.
+Script: [`api/scripts/setup_modifier_groups.py`](../api/scripts/setup_modifier_groups.py) — idempotent, skips groups that already exist by name.
 
 ---
 

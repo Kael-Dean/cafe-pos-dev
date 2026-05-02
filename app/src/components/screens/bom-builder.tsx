@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react';
 import Icon from '../icons';
 import { useToast, Tag, baht } from '../app-common';
-import { useAllProducts, useCategories, useCreateProduct, type MenuItem } from '@/hooks/use-products';
+import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, type MenuItem } from '@/hooks/use-products';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
-import { useProductDetail, useUpdateRecipe, type RecipeItem } from '@/hooks/use-bom';
+import { useProductDetail, useUpdateRecipe, useLinkModifierGroups, type RecipeItem } from '@/hooks/use-bom';
+import { useModifierGroups } from '@/hooks/use-modifier-groups';
 
 type ProductType = 'MENU' | 'INGREDIENT';
 
@@ -15,6 +16,7 @@ export default function BOMBuilder() {
   const [search, setSearch] = useState('');
   const [picker, setPicker] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const [editedRecipe, setEditedRecipe] = useState<RecipeItem[]>([]);
   const [editedPrice, setEditedPrice] = useState(0);
@@ -26,6 +28,9 @@ export default function BOMBuilder() {
   const { data: productDetail, isLoading: detailLoading } = useProductDetail(selectedId);
   const updateRecipe = useUpdateRecipe();
   const createProduct = useCreateProduct();
+  const deleteProduct = useDeleteProduct();
+  const linkModifierGroups = useLinkModifierGroups();
+  const { data: modifierGroups } = useModifierGroups();
 
   useEffect(() => {
     if (!selectedId && products?.[0]) {
@@ -74,15 +79,33 @@ export default function BOMBuilder() {
     }
   };
 
-  const submitAddMenu = async ({ name, categoryId, price, description, type }: { name: string; categoryId: string; price: number; description: string; type: ProductType }) => {
+  const submitAddMenu = async ({ name, categoryId, price, description, type, isDrink }: { name: string; categoryId: string; price: number; description: string; type: ProductType; isDrink: boolean }) => {
     try {
       const created = await createProduct.mutateAsync({ name, category_id: categoryId || undefined, price, description: description || undefined });
+      if (isDrink && modifierGroups && modifierGroups.length > 0) {
+        await linkModifierGroups.mutateAsync({ productId: created.id, groupIds: modifierGroups.map(g => g.id) });
+      }
       setAddMenuOpen(false);
       setSelectedId(created.id);
       setProductType(type);
-      toast({ kind: 'success', title: 'เพิ่มรายการแล้ว', msg: `${name} ถูกเพิ่มแล้ว` });
+      const note = isDrink
+        ? (modifierGroups?.length ? ' · เปิดตัวเลือกแล้ว' : ' · ตั้งค่า modifier groups ที่ backend ก่อน')
+        : '';
+      toast({ kind: 'success', title: 'เพิ่มรายการแล้ว', msg: `${name}${note}` });
     } catch (err) {
       toast({ kind: 'warning', title: 'เกิดข้อผิดพลาด', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedId || !selectedProduct) return;
+    try {
+      await deleteProduct.mutateAsync(selectedId);
+      setDeleteConfirmOpen(false);
+      setSelectedId(null);
+      toast({ kind: 'success', title: 'ลบแล้ว', msg: `${selectedProduct.name} ถูกลบออกจากระบบ` });
+    } catch (err) {
+      toast({ kind: 'warning', title: 'ลบไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
     }
   };
 
@@ -164,6 +187,7 @@ export default function BOMBuilder() {
             onPickerOpen={() => setPicker(true)}
             onSave={saveRecipe}
             saving={updateRecipe.isPending}
+            onDeleteRequest={() => setDeleteConfirmOpen(true)}
           />
         )}
       </div>
@@ -181,6 +205,14 @@ export default function BOMBuilder() {
           categories={categories ?? []}
           onClose={() => setAddMenuOpen(false)}
           onSubmit={submitAddMenu}
+        />
+      )}
+      {deleteConfirmOpen && selectedProduct && (
+        <DeleteConfirmModal
+          name={selectedProduct.name}
+          deleting={deleteProduct.isPending}
+          onConfirm={handleDelete}
+          onClose={() => setDeleteConfirmOpen(false)}
         />
       )}
     </div>
@@ -204,9 +236,10 @@ interface RightPanelProps {
   onPickerOpen: () => void;
   onSave: () => void;
   saving: boolean;
+  onDeleteRequest: () => void;
 }
 
-const RightPanel = ({ product, productType, recipe, editedPrice, inventoryItems, totalCost, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onQtyChange, onRemove, onPickerOpen, onSave, saving }: RightPanelProps) => (
+const RightPanel = ({ product, productType, recipe, editedPrice, inventoryItems, totalCost, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest }: RightPanelProps) => (
   <>
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
       <div style={{ width: 80, height: 80, borderRadius: 12, background: product.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 800, flexShrink: 0 }}>{product.tag}</div>
@@ -287,7 +320,10 @@ const RightPanel = ({ product, productType, recipe, editedPrice, inventoryItems,
       )}
     </div>
 
-    <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+    <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'space-between', alignItems: 'center' }}>
+      <button onClick={onDeleteRequest} style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-danger)', border: '1px solid var(--color-danger)', borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+        <Icon name="trash" size={14} /> ลบเมนูนี้
+      </button>
       <button onClick={onSave} disabled={saving} style={{ padding: '10px 20px', fontSize: 14, fontWeight: 600, background: saving ? 'var(--color-surface-2)' : 'var(--color-primary)', color: saving ? 'var(--color-text-muted)' : '#fff', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }} onMouseEnter={e => { if (!saving) e.currentTarget.style.background = 'var(--color-primary-700)'; }} onMouseLeave={e => { if (!saving) e.currentTarget.style.background = 'var(--color-primary)'; }}>
         <Icon name="check" size={16} />{saving ? 'กำลังบันทึก...' : 'บันทึกสูตร'}
       </button>
@@ -494,18 +530,36 @@ const BomModalShell = ({ title, subtitle, onClose, children }: { title: string; 
   </div>
 );
 
+const DeleteConfirmModal = ({ name, deleting, onConfirm, onClose }: {
+  name: string; deleting: boolean;
+  onConfirm: () => void; onClose: () => void;
+}) => (
+  <BomModalShell title="ยืนยันการลบ" subtitle={`"${name}" จะถูกปิดใช้งาน`} onClose={onClose}>
+    <div style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: 20, lineHeight: 1.7 }}>
+      รายการนี้จะถูกซ่อนจากหน้า POS และ BOM Builder ข้อมูลยังอยู่ในระบบ สามารถกู้คืนได้ผ่าน backend
+    </div>
+    <BomModalActions>
+      <button onClick={onClose} style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
+      <button onClick={onConfirm} disabled={deleting} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', fontSize: 13, fontWeight: 600, background: deleting ? 'var(--color-surface-2)' : 'var(--color-danger)', color: deleting ? 'var(--color-text-muted)' : '#fff', border: 'none', borderRadius: 8, cursor: deleting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }}>
+        <Icon name="trash" size={14} />{deleting ? 'กำลังลบ...' : 'ยืนยันลบ'}
+      </button>
+    </BomModalActions>
+  </BomModalShell>
+);
+
 const AddMenuModal = ({ categories, onClose, onSubmit }: {
   categories: import('@/hooks/use-products').Category[];
   onClose: () => void;
-  onSubmit: (v: { name: string; categoryId: string; price: number; description: string; type: ProductType }) => void;
+  onSubmit: (v: { name: string; categoryId: string; price: number; description: string; type: ProductType; isDrink: boolean }) => void;
 }) => {
   const [type, setType] = useState<ProductType>('MENU');
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
+  const [isDrink, setIsDrink] = useState(false);
   const canSubmit = name.trim().length > 0 && price !== '' && Number(price) >= 0;
-  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), categoryId, price: Number(price), description: description.trim(), type }); };
+  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), categoryId, price: Number(price), description: description.trim(), type, isDrink: type === 'MENU' && isDrink }); };
 
   return (
     <BomModalShell title="เพิ่มรายการใหม่" subtitle="สร้างรายการในระบบ BOM" onClose={onClose}>
@@ -543,6 +597,20 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
       <BomFormField label="รายละเอียด">
         <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} placeholder="ไม่บังคับ" style={{ ...bomInputStyle(), resize: 'vertical', fontFamily: 'inherit' }} />
       </BomFormField>
+
+      {type === 'MENU' && (
+        <BomFormField label="ตัวเลือกเพิ่มเติม">
+          <label onClick={() => setIsDrink(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '10px 12px', border: `2px solid ${isDrink ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 8, background: isDrink ? 'var(--color-accent-50)' : 'transparent', transition: 'all 150ms var(--ease-out)', userSelect: 'none' }}>
+            <div style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${isDrink ? 'var(--color-accent)' : 'var(--color-border)'}`, background: isDrink ? 'var(--color-accent)' : 'transparent', display: 'grid', placeItems: 'center', flexShrink: 0, transition: 'all 150ms var(--ease-out)' }}>
+              {isDrink && <Icon name="check" size={12} color="#fff" />}
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: isDrink ? 'var(--color-primary-700)' : 'var(--color-text)' }}>เครื่องดื่ม — มีตัวเลือก</div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>แสดงหน้าเลือกความหวาน, ขนาด ฯลฯ เมื่อสั่งจาก POS</div>
+            </div>
+          </label>
+        </BomFormField>
+      )}
 
       <BomModalActions>
         <button onClick={onClose} style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>

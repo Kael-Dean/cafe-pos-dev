@@ -125,3 +125,14 @@ export function useCreateProduct() {
     },
   });
 }
+
+export function useDeleteProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (productId: string) =>
+      api.delete<void>(`/api/v1/products/${productId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['products'] });
+    },
+  });
+}

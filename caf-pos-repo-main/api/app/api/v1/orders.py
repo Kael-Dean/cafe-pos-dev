@@ -9,10 +9,12 @@ from app.schemas.orders import (
     OrderRead,
     OrdersPage,
     PayOrderRequest,
+    PromptPayQRResponse,
     UpdateStatusRequest,
     VoidOrderRequest,
 )
 from app.services import orders as svc
+from app.services import promptpay as svc_promptpay
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -47,7 +49,7 @@ async def create_order(
 async def list_orders(
     user: StoreUser,
     db: DbSession,
-    status: list[OrderStatus] | None = Query(None),
+    status: list[OrderStatus] = Query(default=[]),
     customer_id: str | None = Query(None),
     from_dt: datetime | None = Query(None, alias="from"),
     to_dt: datetime | None = Query(None, alias="to"),
@@ -57,7 +59,7 @@ async def list_orders(
     return await svc.list_orders(
         db,
         store_id=user.store_id,
-        status=status,
+        statuses=status,
         customer_id=customer_id,
         from_dt=from_dt,
         to_dt=to_dt,
@@ -129,3 +131,14 @@ async def void_order(
         db, pusher, store_id=user.store_id, order_id=order_id, user_id=user.id, req=payload
     )
     return await svc.get_order(db, store_id=user.store_id, order_id=order.id)
+
+
+@router.get(
+    "/{order_id}/promptpay-qr",
+    response_model=PromptPayQRResponse,
+    summary="Generate PromptPay QR code pre-filled with the order total",
+    operation_id="orders_promptpay_qr",
+    dependencies=[Depends(_BARISTA_PLUS)],
+)
+async def promptpay_qr(order_id: str, user: StoreUser, db: DbSession) -> PromptPayQRResponse:
+    return await svc_promptpay.get_promptpay_qr(db, store_id=user.store_id, order_id=order_id)

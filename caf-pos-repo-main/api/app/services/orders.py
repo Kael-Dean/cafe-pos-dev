@@ -47,6 +47,7 @@ async def create_order(
             existing = await _find_by_idempotency(db, store_id=store_id, key=req.idempotency_key)
             if existing:
                 raise Conflict("Duplicate idempotency_key — order already exists")
+
             line_data = []
             grand_total = Decimal("0")
 
@@ -128,7 +129,7 @@ async def list_orders(
     db: AsyncSession,
     *,
     store_id: str,
-    status: list[OrderStatus] | None = None,
+    statuses: list[OrderStatus] | None = None,
     customer_id: str | None = None,
     from_dt: datetime | None = None,
     to_dt: datetime | None = None,
@@ -140,8 +141,8 @@ async def list_orders(
     offset = (max(page, 1) - 1) * limit
 
     stmt = select(Order).where(Order.store_id == store_id)
-    if status:
-        stmt = stmt.where(Order.status.in_(status))
+    if statuses:
+        stmt = stmt.where(Order.status.in_(statuses))
     if customer_id:
         stmt = stmt.where(Order.customer_id == customer_id)
     if from_dt:
