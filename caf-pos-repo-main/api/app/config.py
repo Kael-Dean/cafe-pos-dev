@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     PUSHER_SECRET: str | None = None
     PUSHER_CLUSTER: str = "ap1"
 
-    CORS_ORIGINS: str = "http://localhost:3000,https://cafe-pos-sable.vercel.app"
+    CORS_ORIGINS: str = "http://localhost:3000"
 
     LOG_LEVEL: str = "INFO"
     ENVIRONMENT: Literal["local", "test", "staging", "production"] = "local"

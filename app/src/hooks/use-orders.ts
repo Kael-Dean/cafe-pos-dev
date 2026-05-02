@@ -26,18 +26,27 @@ export interface CreateOrderPayload {
 }
 
 // ── Backend shapes ────────────────────────────────────────────────────────────
+interface OrderItemRead {
+  product_name: string;
+  quantity: number;
+  modifiers_json: Record<string, unknown> | null;
+}
+
 interface OrderRead {
   id: string;
-  order_number: string;
+  order_number: number;
   status: string;
   channel: string;
   total: string | number;
   created_at: string;
-  items?: {
-    product_name: string;
-    quantity: number;
-    modifiers: unknown;
-  }[];
+  items?: OrderItemRead[];
+}
+
+interface OrdersPage {
+  items: OrderRead[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 const CHANNEL_LABEL: Record<string, KDSTicket['type']> = {
@@ -47,24 +56,27 @@ const CHANNEL_LABEL: Record<string, KDSTicket['type']> = {
 };
 
 const STATUS_MAP: Record<string, KDSTicket['status']> = {
-  PENDING: 'new',
+  PAID: 'new',
   IN_PROGRESS: 'progress',
   READY: 'ready',
 };
 
 function parseModifiers(raw: unknown): string[] {
-  if (Array.isArray(raw)) return (raw as unknown[]).filter((m): m is string => typeof m === 'string');
-  if (raw && typeof raw === 'object') {
-    const sel = (raw as Record<string, unknown>).selections;
-    if (Array.isArray(sel)) return (sel as unknown[]).filter((m): m is string => typeof m === 'string');
+  if (!raw || typeof raw !== 'object') return [];
+  const obj = raw as Record<string, unknown>;
+  const mods = obj.modifiers;
+  if (Array.isArray(mods)) {
+    return (mods as Record<string, unknown>[])
+      .map(m => m.name)
+      .filter((n): n is string => typeof n === 'string');
   }
   return [];
 }
 
 function mapToTicket(o: OrderRead): KDSTicket {
-  const num = parseInt(o.order_number.replace(/\D/g, '') || '0', 10);
+  const num = typeof o.order_number === 'number' ? o.order_number : parseInt(String(o.order_number).replace(/\D/g, '') || '0', 10);
   return {
-    id: o.order_number,
+    id: String(o.order_number),
     orderId: o.id,
     queue: num,
     type: CHANNEL_LABEL[o.channel] ?? 'Dine-in',
@@ -73,7 +85,7 @@ function mapToTicket(o: OrderRead): KDSTicket {
     items: (o.items ?? []).map(it => ({
       name: it.product_name,
       qty: it.quantity,
-      mods: parseModifiers(it.modifiers),
+      mods: parseModifiers(it.modifiers_json),
     })),
   };
 }
@@ -83,8 +95,8 @@ export function useKDSOrders() {
   return useQuery<KDSTicket[]>({
     queryKey: ['kds-orders'],
     queryFn: async () => {
-      const data = await api.get<OrderRead[]>('/api/v1/orders?status=PENDING,IN_PROGRESS,READY');
-      return data.map(mapToTicket);
+      const data = await api.get<OrdersPage>('/api/v1/orders?status=PAID&status=IN_PROGRESS&status=READY&limit=200');
+      return (data.items ?? []).map(mapToTicket);
     },
     refetchInterval: 15000,
   });

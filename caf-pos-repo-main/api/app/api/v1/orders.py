@@ -47,7 +47,7 @@ async def create_order(
 async def list_orders(
     user: StoreUser,
     db: DbSession,
-    status: OrderStatus | None = Query(None),
+    status: list[OrderStatus] | None = Query(None),
     customer_id: str | None = Query(None),
     from_dt: datetime | None = Query(None, alias="from"),
     to_dt: datetime | None = Query(None, alias="to"),

@@ -129,7 +129,7 @@ async def list_orders(
     db: AsyncSession,
     *,
     store_id: str,
-    status: OrderStatus | None = None,
+    status: list[OrderStatus] | None = None,
     customer_id: str | None = None,
     from_dt: datetime | None = None,
     to_dt: datetime | None = None,
@@ -142,7 +142,7 @@ async def list_orders(
 
     stmt = select(Order).where(Order.store_id == store_id)
     if status:
-        stmt = stmt.where(Order.status == status)
+        stmt = stmt.where(Order.status.in_(status))
     if customer_id:
         stmt = stmt.where(Order.customer_id == customer_id)
     if from_dt:

@@ -4,7 +4,6 @@ from app.deps import DbSession, StoreUser, require_role
 from app.enums import Role
 from app.schemas.inventory import (
     AdjustRequest,
-    InventoryItemCreate,
     InventoryItemRead,
     InventoryItemUpdate,
     MovementsPage,
@@ -17,23 +16,6 @@ router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 _BARISTA_PLUS = require_role(Role.OWNER, Role.MANAGER, Role.BARISTA, Role.BAKER)
 _MANAGER_PLUS = require_role(Role.OWNER, Role.MANAGER)
-
-
-@router.post(
-    "",
-    response_model=InventoryItemRead,
-    status_code=201,
-    summary="Create a new inventory item",
-    operation_id="inventory_create",
-    dependencies=[Depends(_MANAGER_PLUS)],
-)
-async def create_item(
-    payload: InventoryItemCreate,
-    user: StoreUser,
-    db: DbSession,
-) -> InventoryItemRead:
-    item = await inv.create_item(db, store_id=user.store_id, payload=payload)
-    return InventoryItemRead.model_validate(item)
 
 
 @router.get(
