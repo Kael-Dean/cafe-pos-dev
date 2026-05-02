@@ -2,6 +2,7 @@
 
 import { useState, useCallback, createContext, useContext } from 'react';
 import Icon from './icons';
+import { useCurrentUser } from '@/hooks/use-current-user';
 
 // ---------- Toast ----------
 type ToastKind = 'success' | 'warning' | 'danger' | 'info';
@@ -42,20 +43,40 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
 };
 
 // ---------- Sidebar ----------
-export const NAV = [
-  { id: 'pos',       label: 'POS Terminal', icon: 'pos' },
-  { id: 'kds',       label: 'Kitchen (KDS)', icon: 'kds' },
-  { id: 'dashboard', label: 'Dashboard',     icon: 'chart' },
-  { id: 'bom',       label: 'BOM Builder',   icon: 'inv' },
-  { id: 'inventory', label: 'Inventory',     icon: 'inv', soft: true },
-  { id: 'customers', label: 'Customers',     icon: 'customers', soft: true },
-  { id: 'reports',   label: 'Reports',       icon: 'reports', soft: true },
-  { id: 'settings',  label: 'Settings',      icon: 'settings', soft: true },
+export type NavItem = { id: string; label: string; icon: string; soft?: boolean; adminOnly?: boolean; };
+
+export const NAV: NavItem[] = [
+  { id: 'pos',       label: 'POS Terminal',   icon: 'pos' },
+  { id: 'kds',       label: 'Kitchen (KDS)',   icon: 'kds' },
+  { id: 'dashboard', label: 'Dashboard',       icon: 'chart' },
+  { id: 'bom',       label: 'BOM Builder',     icon: 'inv' },
+  { id: 'inventory', label: 'Inventory',       icon: 'inv',      soft: true },
+  { id: 'cash',      label: 'Cash',            icon: 'cash',     adminOnly: true },
+  { id: 'promotions',label: 'Promotions',      icon: 'tag' },
+  { id: 'protocols', label: 'Protocols',       icon: 'check' },
+  { id: 'shifts',    label: 'Shift Schedule',  icon: 'calendar' },
+  { id: 'hr',        label: 'HR & Admin',      icon: 'staff',    adminOnly: true },
+  { id: 'customers', label: 'Customers',       icon: 'customers', soft: true },
+  { id: 'reports',   label: 'Reports',         icon: 'reports',  soft: true },
+  { id: 'settings',  label: 'Settings',        icon: 'settings', soft: true },
 ];
 
 interface SidebarProps { current: string; onNavigate: (id: string) => void; onLogout?: () => void; branchName?: string; }
 
+const ROLE_LABEL: Record<string, string> = {
+  OWNER: 'เจ้าของ',
+  MANAGER: 'ผู้จัดการ',
+  BARISTA: 'บาริสต้า',
+  BAKER: 'เบเกอรี่',
+};
+
 export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit 49' }: SidebarProps) => {
+  const { data: me } = useCurrentUser();
+  const role = me?.role;
+  const isAdmin = role === 'OWNER' || role === 'MANAGER';
+  const initial = me?.name ? me.name.charAt(0).toUpperCase() : '?';
+  const visibleNav = NAV.filter((n) => !n.adminOnly || isAdmin);
+
   return (
     <aside style={{
       width: 240, flexShrink: 0,
@@ -72,12 +93,12 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
         }}>K</div>
         <div>
           <div style={{fontWeight: 700, fontSize: 15, letterSpacing: '-0.01em'}}>Kafé OS</div>
-          <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)'}}>{branchName}</div>
+          <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)'}}>{me?.store_name ?? branchName}</div>
         </div>
       </div>
 
-      <nav style={{padding: '8px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2}}>
-        {NAV.map((n) => {
+      <nav style={{padding: '8px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto'}}>
+        {visibleNav.map((n) => {
           const active = current === n.id;
           return (
             <button key={n.id} onClick={() => onNavigate(n.id)}
@@ -115,10 +136,10 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
             background: 'var(--color-accent)', color: 'var(--color-primary-700)',
             display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13,
             flexShrink: 0,
-          }}>พ</div>
+          }}>{initial}</div>
           <div style={{flex: 1, minWidth: 0}}>
-            <div style={{fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>แพรว ส.</div>
-            <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)'}}>บาริสต้า • กะเช้า</div>
+            <div style={{fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{me?.name ?? '...'}</div>
+            <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)'}}>{role ? ROLE_LABEL[role] ?? role : ''}</div>
           </div>
         </div>
         {onLogout && (
