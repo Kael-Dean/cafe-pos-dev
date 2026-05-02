@@ -15,11 +15,12 @@ import ProtocolsScreen from '@/components/screens/protocols';
 import HRDashboard from '@/components/screens/hr-dashboard';
 import ShiftSchedule from '@/components/screens/shift-schedule';
 import { Customers, Reports, Settings } from '@/components/screens/placeholders';
+import HardwareScreen from '@/components/screens/hardware';
 
 type Screen =
   | 'pos' | 'kds' | 'dashboard' | 'bom' | 'inventory'
   | 'cash' | 'promotions' | 'protocols' | 'hr' | 'shifts'
-  | 'customers' | 'reports' | 'settings';
+  | 'hardware' | 'customers' | 'reports' | 'settings';
 
 export default function POS() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!getToken());
@@ -45,6 +46,7 @@ export default function POS() {
     protocols:  <ProtocolsScreen />,
     hr:         <HRDashboard />,
     shifts:     <ShiftSchedule />,
+    hardware:   <HardwareScreen />,
     customers:  <Customers />,
     reports:    <Reports />,
     settings:   <Settings />,

@@ -6,6 +6,7 @@ import { useToast, baht } from '../app-common';
 import { useAllProducts, useCategories, type MenuItem } from '@/hooks/use-products';
 import { useModifierGroups } from '@/hooks/use-modifier-groups';
 import { useProductDetail } from '@/hooks/use-bom';
+import { useCreateOrder } from '@/hooks/use-orders';
 import ModifierModal from './modifier-modal';
 import PaymentModal from './payment-modal';
 
@@ -23,6 +24,7 @@ export default function POSTerminal() {
   const { data: categories, isLoading: catsLoading } = useCategories();
   const { data: products, isLoading: prodLoading, isError } = useAllProducts();
   const { data: modifierGroups } = useModifierGroups();
+  const createOrder = useCreateOrder();
   const storeHasModifiers = (modifierGroups?.length ?? 0) > 0;
 
   // Prefetch product detail when hovered so click is instant
@@ -102,9 +104,33 @@ export default function POSTerminal() {
   const clearCart = () => { setCart([]); setBillNo((b) => b + 1); };
 
   const onPaid = () => {
+    const method = payment;
     setPayment(null);
-    toast({ kind: 'success', title: 'ชำระเงินสำเร็จ', msg: `บิล A0${billNo} • ${baht(total)} • ส่งครัวแล้ว`, duration: 3500 });
     clearCart();
+    const methodMap: Record<string, 'CASH' | 'CARD' | 'QR_PROMPTPAY' | 'LINE_PAY'> = {
+      cash: 'CASH', card: 'CARD', qr: 'QR_PROMPTPAY', line: 'LINE_PAY',
+    };
+    createOrder.mutateAsync({
+      channel: 'DINE_IN',
+      payment_method: methodMap[method ?? 'cash'] ?? 'CASH',
+      subtotal,
+      discount,
+      tax: vat,
+      total,
+      paid_amount: total,
+      items: cart.map(l => ({
+        product_id: l.menuId,
+        product_name: l.name,
+        quantity: l.qty,
+        unit_price: l.unitPrice,
+        modifiers: { selections: l.mods },
+        notes: '',
+      })),
+    }).then(order => {
+      toast({ kind: 'success', title: 'ชำระเงินสำเร็จ', msg: `บิล ${order.order_number} • ${baht(total)} • ส่งครัวแล้ว`, duration: 3500 });
+    }).catch(() => {
+      toast({ kind: 'warning', title: 'บิลบันทึกไม่สำเร็จ', msg: 'กรุณาแจ้งผู้จัดการ', duration: 4000 });
+    });
   };
 
   return (

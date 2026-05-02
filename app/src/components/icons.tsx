@@ -63,6 +63,11 @@ export default function Icon({ name, size = 20, color = 'currentColor', strokeWi
     tag: <><path d="M12 2H6a2 2 0 0 0-2 2v6l8.59 8.59a2 2 0 0 0 2.82 0l5.18-5.18a2 2 0 0 0 0-2.82z"/><circle cx="8.5" cy="8.5" r="1.5"/></>,
     staff: <><circle cx="12" cy="7" r="4"/><path d="M3 21c0-4.5 4-8 9-8s9 3.5 9 8"/><path d="M16 11l2 4-2 1"/><path d="M8 11l-2 4 2 1"/></>,
     calendar: <><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></>,
+    gift: <><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></>,
+    printer: <><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></>,
+    wifi: <><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></>,
+    bluetooth: <path d="M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11"/>,
+    usb: <><path d="M12 2v12"/><path d="M9 8l3-6 3 6"/><rect x="9" y="14" width="6" height="6" rx="1"/><path d="M7 20h10"/></>,
   };
   return <svg {...props}>{paths[name] || null}</svg>;
 }

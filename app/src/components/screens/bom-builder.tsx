@@ -7,6 +7,8 @@ import { useAllProducts, useCategories, useCreateProduct, type MenuItem } from '
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
 import { useProductDetail, useUpdateRecipe, type RecipeItem } from '@/hooks/use-bom';
 
+type ProductType = 'MENU' | 'INGREDIENT';
+
 export default function BOMBuilder() {
   const toast = useToast();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -16,6 +18,7 @@ export default function BOMBuilder() {
 
   const [editedRecipe, setEditedRecipe] = useState<RecipeItem[]>([]);
   const [editedPrice, setEditedPrice] = useState(0);
+  const [productType, setProductType] = useState<ProductType>('MENU');
 
   const { data: products, isLoading: productsLoading } = useAllProducts();
   const { data: categories } = useCategories();
@@ -24,14 +27,12 @@ export default function BOMBuilder() {
   const updateRecipe = useUpdateRecipe();
   const createProduct = useCreateProduct();
 
-  // Auto-select first product
   useEffect(() => {
     if (!selectedId && products?.[0]) {
       setSelectedId(products[0].id);
     }
   }, [products, selectedId]);
 
-  // Sync recipe + price from API when product changes
   useEffect(() => {
     if (productDetail) {
       setEditedRecipe(productDetail.recipe.map(r => ({ ...r })));
@@ -57,10 +58,10 @@ export default function BOMBuilder() {
 
   const removeItem = (idx: number) => setEditedRecipe(r => r.filter((_, i) => i !== idx));
 
-  const addItem = (invId: string) => {
-    setEditedRecipe(r => [...r, { invId, qty: 1 }]);
+  const addItems = (invIds: string[]) => {
+    setEditedRecipe(r => [...r, ...invIds.map(id => ({ invId: id, qty: 1 }))]);
     setPicker(false);
-    toast({ kind: 'info', title: 'เพิ่มวัตถุดิบแล้ว', msg: 'ปรับปริมาณตามสูตรจริง' });
+    toast({ kind: 'info', title: `เพิ่ม ${invIds.length} วัตถุดิบแล้ว`, msg: 'ปรับปริมาณตามสูตรจริง' });
   };
 
   const saveRecipe = async () => {
@@ -73,12 +74,13 @@ export default function BOMBuilder() {
     }
   };
 
-  const submitAddMenu = async ({ name, categoryId, price, description }: { name: string; categoryId: string; price: number; description: string }) => {
+  const submitAddMenu = async ({ name, categoryId, price, description, type }: { name: string; categoryId: string; price: number; description: string; type: ProductType }) => {
     try {
       const created = await createProduct.mutateAsync({ name, category_id: categoryId || undefined, price, description: description || undefined });
       setAddMenuOpen(false);
       setSelectedId(created.id);
-      toast({ kind: 'success', title: 'เพิ่มเมนูแล้ว', msg: `${name} ถูกเพิ่มแล้ว` });
+      setProductType(type);
+      toast({ kind: 'success', title: 'เพิ่มรายการแล้ว', msg: `${name} ถูกเพิ่มแล้ว` });
     } catch (err) {
       toast({ kind: 'warning', title: 'เกิดข้อผิดพลาด', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
     }
@@ -98,7 +100,7 @@ export default function BOMBuilder() {
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 4 }}>P1 — Inventory</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}>BOM Builder</h2>
-            <button onClick={() => setAddMenuOpen(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)', flexShrink: 0 }} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={12} /> เพิ่มเมนู</button>
+            <button onClick={() => setAddMenuOpen(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)', flexShrink: 0 }} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={12} /> เพิ่มรายการ</button>
           </div>
           <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>สูตรอาหาร · ต้นทุน · margin</div>
         </div>
@@ -141,12 +143,13 @@ export default function BOMBuilder() {
       {/* RIGHT panel */}
       <div className="scroll" style={{ flex: 1, overflow: 'auto', padding: 24 }}>
         {!selectedProduct ? (
-          <div style={{ padding: 60, textAlign: 'center', color: 'var(--color-text-muted)' }}>เลือกเมนูจากรายการด้านซ้าย</div>
+          <div style={{ padding: 60, textAlign: 'center', color: 'var(--color-text-muted)' }}>เลือกรายการจากรายการด้านซ้าย</div>
         ) : detailLoading ? (
           <div style={{ padding: 60, textAlign: 'center', color: 'var(--color-text-muted)' }}>กำลังโหลดสูตร...</div>
         ) : (
           <RightPanel
             product={selectedProduct}
+            productType={productType}
             recipe={editedRecipe}
             editedPrice={editedPrice}
             inventoryItems={inventoryItems ?? []}
@@ -165,14 +168,28 @@ export default function BOMBuilder() {
         )}
       </div>
 
-      {picker && <IngredientPicker existingIds={editedRecipe.map(r => r.invId)} inventory={inventoryItems ?? []} onSelect={addItem} onClose={() => setPicker(false)} />}
-      {addMenuOpen && <AddMenuModal categories={categories ?? []} onClose={() => setAddMenuOpen(false)} onSubmit={submitAddMenu} />}
+      {picker && (
+        <IngredientPicker
+          existingIds={editedRecipe.map(r => r.invId)}
+          inventory={inventoryItems ?? []}
+          onConfirm={addItems}
+          onClose={() => setPicker(false)}
+        />
+      )}
+      {addMenuOpen && (
+        <AddMenuModal
+          categories={categories ?? []}
+          onClose={() => setAddMenuOpen(false)}
+          onSubmit={submitAddMenu}
+        />
+      )}
     </div>
   );
 }
 
 interface RightPanelProps {
   product: MenuItem;
+  productType: ProductType;
   recipe: RecipeItem[];
   editedPrice: number;
   inventoryItems: InventoryItem[];
@@ -189,7 +206,7 @@ interface RightPanelProps {
   saving: boolean;
 }
 
-const RightPanel = ({ product, recipe, editedPrice, inventoryItems, totalCost, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onQtyChange, onRemove, onPickerOpen, onSave, saving }: RightPanelProps) => (
+const RightPanel = ({ product, productType, recipe, editedPrice, inventoryItems, totalCost, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onQtyChange, onRemove, onPickerOpen, onSave, saving }: RightPanelProps) => (
   <>
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
       <div style={{ width: 80, height: 80, borderRadius: 12, background: product.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 800, flexShrink: 0 }}>{product.tag}</div>
@@ -197,11 +214,14 @@ const RightPanel = ({ product, recipe, editedPrice, inventoryItems, totalCost, m
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500 }}>{product.nameEn}</div>
         <h1 style={{ margin: '2px 0 8px', fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>{product.name}</h1>
         <div style={{ display: 'flex', gap: 6 }}>
+          <Tag tone={productType === 'MENU' ? 'info' : 'accent'}>{productType === 'MENU' ? 'เมนูขาย' : 'ส่วนผสม'}</Tag>
           <Tag tone={recipe.length > 0 ? 'success' : 'warning'}>{recipe.length > 0 ? `${recipe.length} วัตถุดิบ` : 'ยังไม่มีสูตร'}</Tag>
         </div>
       </div>
       <div>
-        <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>ราคาขาย</div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>
+          {productType === 'MENU' ? 'ราคาขาย' : 'ต้นทุนผลิต'}
+        </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
           <span style={{ fontSize: 18, color: 'var(--color-text-secondary)' }}>฿</span>
           <input type="number" min={0} step={5} value={editedPrice}
@@ -218,7 +238,10 @@ const RightPanel = ({ product, recipe, editedPrice, inventoryItems, totalCost, m
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
       <SummaryCard label="ต้นทุนวัตถุดิบ" value={`฿${totalCost.toFixed(2)}`} />
       <SummaryCard label="ส่วนต่าง (Contribution)" value={`฿${margin.toFixed(2)}`} color={margin >= 0 ? 'var(--color-text)' : 'var(--color-danger)'} />
-      <SummaryCard label="Margin" value={`${marginPct.toFixed(1)}%`} highlight={marginToneOf(marginPct)} />
+      {productType === 'MENU'
+        ? <SummaryCard label="Margin" value={`${marginPct.toFixed(1)}%`} highlight={marginToneOf(marginPct)} />
+        : <SummaryCard label="ต้นทุน/หน่วย" value={`฿${totalCost.toFixed(2)}`} highlight="info" />
+      }
     </div>
 
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
@@ -230,7 +253,7 @@ const RightPanel = ({ product, recipe, editedPrice, inventoryItems, totalCost, m
       {recipe.length === 0 ? (
         <div style={{ padding: 48, textAlign: 'center' }}>
           <div style={{ width: 56, height: 56, borderRadius: 12, background: 'var(--color-surface-2)', margin: '0 auto 12px', display: 'grid', placeItems: 'center' }}><Icon name="inv" size={28} color="var(--color-text-muted)" /></div>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>ยังไม่มีสูตรสำหรับเมนูนี้</div>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>ยังไม่มีสูตรสำหรับรายการนี้</div>
         </div>
       ) : (
         <>
@@ -243,17 +266,16 @@ const RightPanel = ({ product, recipe, editedPrice, inventoryItems, totalCost, m
             const lineCost = inv.costPerUnit * r.qty;
             const stockOk = inv.stock >= r.qty * 10;
             return (
-              <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 110px 70px 100px 90px 36px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === recipe.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 500 }}>{inv.name}</div>
-                  <div style={{ fontSize: 11, color: stockOk ? 'var(--color-text-muted)' : 'var(--color-warning)', marginTop: 2 }}>คงเหลือ {inv.stock.toLocaleString()} {inv.unit}{!stockOk && ' · ใกล้หมด'}</div>
-                </div>
-                <input type="number" step={1} min={0} value={r.qty} onChange={e => onQtyChange(idx, Number(e.target.value))} className="num" style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, border: '1px solid var(--color-border)', borderRadius: 6, padding: '6px 10px', outline: 'none', fontFamily: 'inherit', background: 'var(--color-surface)' }} onFocus={e => e.target.style.borderColor = 'var(--color-accent)'} onBlur={e => e.target.style.borderColor = 'var(--color-border)'} />
-                <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{inv.unit}</div>
-                <div className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'right' }}>฿{inv.costPerUnit.toFixed(2)}</div>
-                <div className="num" style={{ fontSize: 14, fontWeight: 700, textAlign: 'right' }}>฿{lineCost.toFixed(2)}</div>
-                <button onClick={() => onRemove(idx)} title="ลบวัตถุดิบ" style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center', padding: 6, borderRadius: 6, color: 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}><Icon name="trash" size={14} /></button>
-              </div>
+              <BOMRow
+                key={idx}
+                inv={inv}
+                qty={r.qty}
+                lineCost={lineCost}
+                stockOk={stockOk}
+                isLast={idx === recipe.length - 1}
+                onQtyChange={qty => onQtyChange(idx, qty)}
+                onRemove={() => onRemove(idx)}
+              />
             );
           })}
           <div style={{ padding: '14px 20px', display: 'grid', gridTemplateColumns: '1fr 90px 36px', gap: 12, alignItems: 'center', background: 'var(--color-surface-2)', borderTop: '2px solid var(--color-border)' }}>
@@ -271,23 +293,94 @@ const RightPanel = ({ product, recipe, editedPrice, inventoryItems, totalCost, m
       </button>
     </div>
 
-    <div style={{ marginTop: 24, padding: 16, background: 'var(--color-info-50)', borderRadius: 12, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-      <Icon name="info" size={20} color="var(--color-info)" />
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-info)', marginBottom: 6 }}>เรื่อง Margin ที่ควรรู้</div>
-        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.7 }}>
-          คาเฟ่ทั่วไปควรมี margin <strong style={{ color: 'var(--color-success)' }}>≥ 65%</strong> สำหรับเครื่องดื่ม และ <strong style={{ color: 'var(--color-success)' }}>≥ 60%</strong> สำหรับเบเกอรี่
+    {productType === 'MENU' && (
+      <div style={{ marginTop: 24, padding: 16, background: 'var(--color-info-50)', borderRadius: 12, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <Icon name="info" size={20} color="var(--color-info)" />
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-info)', marginBottom: 6 }}>เรื่อง Margin ที่ควรรู้</div>
+          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.7 }}>
+            คาเฟ่ทั่วไปควรมี margin <strong style={{ color: 'var(--color-success)' }}>≥ 65%</strong> สำหรับเครื่องดื่ม และ <strong style={{ color: 'var(--color-success)' }}>≥ 60%</strong> สำหรับเบเกอรี่
+          </div>
         </div>
       </div>
-    </div>
+    )}
   </>
 );
 
-const SummaryCard = ({ label, value, color, highlight }: { label: string; value: string; color?: string; highlight?: 'success' | 'warning' | 'danger' }) => {
+// ── BOM Row with inline unit converter ───────────────────────────────────────
+const BOMRow = ({ inv, qty, lineCost, stockOk, isLast, onQtyChange, onRemove }: {
+  inv: InventoryItem; qty: number; lineCost: number; stockOk: boolean; isLast: boolean;
+  onQtyChange: (qty: number) => void; onRemove: () => void;
+}) => {
+  const [showCalc, setShowCalc] = useState(false);
+  const [pkgQty, setPkgQty] = useState('');
+  const [pkgUnit, setPkgUnit] = useState('kg');
+  const [pkgPrice, setPkgPrice] = useState('');
+
+  const PKG_UNITS = ['kg', 'L', 'โหล', 'แพ็ค', 'ลัง', 'กล่อง'];
+  const PKG_TO_USE: Record<string, number> = { kg: 1000, L: 1000 };
+
+  const calcCostPerUse = () => {
+    const pq = parseFloat(pkgQty);
+    const pp = parseFloat(pkgPrice);
+    if (!pq || !pp) return null;
+    const conv = PKG_TO_USE[pkgUnit] ?? 1;
+    return pp / (pq * conv);
+  };
+
+  const derived = calcCostPerUse();
+
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 70px 100px 90px 36px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: (!isLast || showCalc) ? '1px solid var(--color-border)' : 'none' }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {inv.name}
+            <button
+              onClick={() => setShowCalc(v => !v)}
+              title="คำนวณต้นทุนจากหน่วยซื้อ"
+              style={{ background: showCalc ? 'var(--color-accent-50)' : 'transparent', border: 'none', cursor: 'pointer', padding: '2px 5px', borderRadius: 4, fontSize: 11, color: showCalc ? 'var(--color-accent)' : 'var(--color-text-muted)', fontFamily: 'inherit' }}
+            >
+              ÷ คำนวณ
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: stockOk ? 'var(--color-text-muted)' : 'var(--color-warning)', marginTop: 2 }}>คงเหลือ {inv.stock.toLocaleString()} {inv.unit}{!stockOk && ' · ใกล้หมด'}</div>
+        </div>
+        <input type="number" step={1} min={0} value={qty} onChange={e => onQtyChange(Number(e.target.value))} className="num" style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, border: '1px solid var(--color-border)', borderRadius: 6, padding: '6px 10px', outline: 'none', fontFamily: 'inherit', background: 'var(--color-surface)' }} onFocus={e => e.target.style.borderColor = 'var(--color-accent)'} onBlur={e => e.target.style.borderColor = 'var(--color-border)'} />
+        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{inv.unit}</div>
+        <div className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'right' }}>฿{inv.costPerUnit.toFixed(2)}</div>
+        <div className="num" style={{ fontSize: 14, fontWeight: 700, textAlign: 'right' }}>฿{lineCost.toFixed(2)}</div>
+        <button onClick={onRemove} title="ลบวัตถุดิบ" style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center', padding: 6, borderRadius: 6, color: 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}><Icon name="trash" size={14} /></button>
+      </div>
+
+      {showCalc && (
+        <div style={{ padding: '10px 20px 14px', background: 'var(--color-accent-50)', borderBottom: isLast ? 'none' : '1px solid var(--color-border)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>ซื้อ:</span>
+          <input type="number" min={0} step={0.1} value={pkgQty} onChange={e => setPkgQty(e.target.value)} placeholder="ปริมาณ" style={{ width: 70, padding: '5px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
+          <select value={pkgUnit} onChange={e => setPkgUnit(e.target.value)} style={{ padding: '5px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }}>
+            {PKG_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
+          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>ราคา</span>
+          <input type="number" min={0} step={1} value={pkgPrice} onChange={e => setPkgPrice(e.target.value)} placeholder="฿" style={{ width: 80, padding: '5px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
+          {derived !== null ? (
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-accent)', whiteSpace: 'nowrap' }}>
+              → ฿{derived.toFixed(4)}/{inv.unit} <span style={{ fontWeight: 400, color: 'var(--color-text-secondary)', fontSize: 11 }}>(ต้นทุน/หน่วยใช้)</span>
+            </span>
+          ) : (
+            <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>กรอกปริมาณและราคาเพื่อคำนวณ</span>
+          )}
+        </div>
+      )}
+    </>
+  );
+};
+
+const SummaryCard = ({ label, value, color, highlight }: { label: string; value: string; color?: string; highlight?: 'success' | 'warning' | 'danger' | 'info' }) => {
   const tones = {
     success: { bg: 'var(--color-success-50)', border: 'var(--color-success)', fg: 'var(--color-success)' },
     warning: { bg: 'var(--color-warning-50)', border: 'var(--color-warning)', fg: '#9C6A1F' },
     danger:  { bg: 'var(--color-danger-50)',  border: 'var(--color-danger)',  fg: 'var(--color-danger)' },
+    info:    { bg: 'var(--color-info-50)',    border: 'var(--color-info)',    fg: 'var(--color-info)' },
   };
   const t = highlight ? tones[highlight] : null;
   return (
@@ -298,15 +391,37 @@ const SummaryCard = ({ label, value, color, highlight }: { label: string; value:
   );
 };
 
-const IngredientPicker = ({ existingIds, inventory, onSelect, onClose }: { existingIds: string[]; inventory: InventoryItem[]; onSelect: (id: string) => void; onClose: () => void }) => {
+// ── Multi-select Ingredient Picker ────────────────────────────────────────────
+const IngredientPicker = ({ existingIds, inventory, onConfirm, onClose }: {
+  existingIds: string[];
+  inventory: InventoryItem[];
+  onConfirm: (ids: string[]) => void;
+  onClose: () => void;
+}) => {
   const [q, setQ] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggle = (id: string) => setSelected(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
   const list = inventory.filter(inv => !q || inv.name.toLowerCase().includes(q.toLowerCase()));
+  const canAdd = selected.size > 0;
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.55)', display: 'grid', placeItems: 'center', zIndex: 100, padding: 20, animation: 'backdrop-in 200ms var(--ease-out)' }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '75vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.25)', animation: 'modal-in 220ms var(--ease-out)' }}>
         <div style={{ padding: 20, borderBottom: '1px solid var(--color-border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div><div style={{ fontSize: 16, fontWeight: 700 }}>เลือกวัตถุดิบ</div><div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{inventory.length} รายการในคลัง</div></div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>เลือกวัตถุดิบ</div>
+              <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                {inventory.length} รายการในคลัง
+                {selected.size > 0 && <span style={{ color: 'var(--color-accent)', fontWeight: 600 }}> · เลือก {selected.size} รายการ</span>}
+              </div>
+            </div>
             <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8, display: 'grid', placeItems: 'center' }}><Icon name="x" size={18} /></button>
           </div>
           <div style={{ position: 'relative' }}>
@@ -314,27 +429,38 @@ const IngredientPicker = ({ existingIds, inventory, onSelect, onClose }: { exist
             <input type="text" placeholder="ค้นหาวัตถุดิบ..." autoFocus value={q} onChange={e => setQ(e.target.value)} style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
           </div>
         </div>
+
         <div className="scroll" style={{ overflow: 'auto', flex: 1, padding: 8 }}>
           {list.map(inv => {
-            const exists = existingIds.includes(inv.id);
+            const already = existingIds.includes(inv.id);
+            const checked = selected.has(inv.id);
             return (
-              <button key={inv.id} onClick={() => !exists && onSelect(inv.id)} disabled={exists} style={{ display: 'flex', gap: 12, alignItems: 'center', width: '100%', padding: 12, marginBottom: 2, borderRadius: 8, background: 'transparent', border: '1px solid transparent', cursor: exists ? 'not-allowed' : 'pointer', textAlign: 'left', opacity: exists ? 0.55 : 1, transition: 'background 150ms var(--ease-out)', fontFamily: 'inherit' }} onMouseEnter={e => { if (!exists) e.currentTarget.style.background = 'var(--color-surface-2)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+              <button key={inv.id} onClick={() => !already && toggle(inv.id)} disabled={already} style={{ display: 'flex', gap: 12, alignItems: 'center', width: '100%', padding: 12, marginBottom: 2, borderRadius: 8, background: checked ? 'var(--color-accent-50)' : 'transparent', border: checked ? '1px solid var(--color-accent)' : '1px solid transparent', cursor: already ? 'not-allowed' : 'pointer', textAlign: 'left', opacity: already ? 0.5 : 1, transition: 'all 150ms var(--ease-out)', fontFamily: 'inherit' }} onMouseEnter={e => { if (!already && !checked) e.currentTarget.style.background = 'var(--color-surface-2)'; }} onMouseLeave={e => { if (!checked) e.currentTarget.style.background = 'transparent'; }}>
+                <div style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${checked ? 'var(--color-accent)' : 'var(--color-border)'}`, background: checked ? 'var(--color-accent)' : 'transparent', display: 'grid', placeItems: 'center', flexShrink: 0, transition: 'all 150ms var(--ease-out)' }}>
+                  {checked && <Icon name="check" size={12} color="#fff" />}
+                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>{inv.name}</div>
                   <div className="num" style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>฿{inv.costPerUnit.toFixed(2)}/{inv.unit} · คงเหลือ {inv.stock.toLocaleString()} {inv.unit}</div>
                 </div>
-                {exists ? <Tag tone="success">เพิ่มแล้ว</Tag> : <Icon name="plus" size={16} color="var(--color-primary)" />}
+                {already && <Tag tone="success">เพิ่มแล้ว</Tag>}
               </button>
             );
           })}
+        </div>
+
+        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
+          <button onClick={() => canAdd && onConfirm([...selected])} disabled={!canAdd} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: canAdd ? 'var(--color-primary)' : 'var(--color-surface-2)', color: canAdd ? '#fff' : 'var(--color-text-muted)', border: 'none', borderRadius: 8, cursor: canAdd ? 'pointer' : 'not-allowed', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6, transition: 'background 150ms var(--ease-out)' }} onMouseEnter={e => { if (canAdd) e.currentTarget.style.background = 'var(--color-primary-700)'; }} onMouseLeave={e => { if (canAdd) e.currentTarget.style.background = 'var(--color-primary)'; }}>
+            <Icon name="plus" size={14} /> เพิ่ม {selected.size > 0 ? `${selected.size} รายการ` : 'วัตถุดิบ'}
+          </button>
         </div>
       </div>
     </div>
   );
 };
 
-// ── Shared modal helpers (mirrors the pattern in inventory.tsx) ───────────────
-
+// ── Shared modal helpers ───────────────────────────────────────────────────────
 const bomInputStyle = (): React.CSSProperties => ({
   width: '100%', padding: '10px 12px',
   border: '1px solid var(--color-border)', borderRadius: 8,
@@ -368,27 +494,59 @@ const BomModalShell = ({ title, subtitle, onClose, children }: { title: string; 
   </div>
 );
 
-const AddMenuModal = ({ categories, onClose, onSubmit }: { categories: import('@/hooks/use-products').Category[]; onClose: () => void; onSubmit: (v: { name: string; categoryId: string; price: number; description: string }) => void }) => {
+const AddMenuModal = ({ categories, onClose, onSubmit }: {
+  categories: import('@/hooks/use-products').Category[];
+  onClose: () => void;
+  onSubmit: (v: { name: string; categoryId: string; price: number; description: string; type: ProductType }) => void;
+}) => {
+  const [type, setType] = useState<ProductType>('MENU');
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
   const canSubmit = name.trim().length > 0 && price !== '' && Number(price) >= 0;
-  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), categoryId, price: Number(price), description: description.trim() }); };
+  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), categoryId, price: Number(price), description: description.trim(), type }); };
+
   return (
-    <BomModalShell title="เพิ่มเมนูใหม่" subtitle="สร้างรายการเมนูในระบบ" onClose={onClose}>
-      <BomFormField label="ชื่อเมนู *"><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="เช่น Flat White, ครัวซองต์เนย" style={bomInputStyle()} autoFocus /></BomFormField>
-      <BomFormField label="หมวดหมู่">
-        <select value={categoryId} onChange={e => setCategoryId(e.target.value)} style={{ ...bomInputStyle(), appearance: 'auto' }}>
-          <option value="">— ไม่ระบุหมวดหมู่ —</option>
-          {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-        </select>
+    <BomModalShell title="เพิ่มรายการใหม่" subtitle="สร้างรายการในระบบ BOM" onClose={onClose}>
+      {/* Type toggle */}
+      <BomFormField label="ประเภท *">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          {(['MENU', 'INGREDIENT'] as ProductType[]).map(t => (
+            <button key={t} onClick={() => setType(t)} style={{ padding: '10px 12px', borderRadius: 8, border: `2px solid ${type === t ? 'var(--color-accent)' : 'var(--color-border)'}`, background: type === t ? 'var(--color-accent-50)' : 'transparent', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: type === t ? 'var(--color-primary-700)' : 'var(--color-text-secondary)', transition: 'all 150ms var(--ease-out)' }}>
+              {t === 'MENU' ? '🍵 เมนูขาย' : '🧪 ส่วนผสม'}
+              <div style={{ fontSize: 11, fontWeight: 400, marginTop: 2, color: type === t ? 'var(--color-text-secondary)' : 'var(--color-text-muted)' }}>
+                {t === 'MENU' ? 'จำหน่ายให้ลูกค้า' : 'ใช้ในสูตรอื่น'}
+              </div>
+            </button>
+          ))}
+        </div>
       </BomFormField>
-      <BomFormField label="ราคาขาย (฿) *"><input type="number" min={0} step={5} value={price} onChange={e => setPrice(e.target.value)} placeholder="0" style={bomInputStyle()} /></BomFormField>
-      <BomFormField label="รายละเอียด"><textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} placeholder="ไม่บังคับ" style={{ ...bomInputStyle(), resize: 'vertical', fontFamily: 'inherit' }} /></BomFormField>
+
+      <BomFormField label="ชื่อ *">
+        <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder={type === 'MENU' ? 'เช่น Flat White, ครัวซองต์เนย' : 'เช่น น้ำเชื่อมชาไทย, เบสเยลลี่'} style={bomInputStyle()} autoFocus />
+      </BomFormField>
+
+      {type === 'MENU' && (
+        <BomFormField label="หมวดหมู่">
+          <select value={categoryId} onChange={e => setCategoryId(e.target.value)} style={{ ...bomInputStyle(), appearance: 'auto' }}>
+            <option value="">— ไม่ระบุหมวดหมู่ —</option>
+            {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+        </BomFormField>
+      )}
+
+      <BomFormField label={type === 'MENU' ? 'ราคาขาย (฿) *' : 'ต้นทุนผลิต/หน่วย (฿) *'}>
+        <input type="number" min={0} step={5} value={price} onChange={e => setPrice(e.target.value)} placeholder="0" style={bomInputStyle()} />
+      </BomFormField>
+
+      <BomFormField label="รายละเอียด">
+        <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} placeholder="ไม่บังคับ" style={{ ...bomInputStyle(), resize: 'vertical', fontFamily: 'inherit' }} />
+      </BomFormField>
+
       <BomModalActions>
         <button onClick={onClose} style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
-        <button onClick={submit} disabled={!canSubmit} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, cursor: canSubmit ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canSubmit ? 1 : 0.45, transition: 'background 150ms var(--ease-out)' }} onMouseEnter={e => { if (canSubmit) e.currentTarget.style.background = 'var(--color-primary-700)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-primary)'; }}><Icon name="plus" size={14} /> เพิ่มเมนู</button>
+        <button onClick={submit} disabled={!canSubmit} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, cursor: canSubmit ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canSubmit ? 1 : 0.45, transition: 'background 150ms var(--ease-out)' }} onMouseEnter={e => { if (canSubmit) e.currentTarget.style.background = 'var(--color-primary-700)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-primary)'; }}><Icon name="plus" size={14} /> เพิ่มรายการ</button>
       </BomModalActions>
     </BomModalShell>
   );

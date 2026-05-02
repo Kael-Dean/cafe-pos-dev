@@ -43,7 +43,7 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
 };
 
 // ---------- Sidebar ----------
-export type NavItem = { id: string; label: string; icon: string; soft?: boolean; adminOnly?: boolean; };
+export type NavItem = { id: string; label: string; icon?: string; soft?: boolean; adminOnly?: boolean; divider?: boolean; };
 
 export const NAV: NavItem[] = [
   { id: 'pos',       label: 'POS Terminal',   icon: 'pos' },
@@ -52,10 +52,13 @@ export const NAV: NavItem[] = [
   { id: 'bom',       label: 'BOM Builder',     icon: 'inv' },
   { id: 'inventory', label: 'Inventory',       icon: 'inv',      soft: true },
   { id: 'cash',      label: 'Cash',            icon: 'cash',     adminOnly: true },
+  { id: 'div1',      label: '',                divider: true },
   { id: 'promotions',label: 'Promotions',      icon: 'tag' },
-  { id: 'protocols', label: 'Protocols',       icon: 'check' },
-  { id: 'shifts',    label: 'Shift Schedule',  icon: 'calendar' },
+  { id: 'protocols', label: 'Protocols / SOP', icon: 'check' },
+  { id: 'shifts',    label: 'ตารางกะ',          icon: 'calendar' },
   { id: 'hr',        label: 'HR & Admin',      icon: 'staff',    adminOnly: true },
+  { id: 'div2',      label: '',                divider: true },
+  { id: 'hardware',  label: 'Hardware',        icon: 'printer' },
   { id: 'customers', label: 'Customers',       icon: 'customers', soft: true },
   { id: 'reports',   label: 'Reports',         icon: 'reports',  soft: true },
   { id: 'settings',  label: 'Settings',        icon: 'settings', soft: true },
@@ -75,7 +78,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
   const role = me?.role;
   const isAdmin = role === 'OWNER' || role === 'MANAGER';
   const initial = me?.name ? me.name.charAt(0).toUpperCase() : '?';
-  const visibleNav = NAV.filter((n) => !n.adminOnly || isAdmin);
+  const visibleNav = NAV.filter((n) => n.divider || !n.adminOnly || isAdmin);
 
   return (
     <aside style={{
@@ -99,6 +102,9 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
 
       <nav style={{padding: '8px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto'}}>
         {visibleNav.map((n) => {
+          if (n.divider) {
+            return <div key={n.id} style={{height: 1, background: 'rgba(255,255,255,0.07)', margin: '6px 2px'}} />;
+          }
           const active = current === n.id;
           return (
             <button key={n.id} onClick={() => onNavigate(n.id)}
@@ -115,7 +121,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
               onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
               onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
             >
-              <Icon name={n.icon} size={18} />
+              {n.icon && <Icon name={n.icon} size={18} />}
               <span style={{flex: 1}}>{n.label}</span>
               {n.soft && <span style={{fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 500}}>P1</span>}
             </button>

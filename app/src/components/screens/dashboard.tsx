@@ -3,9 +3,31 @@
 import Icon from '../icons';
 import { KPICard, Tag, baht } from '../app-common';
 import { DASHBOARD } from '../data/mock-data';
+import { useKDSOrders, type KDSTicket } from '@/hooks/use-orders';
+import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
+
+function elapsedLabel(placedAt: number): string {
+  const mins = Math.floor((Date.now() - placedAt) / 60000);
+  if (mins < 1) return 'เพิ่งสั่ง';
+  if (mins < 60) return `${mins} นาทีที่แล้ว`;
+  return `${Math.floor(mins / 60)} ชั่วโมงที่แล้ว`;
+}
 
 export default function Dashboard() {
   const d = DASHBOARD;
+  const { data: liveTickets } = useKDSOrders();
+  const { data: inventoryItems } = useInventory();
+
+  const liveOrders = (liveTickets ?? [])
+    .slice()
+    .sort((a, b) => b.placedAt - a.placedAt)
+    .slice(0, 5);
+
+  const lowStockItems = (inventoryItems ?? [])
+    .filter(inv => inv.parLevel > 0 && inv.stock < inv.parLevel)
+    .sort((a, b) => (a.stock / a.parLevel) - (b.stock / b.parLevel))
+    .slice(0, 5);
+
   return (
     <div className="scroll" style={{height: '100%', overflow: 'auto', padding: 24, background: 'var(--color-bg)'}}>
       <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20}}>
@@ -48,13 +70,19 @@ export default function Dashboard() {
             </span>
           </CardHeader>
           <div style={{padding: '0 4px 4px'}}>
-            {d.liveOrders.map((o) => <LiveOrderRow key={o.id} order={o} />)}
+            {liveOrders.length > 0
+              ? liveOrders.map(t => <LiveOrderFromKDS key={t.orderId} ticket={t} />)
+              : d.liveOrders.map((o) => <LiveOrderRow key={o.id} order={o} />)
+            }
           </div>
         </Card>
         <Card>
           <CardHeader title="สต็อกใกล้หมด" sub="ต่ำกว่า par level" />
           <div style={{padding: '0 4px 4px'}}>
-            {d.lowStock.map((s, i) => <LowStockRow key={i} item={s} />)}
+            {lowStockItems.length > 0
+              ? lowStockItems.map(inv => <LowStockFromInventory key={inv.id} inv={inv} />)
+              : d.lowStock.map((s, i) => <LowStockRow key={i} item={s} />)
+            }
             <button className="btn btn-ghost btn-block" style={{marginTop: 8}}>
               <Icon name="inv" size={14}/> สั่งซื้ออัตโนมัติ
             </button>
@@ -189,6 +217,42 @@ const LowStockRow = ({ item }: { item: typeof DASHBOARD['lowStock'][0] }) => {
           width: `${pct}%`, height: '100%', borderRadius: 999,
           background: item.status === 'red' ? 'var(--color-danger)' : 'var(--color-warning)',
         }}/>
+      </div>
+    </div>
+  );
+};
+
+const LiveOrderFromKDS = ({ ticket }: { ticket: KDSTicket }) => {
+  const tone = ticket.status === 'new' ? 'warning' : ticket.status === 'ready' ? 'success' : 'accent';
+  const label = ticket.status === 'new' ? 'ใหม่' : ticket.status === 'ready' ? 'พร้อม' : 'กำลังทำ';
+  const summary = ticket.items.map(it => `${it.name}${it.qty > 1 ? ` ×${it.qty}` : ''}`).join(', ');
+  return (
+    <div style={{padding: '10px 8px', borderBottom: '1px solid var(--color-surface-2)', display: 'flex', alignItems: 'center', gap: 10}}>
+      <div className="num" style={{fontSize: 14, fontWeight: 700, minWidth: 44}}>{ticket.id}</div>
+      <div style={{flex: 1, minWidth: 0}}>
+        <div style={{fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{summary}</div>
+        <div style={{fontSize: 11, color: 'var(--color-text-muted)'}}>{elapsedLabel(ticket.placedAt)}</div>
+      </div>
+      <Tag tone={tone as 'warning' | 'success' | 'accent'}>{label}</Tag>
+    </div>
+  );
+};
+
+const LowStockFromInventory = ({ inv }: { inv: InventoryItem }) => {
+  const pct = inv.parLevel > 0 ? Math.min(100, (inv.stock / inv.parLevel) * 100) : 0;
+  const tone = pct < 50 ? 'danger' : 'warning';
+  return (
+    <div style={{padding: '10px 8px', borderBottom: '1px solid var(--color-surface-2)'}}>
+      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4}}>
+        <div style={{fontSize: 13, fontWeight: 500}}>{inv.name}</div>
+        <Tag tone={tone}>{Math.round(pct)}%</Tag>
+      </div>
+      <div style={{display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4}} className="num">
+        <span>เหลือ {inv.stock.toLocaleString()} {inv.unit}</span>
+        <span>par {inv.parLevel.toLocaleString()} {inv.unit}</span>
+      </div>
+      <div style={{height: 4, background: 'var(--color-surface-2)', borderRadius: 999}}>
+        <div style={{width: `${pct}%`, height: '100%', borderRadius: 999, background: pct < 50 ? 'var(--color-danger)' : 'var(--color-warning)'}}/>
       </div>
     </div>
   );
