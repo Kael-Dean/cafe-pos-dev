@@ -14,20 +14,14 @@ export interface KDSTicket {
 
 // ── Create-order payload shape ────────────────────────────────────────────────
 export interface CreateOrderPayload {
+  idempotency_key: string;
   channel: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY';
-  payment_method: 'CASH' | 'CARD' | 'QR_PROMPTPAY' | 'LINE_PAY';
-  subtotal: number;
-  discount: number;
-  tax: number;
-  total: number;
-  paid_amount: number;
+  customer_id?: string;
+  customer_note?: string;
   items: {
     product_id: string;
-    product_name: string;
     quantity: number;
-    unit_price: number;
-    modifiers: unknown;
-    notes?: string;
+    modifier_ids: string[];
   }[];
 }
 
@@ -101,6 +95,17 @@ export function useCreateOrder() {
   return useMutation({
     mutationFn: (payload: CreateOrderPayload) =>
       api.post<OrderRead>('/api/v1/orders', payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['kds-orders'] });
+    },
+  });
+}
+
+export function usePayOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orderId, payment_method, payment_ref }: { orderId: string; payment_method: 'CASH' | 'CARD' | 'QR_PROMPTPAY' | 'LINE_PAY'; payment_ref?: string }) =>
+      api.patch<OrderRead>(`/api/v1/orders/${orderId}/pay`, { payment_method, payment_ref }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kds-orders'] });
     },

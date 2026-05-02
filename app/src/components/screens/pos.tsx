@@ -6,11 +6,11 @@ import { useToast, baht } from '../app-common';
 import { useAllProducts, useCategories, type MenuItem } from '@/hooks/use-products';
 import { useModifierGroups } from '@/hooks/use-modifier-groups';
 import { useProductDetail } from '@/hooks/use-bom';
-import { useCreateOrder } from '@/hooks/use-orders';
+import { useCreateOrder, usePayOrder } from '@/hooks/use-orders';
 import ModifierModal from './modifier-modal';
 import PaymentModal from './payment-modal';
 
-interface CartLine { menuId: string; name: string; basePrice: number; unitPrice: number; qty: number; mods: string[]; modKey: string; }
+interface CartLine { menuId: string; name: string; basePrice: number; unitPrice: number; qty: number; mods: string[]; modIds: string[]; modKey: string; }
 
 export default function POSTerminal() {
   const toast = useToast();
@@ -25,6 +25,7 @@ export default function POSTerminal() {
   const { data: products, isLoading: prodLoading, isError } = useAllProducts();
   const { data: modifierGroups } = useModifierGroups();
   const createOrder = useCreateOrder();
+  const payOrder = usePayOrder();
   const storeHasModifiers = (modifierGroups?.length ?? 0) > 0;
 
   // Prefetch product detail when hovered so click is instant
@@ -39,7 +40,7 @@ export default function POSTerminal() {
     if (pendingDetail.hasModifiers) {
       setModifierItem(item);
     } else {
-      addLine({ menuId: item.id, name: item.name, basePrice: item.price, unitPrice: item.price, qty: 1, mods: [], modKey: '' });
+      addLine({ menuId: item.id, name: item.name, basePrice: item.price, unitPrice: item.price, qty: 1, mods: [], modIds: [], modKey: '' });
       toast({ kind: 'success', title: 'เพิ่มลงตะกร้า', msg: item.name, duration: 1600 });
     }
     setPendingModifierId(null);
@@ -76,7 +77,7 @@ export default function POSTerminal() {
       // useProductDetail result is cached — second tap on same item is instant.
       setPendingModifierId(item.id);
     } else {
-      addLine({ menuId: item.id, name: item.name, basePrice: item.price, unitPrice: item.price, qty: 1, mods: [], modKey: '' });
+      addLine({ menuId: item.id, name: item.name, basePrice: item.price, unitPrice: item.price, qty: 1, mods: [], modIds: [], modKey: '' });
       toast({ kind: 'success', title: 'เพิ่มลงตะกร้า', msg: item.name, duration: 1600 });
     }
   };
@@ -108,30 +109,29 @@ export default function POSTerminal() {
 
   const onPaid = () => {
     const method = payment;
+    const cartSnapshot = [...cart];
+    const totalSnapshot = total;
     setPayment(null);
     clearCart();
     const methodMap: Record<string, 'CASH' | 'CARD' | 'QR_PROMPTPAY' | 'LINE_PAY'> = {
       cash: 'CASH', card: 'CARD', qr: 'QR_PROMPTPAY', line: 'LINE_PAY',
     };
     createOrder.mutateAsync({
+      idempotency_key: crypto.randomUUID(),
       channel: 'DINE_IN',
-      payment_method: methodMap[method ?? 'cash'] ?? 'CASH',
-      subtotal,
-      discount,
-      tax: vat,
-      total,
-      paid_amount: total,
-      items: cart.map(l => ({
+      items: cartSnapshot.map(l => ({
         product_id: l.menuId,
-        product_name: l.name,
         quantity: l.qty,
-        unit_price: l.unitPrice,
-        modifiers: { selections: l.mods },
-        notes: '',
+        modifier_ids: l.modIds,
       })),
-    }).then(order => {
-      toast({ kind: 'success', title: 'ชำระเงินสำเร็จ', msg: `บิล ${order.order_number} • ${baht(total)} • ส่งครัวแล้ว`, duration: 3500 });
-    }).catch(() => {
+    }).then(order =>
+      payOrder.mutateAsync({
+        orderId: order.id,
+        payment_method: methodMap[method ?? 'cash'] ?? 'CASH',
+      }).then(() => {
+        toast({ kind: 'success', title: 'ชำระเงินสำเร็จ', msg: `บิล ${order.order_number} • ${baht(totalSnapshot)} • ส่งครัวแล้ว`, duration: 3500 });
+      })
+    ).catch(() => {
       toast({ kind: 'warning', title: 'บิลบันทึกไม่สำเร็จ', msg: 'กรุณาแจ้งผู้จัดการ', duration: 4000 });
     });
   };

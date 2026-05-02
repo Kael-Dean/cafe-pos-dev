@@ -44,7 +44,7 @@ const FALLBACK_MODIFIERS: ModifierGroup[] = [
 ];
 
 interface MenuItem { id: string; name: string; nameEn: string; price: number; color: string; }
-interface CartLine { menuId: string; name: string; basePrice: number; unitPrice: number; qty: number; mods: string[]; modKey: string; }
+interface CartLine { menuId: string; name: string; basePrice: number; unitPrice: number; qty: number; mods: string[]; modIds: string[]; modKey: string; }
 interface Props { item: MenuItem; onClose: () => void; onAdd: (line: CartLine) => void; }
 
 export default function ModifierModal({ item, onClose, onAdd }: Props) {
@@ -103,6 +103,7 @@ export default function ModifierModal({ item, onClose, onAdd }: Props) {
 
   const buildModLabels = () => {
     const labels: string[] = [];
+    const modIds: string[] = [];
     let modKey = '';
     groups.forEach((g) => {
       if (g.type === 'radio') {
@@ -111,6 +112,7 @@ export default function ModifierModal({ item, onClose, onAdd }: Props) {
           const isHiddenDefault = (g.id === 'sweet' && o.id === 'std') || (g.id === 'milk' && o.id === 'fresh');
           if (!isHiddenDefault) labels.push(o.label);
           modKey += `${g.id}:${o.id};`;
+          modIds.push(o.id);
         }
       } else {
         (sel[g.id] as string[]).forEach((oid) => {
@@ -118,16 +120,17 @@ export default function ModifierModal({ item, onClose, onAdd }: Props) {
           if (o) {
             labels.push(`+ ${o.label}`);
             modKey += `${g.id}:${oid};`;
+            modIds.push(oid);
           }
         });
       }
     });
     if (note.trim()) { labels.push(`📝 ${note.trim()}`); modKey += `note:${note.trim()};`; }
-    return { labels, modKey };
+    return { labels, modKey, modIds };
   };
 
   const onConfirm = () => {
-    const { labels, modKey } = buildModLabels();
+    const { labels, modKey, modIds } = buildModLabels();
     onAdd({
       menuId: item.id,
       name: item.name,
@@ -135,6 +138,7 @@ export default function ModifierModal({ item, onClose, onAdd }: Props) {
       unitPrice,
       qty,
       mods: labels,
+      modIds,
       modKey,
     });
   };
