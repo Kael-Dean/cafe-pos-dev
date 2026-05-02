@@ -109,6 +109,17 @@ async def update_one(
     return InventoryItemRead.model_validate(item)
 
 
+@router.delete(
+    "/{item_id}",
+    status_code=204,
+    summary="Soft-delete an inventory item (sets is_active=False)",
+    operation_id="inventory_delete",
+    dependencies=[Depends(_MANAGER_PLUS)],
+)
+async def delete_one(item_id: str, user: StoreUser, db: DbSession) -> None:
+    await inv.delete_item(db, store_id=user.store_id, item_id=item_id)
+
+
 @router.post(
     "/receive",
     response_model=InventoryItemRead,

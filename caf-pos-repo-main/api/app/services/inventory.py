@@ -50,6 +50,7 @@ async def create_item(
             par_level=payload.par_level,
             cost_per_unit=payload.cost_per_unit,
             is_active=payload.is_active,
+            expiry_date=payload.expiry_date,
         )
         db.add(item)
     return item
@@ -89,7 +90,22 @@ async def update_item(
             item.par_level = payload.par_level
         if payload.cost_per_unit is not None:
             item.cost_per_unit = payload.cost_per_unit
+        if payload.is_active is not None:
+            item.is_active = payload.is_active
+        if payload.expiry_date is not None:
+            item.expiry_date = payload.expiry_date
     return item
+
+
+async def delete_item(
+    db: AsyncSession,
+    *,
+    store_id: str,
+    item_id: str,
+) -> None:
+    async with db.begin():
+        item = await _load_item(db, store_id=store_id, item_id=item_id)
+        item.is_active = False
 
 
 async def receive_stock(

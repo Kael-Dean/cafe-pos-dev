@@ -1,8 +1,9 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Enum as SAEnum,
     ForeignKey,
@@ -34,6 +35,7 @@ class InventoryItem(Base, TimestampMixin):
     stock_on_hand: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False, default=Decimal("0"))
     par_level: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False, default=Decimal("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class StockMovement(Base):

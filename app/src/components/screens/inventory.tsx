@@ -4,7 +4,8 @@ import { useState, useMemo } from 'react';
 import Icon from '../icons';
 import { useToast, Tag, baht } from '../app-common';
 import {
-  useInventory, useInventoryMovements, useReceiveStock, useWasteStock, useCreateInventoryItem,
+  useInventory, useInventoryMovements, useReceiveStock, useWasteStock,
+  useCreateInventoryItem, useDeleteInventoryItem,
   type InventoryItem, type Movement, type WastageReason,
 } from '@/hooks/use-inventory';
 
@@ -20,6 +21,28 @@ const stockStatusOf = (it: InventoryItem) => {
   if (it.stock < it.parLevel * 0.5) return { tone: 'danger' as const,  label: 'Critical' };
   if (it.stock < it.parLevel)        return { tone: 'warning' as const, label: 'Low' };
   return { tone: 'success' as const, label: 'OK' };
+};
+
+// Returns days until expiry (negative = already expired)
+const daysUntilExpiry = (dateStr?: string): number | null => {
+  if (!dateStr) return null;
+  const exp = new Date(dateStr).setHours(23, 59, 59, 999);
+  return Math.ceil((exp - Date.now()) / 86400000);
+};
+
+const expiryBadge = (dateStr?: string) => {
+  const days = daysUntilExpiry(dateStr);
+  if (days === null) return null;
+  if (days < 0)   return { label: 'หมดอายุแล้ว',        color: 'var(--color-danger)',  bg: 'var(--color-danger-50)' };
+  if (days <= 3)  return { label: `หมดใน ${days} วัน`,  color: 'var(--color-danger)',  bg: 'var(--color-danger-50)' };
+  if (days <= 7)  return { label: `หมดใน ${days} วัน`,  color: '#9C6A1F',              bg: 'var(--color-warning-50)' };
+  if (days <= 30) return { label: `หมดใน ${days} วัน`,  color: 'var(--color-text-secondary)', bg: 'var(--color-surface-2)' };
+  return null;
+};
+
+const formatDate = (dateStr?: string) => {
+  if (!dateStr) return '—';
+  return new Date(dateStr).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
 };
 
 const formatRelative = (ts: number) => {
@@ -41,12 +64,14 @@ export default function Inventory() {
   const [wastageOpen, setWastageOpen] = useState(false);
   const [addIngredientOpen, setAddIngredientOpen] = useState(false);
   const [presetItemId, setPresetItemId] = useState<string | null>(null);
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<InventoryItem | null>(null);
 
   const { data: inventoryItems, isLoading: invLoading } = useInventory();
   const { data: movementsData } = useInventoryMovements();
   const receiveStock = useReceiveStock();
   const wasteStock = useWasteStock();
   const createItem = useCreateInventoryItem();
+  const deleteItem = useDeleteInventoryItem();
 
   const items = useMemo(() =>
     (inventoryItems ?? []).map(it => ({ ...it, status: stockStatusOf(it) })),
@@ -57,6 +82,7 @@ export default function Inventory() {
     total: items.length,
     low: items.filter(i => i.status.tone === 'warning').length,
     critical: items.filter(i => i.status.tone === 'danger').length,
+    expiring: items.filter(i => { const d = daysUntilExpiry(i.expiryDate); return d !== null && d <= 7; }).length,
   }), [items]);
 
   const filteredItems = useMemo(() => items.filter(it => {
@@ -64,12 +90,17 @@ export default function Inventory() {
     if (statusFilter === 'critical' && it.status.tone !== 'danger') return false;
     if (statusFilter === 'low' && it.status.tone !== 'warning') return false;
     if (statusFilter === 'ok' && it.status.tone !== 'success') return false;
+    if (statusFilter === 'expiring') {
+      const d = daysUntilExpiry(it.expiryDate);
+      if (d === null || d > 7) return false;
+    }
     return true;
   }), [items, search, statusFilter]);
 
   const movements = movementsData ?? [];
   const recentReceives = useMemo(() => movements.filter(m => m.type === 'RECEIVE').sort((a, b) => b.at - a.at), [movements]);
-  const recentWastage = useMemo(() => movements.filter(m => m.type === 'WASTE').sort((a, b) => b.at - a.at), [movements]);
+  const recentWastage  = useMemo(() => movements.filter(m => m.type === 'WASTE').sort((a, b) => b.at - a.at), [movements]);
+  const saleMovements  = useMemo(() => movements.filter(m => m.type === 'SALE'), [movements]);
 
   const wastageThisMonth = useMemo(() => {
     const cutoff = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
@@ -78,6 +109,23 @@ export default function Inventory() {
       return s + (inv ? inv.costPerUnit * m.qty : 0);
     }, 0);
   }, [recentWastage, inventoryItems]);
+
+  // Usage stats — aggregate SALE movements by item
+  const usageStats = useMemo(() => {
+    const now = Date.now();
+    const weekMs = 7 * 86400000;
+    const weekStart  = now - weekMs;
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+    const byItem: Record<string, { name: string; unit: string; weekQty: number; monthQty: number }> = {};
+    saleMovements.forEach(m => {
+      const inv = inventoryItems?.find(i => i.id === m.invId);
+      if (!inv) return;
+      if (!byItem[m.invId]) byItem[m.invId] = { name: inv.name, unit: inv.unit, weekQty: 0, monthQty: 0 };
+      if (m.at >= weekStart)  byItem[m.invId].weekQty  += m.qty;
+      if (m.at >= monthStart) byItem[m.invId].monthQty += m.qty;
+    });
+    return Object.values(byItem).sort((a, b) => b.monthQty - a.monthQty);
+  }, [saleMovements, inventoryItems]);
 
   const submitReceive = async ({ invId, qty, costPerUnit, supplier, note }: { invId: string; qty: number; costPerUnit: number; supplier: string; note: string }) => {
     try {
@@ -102,9 +150,9 @@ export default function Inventory() {
     }
   };
 
-  const submitAddIngredient = async ({ name, unit, parLevel, costPerUnit }: { name: string; unit: string; parLevel: number; costPerUnit: number }) => {
+  const submitAddIngredient = async ({ name, unit, parLevel, costPerUnit, expiryDate }: { name: string; unit: string; parLevel: number; costPerUnit: number; expiryDate: string }) => {
     try {
-      await createItem.mutateAsync({ name, unit, par_level: parLevel, cost_per_unit: costPerUnit });
+      await createItem.mutateAsync({ name, unit, par_level: parLevel, cost_per_unit: costPerUnit, expiry_date: expiryDate || undefined });
       setAddIngredientOpen(false);
       toast({ kind: 'success', title: 'เพิ่มวัตถุดิบแล้ว', msg: `${name} (${unit}) ถูกเพิ่มในคลังแล้ว` });
     } catch (err) {
@@ -112,31 +160,47 @@ export default function Inventory() {
     }
   };
 
+  const handleDelete = async (item: InventoryItem) => {
+    try {
+      await deleteItem.mutateAsync(item.id);
+      setDeleteConfirmItem(null);
+      toast({ kind: 'success', title: 'ลบแล้ว', msg: `${item.name} ถูกลบออกจากคลัง` });
+    } catch (err) {
+      toast({ kind: 'warning', title: 'ลบไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+    }
+  };
+
   const openReceive = (itemId?: string) => { setPresetItemId(itemId || null); setReceiveOpen(true); };
   const openWastage = (itemId?: string) => { setPresetItemId(itemId || null); setWastageOpen(true); };
+
+  const TABS = [
+    { id: 'items',   label: 'วัตถุดิบ' },
+    { id: 'usage',   label: 'การใช้งาน' },
+    { id: 'receive', label: 'รับเข้าสต็อก' },
+    { id: 'waste',   label: 'บันทึก Wastage' },
+  ];
 
   return (
     <div className="scroll" style={{ height: '100%', overflow: 'auto', padding: 24, background: 'var(--color-bg)' }}>
       <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 4 }}>
-          P1 — Inventory
-        </div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 4 }}>P1 — Inventory</div>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>Inventory</h1>
-        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 4 }}>วัตถุดิบ · รับเข้า · บันทึก Wastage</div>
+        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 4 }}>วัตถุดิบ · รับเข้า · บันทึก Wastage · การใช้งาน</div>
       </div>
 
       {invLoading ? (
         <div style={{ padding: 60, textAlign: 'center', color: 'var(--color-text-muted)' }}>กำลังโหลดข้อมูลคลัง...</div>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
-            <KPISmall label="วัตถุดิบทั้งหมด" value={`${counts.total} รายการ`} />
-            <KPISmall label="ใกล้หมด (Low)" value={`${counts.low} รายการ`} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+            <KPISmall label="วัตถุดิบทั้งหมด"          value={`${counts.total} รายการ`} />
+            <KPISmall label="ใกล้หมด (Low)"            value={`${counts.low} รายการ`} />
             <KPISmall label="ต่ำกว่าครึ่ง par (Critical)" value={`${counts.critical} รายการ`} />
+            <KPISmall label="ใกล้หมดอายุ (≤ 7 วัน)"   value={`${counts.expiring} รายการ`} highlight={counts.expiring > 0 ? 'warning' : undefined} />
           </div>
 
           <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--color-surface-2)', borderRadius: 10, marginBottom: 16, width: 'fit-content' }}>
-            {[{ id: 'items', label: 'วัตถุดิบ' }, { id: 'receive', label: 'รับเข้าสต็อก' }, { id: 'waste', label: 'บันทึก Wastage' }].map(t => (
+            {TABS.map(t => (
               <button key={t.id} onClick={() => setTab(t.id)} style={{
                 padding: '8px 16px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer',
                 background: tab === t.id ? 'var(--color-surface)' : 'transparent',
@@ -147,33 +211,49 @@ export default function Inventory() {
             ))}
           </div>
 
-          {tab === 'items' && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onReceive={openReceive} onWaste={openWastage} onAddIngredient={() => setAddIngredientOpen(true)} />}
+          {tab === 'items'   && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onReceive={openReceive} onWaste={openWastage} onAddIngredient={() => setAddIngredientOpen(true)} onDelete={setDeleteConfirmItem} />}
+          {tab === 'usage'   && <UsageTab stats={usageStats} movements={saleMovements} />}
           {tab === 'receive' && <ReceiveTab items={inventoryItems ?? []} movements={recentReceives} onAdd={() => openReceive()} />}
-          {tab === 'waste' && <WastageTab items={inventoryItems ?? []} movements={recentWastage} totalCost={wastageThisMonth} onAdd={() => openWastage()} />}
+          {tab === 'waste'   && <WastageTab items={inventoryItems ?? []} movements={recentWastage} totalCost={wastageThisMonth} onAdd={() => openWastage()} />}
         </>
       )}
 
       {receiveOpen && <ReceiveStockModal items={inventoryItems ?? []} presetItemId={presetItemId} onClose={() => { setReceiveOpen(false); setPresetItemId(null); }} onSubmit={submitReceive} />}
       {wastageOpen && <WastageModal items={inventoryItems ?? []} presetItemId={presetItemId} onClose={() => { setWastageOpen(false); setPresetItemId(null); }} onSubmit={submitWastage} />}
       {addIngredientOpen && <AddIngredientModal onClose={() => setAddIngredientOpen(false)} onSubmit={submitAddIngredient} />}
+      {deleteConfirmItem && (
+        <DeleteInventoryConfirmModal
+          item={deleteConfirmItem}
+          deleting={deleteItem.isPending}
+          onConfirm={() => handleDelete(deleteConfirmItem)}
+          onClose={() => setDeleteConfirmItem(null)}
+        />
+      )}
     </div>
   );
 }
 
-const KPISmall = ({ label, value }: { label: string; value: string }) => (
-  <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 16 }}>
-    <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 8 }}>{label}</div>
-    <div className="num" style={{ fontSize: 24, fontWeight: 700 }}>{value}</div>
-  </div>
-);
+const KPISmall = ({ label, value, highlight }: { label: string; value: string; highlight?: 'warning' | 'danger' }) => {
+  const tones = {
+    warning: { bg: 'var(--color-warning-50)', border: 'var(--color-warning)', fg: '#9C6A1F' },
+    danger:  { bg: 'var(--color-danger-50)',  border: 'var(--color-danger)',  fg: 'var(--color-danger)' },
+  };
+  const t = highlight ? tones[highlight] : null;
+  return (
+    <div style={{ background: t ? t.bg : 'var(--color-surface)', border: t ? `1px solid ${t.border}` : '1px solid var(--color-border)', borderRadius: 12, padding: 16 }}>
+      <div style={{ fontSize: 13, color: t ? t.fg : 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 8 }}>{label}</div>
+      <div className="num" style={{ fontSize: 24, fontWeight: 700, color: t ? t.fg : 'var(--color-text)' }}>{value}</div>
+    </div>
+  );
+};
 
-const miniBtnStyle = (variant: 'primary' | 'ghost'): React.CSSProperties => ({
+const miniBtnStyle = (variant: 'primary' | 'ghost' | 'danger'): React.CSSProperties => ({
   display: 'inline-flex', alignItems: 'center', gap: 4,
   padding: '6px 10px', fontSize: 11, fontWeight: 600,
-  border: variant === 'ghost' ? '1px solid var(--color-border)' : 'none',
+  border: variant === 'danger' ? '1px solid var(--color-danger)' : variant === 'ghost' ? '1px solid var(--color-border)' : 'none',
   borderRadius: 6, cursor: 'pointer',
-  background: variant === 'ghost' ? 'transparent' : 'var(--color-primary)',
-  color: variant === 'ghost' ? 'var(--color-text-secondary)' : '#fff',
+  background: variant === 'primary' ? 'var(--color-primary)' : 'transparent',
+  color: variant === 'danger' ? 'var(--color-danger)' : variant === 'ghost' ? 'var(--color-text-secondary)' : '#fff',
   fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)',
 });
 
@@ -185,12 +265,13 @@ const primaryBtnStyle = (): React.CSSProperties => ({
   fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)',
 });
 
-const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatusFilter, onReceive, onWaste, onAddIngredient }: {
+// ── Items Tab ─────────────────────────────────────────────────────────────────
+const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatusFilter, onReceive, onWaste, onAddIngredient, onDelete }: {
   items: (InventoryItem & { status: ReturnType<typeof stockStatusOf> })[];
   totalCount: number; search: string; setSearch: (v: string) => void;
   statusFilter: string; setStatusFilter: (v: string) => void;
   onReceive: (id: string) => void; onWaste: (id: string) => void;
-  onAddIngredient: () => void;
+  onAddIngredient: () => void; onDelete: (item: InventoryItem) => void;
 }) => (
   <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
     <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -203,7 +284,7 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
         />
       </div>
       <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--color-surface-2)', borderRadius: 8 }}>
-        {[{ id: 'all', label: 'ทั้งหมด' }, { id: 'critical', label: 'Critical' }, { id: 'low', label: 'Low' }, { id: 'ok', label: 'OK' }].map(s => (
+        {[{ id: 'all', label: 'ทั้งหมด' }, { id: 'critical', label: 'Critical' }, { id: 'low', label: 'Low' }, { id: 'ok', label: 'OK' }, { id: 'expiring', label: '⚠ หมดอายุ' }].map(s => (
           <button key={s.id} onClick={() => setStatusFilter(s.id)} style={{
             padding: '6px 12px', fontSize: 12, fontWeight: 600, border: 'none', borderRadius: 6, cursor: 'pointer',
             background: statusFilter === s.id ? 'var(--color-surface)' : 'transparent',
@@ -216,7 +297,7 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
       <button onClick={onAddIngredient} style={primaryBtnStyle()} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={14} /> เพิ่มวัตถุดิบ</button>
     </div>
 
-    <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 70px 110px 110px 100px 110px 110px 200px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 70px 110px 110px 90px 110px 110px 220px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
       <div>วัตถุดิบ</div><div>หน่วย</div><div style={{ textAlign: 'right' }}>คงเหลือ</div><div style={{ textAlign: 'right' }}>Par level</div><div>สถานะ</div><div style={{ textAlign: 'right' }}>ต้นทุน/หน่วย</div><div style={{ textAlign: 'right' }}>มูลค่ารวม</div><div></div>
     </div>
 
@@ -225,13 +306,21 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
     ) : items.map((it, idx) => {
       const totalValue = it.stock * it.costPerUnit;
       const ratio = it.parLevel > 0 ? Math.min(100, (it.stock / it.parLevel) * 100) : 100;
+      const badge = expiryBadge(it.expiryDate);
       return (
-        <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '1.6fr 70px 110px 110px 100px 110px 110px 200px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === items.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
+        <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '1.8fr 70px 110px 110px 90px 110px 110px 220px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === items.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 600 }}>{it.name}</div>
-            <div style={{ marginTop: 6, height: 4, background: 'var(--color-surface-2)', borderRadius: 999, overflow: 'hidden', maxWidth: 220 }}>
+            <div style={{ marginTop: 4, height: 4, background: 'var(--color-surface-2)', borderRadius: 999, overflow: 'hidden', maxWidth: 220 }}>
               <div style={{ height: '100%', width: `${ratio}%`, background: it.status.tone === 'danger' ? 'var(--color-danger)' : it.status.tone === 'warning' ? 'var(--color-warning)' : 'var(--color-success)', transition: 'width 200ms var(--ease-out)' }} />
             </div>
+            {it.expiryDate && (
+              <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 11, color: badge ? badge.color : 'var(--color-text-muted)' }}>
+                  {badge ? `⚠ ${badge.label}` : `หมดอายุ ${formatDate(it.expiryDate)}`}
+                </span>
+              </div>
+            )}
           </div>
           <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{it.unit}</div>
           <div className="num" style={{ fontSize: 14, fontWeight: 700, textAlign: 'right' }}>{it.stock.toLocaleString()}</div>
@@ -241,7 +330,8 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
           <div className="num" style={{ fontSize: 13, fontWeight: 600, textAlign: 'right' }}>{baht(totalValue)}</div>
           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
             <button onClick={() => onReceive(it.id)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={12} /> รับเข้า</button>
-            <button onClick={() => onWaste(it.id)} style={miniBtnStyle('ghost')} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}><Icon name="trash" size={12} /> Waste</button>
+            <button onClick={() => onWaste(it.id)} style={miniBtnStyle('ghost')} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-warning-50)'; e.currentTarget.style.color = '#9C6A1F'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}><Icon name="trash" size={12} /> Waste</button>
+            <button onClick={() => onDelete(it)} style={miniBtnStyle('danger')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-danger-50)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'} title="ลบวัตถุดิบ"><Icon name="trash" size={12} /></button>
           </div>
         </div>
       );
@@ -249,6 +339,88 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
   </div>
 );
 
+// ── Usage Tab ─────────────────────────────────────────────────────────────────
+const UsageTab = ({ stats, movements }: {
+  stats: { name: string; unit: string; weekQty: number; monthQty: number }[];
+  movements: Movement[];
+}) => {
+  const [view, setView] = useState<'week' | 'month'>('month');
+  const maxQty = Math.max(...stats.map(s => view === 'week' ? s.weekQty : s.monthQty), 1);
+  const periodLabel = view === 'week' ? '7 วันล่าสุด' : 'เดือนนี้';
+  const totalUsed = stats.reduce((s, r) => s + (view === 'week' ? r.weekQty : r.monthQty), 0);
+
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>อัตราการใช้วัตถุดิบ</div>
+          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+            คำนวณจาก SALE movements • {movements.length} รายการล่าสุด
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--color-surface-2)', borderRadius: 8 }}>
+          {(['week', 'month'] as const).map(v => (
+            <button key={v} onClick={() => setView(v)} style={{
+              padding: '6px 14px', fontSize: 12, fontWeight: 600, border: 'none', borderRadius: 6, cursor: 'pointer',
+              background: view === v ? 'var(--color-surface)' : 'transparent',
+              color: view === v ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)',
+            }}>{v === 'week' ? '7 วัน' : 'เดือนนี้'}</button>
+          ))}
+        </div>
+      </div>
+
+      {stats.length === 0 ? (
+        <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 60, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>
+          ยังไม่มีข้อมูลการใช้งาน — ข้อมูลจะปรากฏเมื่อมีการบันทึกออเดอร์
+        </div>
+      ) : (
+        <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 24, alignItems: 'center', background: 'var(--color-surface-2)' }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>รายการที่ใช้</div>
+              <div className="num" style={{ fontSize: 22, fontWeight: 700 }}>{stats.filter(s => (view === 'week' ? s.weekQty : s.monthQty) > 0).length}</div>
+            </div>
+            <div style={{ width: 1, height: 36, background: 'var(--color-border)' }} />
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>รวมทุกรายการ{' '}({periodLabel})</div>
+              <div className="num" style={{ fontSize: 22, fontWeight: 700 }}>{totalUsed.toLocaleString(undefined, { maximumFractionDigits: 1 })}</div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '40px 1.5fr 1fr 120px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid var(--color-border)' }}>
+            <div>#</div><div>วัตถุดิบ</div><div>ปริมาณที่ใช้ ({periodLabel})</div><div style={{ textAlign: 'right' }}>จำนวน</div>
+          </div>
+
+          {stats.map((s, idx) => {
+            const qty = view === 'week' ? s.weekQty : s.monthQty;
+            const barPct = (qty / maxQty) * 100;
+            return (
+              <div key={s.name} style={{ display: 'grid', gridTemplateColumns: '40px 1.5fr 1fr 120px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === stats.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
+                <div className="num" style={{ fontSize: 13, color: 'var(--color-text-muted)', fontWeight: 700 }}>{idx + 1}</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{s.name}</div>
+                <div>
+                  <div style={{ height: 10, background: 'var(--color-surface-2)', borderRadius: 999, overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%', width: `${barPct}%`,
+                      background: idx === 0 ? 'var(--color-primary)' : idx < 3 ? 'var(--color-accent)' : 'var(--color-border)',
+                      borderRadius: 999, transition: 'width 300ms var(--ease-out)',
+                    }} />
+                  </div>
+                </div>
+                <div className="num" style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: qty === 0 ? 'var(--color-text-muted)' : 'var(--color-text)' }}>
+                  {qty > 0 ? `${qty.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${s.unit}` : '—'}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+};
+
+// ── Receive / Wastage Tabs ────────────────────────────────────────────────────
 const ReceiveTab = ({ items, movements, onAdd }: { items: InventoryItem[]; movements: Movement[]; onAdd: () => void }) => (
   <>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -321,6 +493,7 @@ const WastageTab = ({ items, movements, totalCost, onAdd }: { items: InventoryIt
   </>
 );
 
+// ── Shared helpers ────────────────────────────────────────────────────────────
 const inputStyle = (): React.CSSProperties => ({
   width: '100%', padding: '10px 12px',
   border: '1px solid var(--color-border)', borderRadius: 8,
@@ -367,6 +540,7 @@ const ItemSelect = ({ items, value, onChange, placeholder }: { items: InventoryI
   </select>
 );
 
+// ── Modals ────────────────────────────────────────────────────────────────────
 const ReceiveStockModal = ({ items, presetItemId, onClose, onSubmit }: { items: InventoryItem[]; presetItemId: string | null; onClose: () => void; onSubmit: (v: { invId: string; qty: number; costPerUnit: number; supplier: string; note: string }) => void }) => {
   const [invId, setInvId] = useState(presetItemId || '');
   const [qty, setQty] = useState('');
@@ -400,13 +574,14 @@ const ReceiveStockModal = ({ items, presetItemId, onClose, onSubmit }: { items: 
   );
 };
 
-const AddIngredientModal = ({ onClose, onSubmit }: { onClose: () => void; onSubmit: (v: { name: string; unit: string; parLevel: number; costPerUnit: number }) => void }) => {
+const AddIngredientModal = ({ onClose, onSubmit }: { onClose: () => void; onSubmit: (v: { name: string; unit: string; parLevel: number; costPerUnit: number; expiryDate: string }) => void }) => {
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('');
   const [parLevel, setParLevel] = useState('0');
   const [costPerUnit, setCostPerUnit] = useState('0');
+  const [expiryDate, setExpiryDate] = useState('');
   const canSubmit = name.trim().length > 0 && unit.trim().length > 0;
-  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), unit: unit.trim(), parLevel: Number(parLevel), costPerUnit: Number(costPerUnit) }); };
+  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), unit: unit.trim(), parLevel: Number(parLevel), costPerUnit: Number(costPerUnit), expiryDate }); };
   return (
     <ModalShell title="เพิ่มวัตถุดิบใหม่" subtitle="สร้างรายการวัตถุดิบในคลัง" onClose={onClose}>
       <FormField label="ชื่อวัตถุดิบ *"><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="เช่น นมสด, กาแฟอาราบิก้า" style={inputStyle()} autoFocus /></FormField>
@@ -415,6 +590,10 @@ const AddIngredientModal = ({ onClose, onSubmit }: { onClose: () => void; onSubm
         <FormField label="Par Level (จุดสั่งซื้อ)"><input type="number" min={0} value={parLevel} onChange={e => setParLevel(e.target.value)} placeholder="0" style={inputStyle()} /></FormField>
         <FormField label="ต้นทุน/หน่วย (฿)"><input type="number" min={0} step={0.01} value={costPerUnit} onChange={e => setCostPerUnit(e.target.value)} placeholder="0.00" style={inputStyle()} /></FormField>
       </div>
+      <FormField label="วันหมดอายุ (ไม่บังคับ)">
+        <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} style={inputStyle()} />
+        <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>ระบบจะแจ้งเตือนเมื่อใกล้หมดอายุ ≤ 7 วัน</div>
+      </FormField>
       <ModalActions>
         <button onClick={onClose} style={ghostBtnStyle()}>ยกเลิก</button>
         <button onClick={submit} disabled={!canSubmit} style={{ ...primaryBtnStyle(), opacity: canSubmit ? 1 : 0.45, cursor: canSubmit ? 'pointer' : 'not-allowed' }}><Icon name="plus" size={14} /> เพิ่มวัตถุดิบ</button>
@@ -457,3 +636,20 @@ const WastageModal = ({ items, presetItemId, onClose, onSubmit }: { items: Inven
     </ModalShell>
   );
 };
+
+const DeleteInventoryConfirmModal = ({ item, deleting, onConfirm, onClose }: {
+  item: InventoryItem; deleting: boolean;
+  onConfirm: () => void; onClose: () => void;
+}) => (
+  <ModalShell title="ยืนยันการลบ" subtitle={`"${item.name}" จะถูกปิดใช้งาน`} onClose={onClose}>
+    <div style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: 20, lineHeight: 1.7 }}>
+      วัตถุดิบนี้จะถูกซ่อนจากระบบ BOM และ Inventory สูตรที่ใช้วัตถุดิบนี้อยู่จะไม่ถูกลบ
+    </div>
+    <ModalActions>
+      <button onClick={onClose} style={ghostBtnStyle()}>ยกเลิก</button>
+      <button onClick={onConfirm} disabled={deleting} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', fontSize: 13, fontWeight: 600, background: deleting ? 'var(--color-surface-2)' : 'var(--color-danger)', color: deleting ? 'var(--color-text-muted)' : '#fff', border: 'none', borderRadius: 8, cursor: deleting ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+        <Icon name="trash" size={14} />{deleting ? 'กำลังลบ...' : 'ยืนยันลบ'}
+      </button>
+    </ModalActions>
+  </ModalShell>
+);

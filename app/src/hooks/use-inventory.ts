@@ -11,6 +11,7 @@ interface InventoryItemRead {
   par_level: string | number;       // Decimal serialised as string
   is_active: boolean;
   status: 'ok' | 'low' | 'critical';
+  expiry_date: string | null;       // ISO date "YYYY-MM-DD"
 }
 
 export type MovementType =
@@ -47,6 +48,7 @@ export interface InventoryItem {
   costPerUnit: number;
   stock: number;
   parLevel: number;
+  expiryDate?: string;  // ISO "YYYY-MM-DD", undefined = no expiry set
 }
 
 export interface Movement {
@@ -70,6 +72,7 @@ function mapItem(i: InventoryItemRead): InventoryItem {
     costPerUnit: Number(i.cost_per_unit),
     stock: Number(i.stock_on_hand),
     parLevel: Number(i.par_level),
+    expiryDate: i.expiry_date ?? undefined,
   };
 }
 
@@ -101,11 +104,11 @@ export function useInventory(search?: string) {
   });
 }
 
-export function useInventoryMovements() {
+export function useInventoryMovements(limit = 200) {
   return useQuery<Movement[]>({
-    queryKey: ['inventory-movements'],
+    queryKey: ['inventory-movements', limit],
     queryFn: async () => {
-      const data = await api.get<MovementsPage>('/api/v1/inventory/movements');
+      const data = await api.get<MovementsPage>(`/api/v1/inventory/movements?limit=${limit}`);
       return data.items.map(mapMovement);
     },
   });
@@ -175,6 +178,7 @@ interface InventoryItemCreatePayload {
   par_level: number;
   cost_per_unit: number;
   is_active?: boolean;
+  expiry_date?: string;
 }
 
 export function useCreateInventoryItem() {
@@ -182,6 +186,17 @@ export function useCreateInventoryItem() {
   return useMutation({
     mutationFn: (p: InventoryItemCreatePayload) =>
       api.post<InventoryItemRead>('/api/v1/inventory', p),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+}
+
+export function useDeleteInventoryItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (itemId: string) =>
+      api.delete<void>(`/api/v1/inventory/${itemId}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inventory'] });
     },

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -21,6 +21,7 @@ class InventoryItemBase(_DecimalConfig):
     stock_on_hand: Decimal
     par_level: Decimal
     is_active: bool
+    expiry_date: date | None = None
 
 
 class InventoryItemRead(InventoryItemBase):
@@ -45,11 +46,14 @@ class InventoryItemCreate(BaseModel):
     par_level: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("9999999.999"))
     cost_per_unit: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("99999.9999"))
     is_active: bool = True
+    expiry_date: date | None = None
 
 
 class InventoryItemUpdate(BaseModel):
     par_level: Decimal | None = Field(None, ge=0, le=Decimal("9999999.999"))
     cost_per_unit: Decimal | None = Field(None, ge=0, le=Decimal("99999.9999"))
+    is_active: bool | None = None
+    expiry_date: date | None = None
 
 
 class ReceiveStockRequest(BaseModel):
