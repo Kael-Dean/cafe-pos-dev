@@ -4,7 +4,6 @@ import { useState, useMemo, useEffect } from 'react';
 import Icon from '../icons';
 import { useToast, baht } from '../app-common';
 import { useAllProducts, useCategories, type MenuItem } from '@/hooks/use-products';
-import { useModifierGroups } from '@/hooks/use-modifier-groups';
 import { useProductDetail } from '@/hooks/use-bom';
 import { useCreateOrder, usePayOrder } from '@/hooks/use-orders';
 import ModifierModal from './modifier-modal';
@@ -23,10 +22,8 @@ export default function POSTerminal() {
 
   const { data: categories, isLoading: catsLoading } = useCategories();
   const { data: products, isLoading: prodLoading, isError } = useAllProducts();
-  const { data: modifierGroups } = useModifierGroups();
   const createOrder = useCreateOrder();
   const payOrder = usePayOrder();
-  const storeHasModifiers = (modifierGroups?.length ?? 0) > 0;
 
   // Prefetch product detail when hovered so click is instant
   const [pendingModifierId, setPendingModifierId] = useState<string | null>(null);
@@ -72,14 +69,8 @@ export default function POSTerminal() {
   const total = subtotal - discount + vat;
 
   const onMenuClick = (item: MenuItem) => {
-    if (storeHasModifiers) {
-      // Fetch product detail to check if this specific product has modifier groups.
-      // useProductDetail result is cached — second tap on same item is instant.
-      setPendingModifierId(item.id);
-    } else {
-      addLine({ menuId: item.id, name: item.name, basePrice: item.price, unitPrice: item.price, qty: 1, mods: [], modIds: [], modKey: '' });
-      toast({ kind: 'success', title: 'เพิ่มลงตะกร้า', msg: item.name, duration: 1600 });
-    }
+    // Always check product-level modifier groups; cached per-product so repeat taps are instant.
+    setPendingModifierId(item.id);
   };
 
   const addLine = (line: CartLine) => {

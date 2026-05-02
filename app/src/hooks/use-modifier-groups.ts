@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 
 // ── Backend shapes (exact field names from schemas/catalog.py) ────────────────
@@ -70,6 +70,38 @@ export function useModifierGroups() {
       return data
         .filter(g => g.is_active)
         .map(mapGroup);
+    },
+  });
+}
+
+// Default groups auto-created the first time a "เครื่องดื่ม" product is saved
+export const DEFAULT_DRINK_MODIFIER_GROUPS = [
+  {
+    name: 'ขนาด', required: true, min_select: 1, max_select: 1, is_active: true,
+    modifiers: [
+      { name: 'S', price_delta: -5, sort_order: 1, is_active: true },
+      { name: 'M', price_delta: 0,  sort_order: 2, is_active: true },
+      { name: 'L', price_delta: 10, sort_order: 3, is_active: true },
+    ],
+  },
+  {
+    name: 'ความหวาน', required: false, min_select: 0, max_select: 1, is_active: true,
+    modifiers: [
+      { name: 'ไม่หวาน', price_delta: 0, sort_order: 1, is_active: true },
+      { name: 'น้อย',    price_delta: 0, sort_order: 2, is_active: true },
+      { name: 'ปกติ',    price_delta: 0, sort_order: 3, is_active: true },
+      { name: 'มาก',     price_delta: 0, sort_order: 4, is_active: true },
+    ],
+  },
+];
+
+export function useCreateModifierGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (group: typeof DEFAULT_DRINK_MODIFIER_GROUPS[number]) =>
+      api.post<ModifierGroupRead>('/api/v1/modifier-groups', group),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['modifier-groups'] });
     },
   });
 }

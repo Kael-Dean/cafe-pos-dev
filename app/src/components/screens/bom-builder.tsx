@@ -6,7 +6,7 @@ import { useToast, Tag, baht } from '../app-common';
 import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, type MenuItem } from '@/hooks/use-products';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
 import { useProductDetail, useUpdateRecipe, useLinkModifierGroups, type RecipeItem } from '@/hooks/use-bom';
-import { useModifierGroups } from '@/hooks/use-modifier-groups';
+import { useModifierGroups, useCreateModifierGroup, DEFAULT_DRINK_MODIFIER_GROUPS } from '@/hooks/use-modifier-groups';
 
 type ProductType = 'MENU' | 'INGREDIENT';
 
@@ -30,6 +30,7 @@ export default function BOMBuilder() {
   const createProduct = useCreateProduct();
   const deleteProduct = useDeleteProduct();
   const linkModifierGroups = useLinkModifierGroups();
+  const createModifierGroup = useCreateModifierGroup();
   const { data: modifierGroups } = useModifierGroups();
 
   useEffect(() => {
@@ -81,17 +82,22 @@ export default function BOMBuilder() {
 
   const submitAddMenu = async ({ name, categoryId, price, description, type, isDrink }: { name: string; categoryId: string; price: number; description: string; type: ProductType; isDrink: boolean }) => {
     try {
-      const created = await createProduct.mutateAsync({ name, category_id: categoryId || undefined, price, description: description || undefined });
-      if (isDrink && modifierGroups && modifierGroups.length > 0) {
-        await linkModifierGroups.mutateAsync({ productId: created.id, groupIds: modifierGroups.map(g => g.id) });
+      const newProduct = await createProduct.mutateAsync({ name, category_id: categoryId || undefined, price, description: description || undefined });
+      if (isDrink) {
+        let groupIds = (modifierGroups ?? []).map(g => g.id);
+        if (groupIds.length === 0) {
+          // First drink ever — auto-bootstrap default modifier groups in backend
+          const newGroups = await Promise.all(
+            DEFAULT_DRINK_MODIFIER_GROUPS.map(g => createModifierGroup.mutateAsync(g))
+          );
+          groupIds = newGroups.map(g => g.id);
+        }
+        await linkModifierGroups.mutateAsync({ productId: newProduct.id, groupIds });
       }
       setAddMenuOpen(false);
-      setSelectedId(created.id);
+      setSelectedId(newProduct.id);
       setProductType(type);
-      const note = isDrink
-        ? (modifierGroups?.length ? ' · เปิดตัวเลือกแล้ว' : ' · ตั้งค่า modifier groups ที่ backend ก่อน')
-        : '';
-      toast({ kind: 'success', title: 'เพิ่มรายการแล้ว', msg: `${name}${note}` });
+      toast({ kind: 'success', title: 'เพิ่มรายการแล้ว', msg: `${name}${isDrink ? ' · เปิดตัวเลือกแล้ว' : ''}` });
     } catch (err) {
       toast({ kind: 'warning', title: 'เกิดข้อผิดพลาด', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
     }
