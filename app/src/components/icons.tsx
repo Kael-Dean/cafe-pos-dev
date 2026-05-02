@@ -6,13 +6,14 @@ interface IconProps {
   color?: string;
   strokeWidth?: number;
   className?: string;
+  style?: React.CSSProperties;
 }
 
-export default function Icon({ name, size = 20, color = 'currentColor', strokeWidth = 1.5, className = '' }: IconProps) {
+export default function Icon({ name, size = 20, color = 'currentColor', strokeWidth = 1.5, className = '', style }: IconProps) {
   const props = {
     width: size, height: size, viewBox: '0 0 24 24',
     fill: 'none', stroke: color, strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
-    className,
+    className, style,
   };
   const paths: Record<string, React.ReactNode> = {
     cart: <><circle cx="9" cy="21" r="1.5"/><circle cx="18" cy="21" r="1.5"/><path d="M3 3h2l3 12h12l2-8H6"/></>,
