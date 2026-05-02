@@ -58,7 +58,10 @@ export default function POSTerminal() {
       const s = search.toLowerCase();
       return products.filter(m => m.name.toLowerCase().includes(s) || m.nameEn.toLowerCase().includes(s));
     }
-    if (category === 'fav') return products.filter(m => m.hot);
+    if (category === 'fav') {
+      const favs = products.filter(m => m.hot);
+      return favs.length > 0 ? favs : products;
+    }
     return products.filter(m => m.cat === category);
   }, [products, category, search]);
 
