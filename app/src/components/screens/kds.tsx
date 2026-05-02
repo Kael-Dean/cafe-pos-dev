@@ -103,11 +103,13 @@ export default function KDS() {
 }
 
 const Clock = () => {
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
+    setNow(new Date());
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
+  if (!now) return null;
   const pad = (n: number) => String(n).padStart(2, '0');
   return <span>{pad(now.getHours())}:{pad(now.getMinutes())}:{pad(now.getSeconds())}</span>;
 };

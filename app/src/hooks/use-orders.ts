@@ -99,6 +99,7 @@ export function useKDSOrders() {
       return (data.items ?? []).map(mapToTicket);
     },
     refetchInterval: 15000,
+    refetchOnMount: 'always',
   });
 }
 
