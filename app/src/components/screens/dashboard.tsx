@@ -5,7 +5,7 @@ import { KPICard, Tag, baht } from '../app-common';
 import { DASHBOARD } from '../data/mock-data';
 import { useKDSOrders, type KDSTicket } from '@/hooks/use-orders';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
-import { useDashboardToday, useSalesHourly } from '@/hooks/use-dashboard';
+import { useDashboardToday, useSalesHourly, useCashierShiftsToday, type StaffShiftFE } from '@/hooks/use-dashboard';
 
 function elapsedLabel(placedAt: number): string {
   const mins = Math.floor((Date.now() - placedAt) / 60000);
@@ -20,6 +20,7 @@ export default function Dashboard() {
   const { data: inventoryItems } = useInventory();
   const { data: todayData } = useDashboardToday();
   const hourly = useSalesHourly();
+  const { data: staffShifts } = useCashierShiftsToday();
 
   const liveOrders = (liveTickets ?? [])
     .slice()
@@ -113,7 +114,10 @@ export default function Dashboard() {
         <Card>
           <CardHeader title="พนักงาน" sub="กะปัจจุบัน • Active" />
           <div style={{padding: '0 4px 4px'}}>
-            {d.staff.map((s, i) => <StaffRow key={i} staff={s} />)}
+            {staffShifts && staffShifts.length > 0
+              ? staffShifts.map(s => <StaffRowFromShift key={s.userId} staff={s} />)
+              : d.staff.map((s, i) => <StaffRow key={i} staff={s} />)
+            }
           </div>
         </Card>
       </div>
@@ -279,6 +283,21 @@ const LowStockFromInventory = ({ inv }: { inv: InventoryItem }) => {
     </div>
   );
 };
+
+const StaffRowFromShift = ({ staff }: { staff: StaffShiftFE }) => (
+  <div style={{padding: '10px 8px', borderBottom: '1px solid var(--color-surface-2)', display: 'flex', alignItems: 'center', gap: 10}}>
+    <div style={{
+      width: 32, height: 32, borderRadius: 999,
+      background: 'var(--color-accent-50)', color: 'var(--color-primary)',
+      display: 'grid', placeItems: 'center', fontWeight: 700,
+    }}>{staff.initials}</div>
+    <div style={{flex: 1, minWidth: 0}}>
+      <div style={{fontSize: 13, fontWeight: 600}}>{staff.name}</div>
+      <div style={{fontSize: 11, color: 'var(--color-text-muted)'}}>{staff.orderCount} บิล</div>
+    </div>
+    <div className="num" style={{fontSize: 13, fontWeight: 600}}>{baht(staff.revenue)}</div>
+  </div>
+);
 
 const StaffRow = ({ staff }: { staff: typeof DASHBOARD['staff'][0] }) => (
   <div style={{padding: '10px 8px', borderBottom: '1px solid var(--color-surface-2)', display: 'flex', alignItems: 'center', gap: 10}}>

@@ -130,3 +130,49 @@ export function useDashboardTopItems(): TopItemFE[] | null {
     rev:  Number(it.revenue),
   }));
 }
+
+// ── Cashier shifts (staff panel) ──────────────────────────────────────────────
+interface CashierShiftRead {
+  user_id: string;
+  user_name: string;
+  order_count: number;
+  revenue: string | number;
+  void_count: number;
+}
+
+interface CashierShiftsReportRead {
+  from_: string;
+  to: string;
+  cashiers: CashierShiftRead[];
+}
+
+export interface StaffShiftFE {
+  userId: string;
+  name: string;
+  initials: string;
+  orderCount: number;
+  revenue: number;
+}
+
+export function useCashierShiftsToday() {
+  const dateStr = new Date().toISOString().slice(0, 10);
+  return useQuery<StaffShiftFE[]>({
+    queryKey: ['cashier-shifts-today', dateStr],
+    queryFn: async () => {
+      const r = todayRange();
+      const data = await api.get<CashierShiftsReportRead>(
+        `/api/v1/reports/cashier-shifts?from=${encodeURIComponent(r.from)}&to=${encodeURIComponent(r.to)}`
+      );
+      return (data.cashiers ?? []).map(c => ({
+        userId:     c.user_id,
+        name:       c.user_name,
+        initials:   c.user_name.charAt(0),
+        orderCount: c.order_count,
+        revenue:    Number(c.revenue),
+      }));
+    },
+    refetchInterval: 120_000,
+    staleTime: 60_000,
+    retry: 1,
+  });
+}

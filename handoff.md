@@ -1,4 +1,4 @@
-# Backend Handoff — Inventory New Features
+# Backend Handoff — Inventory & Dashboard Features
 **วันที่:** 2026-05-03  
 **Frontend ทำเสร็จแล้ว** | **Backend ต้องทำ** ตามรายการด้านล่าง
 
@@ -181,13 +181,113 @@ ALTER TABLE inventory_items ADD COLUMN expiry_date DATE;
 
 ---
 
+---
+
+## ฟีเจอร์ 4: HR Module (พนักงาน)
+
+### ภาพรวม
+Dashboard หน้า "พนักงาน" ตอนนี้ใช้ `/api/v1/reports/cashier-shifts` แสดงชื่อ + ยอดขาย + จำนวนบิลของแต่ละคนในวันนี้ได้แล้ว **ยังขาด** module จัดการพนักงาน (HR) ที่ frontend hooks เรียกอยู่แต่ backend ยังไม่มี
+
+### Endpoints ที่ Frontend ต้องการ
+
+```
+GET    /api/v1/hr/staff                  รายชื่อพนักงานทั้งหมดในร้าน
+POST   /api/v1/hr/staff                  เพิ่มพนักงานใหม่
+PATCH  /api/v1/hr/staff/{user_id}        แก้ไขข้อมูลพนักงาน (role, name)
+DELETE /api/v1/hr/staff/{user_id}        ปิดใช้งานพนักงาน (soft-delete)
+
+GET    /api/v1/hr/leaves                 ดูใบลาทั้งหมด (MANAGER+ เท่านั้น)
+GET    /api/v1/hr/leaves/mine            ดูใบลาของตัวเอง
+POST   /api/v1/hr/leaves                 ยื่นใบลา
+PATCH  /api/v1/hr/leaves/{id}/review     อนุมัติ/ปฏิเสธใบลา (MANAGER+ เท่านั้น)
+
+GET    /api/v1/hr/shifts?week_start=YYYY-MM-DD   ดูตารางกะรายสัปดาห์
+POST   /api/v1/hr/shifts                          กำหนดกะ (MANAGER+ เท่านั้น)
+```
+
+### Schemas ที่ Frontend Expect
+
+#### `GET /api/v1/hr/staff`
+```json
+[
+  {
+    "id": "cuid...",
+    "name": "แพรว สมใจ",
+    "role": "BARISTA"
+  }
+]
+```
+roles ที่รองรับ: `OWNER | MANAGER | BARISTA | BAKER`
+
+#### `GET /api/v1/hr/leaves`
+```json
+[
+  {
+    "id": "cuid...",
+    "store_id": "...",
+    "user_id": "...",
+    "user_name": "แพรว สมใจ",
+    "start_date": "2026-05-10",
+    "end_date": "2026-05-11",
+    "leave_type": "SICK",
+    "status": "PENDING",
+    "note": "ไข้",
+    "reviewed_by_id": null,
+    "reviewed_at": null,
+    "created_at": "2026-05-03T08:00:00Z",
+    "updated_at": "2026-05-03T08:00:00Z"
+  }
+]
+```
+leave_type: `VACATION | SICK | PERSONAL | OTHER`  
+status: `PENDING | APPROVED | REJECTED`
+
+#### `GET /api/v1/hr/shifts?week_start=2026-05-05`
+```json
+[
+  {
+    "id": "cuid...",
+    "store_id": "...",
+    "user_id": "...",
+    "user_name": "แพรว สมใจ",
+    "assignment_date": "2026-05-05",
+    "shift_type": "MORNING",
+    "notes": null,
+    "created_by_id": "...",
+    "created_at": "2026-05-03T08:00:00Z",
+    "updated_at": "2026-05-03T08:00:00Z"
+  }
+]
+```
+shift_type: `MORNING | AFTERNOON | EVENING | FULL_DAY | OFF`
+
+### แนะนำ Implementation
+
+1. สร้าง `api/app/api/v1/hr.py` — FastAPI router
+2. สร้าง `api/app/schemas/hr.py` — Pydantic schemas (LeaveRequest, ShiftAssignment)
+3. สร้าง `api/app/models/hr.py` (หรือใส่ใน identity.py) — LeaveRequest + ShiftAssignment tables
+4. สร้าง `api/app/services/hr.py` — CRUD logic
+5. Register ใน `api/app/api/v1/router.py`:
+   ```python
+   from app.api.v1 import hr
+   api_router.include_router(hr.router)
+   ```
+6. รัน Alembic migration
+
+### Permission
+- ดูพนักงาน/ยื่นใบลา/ดูตารางกะ: `StoreUser` (ทุก role)
+- เพิ่ม/แก้ไข/ลบพนักงาน / อนุมัติใบลา / กำหนดกะ: `MANAGER` + `OWNER`
+
+---
+
 ## Priority
 
 | # | งาน | ความสำคัญ | ประมาณเวลา |
 |---|-----|-----------|------------|
 | 1 | ตรวจ / รัน Alembic migration สำหรับ `expiry_date` | 🔴 สูงมาก | 5 นาที |
 | 2 | สร้าง SALE movements เมื่อ order complete | 🔴 สูงมาก | 2–4 ชั่วโมง |
-| 3 | Usage Stats endpoint (optional, performance) | 🟡 ปานกลาง | 1 ชั่วโมง |
+| 3 | HR Module (`/api/v1/hr/*`) | 🟠 สูง | 4–6 ชั่วโมง |
+| 4 | Usage Stats endpoint (optional, performance) | 🟡 ปานกลาง | 1 ชั่วโมง |
 
 ---
 
