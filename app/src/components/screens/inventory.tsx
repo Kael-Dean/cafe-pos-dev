@@ -297,8 +297,8 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
       <button onClick={onAddIngredient} style={primaryBtnStyle()} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={14} /> เพิ่มวัตถุดิบ</button>
     </div>
 
-    <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 70px 110px 110px 90px 110px 110px 220px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
-      <div>วัตถุดิบ</div><div>หน่วย</div><div style={{ textAlign: 'right' }}>คงเหลือ</div><div style={{ textAlign: 'right' }}>Par level</div><div>สถานะ</div><div style={{ textAlign: 'right' }}>ต้นทุน/หน่วย</div><div style={{ textAlign: 'right' }}>มูลค่ารวม</div><div></div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 100px 130px 180px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+      <div>วัตถุดิบ</div><div>หน่วย</div><div style={{ textAlign: 'right' }}>คงเหลือ</div><div style={{ textAlign: 'right' }}>Par level</div><div>สถานะ</div><div style={{ textAlign: 'right' }}>ต้นทุน/หน่วย</div><div style={{ textAlign: 'right' }}>มูลค่ารวม</div><div>วันหมดอายุ</div><div></div>
     </div>
 
     {items.length === 0 ? (
@@ -308,19 +308,12 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
       const ratio = it.parLevel > 0 ? Math.min(100, (it.stock / it.parLevel) * 100) : 100;
       const badge = expiryBadge(it.expiryDate);
       return (
-        <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '1.8fr 70px 110px 110px 90px 110px 110px 220px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === items.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
+        <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 100px 130px 180px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === items.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 600 }}>{it.name}</div>
-            <div style={{ marginTop: 4, height: 4, background: 'var(--color-surface-2)', borderRadius: 999, overflow: 'hidden', maxWidth: 220 }}>
+            <div style={{ marginTop: 4, height: 4, background: 'var(--color-surface-2)', borderRadius: 999, overflow: 'hidden', maxWidth: 200 }}>
               <div style={{ height: '100%', width: `${ratio}%`, background: it.status.tone === 'danger' ? 'var(--color-danger)' : it.status.tone === 'warning' ? 'var(--color-warning)' : 'var(--color-success)', transition: 'width 200ms var(--ease-out)' }} />
             </div>
-            {it.expiryDate && (
-              <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ fontSize: 11, color: badge ? badge.color : 'var(--color-text-muted)' }}>
-                  {badge ? `⚠ ${badge.label}` : `หมดอายุ ${formatDate(it.expiryDate)}`}
-                </span>
-              </div>
-            )}
           </div>
           <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{it.unit}</div>
           <div className="num" style={{ fontSize: 14, fontWeight: 700, textAlign: 'right' }}>{it.stock.toLocaleString()}</div>
@@ -328,6 +321,22 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
           <div><Tag tone={it.status.tone}>{it.status.label}</Tag></div>
           <div className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'right' }}>฿{it.costPerUnit.toFixed(2)}</div>
           <div className="num" style={{ fontSize: 13, fontWeight: 600, textAlign: 'right' }}>{baht(totalValue)}</div>
+          <div>
+            {it.expiryDate ? (
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: badge ? badge.color : 'var(--color-text-secondary)' }}>
+                  {formatDate(it.expiryDate)}
+                </div>
+                {badge && (
+                  <div style={{ fontSize: 11, marginTop: 2, padding: '2px 6px', borderRadius: 4, display: 'inline-block', background: badge.bg, color: badge.color, fontWeight: 600 }}>
+                    ⚠ {badge.label}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>—</div>
+            )}
+          </div>
           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
             <button onClick={() => onReceive(it.id)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={12} /> รับเข้า</button>
             <button onClick={() => onWaste(it.id)} style={miniBtnStyle('ghost')} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-warning-50)'; e.currentTarget.style.color = '#9C6A1F'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}><Icon name="trash" size={12} /> Waste</button>
