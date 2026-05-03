@@ -5,6 +5,7 @@ import { KPICard, Tag, baht } from '../app-common';
 import { DASHBOARD } from '../data/mock-data';
 import { useKDSOrders, type KDSTicket } from '@/hooks/use-orders';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
+import { useDashboardToday, useSalesHourly } from '@/hooks/use-dashboard';
 
 function elapsedLabel(placedAt: number): string {
   const mins = Math.floor((Date.now() - placedAt) / 60000);
@@ -17,6 +18,8 @@ export default function Dashboard() {
   const d = DASHBOARD;
   const { data: liveTickets } = useKDSOrders();
   const { data: inventoryItems } = useInventory();
+  const { data: todayData } = useDashboardToday();
+  const hourly = useSalesHourly();
 
   const liveOrders = (liveTickets ?? [])
     .slice()
@@ -27,6 +30,25 @@ export default function Dashboard() {
     .filter(inv => inv.parLevel > 0 && inv.stock < inv.parLevel)
     .sort((a, b) => (a.stock / a.parLevel) - (b.stock / b.parLevel))
     .slice(0, 5);
+
+  // Merge real KPI values over mock defaults (GP% kept as mock — no backend source yet)
+  const kpis = d.kpis.map(k => {
+    if (!todayData) return k;
+    if (k.id === 'revenue') return { ...k, value: Number(todayData.revenue) };
+    if (k.id === 'orders')  return { ...k, value: todayData.order_count };
+    if (k.id === 'atv')     return { ...k, value: Number(todayData.avg_ticket) };
+    return k;
+  });
+
+  // Top items from real data; fall back to mock when API hasn't responded
+  const topItems = todayData?.top_items?.length
+    ? todayData.top_items.map(it => ({ name: it.product_name, qty: it.quantity, rev: Number(it.revenue) }))
+    : d.topItems;
+
+  // Hourly chart: use real data when available, otherwise mock
+  const chartHours   = hourly.hours;
+  const chartToday   = hourly.today    ?? d.today;
+  const chartLastWk  = hourly.lastWeek ?? d.lastWeek;
 
   return (
     <div className="scroll" style={{height: '100%', overflow: 'auto', padding: 24, background: 'var(--color-bg)'}}>
@@ -43,7 +65,7 @@ export default function Dashboard() {
       </div>
 
       <div style={{display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16}}>
-        {d.kpis.map((k) => <KPICard key={k.id} {...k} />)}
+        {kpis.map((k) => <KPICard key={k.id} {...k} />)}
       </div>
 
       <div style={{display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16, marginBottom: 16}}>
@@ -54,11 +76,11 @@ export default function Dashboard() {
               <Legend color="var(--color-accent)" label="สัปดาห์ก่อน" dashed />
             </div>
           </CardHeader>
-          <LineChart hours={d.hours} today={d.today} prev={d.lastWeek} />
+          <LineChart hours={chartHours} today={chartToday} prev={chartLastWk} />
         </Card>
         <Card>
           <CardHeader title="เมนูขายดี Top 10" sub="วันนี้ • เรียงตามจำนวน" />
-          <BarList items={d.topItems} />
+          <BarList items={topItems} />
         </Card>
       </div>
 
