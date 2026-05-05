@@ -6,7 +6,7 @@ import { useToast, Tag, baht } from '../app-common';
 import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, type MenuItem } from '@/hooks/use-products';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
 import { useProductDetail, useUpdateRecipe, useLinkModifierGroups, type RecipeItem } from '@/hooks/use-bom';
-import { useModifierGroups, useCreateModifierGroup, DEFAULT_DRINK_MODIFIER_GROUPS } from '@/hooks/use-modifier-groups';
+import { useModifierGroups, useCreateModifierGroup, useAddModifier, useDeleteModifier, DEFAULT_DRINK_MODIFIER_GROUPS, type ModifierGroup } from '@/hooks/use-modifier-groups';
 
 type ProductType = 'MENU' | 'INGREDIENT';
 
@@ -21,6 +21,7 @@ export default function BOMBuilder() {
   const [editedRecipe, setEditedRecipe] = useState<RecipeItem[]>([]);
   const [editedPrice, setEditedPrice] = useState(0);
   const [productType, setProductType] = useState<ProductType>('MENU');
+  const [modifierGroupPickerOpen, setModifierGroupPickerOpen] = useState(false);
 
   const { data: products, isLoading: productsLoading } = useAllProducts();
   const { data: categories } = useCategories();
@@ -31,6 +32,8 @@ export default function BOMBuilder() {
   const deleteProduct = useDeleteProduct();
   const linkModifierGroups = useLinkModifierGroups();
   const createModifierGroup = useCreateModifierGroup();
+  const addModifier = useAddModifier();
+  const deleteModifier = useDeleteModifier();
   const { data: modifierGroups } = useModifierGroups();
 
   useEffect(() => {
@@ -194,6 +197,25 @@ export default function BOMBuilder() {
             onSave={saveRecipe}
             saving={updateRecipe.isPending}
             onDeleteRequest={() => setDeleteConfirmOpen(true)}
+            linkedGroupIds={productDetail?.modifierGroupIds ?? []}
+            allModifierGroups={modifierGroups ?? []}
+            onModifierGroupPickerOpen={() => setModifierGroupPickerOpen(true)}
+            onAddModifier={async (groupId, name, priceDelta) => {
+              try {
+                await addModifier.mutateAsync({ groupId, name, price_delta: priceDelta });
+                toast({ kind: 'success', title: 'เพิ่มตัวเลือกแล้ว', msg: name });
+              } catch {
+                toast({ kind: 'danger', title: 'เพิ่มไม่สำเร็จ', msg: 'กรุณาลองใหม่' });
+              }
+            }}
+            onDeleteModifier={async (groupId, modifierId) => {
+              try {
+                await deleteModifier.mutateAsync({ groupId, modifierId });
+                toast({ kind: 'success', title: 'ลบตัวเลือกแล้ว' });
+              } catch {
+                toast({ kind: 'danger', title: 'ลบไม่สำเร็จ', msg: 'กรุณาลองใหม่' });
+              }
+            }}
           />
         )}
       </div>
@@ -221,6 +243,23 @@ export default function BOMBuilder() {
           onClose={() => setDeleteConfirmOpen(false)}
         />
       )}
+      {modifierGroupPickerOpen && selectedId && (
+        <ModifierGroupPicker
+          currentGroupIds={productDetail?.modifierGroupIds ?? []}
+          allGroups={modifierGroups ?? []}
+          onClose={() => setModifierGroupPickerOpen(false)}
+          onConfirm={async (groupIds) => {
+            try {
+              await linkModifierGroups.mutateAsync({ productId: selectedId, groupIds });
+              setModifierGroupPickerOpen(false);
+              toast({ kind: 'success', title: 'บันทึกตัวเลือกแล้ว', msg: `เชื่อมโยง ${groupIds.length} กลุ่ม` });
+            } catch {
+              toast({ kind: 'danger', title: 'บันทึกไม่สำเร็จ', msg: 'กรุณาลองใหม่' });
+            }
+          }}
+          saving={linkModifierGroups.isPending}
+        />
+      )}
     </div>
   );
 }
@@ -243,9 +282,14 @@ interface RightPanelProps {
   onSave: () => void;
   saving: boolean;
   onDeleteRequest: () => void;
+  linkedGroupIds: string[];
+  allModifierGroups: ModifierGroup[];
+  onModifierGroupPickerOpen: () => void;
+  onAddModifier: (groupId: string, name: string, priceDelta: string) => Promise<void>;
+  onDeleteModifier: (groupId: string, modifierId: string) => Promise<void>;
 }
 
-const RightPanel = ({ product, productType, recipe, editedPrice, inventoryItems, totalCost, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest }: RightPanelProps) => (
+const RightPanel = ({ product, productType, recipe, editedPrice, inventoryItems, totalCost, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen, onAddModifier, onDeleteModifier }: RightPanelProps) => (
   <>
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
       <div style={{ width: 80, height: 80, borderRadius: 12, background: product.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 800, flexShrink: 0 }}>{product.tag}</div>
@@ -334,6 +378,14 @@ const RightPanel = ({ product, productType, recipe, editedPrice, inventoryItems,
         <Icon name="check" size={16} />{saving ? 'กำลังบันทึก...' : 'บันทึกสูตร'}
       </button>
     </div>
+
+    <ModifierSection
+      linkedGroupIds={linkedGroupIds}
+      allModifierGroups={allModifierGroups}
+      onPickerOpen={onModifierGroupPickerOpen}
+      onAddModifier={onAddModifier}
+      onDeleteModifier={onDeleteModifier}
+    />
 
     {productType === 'MENU' && (
       <div style={{ marginTop: 24, padding: 16, background: 'var(--color-info-50)', borderRadius: 12, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -429,6 +481,182 @@ const SummaryCard = ({ label, value, color, highlight }: { label: string; value:
     <div style={{ background: t ? t.bg : 'var(--color-surface)', border: t ? `1px solid ${t.border}` : '1px solid var(--color-border)', borderRadius: 12, padding: 16 }}>
       <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: t ? t.fg : 'var(--color-text-secondary)' }}>{label}</div>
       <div className="num" style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: t ? t.fg : (color || 'var(--color-text)') }}>{value}</div>
+    </div>
+  );
+};
+
+// ── Modifier Group Management ─────────────────────────────────────────────────
+
+const ModifierSection = ({
+  linkedGroupIds, allModifierGroups, onPickerOpen, onAddModifier, onDeleteModifier,
+}: {
+  linkedGroupIds: string[];
+  allModifierGroups: ModifierGroup[];
+  onPickerOpen: () => void;
+  onAddModifier: (groupId: string, name: string, priceDelta: string) => Promise<void>;
+  onDeleteModifier: (groupId: string, modifierId: string) => Promise<void>;
+}) => {
+  const linkedGroups = linkedGroupIds
+    .map(id => allModifierGroups.find(g => g.id === id))
+    .filter((g): g is ModifierGroup => g !== undefined);
+
+  return (
+    <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', marginTop: 16 }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>ตัวเลือก (Modifier Groups)</div>
+        <button onClick={onPickerOpen} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, background: 'var(--color-surface-2)', color: 'var(--color-text)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-accent-50)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-surface-2)'}>
+          <Icon name="plus" size={14} /> เปลี่ยนตัวเลือก
+        </button>
+      </div>
+      {linkedGroups.length === 0 ? (
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>ยังไม่มีตัวเลือก</div>
+          <div style={{ fontSize: 12 }}>กดปุ่ม "เปลี่ยนตัวเลือก" เพื่อเชื่อมโยง modifier groups</div>
+        </div>
+      ) : (
+        linkedGroups.map(group => (
+          <ModifierGroupRow
+            key={group.id}
+            group={group}
+            onAddModifier={(name, priceDelta) => onAddModifier(group.id, name, priceDelta)}
+            onDeleteModifier={(modifierId) => onDeleteModifier(group.id, modifierId)}
+          />
+        ))
+      )}
+    </div>
+  );
+};
+
+const ModifierGroupRow = ({ group, onAddModifier, onDeleteModifier }: {
+  group: ModifierGroup;
+  onAddModifier: (name: string, priceDelta: string) => Promise<void>;
+  onDeleteModifier: (modifierId: string) => Promise<void>;
+}) => {
+  const [addOpen, setAddOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newDelta, setNewDelta] = useState('0');
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleAdd = async () => {
+    if (!newName.trim()) return;
+    setSaving(true);
+    try {
+      await onAddModifier(newName.trim(), newDelta || '0');
+      setNewName('');
+      setNewDelta('0');
+      setAddOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (modifierId: string) => {
+    setDeletingId(modifierId);
+    try {
+      await onDeleteModifier(modifierId);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <div style={{ borderBottom: '1px solid var(--color-border)' }}>
+      <div style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--color-surface-2)' }}>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>{group.label}</div>
+        <Tag tone={group.required ? 'danger' : 'warning'}>{group.required ? 'จำเป็น' : 'ตัวเลือก'}</Tag>
+        <Tag tone="info">{group.type === 'radio' ? 'เลือกได้ 1' : 'เลือกได้หลาย'}</Tag>
+        <button onClick={() => setAddOpen(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 12, fontWeight: 600, background: addOpen ? 'var(--color-accent-50)' : 'transparent', color: addOpen ? 'var(--color-primary-700)' : 'var(--color-text-secondary)', border: `1px solid ${addOpen ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)' }}>
+          <Icon name="plus" size={12} /> เพิ่มตัวเลือก
+        </button>
+      </div>
+      {group.options.map(option => (
+        <div key={option.id} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid var(--color-border)' }}>
+          <div style={{ flex: 1, fontSize: 13 }}>{option.label}</div>
+          <div className="num" style={{ fontSize: 12, fontWeight: 600, minWidth: 50, textAlign: 'right', color: option.diff === 0 ? 'var(--color-text-muted)' : 'var(--color-text)' }}>
+            {option.diff === 0 ? '—' : option.diff > 0 ? `+฿${option.diff}` : `-฿${Math.abs(option.diff)}`}
+          </div>
+          <button onClick={() => handleDelete(option.id)} disabled={deletingId === option.id} title="ลบตัวเลือก" style={{ display: 'grid', placeItems: 'center', width: 28, height: 28, borderRadius: 6, background: 'transparent', border: 'none', cursor: deletingId === option.id ? 'not-allowed' : 'pointer', color: 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
+            {deletingId === option.id ? '…' : <Icon name="trash" size={13} />}
+          </button>
+        </div>
+      ))}
+      {addOpen && (
+        <div style={{ padding: '10px 20px', display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px solid var(--color-border)', background: 'var(--color-accent-50)' }}>
+          <input type="text" placeholder="ชื่อตัวเลือก..." value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} style={{ flex: 1, padding: '7px 10px', fontSize: 13, border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} autoFocus />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>฿</span>
+            <input type="number" step="1" placeholder="0" value={newDelta} onChange={e => setNewDelta(e.target.value)} style={{ width: 72, padding: '7px 10px', fontSize: 13, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
+          </div>
+          <button onClick={handleAdd} disabled={saving || !newName.trim()} style={{ padding: '7px 14px', fontSize: 13, fontWeight: 600, background: (saving || !newName.trim()) ? 'var(--color-surface-2)' : 'var(--color-primary)', color: (saving || !newName.trim()) ? 'var(--color-text-muted)' : '#fff', border: 'none', borderRadius: 6, cursor: (saving || !newName.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            {saving ? '…' : 'เพิ่ม'}
+          </button>
+          <button onClick={() => setAddOpen(false)} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 500, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ModifierGroupPicker = ({ currentGroupIds, allGroups, onClose, onConfirm, saving }: {
+  currentGroupIds: string[];
+  allGroups: ModifierGroup[];
+  onClose: () => void;
+  onConfirm: (groupIds: string[]) => Promise<void>;
+  saving: boolean;
+}) => {
+  const [selected, setSelected] = useState<Set<string>>(new Set(currentGroupIds));
+
+  const toggle = (id: string) => setSelected(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.55)', display: 'grid', placeItems: 'center', zIndex: 100, padding: 20, animation: 'backdrop-in 200ms var(--ease-out)' }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '75vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.25)', animation: 'modal-in 220ms var(--ease-out)' }}>
+        <div style={{ padding: 20, borderBottom: '1px solid var(--color-border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>เลือก Modifier Groups</div>
+            <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8, display: 'grid', placeItems: 'center' }}><Icon name="x" size={18} /></button>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+            {allGroups.length} กลุ่มทั้งหมด
+            {selected.size > 0 && <span style={{ color: 'var(--color-accent)', fontWeight: 600 }}> · เลือก {selected.size} กลุ่ม</span>}
+          </div>
+        </div>
+        <div className="scroll" style={{ overflow: 'auto', flex: 1, padding: 8 }}>
+          {allGroups.length === 0 ? (
+            <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>ยังไม่มี modifier groups ในระบบ</div>
+          ) : allGroups.map(group => {
+            const checked = selected.has(group.id);
+            return (
+              <button key={group.id} onClick={() => toggle(group.id)} style={{ display: 'flex', gap: 12, alignItems: 'center', width: '100%', padding: 12, marginBottom: 2, borderRadius: 8, background: checked ? 'var(--color-accent-50)' : 'transparent', border: checked ? '1px solid var(--color-accent)' : '1px solid transparent', cursor: 'pointer', textAlign: 'left', transition: 'all 150ms var(--ease-out)', fontFamily: 'inherit' }} onMouseEnter={e => { if (!checked) e.currentTarget.style.background = 'var(--color-surface-2)'; }} onMouseLeave={e => { if (!checked) e.currentTarget.style.background = 'transparent'; }}>
+                <div style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${checked ? 'var(--color-accent)' : 'var(--color-border)'}`, background: checked ? 'var(--color-accent)' : 'transparent', display: 'grid', placeItems: 'center', flexShrink: 0, transition: 'all 150ms var(--ease-out)' }}>
+                  {checked && <Icon name="check" size={12} color="#fff" />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{group.label}</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                    {group.options.length} ตัวเลือก · {group.type === 'radio' ? 'เลือกได้ 1' : 'เลือกได้หลาย'}{group.required ? ' · จำเป็น' : ''}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                  {group.options.slice(0, 3).map(o => <Tag key={o.id} tone="neutral">{o.label}</Tag>)}
+                  {group.options.length > 3 && <Tag tone="neutral">+{group.options.length - 3}</Tag>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
+          <button onClick={() => onConfirm([...selected])} disabled={saving} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: saving ? 'var(--color-surface-2)' : 'var(--color-primary)', color: saving ? 'var(--color-text-muted)' : '#fff', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6, transition: 'background 150ms var(--ease-out)' }}>
+            <Icon name="check" size={14} />{saving ? 'กำลังบันทึก...' : `บันทึก ${selected.size} กลุ่ม`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

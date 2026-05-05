@@ -40,16 +40,19 @@ export interface ProductDetail {
   nameEn: string;
   price: number;
   hasModifiers: boolean;
+  modifierGroupIds: string[];
   recipe: RecipeItem[];
 }
 
 function mapDetail(p: ProductDetailRead): ProductDetail {
+  const groups = p.modifier_groups ?? [];
   return {
     id: p.id,
     name: p.name,
     nameEn: p.name,
     price: Number(p.price),
-    hasModifiers: (p.modifier_groups?.length ?? 0) > 0,
+    hasModifiers: groups.length > 0,
+    modifierGroupIds: groups.map(g => g.id),
     recipe: (p.recipe ?? []).map(r => ({
       invId: r.inventory_item_id,
       qty: Number(r.quantity),   // "quantity" in backend, "qty" in frontend

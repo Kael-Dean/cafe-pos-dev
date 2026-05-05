@@ -45,11 +45,21 @@ const FALLBACK_MODIFIERS: ModifierGroup[] = [
 
 interface MenuItem { id: string; name: string; nameEn: string; price: number; color: string; }
 interface CartLine { menuId: string; name: string; basePrice: number; unitPrice: number; qty: number; mods: string[]; modIds: string[]; modKey: string; }
-interface Props { item: MenuItem; onClose: () => void; onAdd: (line: CartLine) => void; }
+interface Props { item: MenuItem; onClose: () => void; onAdd: (line: CartLine) => void; groupIds?: string[]; }
 
-export default function ModifierModal({ item, onClose, onAdd }: Props) {
+export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props) {
   const { data: apiGroups } = useModifierGroups();
-  const groups = (apiGroups && apiGroups.length > 0) ? apiGroups : FALLBACK_MODIFIERS;
+
+  const groups = (() => {
+    if (!apiGroups || apiGroups.length === 0) return FALLBACK_MODIFIERS;
+    if (groupIds && groupIds.length > 0) {
+      const filtered = groupIds
+        .map(id => apiGroups.find(g => g.id === id))
+        .filter((g): g is ModifierGroup => g !== undefined);
+      return filtered.length > 0 ? filtered : apiGroups;
+    }
+    return apiGroups;
+  })();
 
   const buildDefaultSel = (gs: ModifierGroup[]) => {
     const s: Record<string, string | string[]> = {};
@@ -68,13 +78,14 @@ export default function ModifierModal({ item, onClose, onAdd }: Props) {
   const [qty, setQty] = useState(1);
   const [note, setNote] = useState('');
 
-  // Re-initialise selections when real API groups load (replaces fallback)
-  const initialised = useRef(false);
+  // Re-initialise selections when API groups load or a different product is opened
+  const prevItemIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!apiGroups || apiGroups.length === 0 || initialised.current) return;
-    initialised.current = true;
-    setSel(buildDefaultSel(apiGroups));
-  }, [apiGroups]);
+    if (!apiGroups || apiGroups.length === 0) return;
+    if (prevItemIdRef.current === item.id) return;
+    prevItemIdRef.current = item.id;
+    setSel(buildDefaultSel(groups));
+  }, [apiGroups, item.id, groups]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const priceDelta = useMemo(() => {
     let d = 0;

@@ -52,7 +52,6 @@ class InventoryItemCreate(BaseModel):
 class InventoryItemUpdate(BaseModel):
     par_level: Decimal | None = Field(None, ge=0, le=Decimal("9999999.999"))
     cost_per_unit: Decimal | None = Field(None, ge=0, le=Decimal("99999.9999"))
-    is_active: bool | None = None
     expiry_date: date | None = None
 
 

@@ -2,7 +2,7 @@
 
 > **Source:** [resources/BACKEND_HANDOFF.md](../resources/BACKEND_HANDOFF.md)
 > **Purpose:** Single reference list of every route the backend must ship to fully complete the handoff. Ordered by build tier so future sessions can pick up where the last one stopped.
-> **Last updated:** 2026-05-02 (Tier 3d setup workflow documented — drink modifier groups handoff)
+> **Last updated:** 2026-05-03 (Tier 2 expiry_date + DELETE added; Tier 8 HR module shipped)
 
 ## How to read this doc
 
@@ -64,7 +64,10 @@ Self-contained module. Frontend prototype already implements the screen ([`proto
 | 2.6 | `POST`  | `/inventory/adjust` | manager+ | Audit correction — signed `delta`, required reason text, append `ADJUST` movement | 2.1 | [x] |
 | 2.7 | `GET`   | `/inventory/movements` | any | Paginated movement log (cursor-based; filter by `item_id`) | 2.4–2.6 | [x] |
 | 2.8 | `GET`   | `/inventory/low-stock` | any | Items where `stock_on_hand < par_level` (for dashboard tile) | 2.1 | [x] |
-| 2.9 | `POST`  | `/inventory` | manager+ | Create a new inventory item (name unique per store; no migration required) | 2.1 | [x] |
+| 2.9  | `POST`   | `/inventory` | manager+ | Create a new inventory item (name unique per store) | 2.1 | [x] |
+| 2.10 | `DELETE` | `/inventory/{item_id}` | manager+ | Soft-delete item (`is_active=False`) | 2.1 | [x] |
+
+> **Expiry date (2026-05-03 handoff):** `expiry_date DATE` column added to `InventoryItem`. Included in `InventoryItemCreate`, `InventoryItemUpdate`, `InventoryItemRead`. Migration: `0007_inventory_expiry_date`.
 
 **Acceptance tests** (pytest, all in `tests/test_inventory_service.py`):
 1. Receive increments stock + creates movement
@@ -209,7 +212,38 @@ Aggregations only — no mutations. Heavy use of SQL `GROUP BY`. Should be cache
 
 ---
 
-## Tier 8 — Phase 2 (deferred)
+## Tier 8 — HR Module (staff, leave, shifts)
+
+Full HR management module. Staff = existing `User` model. New tables: `leaves`, `shift_assignments`. Migration: `0008_hr`.
+
+### 8a — Staff Management
+
+| # | Method | Path | Role | Purpose | Depends on | Status |
+|---|---|---|---|---|---|---|
+| 8.1 | `GET`    | `/hr/staff` | any | List active staff in current store | Tier 1 | [x] |
+| 8.2 | `POST`   | `/hr/staff` | manager+ | Create staff member (name + role + PIN) | 8.1 | [x] |
+| 8.3 | `PATCH`  | `/hr/staff/{user_id}` | manager+ | Update name, role, or PIN | 8.1 | [x] |
+| 8.4 | `DELETE` | `/hr/staff/{user_id}` | manager+ | Soft-delete (`is_active=False`) | 8.1 | [x] |
+
+### 8b — Leave Management
+
+| # | Method | Path | Role | Purpose | Depends on | Status |
+|---|---|---|---|---|---|---|
+| 8.5 | `GET`   | `/hr/leaves` | any | Managers see all; barista/baker see own | 8.1 | [x] |
+| 8.6 | `GET`   | `/hr/leaves/mine` | any | Current user's own leave requests | 8.1 | [x] |
+| 8.7 | `POST`  | `/hr/leaves` | barista+ | Submit a leave request | 8.1 | [x] |
+| 8.8 | `PATCH` | `/hr/leaves/{id}/review` | manager+ | Approve or reject a leave request | 8.7 | [x] |
+
+### 8c — Shift Scheduling
+
+| # | Method | Path | Role | Purpose | Depends on | Status |
+|---|---|---|---|---|---|---|
+| 8.9  | `GET`  | `/hr/shifts` | any | List shifts; optional `week_start` filter (7-day window) | 8.1 | [x] |
+| 8.10 | `POST` | `/hr/shifts` | manager+ | Assign a shift to a staff member | 8.1 | [x] |
+
+---
+
+## Tier 9 — Phase 2 (deferred)
 
 Per handoff §3 step 8 — explicitly deferred until v1 ships.
 
@@ -293,12 +327,13 @@ These are flagged in handoff §10 — bring to the team, don't decide alone:
 |---|---|---|
 | 0 | foundation, 1 health route | 1 |
 | 1 — Auth | 4 | 5 |
-| 2 — Inventory | 8 | 13 |
-| 3 — Catalog | ~15 (incl. inferred modifier routes) | ~28 |
-| 4 — Orders | 6 | ~34 |
-| 5 — KDS Realtime | 1 (+3 server events) | ~35 |
-| 6 — Reports | 6 | ~41 |
-| 7 — Customers | 5 | ~46 |
-| 8 — Phase 2 | deferred | — |
+| 2 — Inventory | 10 (incl. DELETE + expiry_date) | 15 |
+| 3 — Catalog | ~15 (incl. modifier routes) | ~30 |
+| 4 — Orders | 6 | ~36 |
+| 5 — KDS Realtime | 1 (+3 server events) | ~37 |
+| 6 — Reports | 6 | ~43 |
+| 7 — Customers | 5 | ~48 |
+| 8 — HR Module | 10 | ~58 |
+| 9 — Phase 2 | deferred | — |
 
-**Approved current scope:** Tier 0 + Tier 1 + Tier 2 = **13 routes** (matches first-week Day 1–5 checklist).
+**Shipped through Tier 8:** ~58 routes total.

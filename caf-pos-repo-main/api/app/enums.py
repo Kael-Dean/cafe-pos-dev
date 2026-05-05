@@ -47,3 +47,24 @@ class PaymentMethod(str, enum.Enum):
     LINE_PAY = "LINE_PAY"
     TRUEMONEY = "TRUEMONEY"
     OTHER = "OTHER"
+
+
+class LeaveType(str, enum.Enum):
+    VACATION = "VACATION"
+    SICK = "SICK"
+    PERSONAL = "PERSONAL"
+    OTHER = "OTHER"
+
+
+class LeaveStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+class ShiftType(str, enum.Enum):
+    MORNING = "MORNING"
+    AFTERNOON = "AFTERNOON"
+    EVENING = "EVENING"
+    FULL_DAY = "FULL_DAY"
+    OFF = "OFF"

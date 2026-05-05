@@ -90,8 +90,6 @@ async def update_item(
             item.par_level = payload.par_level
         if payload.cost_per_unit is not None:
             item.cost_per_unit = payload.cost_per_unit
-        if payload.is_active is not None:
-            item.is_active = payload.is_active
         if payload.expiry_date is not None:
             item.expiry_date = payload.expiry_date
     return item

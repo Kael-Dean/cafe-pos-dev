@@ -18,6 +18,7 @@ export default function POSTerminal() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [billNo, setBillNo] = useState(48);
   const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
+  const [modifierGroupIds, setModifierGroupIds] = useState<string[]>([]);
   const [payment, setPayment] = useState<string | null>(null);
 
   const { data: categories, isLoading: catsLoading } = useCategories();
@@ -35,6 +36,7 @@ export default function POSTerminal() {
     const item = products?.find(p => p.id === pendingModifierId);
     if (!item) return;
     if (pendingDetail.hasModifiers) {
+      setModifierGroupIds(pendingDetail.modifierGroupIds);
       setModifierItem(item);
     } else {
       addLine({ menuId: item.id, name: item.name, basePrice: item.price, unitPrice: item.price, qty: 1, mods: [], modIds: [], modKey: '' });
@@ -252,11 +254,13 @@ export default function POSTerminal() {
       {modifierItem && (
         <ModifierModal
           item={modifierItem}
-          onClose={() => setModifierItem(null)}
+          groupIds={modifierGroupIds}
+          onClose={() => { setModifierItem(null); setModifierGroupIds([]); }}
           onAdd={(line) => {
             addLine(line);
             toast({ kind: 'success', title: 'เพิ่มลงตะกร้า', msg: `${line.name} • ${baht(line.unitPrice)}`, duration: 1800 });
             setModifierItem(null);
+            setModifierGroupIds([]);
           }}
         />
       )}
