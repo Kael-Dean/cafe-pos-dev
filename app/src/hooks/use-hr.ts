@@ -23,15 +23,33 @@ export interface LeaveRequest {
   updated_at: string;
 }
 
+// shift_type enum removed — shifts now use explicit start/end times
 export interface ShiftAssignment {
   id: string;
   store_id: string;
   user_id: string;
   user_name: string;
   assignment_date: string;
-  shift_type: 'MORNING' | 'AFTERNOON' | 'EVENING' | 'FULL_DAY' | 'OFF';
+  start_time: string;   // "HH:MM:SS" — store-local, no timezone
+  end_time: string;     // "HH:MM:SS" — store-local, no timezone
   notes: string | null;
   created_by_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'PENDING_REVIEW' | 'DONE';
+
+export interface TaskRead {
+  id: string;
+  store_id: string;
+  assignee_id: string | null;
+  assignee_name: string | null;
+  created_by_id: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  due_date: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -39,6 +57,7 @@ export interface ShiftAssignment {
 const STAFF_KEY = ['hr-staff'] as const;
 const LEAVES_KEY = ['hr-leaves'] as const;
 const MY_LEAVES_KEY = ['hr-my-leaves'] as const;
+const TASKS_KEY = ['hr-tasks'] as const;
 
 export function useStaffList() {
   return useQuery<StaffMember[]>({
@@ -100,7 +119,8 @@ export function useAssignShift() {
     mutationFn: (payload: {
       user_id: string;
       assignment_date: string;
-      shift_type: string;
+      start_time: string;
+      end_time: string;
       notes?: string;
     }) => api.post<ShiftAssignment>('/api/v1/hr/shifts', payload),
     onSuccess: (_data, vars) => {
@@ -110,5 +130,63 @@ export function useAssignShift() {
       const weekStart = new Date(d.setDate(diff)).toISOString().split('T')[0];
       qc.invalidateQueries({ queryKey: ['hr-shifts', weekStart] });
     },
+  });
+}
+
+// ── Tasks ─────────────────────────────────────────────────────────────────────
+
+export function useTasks(status?: TaskStatus) {
+  return useQuery<TaskRead[]>({
+    queryKey: [...TASKS_KEY, status ?? 'all'],
+    queryFn: () => {
+      const qs = status ? `?status=${status}` : '';
+      return api.get<TaskRead[]>(`/api/v1/hr/tasks${qs}`);
+    },
+  });
+}
+
+export function useCreateTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      title: string;
+      description?: string;
+      assignee_id?: string;
+      due_date?: string;
+    }) => api.post<TaskRead>('/api/v1/hr/tasks', payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: TASKS_KEY }),
+  });
+}
+
+export function useUpdateTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, ...payload }: {
+      taskId: string;
+      title?: string;
+      description?: string;
+      assignee_id?: string;
+      status?: TaskStatus;
+      due_date?: string;
+    }) => api.patch<TaskRead>(`/api/v1/hr/tasks/${taskId}`, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: TASKS_KEY }),
+  });
+}
+
+export function useConfirmTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (taskId: string) =>
+      api.patch<TaskRead>(`/api/v1/hr/tasks/${taskId}/confirm`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: TASKS_KEY }),
+  });
+}
+
+export function useDeleteTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (taskId: string) =>
+      api.delete<void>(`/api/v1/hr/tasks/${taskId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: TASKS_KEY }),
   });
 }

@@ -1,45 +1,46 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 
-export interface CashPayout {
-  id: string;
-  cash_session_id: string;
-  amount: string | number;
-  payout_type: 'PAYOUT' | 'PETTY_CASH' | 'WITHDRAWAL';
-  description: string;
-  created_by_id: string;
-  created_at: string;
-}
-
+// Shape from GET /hr/cash-sessions/current and /hr/cash-sessions/{id}
 export interface CashSession {
   id: string;
   store_id: string;
-  session_date: string;
-  opening_balance: string | number;
-  closing_balance: string | number | null;
-  status: 'OPEN' | 'CLOSED';
   opened_by_id: string;
   closed_by_id: string | null;
+  cash_open: string;         // Decimal string, 2dp — opening float
+  cash_close: string | null; // null until session is closed
+  opened_at: string;         // ISO 8601
+  closed_at: string | null;  // null until session is closed
   notes: string | null;
   created_at: string;
   updated_at: string;
-  payouts: CashPayout[];
 }
 
-const KEY = ['cash-today'] as const;
+const KEY = ['cash-current'] as const;
 
-export function useTodayCashSession() {
+// Returns current open session or null if none is open (HTTP 200, body null)
+export function useCurrentCashSession() {
   return useQuery<CashSession | null>({
     queryKey: KEY,
-    queryFn: () => api.get<CashSession | null>('/api/v1/cash/sessions/today'),
+    queryFn: () => api.get<CashSession | null>('/api/v1/hr/cash-sessions/current'),
+    // Do not cache — stale state causes UX issues (handoff note)
+    staleTime: 0,
+  });
+}
+
+export function useCashSessionHistory() {
+  return useQuery<CashSession[]>({
+    queryKey: ['cash-history'],
+    queryFn: () => api.get<CashSession[]>('/api/v1/hr/cash-sessions'),
   });
 }
 
 export function useOpenCashSession() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { session_date: string; opening_balance: number; notes?: string }) =>
-      api.post<CashSession>('/api/v1/cash/sessions', payload),
+    mutationFn: (payload: { cash_open: number; notes?: string }) =>
+      api.post<CashSession>('/api/v1/hr/cash-sessions', payload),
+    // Always confirm server response before updating state (handoff note)
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
 }
@@ -47,17 +48,8 @@ export function useOpenCashSession() {
 export function useCloseCashSession() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ sessionId, ...payload }: { sessionId: string; closing_balance: number; notes?: string }) =>
-      api.post<CashSession>(`/api/v1/cash/sessions/${sessionId}/close`, payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
-  });
-}
-
-export function useAddPayout() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ sessionId, ...payload }: { sessionId: string; amount: number; payout_type: string; description: string }) =>
-      api.post<CashSession>(`/api/v1/cash/sessions/${sessionId}/payouts`, payload),
+    mutationFn: ({ sessionId, ...payload }: { sessionId: string; cash_close: number; notes?: string }) =>
+      api.patch<CashSession>(`/api/v1/hr/cash-sessions/${sessionId}/close`, payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
 }

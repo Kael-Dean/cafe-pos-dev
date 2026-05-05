@@ -5,8 +5,8 @@ import Icon from '../icons';
 import { useToast, Tag, baht } from '../app-common';
 import {
   useInventory, useInventoryMovements, useReceiveStock, useWasteStock,
-  useCreateInventoryItem, useDeleteInventoryItem,
-  type InventoryItem, type Movement, type WastageReason,
+  useCreateInventoryItem, useDeleteInventoryItem, useSupplierHistory,
+  type InventoryItem, type Movement, type WastageReason, type SupplierHistoryItem,
 } from '@/hooks/use-inventory';
 
 const WASTAGE_REASONS = [
@@ -65,6 +65,7 @@ export default function Inventory() {
   const [addIngredientOpen, setAddIngredientOpen] = useState(false);
   const [presetItemId, setPresetItemId] = useState<string | null>(null);
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<InventoryItem | null>(null);
+  const [supplierHistoryItem, setSupplierHistoryItem] = useState<InventoryItem | null>(null);
 
   const { data: inventoryItems, isLoading: invLoading } = useInventory();
   const { data: movementsData } = useInventoryMovements();
@@ -150,9 +151,14 @@ export default function Inventory() {
     }
   };
 
-  const submitAddIngredient = async ({ name, unit, parLevel, costPerUnit, expiryDate }: { name: string; unit: string; parLevel: number; costPerUnit: number; expiryDate: string }) => {
+  const submitAddIngredient = async ({ name, unit, parLevel, costPerUnit, expiryDate, unitSize, piecePrice }: { name: string; unit: string; parLevel: number; costPerUnit: number; expiryDate: string; unitSize: string; piecePrice: string }) => {
     try {
-      await createItem.mutateAsync({ name, unit, par_level: parLevel, cost_per_unit: costPerUnit, expiry_date: expiryDate || undefined });
+      await createItem.mutateAsync({
+        name, unit, par_level: parLevel, cost_per_unit: costPerUnit,
+        expiry_date: expiryDate || undefined,
+        unit_size: unitSize || undefined,
+        piece_price: piecePrice || undefined,
+      });
       setAddIngredientOpen(false);
       toast({ kind: 'success', title: 'เพิ่มวัตถุดิบแล้ว', msg: `${name} (${unit}) ถูกเพิ่มในคลังแล้ว` });
     } catch (err) {
@@ -211,7 +217,7 @@ export default function Inventory() {
             ))}
           </div>
 
-          {tab === 'items'   && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onReceive={openReceive} onWaste={openWastage} onAddIngredient={() => setAddIngredientOpen(true)} onDelete={setDeleteConfirmItem} />}
+          {tab === 'items'   && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onReceive={openReceive} onWaste={openWastage} onAddIngredient={() => setAddIngredientOpen(true)} onDelete={setDeleteConfirmItem} onSupplierHistory={setSupplierHistoryItem} />}
           {tab === 'usage'   && <UsageTab stats={usageStats} movements={saleMovements} />}
           {tab === 'receive' && <ReceiveTab items={inventoryItems ?? []} movements={recentReceives} onAdd={() => openReceive()} />}
           {tab === 'waste'   && <WastageTab items={inventoryItems ?? []} movements={recentWastage} totalCost={wastageThisMonth} onAdd={() => openWastage()} />}
@@ -227,6 +233,12 @@ export default function Inventory() {
           deleting={deleteItem.isPending}
           onConfirm={() => handleDelete(deleteConfirmItem)}
           onClose={() => setDeleteConfirmItem(null)}
+        />
+      )}
+      {supplierHistoryItem && (
+        <SupplierHistoryModal
+          item={supplierHistoryItem}
+          onClose={() => setSupplierHistoryItem(null)}
         />
       )}
     </div>
@@ -266,12 +278,13 @@ const primaryBtnStyle = (): React.CSSProperties => ({
 });
 
 // ── Items Tab ─────────────────────────────────────────────────────────────────
-const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatusFilter, onReceive, onWaste, onAddIngredient, onDelete }: {
+const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatusFilter, onReceive, onWaste, onAddIngredient, onDelete, onSupplierHistory }: {
   items: (InventoryItem & { status: ReturnType<typeof stockStatusOf> })[];
   totalCount: number; search: string; setSearch: (v: string) => void;
   statusFilter: string; setStatusFilter: (v: string) => void;
   onReceive: (id: string) => void; onWaste: (id: string) => void;
   onAddIngredient: () => void; onDelete: (item: InventoryItem) => void;
+  onSupplierHistory: (item: InventoryItem) => void;
 }) => (
   <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
     <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -297,18 +310,17 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
       <button onClick={onAddIngredient} style={primaryBtnStyle()} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={14} /> เพิ่มวัตถุดิบ</button>
     </div>
 
-    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 100px 130px 180px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
-      <div>วัตถุดิบ</div><div>หน่วย</div><div style={{ textAlign: 'right' }}>คงเหลือ</div><div style={{ textAlign: 'right' }}>Par level</div><div>สถานะ</div><div style={{ textAlign: 'right' }}>ต้นทุน/หน่วย</div><div style={{ textAlign: 'right' }}>มูลค่ารวม</div><div>วันหมดอายุ</div><div></div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 120px 130px 200px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+      <div>วัตถุดิบ</div><div>หน่วย</div><div style={{ textAlign: 'right' }}>คงเหลือ</div><div style={{ textAlign: 'right' }}>Par level</div><div>สถานะ</div><div style={{ textAlign: 'right' }}>ต้นทุน/หน่วย</div><div style={{ textAlign: 'right' }}>ราคา/ชิ้น</div><div>วันหมดอายุ</div><div></div>
     </div>
 
     {items.length === 0 ? (
       <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>ไม่พบวัตถุดิบที่ตรงเงื่อนไข</div>
     ) : items.map((it, idx) => {
-      const totalValue = it.stock * it.costPerUnit;
       const ratio = it.parLevel > 0 ? Math.min(100, (it.stock / it.parLevel) * 100) : 100;
       const badge = expiryBadge(it.expiryDate);
       return (
-        <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 100px 130px 180px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === items.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
+        <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 120px 130px 200px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === items.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 600 }}>{it.name}</div>
             <div style={{ marginTop: 4, height: 4, background: 'var(--color-surface-2)', borderRadius: 999, overflow: 'hidden', maxWidth: 200 }}>
@@ -320,7 +332,14 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
           <div className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'right' }}>{it.parLevel.toLocaleString()}</div>
           <div><Tag tone={it.status.tone}>{it.status.label}</Tag></div>
           <div className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'right' }}>฿{it.costPerUnit.toFixed(2)}</div>
-          <div className="num" style={{ fontSize: 13, fontWeight: 600, textAlign: 'right' }}>{baht(totalValue)}</div>
+          <div className="num" style={{ fontSize: 13, textAlign: 'right' }}>
+            {it.piecePrice ? (
+              <div>
+                <div style={{ fontWeight: 600 }}>฿{Number(it.piecePrice).toFixed(2)}</div>
+                {it.unitSize && <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 1 }}>{it.unitSize}/pack</div>}
+              </div>
+            ) : <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
+          </div>
           <div>
             {it.expiryDate ? (
               <div>
@@ -337,9 +356,10 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
               <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>—</div>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <button onClick={() => onReceive(it.id)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={12} /> รับเข้า</button>
             <button onClick={() => onWaste(it.id)} style={miniBtnStyle('ghost')} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-warning-50)'; e.currentTarget.style.color = '#9C6A1F'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}><Icon name="trash" size={12} /> Waste</button>
+            <button onClick={() => onSupplierHistory(it)} style={miniBtnStyle('ghost')} title="ประวัติ Supplier" onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-primary)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>ประวัติ</button>
             <button onClick={() => onDelete(it)} style={miniBtnStyle('danger')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-danger-50)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'} title="ลบวัตถุดิบ"><Icon name="trash" size={12} /></button>
           </div>
         </div>
@@ -583,14 +603,17 @@ const ReceiveStockModal = ({ items, presetItemId, onClose, onSubmit }: { items: 
   );
 };
 
-const AddIngredientModal = ({ onClose, onSubmit }: { onClose: () => void; onSubmit: (v: { name: string; unit: string; parLevel: number; costPerUnit: number; expiryDate: string }) => void }) => {
+const AddIngredientModal = ({ onClose, onSubmit }: { onClose: () => void; onSubmit: (v: { name: string; unit: string; parLevel: number; costPerUnit: number; expiryDate: string; unitSize: string; piecePrice: string }) => void }) => {
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('');
   const [parLevel, setParLevel] = useState('0');
   const [costPerUnit, setCostPerUnit] = useState('0');
   const [expiryDate, setExpiryDate] = useState('');
-  const canSubmit = name.trim().length > 0 && unit.trim().length > 0;
-  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), unit: unit.trim(), parLevel: Number(parLevel), costPerUnit: Number(costPerUnit), expiryDate }); };
+  const [unitSize, setUnitSize] = useState('');
+  const [piecePrice, setPiecePrice] = useState('');
+  const pairValid = (!!unitSize && !!piecePrice) || (!unitSize && !piecePrice);
+  const canSubmit = name.trim().length > 0 && unit.trim().length > 0 && pairValid;
+  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), unit: unit.trim(), parLevel: Number(parLevel), costPerUnit: Number(costPerUnit), expiryDate, unitSize, piecePrice }); };
   return (
     <ModalShell title="เพิ่มวัตถุดิบใหม่" subtitle="สร้างรายการวัตถุดิบในคลัง" onClose={onClose}>
       <FormField label="ชื่อวัตถุดิบ *"><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="เช่น นมสด, กาแฟอาราบิก้า" style={inputStyle()} autoFocus /></FormField>
@@ -603,9 +626,56 @@ const AddIngredientModal = ({ onClose, onSubmit }: { onClose: () => void; onSubm
         <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} style={inputStyle()} />
         <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>ระบบจะแจ้งเตือนเมื่อใกล้หมดอายุ ≤ 7 วัน</div>
       </FormField>
+      <div style={{ background: 'var(--color-surface-2)', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 8 }}>ราคาต่อชิ้น (ไม่บังคับ — ต้องระบุทั้งคู่)</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <FormField label="จำนวนชิ้น/แพ็ค (unit_size)">
+            <input type="number" min={0.001} step="any" value={unitSize} onChange={e => setUnitSize(e.target.value)} placeholder="เช่น 50 (50 ซอง/ถุง)" style={inputStyle()} />
+          </FormField>
+          <FormField label="ราคา/ชิ้น (฿)">
+            <input type="number" min={0} step={0.01} value={piecePrice} onChange={e => setPiecePrice(e.target.value)} placeholder="0.00" style={inputStyle()} />
+          </FormField>
+        </div>
+        {!pairValid && <div style={{ fontSize: 11, color: 'var(--color-danger)', fontWeight: 600 }}>ต้องระบุทั้ง unit_size และ piece_price พร้อมกัน</div>}
+      </div>
       <ModalActions>
         <button onClick={onClose} style={ghostBtnStyle()}>ยกเลิก</button>
         <button onClick={submit} disabled={!canSubmit} style={{ ...primaryBtnStyle(), opacity: canSubmit ? 1 : 0.45, cursor: canSubmit ? 'pointer' : 'not-allowed' }}><Icon name="plus" size={14} /> เพิ่มวัตถุดิบ</button>
+      </ModalActions>
+    </ModalShell>
+  );
+};
+
+const SupplierHistoryModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void }) => {
+  const { data, isLoading } = useSupplierHistory(item.id);
+  const formatDt = (dt: string) => new Date(dt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return (
+    <ModalShell title={`ประวัติ Supplier — ${item.name}`} subtitle="รายการรับเข้าทั้งหมด (RECEIVE movements)" onClose={onClose}>
+      {isLoading ? (
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)' }}>กำลังโหลด...</div>
+      ) : !data || data.length === 0 ? (
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>ยังไม่มีประวัติการรับเข้า</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {data.map((h: SupplierHistoryItem, idx: number) => (
+            <div key={idx} style={{ padding: '12px 14px', background: 'var(--color-surface-2)', borderRadius: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{h.supplier || <span style={{ color: 'var(--color-text-muted)' }}>ไม่ระบุ Supplier</span>}</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{formatDt(h.received_at)}</div>
+                  {h.note && <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>{h.note}</div>}
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div className="num" style={{ fontSize: 14, fontWeight: 700 }}>+{Number(h.quantity).toLocaleString()} {item.unit}</div>
+                  {h.unit_cost && <div className="num" style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>฿{Number(h.unit_cost).toFixed(4)}/{item.unit}</div>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <ModalActions>
+        <button onClick={onClose} style={ghostBtnStyle()}>ปิด</button>
       </ModalActions>
     </ModalShell>
   );

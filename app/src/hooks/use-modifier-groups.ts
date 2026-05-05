@@ -2,11 +2,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 
 // ── Backend shapes (exact field names from schemas/catalog.py) ────────────────
-interface ModifierRead {
+export interface ModifierRead {
   id: string;
   name: string;
   price_delta: string | number;  // Decimal serialised as string by FastAPI
   inventory_item_id: string | null;
+  inventory_qty: string | null;
   sort_order: number;
   is_active: boolean;
 }
@@ -103,5 +104,51 @@ export function useCreateModifierGroup() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['modifier-groups'] });
     },
+  });
+}
+
+// ── Individual modifier CRUD ───────────────────────────────────────────────────
+
+interface AddModifierPayload {
+  name: string;
+  price_delta: string;
+  inventory_item_id?: string | null;
+  inventory_qty?: string | null;
+  sort_order?: number;
+}
+
+interface UpdateModifierPayload {
+  name?: string;
+  price_delta?: string;
+  is_active?: boolean;
+  sort_order?: number;
+  inventory_item_id?: string | null;
+  inventory_qty?: string | null;
+}
+
+export function useAddModifier() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, ...payload }: { groupId: string } & AddModifierPayload) =>
+      api.post<ModifierRead>(`/api/v1/modifier-groups/${groupId}/modifiers`, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['modifier-groups'] }),
+  });
+}
+
+export function useUpdateModifier() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, modifierId, ...payload }: { groupId: string; modifierId: string } & UpdateModifierPayload) =>
+      api.patch<ModifierRead>(`/api/v1/modifier-groups/${groupId}/modifiers/${modifierId}`, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['modifier-groups'] }),
+  });
+}
+
+export function useDeleteModifier() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, modifierId }: { groupId: string; modifierId: string }) =>
+      api.delete<void>(`/api/v1/modifier-groups/${groupId}/modifiers/${modifierId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['modifier-groups'] }),
   });
 }

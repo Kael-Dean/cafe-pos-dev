@@ -6,14 +6,6 @@ import { useToast } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { useStaffList, useWeeklySchedule, useAssignShift, type ShiftAssignment } from '@/hooks/use-hr';
 
-const SHIFT_CONFIG: Record<string, { label: string; short: string; bg: string; fg: string; time: string }> = {
-  MORNING:   { label: 'กะเช้า',  short: 'เช้า',  bg: '#fef9c3', fg: '#854d0e', time: '07:00–15:00' },
-  AFTERNOON: { label: 'กะบ่าย',  short: 'บ่าย',  bg: '#dbeafe', fg: '#1e40af', time: '11:00–19:00' },
-  EVENING:   { label: 'กะเย็น',  short: 'เย็น',  bg: '#ede9fe', fg: '#5b21b6', time: '15:00–23:00' },
-  FULL_DAY:  { label: 'เต็มวัน', short: 'เต็ม',  bg: '#d1fae5', fg: '#065f46', time: '07:00–23:00' },
-  OFF:       { label: 'วันหยุด', short: 'หยุด',  bg: '#f1f5f9', fg: '#94a3b8', time: '—' },
-};
-
 const DAY_SHORT = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
 
 function getMondayOfWeek(d: Date): Date {
@@ -30,6 +22,20 @@ function dateStr(d: Date): string {
   return d.toISOString().split('T')[0];
 }
 
+// Format "HH:MM:SS" → "HH:MM"
+function fmtTime(t: string): string {
+  return t.slice(0, 5);
+}
+
+// Derive a background colour from start hour so cells remain visually distinct
+function shiftCellStyle(shift: ShiftAssignment | undefined): { bg: string; fg: string } {
+  if (!shift) return { bg: 'transparent', fg: 'var(--color-text-muted)' };
+  const h = parseInt(shift.start_time.slice(0, 2), 10);
+  if (h < 10) return { bg: '#fef9c3', fg: '#854d0e' };  // early morning
+  if (h < 14) return { bg: '#dbeafe', fg: '#1e40af' };  // midday
+  return { bg: '#ede9fe', fg: '#5b21b6' };              // afternoon/evening
+}
+
 export default function ShiftSchedule() {
   const toast = useToast();
   const { data: me } = useCurrentUser();
@@ -37,6 +43,8 @@ export default function ShiftSchedule() {
 
   const [weekStart, setWeekStart] = useState(() => dateStr(getMondayOfWeek(new Date())));
   const [editingCell, setEditingCell] = useState<{ userId: string; date: string } | null>(null);
+  const [editStart, setEditStart] = useState('08:00');
+  const [editEnd, setEditEnd] = useState('16:00');
 
   const { data: staff } = useStaffList();
   const { data: shifts } = useWeeklySchedule(weekStart);
@@ -44,7 +52,7 @@ export default function ShiftSchedule() {
 
   const prevWeek = () => setWeekStart(dateStr(addDays(new Date(weekStart), -7)));
   const nextWeek = () => setWeekStart(dateStr(addDays(new Date(weekStart), 7)));
-  const goToday = () => setWeekStart(dateStr(getMondayOfWeek(new Date())));
+  const goToday  = () => setWeekStart(dateStr(getMondayOfWeek(new Date())));
 
   const shiftMap: Record<string, ShiftAssignment> = {};
   (shifts ?? []).forEach(s => { shiftMap[`${s.user_id}:${s.assignment_date}`] = s; });
@@ -53,13 +61,24 @@ export default function ShiftSchedule() {
   const today = dateStr(new Date());
   const staffList = staff ?? [];
 
-  const staffOffToday = staffList.filter(s => shiftMap[`${s.id}:${today}`]?.shift_type === 'OFF').length;
-  const morningToday = staffList.filter(s => shiftMap[`${s.id}:${today}`]?.shift_type === 'MORNING').length;
-  const afternoonToday = staffList.filter(s => shiftMap[`${s.id}:${today}`]?.shift_type === 'AFTERNOON').length;
+  const shiftsToday = staffList.filter(s => !!shiftMap[`${s.id}:${today}`]).length;
+  const noShiftToday = staffList.length - shiftsToday;
 
-  const handleAssign = async (userId: string, date: string, shiftType: string) => {
+  const openEditor = (userId: string, date: string) => {
+    const existing = shiftMap[`${userId}:${date}`];
+    setEditStart(existing ? fmtTime(existing.start_time) : '08:00');
+    setEditEnd(existing ? fmtTime(existing.end_time) : '16:00');
+    setEditingCell({ userId, date });
+  };
+
+  const handleAssign = async (userId: string, date: string) => {
     try {
-      await assignShift.mutateAsync({ user_id: userId, assignment_date: date, shift_type: shiftType });
+      await assignShift.mutateAsync({
+        user_id: userId,
+        assignment_date: date,
+        start_time: `${editStart}:00`,
+        end_time: `${editEnd}:00`,
+      });
       setEditingCell(null);
       toast({ kind: 'success', title: 'บันทึกกะแล้ว' });
     } catch (e: unknown) { toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) }); }
@@ -73,13 +92,12 @@ export default function ShiftSchedule() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>ตารางกะ / Shift Schedule</h1>
-          <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>จัดการกะพนักงานรายสัปดาห์</div>
+          <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>จัดการกะพนักงานรายสัปดาห์ — ระบุเวลาเริ่ม/สิ้นสุด</div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           {[
-            { label: 'หยุดวันนี้',   val: staffOffToday,  color: 'var(--color-text-muted)', bg: 'var(--color-surface-2)' },
-            { label: 'กะเช้าวันนี้',  val: morningToday,   color: '#854d0e',                 bg: '#fef9c3' },
-            { label: 'กะบ่ายวันนี้', val: afternoonToday, color: '#1e40af',                 bg: '#dbeafe' },
+            { label: 'มีกะวันนี้',    val: shiftsToday,  color: '#065f46', bg: '#d1fae5' },
+            { label: 'ไม่มีกะวันนี้', val: noShiftToday, color: 'var(--color-text-muted)', bg: 'var(--color-surface-2)' },
           ].map(st => (
             <div key={st.label} style={{ background: st.bg, borderRadius: 10, padding: '10px 16px', textAlign: 'center', minWidth: 80 }}>
               <div style={{ fontSize: 22, fontWeight: 700, color: st.color, fontVariantNumeric: 'tabular-nums' }}>{st.val}</div>
@@ -140,32 +158,36 @@ export default function ShiftSchedule() {
                   const ds = dateStr(d);
                   const key = `${member.id}:${ds}`;
                   const shift = shiftMap[key];
-                  const cfg = shift ? SHIFT_CONFIG[shift.shift_type] : null;
+                  const style = shiftCellStyle(shift);
                   const isToday = ds === today;
                   const isEditing = editingCell?.userId === member.id && editingCell?.date === ds;
 
                   return (
                     <td key={ds} style={{ padding: 5, textAlign: 'center', position: 'relative', borderLeft: '1px solid var(--color-border)', background: isToday ? 'rgba(212,165,116,0.04)' : 'transparent' }}>
                       {isEditing && admin ? (
-                        <div style={{ position: 'absolute', zIndex: 60, top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 10, padding: 8, display: 'flex', flexDirection: 'column', gap: 4, boxShadow: 'var(--shadow-lg)', minWidth: 140 }}>
-                          {Object.entries(SHIFT_CONFIG).map(([type, conf]) => (
-                            <button key={type} onClick={() => handleAssign(member.id, ds, type)}
-                              style={{ padding: '6px 10px', borderRadius: 6, border: 'none', background: conf.bg, color: conf.fg, fontSize: 12, fontWeight: 600, cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                              <span>{conf.label}</span>
-                              <span style={{ opacity: 0.65, fontWeight: 400 }}>{conf.time}</span>
+                        <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', zIndex: 60, top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, boxShadow: 'var(--shadow-lg)', minWidth: 180 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>กำหนดเวลา</div>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <input type="time" value={editStart} onChange={e => setEditStart(e.target.value)} style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 13, fontFamily: 'inherit' }} />
+                            <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>ถึง</span>
+                            <input type="time" value={editEnd} onChange={e => setEditEnd(e.target.value)} style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 13, fontFamily: 'inherit' }} />
+                          </div>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={() => handleAssign(member.id, ds)} disabled={assignShift.isPending} style={{ flex: 1, padding: '6px 0', borderRadius: 6, background: 'var(--color-primary)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none' }}>
+                              บันทึก
                             </button>
-                          ))}
-                          <button onClick={() => setEditingCell(null)} style={{ padding: 4, background: 'transparent', color: 'var(--color-text-muted)', fontSize: 11, cursor: 'pointer' }}>ยกเลิก</button>
+                            <button onClick={() => setEditingCell(null)} style={{ padding: '6px 10px', borderRadius: 6, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', fontSize: 12, cursor: 'pointer' }}>ยกเลิก</button>
+                          </div>
                         </div>
                       ) : (
                         <div
-                          onClick={() => admin && setEditingCell({ userId: member.id, date: ds })}
-                          title={cfg ? `${cfg.label} ${cfg.time}` : 'คลิกเพื่อตั้งกะ'}
-                          style={{ padding: '6px 4px', borderRadius: 7, background: cfg ? cfg.bg : 'transparent', color: cfg ? cfg.fg : 'var(--color-text-muted)', fontSize: 11, fontWeight: cfg ? 700 : 400, cursor: admin ? 'pointer' : 'default', minHeight: 38, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, border: cfg ? 'none' : '1px dashed var(--color-border)', transition: 'all 150ms' }}>
-                          {cfg ? (
+                          onClick={() => admin && openEditor(member.id, ds)}
+                          title={shift ? `${fmtTime(shift.start_time)}–${fmtTime(shift.end_time)}` : 'คลิกเพื่อตั้งกะ'}
+                          style={{ padding: '6px 4px', borderRadius: 7, background: style.bg, color: style.fg, fontSize: 11, fontWeight: shift ? 700 : 400, cursor: admin ? 'pointer' : 'default', minHeight: 38, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, border: shift ? 'none' : '1px dashed var(--color-border)', transition: 'all 150ms' }}>
+                          {shift ? (
                             <>
-                              <span>{cfg.short}</span>
-                              {shift?.shift_type !== 'OFF' && <span style={{ fontSize: 9, opacity: 0.75, fontWeight: 500 }}>{cfg.time.split('–')[0]}</span>}
+                              <span>{fmtTime(shift.start_time)}</span>
+                              <span style={{ fontSize: 9, opacity: 0.75, fontWeight: 500 }}>{fmtTime(shift.end_time)}</span>
                             </>
                           ) : <Icon name="plus" size={12} color="var(--color-border)" />}
                         </div>
@@ -179,37 +201,28 @@ export default function ShiftSchedule() {
         </table>
       </div>
 
-      {/* Day-off summary */}
+      {/* Shift notes by day */}
       <div style={{ marginTop: 20, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 16, boxShadow: 'var(--shadow-xs)' }}>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: 'var(--color-text-secondary)' }}>สรุปวันหยุดสัปดาห์นี้</div>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: 'var(--color-text-secondary)' }}>พนักงานที่ยังไม่มีกะสัปดาห์นี้</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {staffList.map(s => {
-            const offDays = weekDates.filter(d => shiftMap[`${s.id}:${dateStr(d)}`]?.shift_type === 'OFF');
-            if (!offDays.length) return null;
+            const unassigned = weekDates.filter(d => !shiftMap[`${s.id}:${dateStr(d)}`]);
+            if (unassigned.length === 0) return null;
             return (
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 12px', background: '#F1F5F9', borderRadius: 99 }}>
                 <div style={{ width: 22, height: 22, borderRadius: 99, background: 'var(--color-accent-50)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 10 }}>{s.name.charAt(0)}</div>
                 <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)' }}>{s.name.split(' ')[0]}</span>
-                <span style={{ fontSize: 11, color: '#94A3B8' }}>หยุด {offDays.map(d => { const day = d.getDay(); return DAY_SHORT[day === 0 ? 6 : day - 1]; }).join(', ')}</span>
+                <span style={{ fontSize: 11, color: '#94A3B8' }}>ไม่มีกะ {unassigned.map(d => { const day = d.getDay(); return DAY_SHORT[day === 0 ? 6 : day - 1]; }).join(', ')}</span>
               </div>
             );
           })}
-          {staffList.length > 0 && staffList.every(s => !weekDates.some(d => shiftMap[`${s.id}:${dateStr(d)}`]?.shift_type === 'OFF')) && (
-            <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>ไม่มีพนักงานหยุดสัปดาห์นี้</div>
+          {staffList.length > 0 && staffList.every(s => weekDates.every(d => !!shiftMap[`${s.id}:${dateStr(d)}`])) && (
+            <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>พนักงานทุกคนมีกะครบสัปดาห์นี้</div>
           )}
         </div>
       </div>
 
-      {/* Legend */}
-      <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-        {Object.entries(SHIFT_CONFIG).map(([type, conf]) => (
-          <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 20, background: conf.bg, color: conf.fg, fontSize: 12, fontWeight: 600 }}>
-            {conf.label}
-            {type !== 'OFF' && <span style={{ opacity: 0.65, fontWeight: 400, fontSize: 11 }}>{conf.time}</span>}
-          </div>
-        ))}
-      </div>
-      {admin && <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8 }}>คลิกที่ช่องเพื่อแก้ไขกะ</div>}
+      {admin && <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8 }}>คลิกที่ช่องเพื่อกำหนดเวลาเข้า-ออกงาน</div>}
     </div>
   );
 }

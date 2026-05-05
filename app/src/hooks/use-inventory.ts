@@ -12,6 +12,16 @@ interface InventoryItemRead {
   is_active: boolean;
   status: 'ok' | 'low' | 'critical';
   expiry_date: string | null;       // ISO date "YYYY-MM-DD"
+  unit_size: string | null;         // Units per purchase pack (e.g. 50 sachets)
+  piece_price: string | null;       // Cost per individual piece
+}
+
+export interface SupplierHistoryItem {
+  supplier: string | null;
+  unit_cost: string | null;
+  quantity: string;
+  received_at: string;
+  note: string | null;
 }
 
 export type MovementType =
@@ -48,7 +58,9 @@ export interface InventoryItem {
   costPerUnit: number;
   stock: number;
   parLevel: number;
-  expiryDate?: string;  // ISO "YYYY-MM-DD", undefined = no expiry set
+  expiryDate?: string;   // ISO "YYYY-MM-DD", undefined = no expiry set
+  unitSize: string | null;
+  piecePrice: string | null;
 }
 
 export interface Movement {
@@ -73,6 +85,8 @@ function mapItem(i: InventoryItemRead): InventoryItem {
     stock: Number(i.stock_on_hand),
     parLevel: Number(i.par_level),
     expiryDate: i.expiry_date ?? undefined,
+    unitSize: i.unit_size,
+    piecePrice: i.piece_price,
   };
 }
 
@@ -179,6 +193,8 @@ interface InventoryItemCreatePayload {
   cost_per_unit: number;
   is_active?: boolean;
   expiry_date?: string;
+  unit_size?: string;   // must be provided together with piece_price
+  piece_price?: string; // must be provided together with unit_size
 }
 
 export function useCreateInventoryItem() {
@@ -199,6 +215,25 @@ export function useDeleteInventoryItem() {
       api.delete<void>(`/api/v1/inventory/${itemId}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inventory'] });
+      qc.invalidateQueries({ queryKey: ['inventory-expired'] });
     },
+  });
+}
+
+export function useExpiredInventory() {
+  return useQuery<InventoryItem[]>({
+    queryKey: ['inventory-expired'],
+    queryFn: async () => {
+      const data = await api.get<InventoryItemRead[]>('/api/v1/inventory/expired');
+      return data.map(mapItem);
+    },
+  });
+}
+
+export function useSupplierHistory(itemId: string | null) {
+  return useQuery<SupplierHistoryItem[]>({
+    queryKey: ['inventory-supplier-history', itemId],
+    queryFn: () => api.get<SupplierHistoryItem[]>(`/api/v1/inventory/${itemId}/supplier-history`),
+    enabled: !!itemId,
   });
 }

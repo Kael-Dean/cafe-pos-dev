@@ -6,7 +6,9 @@ import { useToast, Tag } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import {
   useAllLeaves, useMyLeaves, useCreateLeave, useReviewLeave,
-  type LeaveRequest,
+  useTasks, useCreateTask, useUpdateTask, useConfirmTask, useDeleteTask,
+  useStaffList,
+  type LeaveRequest, type TaskRead, type TaskStatus,
 } from '@/hooks/use-hr';
 
 const LEAVE_TYPE_LABEL: Record<string, string> = {
@@ -21,6 +23,19 @@ const STATUS_TONE: Record<string, 'warning' | 'success' | 'danger' | 'neutral'> 
   REJECTED: 'danger',
 };
 const STATUS_LABEL: Record<string, string> = { PENDING: 'รอการอนุมัติ', APPROVED: 'อนุมัติแล้ว', REJECTED: 'ไม่อนุมัติ' };
+
+const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
+  TODO: 'รอดำเนินการ',
+  IN_PROGRESS: 'กำลังทำ',
+  PENDING_REVIEW: 'รอตรวจ',
+  DONE: 'เสร็จแล้ว',
+};
+const TASK_STATUS_TONE: Record<TaskStatus, 'neutral' | 'info' | 'warning' | 'success'> = {
+  TODO: 'neutral',
+  IN_PROGRESS: 'info',
+  PENDING_REVIEW: 'warning',
+  DONE: 'success',
+};
 
 function LeaveCard({ leave, admin, onReview }: { leave: LeaveRequest; admin: boolean; onReview?: (id: string, status: 'APPROVED' | 'REJECTED') => void }) {
   return (
@@ -48,6 +63,200 @@ function LeaveCard({ leave, admin, onReview }: { leave: LeaveRequest; admin: boo
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function TaskCard({ task, admin, myId, onStatusChange, onConfirm, onDelete }: {
+  task: TaskRead; admin: boolean; myId?: string;
+  onStatusChange: (id: string, status: TaskStatus) => void;
+  onConfirm: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const isOverdue = task.due_date && task.status !== 'DONE' && task.due_date < new Date().toISOString().split('T')[0];
+  return (
+    <div style={{ padding: '12px 14px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>{task.title}</div>
+          {task.description && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{task.description}</div>}
+        </div>
+        {admin && (
+          <button onClick={() => onDelete(task.id)} title="ลบ" style={{ padding: 4, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', flexShrink: 0 }}>
+            <Icon name="x" size={14} />
+          </button>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+        {task.assignee_name && <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>→ {task.assignee_name}</span>}
+        {task.due_date && (
+          <span style={{ fontSize: 11, color: isOverdue ? 'var(--color-danger)' : 'var(--color-text-muted)', fontWeight: isOverdue ? 600 : 400 }}>
+            {isOverdue ? '⚠ ' : ''}{task.due_date}
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {task.status === 'TODO' && (
+          <button onClick={() => onStatusChange(task.id, 'IN_PROGRESS')} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: '#dbeafe', color: '#1e40af', border: 'none', borderRadius: 5, cursor: 'pointer' }}>
+            เริ่มทำ
+          </button>
+        )}
+        {task.status === 'IN_PROGRESS' && (
+          <button onClick={() => onStatusChange(task.id, 'PENDING_REVIEW')} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-warning-50)', color: '#9C6A1F', border: 'none', borderRadius: 5, cursor: 'pointer' }}>
+            ส่งตรวจ
+          </button>
+        )}
+        {task.status === 'PENDING_REVIEW' && admin && (
+          <button onClick={() => onConfirm(task.id)} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-success-50)', color: 'var(--color-success)', border: 'none', borderRadius: 5, cursor: 'pointer' }}>
+            ยืนยันเสร็จ
+          </button>
+        )}
+        {admin && task.status !== 'DONE' && (
+          <button onClick={() => onStatusChange(task.id, 'DONE')} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 5, cursor: 'pointer' }}>
+            ทำเสร็จ
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const KANBAN_COLS: TaskStatus[] = ['TODO', 'IN_PROGRESS', 'PENDING_REVIEW', 'DONE'];
+const COL_COLORS: Record<TaskStatus, { bg: string; border: string }> = {
+  TODO:           { bg: '#F8FAFC', border: '#E2E8F0' },
+  IN_PROGRESS:    { bg: '#EFF6FF', border: '#BFDBFE' },
+  PENDING_REVIEW: { bg: '#FFFBEB', border: '#FDE68A' },
+  DONE:           { bg: '#F0FDF4', border: '#BBF7D0' },
+};
+
+function TasksTab({ admin, myId }: { admin: boolean; myId?: string }) {
+  const toast = useToast();
+  const { data: allTasks } = useTasks();
+  const createTask = useCreateTask();
+  const updateTask = useUpdateTask();
+  const confirmTask = useConfirmTask();
+  const deleteTask = useDeleteTask();
+  const { data: staff } = useStaffList();
+
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [form, setForm] = useState({ title: '', description: '', assignee_id: '', due_date: '' });
+
+  const tasks = allTasks ?? [];
+
+  const handleStatusChange = async (taskId: string, status: TaskStatus) => {
+    try {
+      await updateTask.mutateAsync({ taskId, status });
+    } catch (e: unknown) { toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) }); }
+  };
+
+  const handleConfirm = async (taskId: string) => {
+    try {
+      await confirmTask.mutateAsync(taskId);
+      toast({ kind: 'success', title: 'ยืนยันงานเสร็จแล้ว' });
+    } catch (e: unknown) { toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) }); }
+  };
+
+  const handleDelete = async (taskId: string) => {
+    try {
+      await deleteTask.mutateAsync(taskId);
+    } catch (e: unknown) { toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) }); }
+  };
+
+  const handleCreate = async () => {
+    if (!form.title.trim()) { toast({ kind: 'warning', title: 'ระบุชื่องาน' }); return; }
+    try {
+      await createTask.mutateAsync({
+        title: form.title.trim(),
+        description: form.description || undefined,
+        assignee_id: form.assignee_id || undefined,
+        due_date: form.due_date || undefined,
+      });
+      toast({ kind: 'success', title: 'สร้างงานแล้ว' });
+      setShowCreateForm(false);
+      setForm({ title: '', description: '', assignee_id: '', due_date: '' });
+    } catch (e: unknown) { toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) }); }
+  };
+
+  const inputSt: React.CSSProperties = { padding: '8px 10px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text)', fontSize: 13, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' };
+
+  return (
+    <div>
+      {admin && (
+        <div style={{ marginBottom: 16 }}>
+          <button onClick={() => setShowCreateForm(v => !v)}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 8, background: 'var(--color-primary)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
+            <Icon name="plus" size={15} /> สร้างงานใหม่
+          </button>
+
+          {showCreateForm && (
+            <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 18, marginTop: 12 }}>
+              <div style={{ fontWeight: 600, marginBottom: 12 }}>งานใหม่</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ชื่องาน *</label>
+                  <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="เช่น เติมน้ำตาลสถานี" style={inputSt} autoFocus />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>รายละเอียด</label>
+                  <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} placeholder="ไม่บังคับ" style={{ ...inputSt, resize: 'vertical' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>มอบหมายให้</label>
+                  <select value={form.assignee_id} onChange={e => setForm(f => ({ ...f, assignee_id: e.target.value }))} style={{ ...inputSt, appearance: 'auto' }}>
+                    <option value="">ไม่ระบุ</option>
+                    {(staff ?? []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ครบกำหนด</label>
+                  <input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} style={inputSt} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={handleCreate} disabled={createTask.isPending}
+                  style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-primary)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
+                  {createTask.isPending ? '...' : 'สร้าง'}
+                </button>
+                <button onClick={() => setShowCreateForm(false)}
+                  style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Kanban board */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+        {KANBAN_COLS.map(col => {
+          const colTasks = tasks.filter(t => t.status === col);
+          const { bg, border } = COL_COLORS[col];
+          return (
+            <div key={col} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 12, padding: 12, minHeight: 200 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <Tag tone={TASK_STATUS_TONE[col]}>{TASK_STATUS_LABEL[col]}</Tag>
+                <span style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 600 }}>{colTasks.length}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {colTasks.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)', textAlign: 'center', padding: '16px 0' }}>ว่างอยู่</div>
+                ) : colTasks.map(t => (
+                  <TaskCard
+                    key={t.id}
+                    task={t}
+                    admin={admin}
+                    myId={myId}
+                    onStatusChange={handleStatusChange}
+                    onConfirm={handleConfirm}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -91,10 +300,12 @@ export default function HRDashboard() {
   const adminTabs = [
     { id: 'overview', label: 'ภาพรวม' },
     { id: 'leaves', label: 'จัดการวันลา' },
+    { id: 'tasks', label: 'งาน / Tasks' },
     { id: 'calendar', label: 'ปฏิทินทีม' },
   ];
   const staffTabs = [
     { id: 'my-leaves', label: 'วันลาของฉัน' },
+    { id: 'tasks', label: 'งานของฉัน' },
     { id: 'calendar', label: 'ปฏิทินทีม' },
   ];
   const tabs = admin ? adminTabs : staffTabs;
@@ -112,7 +323,6 @@ export default function HRDashboard() {
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-    // map date string → names on leave
     const leaveByDate: Record<string, string[]> = {};
     approvedLeaves.forEach(l => {
       const start = new Date(l.start_date);
@@ -130,7 +340,7 @@ export default function HRDashboard() {
   const { firstDay, daysInMonth, leaveByDate, year, month } = buildCalendar();
 
   return (
-    <div style={{ padding: 32, maxWidth: 960, margin: '0 auto' }}>
+    <div style={{ padding: 32, maxWidth: 1100, margin: '0 auto' }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8, color: 'var(--color-text)' }}>
         HR & Admin
       </h1>
@@ -175,6 +385,9 @@ export default function HRDashboard() {
           </div>
         </div>
       )}
+
+      {/* Tasks kanban (both admin and staff) */}
+      {tab === 'tasks' && <TasksTab admin={admin} myId={me?.id} />}
 
       {/* Staff my leaves */}
       {tab === 'my-leaves' && !admin && (
