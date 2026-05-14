@@ -361,7 +361,7 @@ export function useCreateReceipt() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (p: CreateReceiptPayload) =>
-      api.post<StockReceiptRead>('/api/v1/inventory/receipts', p),
+      api.post<StockReceiptRead>('/api/v1/receipts', p),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['receipts'] });
     },
@@ -375,7 +375,7 @@ export function useReceipts(status?: 'DRAFT' | 'CONFIRMED') {
       const params = new URLSearchParams();
       if (status) params.set('status', status);
       const qs = params.toString() ? `?${params}` : '';
-      const data = await api.get<ReceiptsPage>(`/api/v1/inventory/receipts${qs}`);
+      const data = await api.get<ReceiptsPage>(`/api/v1/receipts${qs}`);
       return data.items.map(mapReceiptSummary);
     },
   });
@@ -385,7 +385,7 @@ export function useReceipt(id: string | null) {
   return useQuery<StockReceipt>({
     queryKey: ['receipt', id],
     queryFn: async () => {
-      const data = await api.get<StockReceiptRead>(`/api/v1/inventory/receipts/${id}`);
+      const data = await api.get<StockReceiptRead>(`/api/v1/receipts/${id}`);
       return mapReceipt(data);
     },
     enabled: !!id,
@@ -396,7 +396,7 @@ export function useAddLot() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ receiptId, lot }: { receiptId: string; lot: AddLotPayload }) =>
-      api.post<StockReceiptRead>(`/api/v1/inventory/receipts/${receiptId}/lots`, lot),
+      api.post<StockReceiptRead>(`/api/v1/receipts/${receiptId}/lots`, lot),
     onSuccess: (_data, { receiptId }) => {
       qc.invalidateQueries({ queryKey: ['receipt', receiptId] });
     },
@@ -407,7 +407,7 @@ export function useDeleteLot() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ receiptId, lotId }: { receiptId: string; lotId: string }) =>
-      api.delete<void>(`/api/v1/inventory/receipts/${receiptId}/lots/${lotId}`),
+      api.delete<void>(`/api/v1/receipts/${receiptId}/lots/${lotId}`),
     onSuccess: (_data, { receiptId }) => {
       qc.invalidateQueries({ queryKey: ['receipt', receiptId] });
     },
@@ -418,7 +418,7 @@ export function useConfirmReceipt() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (receiptId: string) =>
-      api.post<StockReceiptRead>(`/api/v1/inventory/receipts/${receiptId}/confirm`, {}),
+      api.post<StockReceiptRead>(`/api/v1/receipts/${receiptId}/confirm`, {}),
     onSuccess: (_data, receiptId) => {
       qc.invalidateQueries({ queryKey: ['receipts'] });
       qc.invalidateQueries({ queryKey: ['receipt', receiptId] });
