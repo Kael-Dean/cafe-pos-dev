@@ -9,6 +9,8 @@ import KDS from '@/components/screens/kds';
 import Dashboard from '@/components/screens/dashboard';
 import BOMBuilder from '@/components/screens/bom-builder';
 import Inventory from '@/components/screens/inventory';
+import PreOrders from '@/components/screens/pre-orders';
+import ShoppingListScreen from '@/components/screens/shopping-list';
 import CashReconciliation from '@/components/screens/cash-reconciliation';
 import PromotionsScreen from '@/components/screens/promotions';
 import ProtocolsScreen from '@/components/screens/protocols';
@@ -19,6 +21,7 @@ import HardwareScreen from '@/components/screens/hardware';
 
 type Screen =
   | 'pos' | 'kds' | 'dashboard' | 'bom' | 'inventory'
+  | 'pre-orders' | 'shopping-list'
   | 'cash' | 'promotions' | 'protocols' | 'hr' | 'shifts'
   | 'hardware' | 'customers' | 'reports' | 'settings';
 
@@ -41,6 +44,8 @@ export default function POS() {
     dashboard:  <Dashboard />,
     bom:        <BOMBuilder />,
     inventory:  <Inventory />,
+    'pre-orders':    <PreOrders />,
+    'shopping-list': <ShoppingListScreen />,
     cash:       <CashReconciliation />,
     promotions: <PromotionsScreen />,
     protocols:  <ProtocolsScreen />,
