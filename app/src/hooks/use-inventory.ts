@@ -57,6 +57,7 @@ interface StockLotRead {
   qty_packs: string;
   qty_received: string;
   qty_remaining: string;
+  unit_price: string;
   cost_per_unit: string;
   expiry_date: string | null;
   created_at: string;
@@ -121,6 +122,7 @@ export interface StockLot {
   qtyPacks: number;
   qtyReceived: number;
   qtyRemaining: number;
+  unitPrice: number;
   costPerUnit: number;
   expiryDate: string | null;
   createdAt: string;
@@ -193,6 +195,7 @@ function mapLot(l: StockLotRead): StockLot {
     qtyPacks: Number(l.qty_packs),
     qtyReceived: Number(l.qty_received),
     qtyRemaining: Number(l.qty_remaining),
+    unitPrice: Number(l.unit_price),
     costPerUnit: Number(l.cost_per_unit),
     expiryDate: l.expiry_date,
     createdAt: l.created_at,
@@ -290,7 +293,6 @@ interface InventoryItemCreatePayload {
   name: string;
   unit: string;
   unit_size: string;
-  unit_price: string;
   par_level?: string;
   is_active?: boolean;
 }
@@ -356,6 +358,7 @@ interface CreateReceiptPayload {
 interface AddLotPayload {
   inventory_item_id: string;
   qty_packs: string;
+  unit_price: string;
   expiry_date?: string;
 }
 

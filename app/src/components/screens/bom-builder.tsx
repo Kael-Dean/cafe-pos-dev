@@ -7,6 +7,8 @@ import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, type
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
 import { useProductDetail, useUpdateRecipe, useLinkModifierGroups, type RecipeItem } from '@/hooks/use-bom';
 import { useModifierGroups, useCreateModifierGroup, useAddModifier, useDeleteModifier, DEFAULT_DRINK_MODIFIER_GROUPS, type ModifierGroup } from '@/hooks/use-modifier-groups';
+import { useCookingSteps, useReplaceCookingSteps, type CookingStepRead } from '@/hooks/use-cooking-steps';
+import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 
 type ProductType = 'MENU' | 'INGREDIENT';
 
@@ -35,6 +37,11 @@ export default function BOMBuilder() {
   const addModifier = useAddModifier();
   const deleteModifier = useDeleteModifier();
   const { data: modifierGroups } = useModifierGroups();
+  const { data: currentUser } = useCurrentUser();
+  const { data: stepsData } = useCookingSteps(selectedId);
+  const replaceSteps = useReplaceCookingSteps();
+  const [editedSteps, setEditedSteps] = useState<CookingStepRead[]>([]);
+  const [newStepText, setNewStepText] = useState('');
 
   useEffect(() => {
     if (!selectedId && products?.[0]) {
@@ -48,6 +55,24 @@ export default function BOMBuilder() {
       setEditedPrice(productDetail.price);
     }
   }, [productDetail]);
+
+  useEffect(() => {
+    setEditedSteps(stepsData ?? []);
+    setNewStepText('');
+  }, [stepsData, selectedId]);
+
+  const saveSteps = async () => {
+    if (!selectedId) return;
+    try {
+      await replaceSteps.mutateAsync({
+        productId: selectedId,
+        steps: editedSteps.map((s, i) => ({ instruction: s.instruction, sort_order: i })),
+      });
+      toast({ kind: 'success', title: 'บันทึกขั้นตอนแล้ว', msg: `${editedSteps.length} ขั้นตอน` });
+    } catch (err) {
+      toast({ kind: 'warning', title: 'บันทึกไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+    }
+  };
 
   const computeCost = (items: RecipeItem[]) => items.reduce((s, r) => {
     const inv = inventoryItems?.find(i => i.id === r.invId);
@@ -179,6 +204,7 @@ export default function BOMBuilder() {
         ) : detailLoading ? (
           <div style={{ padding: 60, textAlign: 'center', color: 'var(--color-text-muted)' }}>กำลังโหลดสูตร...</div>
         ) : (
+          <>
           <RightPanel
             product={selectedProduct}
             productType={productType}
@@ -217,6 +243,16 @@ export default function BOMBuilder() {
               }
             }}
           />
+          <CookingStepsSection
+            steps={editedSteps}
+            saving={replaceSteps.isPending}
+            canEdit={isAdmin(currentUser?.role)}
+            onStepsChange={setEditedSteps}
+            onSave={saveSteps}
+            newStepText={newStepText}
+            onNewStepTextChange={setNewStepText}
+          />
+          </>
         )}
       </div>
 
@@ -851,5 +887,108 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
         <button onClick={submit} disabled={!canSubmit} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, cursor: canSubmit ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canSubmit ? 1 : 0.45, transition: 'background 150ms var(--ease-out)' }} onMouseEnter={e => { if (canSubmit) e.currentTarget.style.background = 'var(--color-primary-700)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-primary)'; }}><Icon name="plus" size={14} /> เพิ่มรายการ</button>
       </BomModalActions>
     </BomModalShell>
+  );
+};
+
+// ── Cooking Steps Section ─────────────────────────────────────────────────────
+const CookingStepsSection = ({
+  steps, saving, canEdit, onStepsChange, onSave, newStepText, onNewStepTextChange,
+}: {
+  steps: CookingStepRead[];
+  saving: boolean;
+  canEdit: boolean;
+  onStepsChange: (steps: CookingStepRead[]) => void;
+  onSave: () => void;
+  newStepText: string;
+  onNewStepTextChange: (v: string) => void;
+}) => {
+  const moveUp = (idx: number) => {
+    if (idx === 0) return;
+    const next = [...steps];
+    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+    onStepsChange(next);
+  };
+
+  const moveDown = (idx: number) => {
+    if (idx === steps.length - 1) return;
+    const next = [...steps];
+    [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+    onStepsChange(next);
+  };
+
+  const removeStep = (idx: number) => {
+    onStepsChange(steps.filter((_, i) => i !== idx));
+  };
+
+  const addStep = () => {
+    const text = newStepText.trim();
+    if (!text) return;
+    onStepsChange([...steps, { id: `local-${Date.now()}`, sort_order: steps.length, instruction: text }]);
+    onNewStepTextChange('');
+  };
+
+  return (
+    <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', marginTop: 16 }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>วิธีการทำ (Cooking Steps)</div>
+        {canEdit && (
+          <button
+            onClick={onSave}
+            disabled={saving}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, background: saving ? 'var(--color-surface-2)' : 'var(--color-primary)', color: saving ? 'var(--color-text-muted)' : '#fff', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }}
+            onMouseEnter={e => { if (!saving) e.currentTarget.style.background = 'var(--color-primary-700)'; }}
+            onMouseLeave={e => { if (!saving) e.currentTarget.style.background = saving ? 'var(--color-surface-2)' : 'var(--color-primary)'; }}
+          >
+            <Icon name="check" size={14} />{saving ? 'กำลังบันทึก...' : 'บันทึกขั้นตอน'}
+          </button>
+        )}
+      </div>
+
+      {steps.length === 0 ? (
+        <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>
+          {canEdit ? 'ยังไม่มีขั้นตอน กด + เพิ่มขั้นตอนแรก' : 'ยังไม่มีขั้นตอนการทำ'}
+        </div>
+      ) : (
+        steps.map((step, idx) => (
+          <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', borderBottom: '1px solid var(--color-border)' }}>
+            <div className="num" style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', width: 20, textAlign: 'right', flexShrink: 0 }}>{idx + 1}</div>
+            {canEdit && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+                <button onClick={() => moveUp(idx)} disabled={idx === 0} title="เลื่อนขึ้น" style={{ background: 'transparent', border: 'none', cursor: idx === 0 ? 'not-allowed' : 'pointer', padding: '2px 4px', borderRadius: 4, color: idx === 0 ? 'var(--color-text-muted)' : 'var(--color-text-secondary)', fontSize: 10, lineHeight: 1 }}>▲</button>
+                <button onClick={() => moveDown(idx)} disabled={idx === steps.length - 1} title="เลื่อนลง" style={{ background: 'transparent', border: 'none', cursor: idx === steps.length - 1 ? 'not-allowed' : 'pointer', padding: '2px 4px', borderRadius: 4, color: idx === steps.length - 1 ? 'var(--color-text-muted)' : 'var(--color-text-secondary)', fontSize: 10, lineHeight: 1 }}>▼</button>
+              </div>
+            )}
+            <div style={{ flex: 1, fontSize: 14, lineHeight: 1.5 }}>{step.instruction}</div>
+            {canEdit && (
+              <button onClick={() => removeStep(idx)} title="ลบขั้นตอน" style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center', padding: 6, borderRadius: 6, color: 'var(--color-text-muted)', flexShrink: 0, transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
+                <Icon name="x" size={14} />
+              </button>
+            )}
+          </div>
+        ))
+      )}
+
+      {canEdit && (
+        <div style={{ padding: '10px 20px', display: 'flex', gap: 8, alignItems: 'center', background: steps.length > 0 ? 'var(--color-surface-2)' : 'transparent' }}>
+          <input
+            type="text"
+            placeholder="เพิ่มขั้นตอน... เช่น ต้มน้ำ 500ml"
+            value={newStepText}
+            onChange={e => onNewStepTextChange(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addStep()}
+            style={{ flex: 1, padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }}
+          />
+          <button
+            onClick={addStep}
+            disabled={!newStepText.trim()}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '8px 14px', fontSize: 13, fontWeight: 600, background: newStepText.trim() ? 'var(--color-surface)' : 'var(--color-surface-2)', color: newStepText.trim() ? 'var(--color-text)' : 'var(--color-text-muted)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: newStepText.trim() ? 'pointer' : 'not-allowed', fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)' }}
+            onMouseEnter={e => { if (newStepText.trim()) e.currentTarget.style.background = 'var(--color-accent-50)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = newStepText.trim() ? 'var(--color-surface)' : 'var(--color-surface-2)'; }}
+          >
+            <Icon name="plus" size={13} /> เพิ่ม
+          </button>
+        </div>
+      )}
+    </div>
   );
 };

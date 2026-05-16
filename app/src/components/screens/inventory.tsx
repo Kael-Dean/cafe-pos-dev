@@ -140,9 +140,9 @@ export default function Inventory() {
     }
   };
 
-  const submitAddIngredient = async ({ name, unit, unitSize, unitPrice, parLevel }: { name: string; unit: string; unitSize: string; unitPrice: string; parLevel: string }) => {
+  const submitAddIngredient = async ({ name, unit, unitSize, parLevel }: { name: string; unit: string; unitSize: string; parLevel: string }) => {
     try {
-      await createItem.mutateAsync({ name, unit, unit_size: unitSize, unit_price: unitPrice, par_level: parLevel || undefined });
+      await createItem.mutateAsync({ name, unit, unit_size: unitSize, par_level: parLevel || undefined });
       setAddIngredientOpen(false);
       toast({ kind: 'success', title: 'เพิ่มวัตถุดิบแล้ว', msg: `${name} (${unit}) ถูกเพิ่มในคลังแล้ว` });
     } catch (err) {
@@ -364,8 +364,8 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
       <button onClick={onAddIngredient} style={primaryBtnStyle()} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={14} /> เพิ่มวัตถุดิบ</button>
     </div>
 
-    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 120px 240px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
-      <div>วัตถุดิบ</div><div>หน่วย</div><div style={{ textAlign: 'right' }}>คงเหลือ</div><div style={{ textAlign: 'right' }}>Par level</div><div>สถานะ</div><div style={{ textAlign: 'right' }}>ต้นทุน/หน่วย</div><div style={{ textAlign: 'right' }}>ราคา/แพ็ค</div><div></div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 240px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+      <div>วัตถุดิบ</div><div>หน่วย</div><div style={{ textAlign: 'right' }}>คงเหลือ</div><div style={{ textAlign: 'right' }}>Par level</div><div>สถานะ</div><div style={{ textAlign: 'right' }}>ต้นทุน/หน่วย</div><div></div>
     </div>
 
     {items.length === 0 ? (
@@ -373,7 +373,7 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
     ) : items.map((it, idx) => {
       const ratio = it.parLevel > 0 ? Math.min(100, (it.stock / it.parLevel) * 100) : 100;
       return (
-        <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 120px 240px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === items.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
+        <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 240px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === items.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 600 }}>{it.name}</div>
             <div style={{ marginTop: 4, height: 4, background: 'var(--color-surface-2)', borderRadius: 999, overflow: 'hidden', maxWidth: 200 }}>
@@ -384,14 +384,8 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
           <div className="num" style={{ fontSize: 14, fontWeight: 700, textAlign: 'right' }}>{it.stock.toLocaleString()}</div>
           <div className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'right' }}>{it.parLevel.toLocaleString()}</div>
           <div><Tag tone={it.status.tone}>{it.status.label}</Tag></div>
-          <div className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'right' }}>฿{it.costPerUnit.toFixed(2)}</div>
-          <div className="num" style={{ fontSize: 13, textAlign: 'right' }}>
-            {it.unitPrice ? (
-              <div>
-                <div style={{ fontWeight: 600 }}>฿{Number(it.unitPrice).toFixed(2)}</div>
-                {it.unitSize && <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 1 }}>{Number(it.unitSize).toLocaleString()} {it.unit}/แพ็ค</div>}
-              </div>
-            ) : <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
+          <div className="num" style={{ fontSize: 13, color: it.costPerUnit === 0 ? 'var(--color-text-muted)' : 'var(--color-text-secondary)', textAlign: 'right' }}>
+            {it.costPerUnit === 0 ? '—' : `฿${it.costPerUnit.toFixed(2)}`}
           </div>
           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <button onClick={() => onLots(it)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="list" size={12} /> Lots</button>
@@ -587,6 +581,7 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
   // Add-lot form state
   const [lotItemId, setLotItemId] = useState('');
   const [lotPacks, setLotPacks] = useState('');
+  const [lotUnitPrice, setLotUnitPrice] = useState('');
   const [lotExpiry, setLotExpiry] = useState('');
 
   const [headerError, setHeaderError] = useState('');
@@ -605,7 +600,7 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
     setLotItemId(id);
   };
 
-  const resetLotForm = () => { setLotItemId(''); setLotPacks(''); setLotExpiry(''); setLotError(''); };
+  const resetLotForm = () => { setLotItemId(''); setLotPacks(''); setLotUnitPrice(''); setLotExpiry(''); setLotError(''); };
 
   const handleCreateReceipt = async () => {
     setHeaderError('');
@@ -624,7 +619,7 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
   };
 
   const handleAddLot = async () => {
-    if (!receiptId || !lotItemId || Number(lotPacks) <= 0) return;
+    if (!receiptId || !lotItemId || Number(lotPacks) <= 0 || Number(lotUnitPrice) <= 0) return;
     setLotError('');
     try {
       await addLot.mutateAsync({
@@ -632,6 +627,7 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
         lot: {
           inventory_item_id: lotItemId,
           qty_packs: lotPacks,
+          unit_price: lotUnitPrice,
           expiry_date: lotExpiry || undefined,
         },
       });
@@ -666,7 +662,7 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
   };
 
   const isConfirmed = receipt?.status === 'CONFIRMED';
-  const canAddLot = !!lotItemId && Number(lotPacks) > 0 && !isConfirmed;
+  const canAddLot = !!lotItemId && Number(lotPacks) > 0 && Number(lotUnitPrice) > 0 && !isConfirmed;
   const canConfirm = (receipt?.lots?.length ?? 0) > 0 && !isConfirmed && !confirmReceipt.isPending;
 
   return (
@@ -704,10 +700,14 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
                   {items.map(it => <option key={it.id} value={it.id}>{it.name} · {it.unit}</option>)}
                 </select>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'flex-end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'flex-end' }}>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>จำนวนแพ็ค</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>จำนวนแพ็ค *</div>
                   <input type="number" min={0.001} step="any" value={lotPacks} onChange={e => setLotPacks(e.target.value)} placeholder="0" style={smallInputStyle()} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ราคา/แพ็ค (฿) *</div>
+                  <input type="number" min={0.01} max={99999.99} step={0.01} value={lotUnitPrice} onChange={e => setLotUnitPrice(e.target.value)} placeholder="0.00" style={smallInputStyle()} />
                 </div>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>วันหมดอายุ</div>
@@ -717,15 +717,11 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
                   {addLot.isPending ? '...' : '+ เพิ่ม'}
                 </button>
               </div>
-              {selectedLotItem && Number(lotPacks) > 0 && selectedLotItem.unitSize && (
+              {selectedLotItem && Number(lotPacks) > 0 && Number(lotUnitPrice) > 0 && selectedLotItem.unitSize && (
                 <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--color-accent-50)', borderRadius: 8, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>
-                  {Number(lotPacks).toLocaleString()} แพ็ค × {Number(selectedLotItem.unitSize).toLocaleString()} {selectedLotItem.unit}{' '}
-                  = <strong>{(Number(lotPacks) * Number(selectedLotItem.unitSize)).toLocaleString()} {selectedLotItem.unit}</strong>
-                  {selectedLotItem.costPerUnit > 0 && (
-                    <span style={{ fontWeight: 400, color: 'var(--color-text-secondary)', marginLeft: 8 }}>
-                      ที่ ฿{selectedLotItem.costPerUnit.toFixed(2)}/{selectedLotItem.unit}
-                    </span>
-                  )}
+                  {Number(lotPacks).toLocaleString()} แพ็ค × ฿{Number(lotUnitPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                  = <strong>฿{(Number(lotPacks) * Number(lotUnitPrice)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} รวม</strong>
+                  {' · '}฿{(Number(lotUnitPrice) / Number(selectedLotItem.unitSize)).toFixed(2)}/{selectedLotItem.unit}
                 </div>
               )}
               {selectedLotItem && !selectedLotItem.unitSize && (
@@ -742,18 +738,19 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
             <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>กำลังโหลด...</div>
           ) : (
             <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 80px 90px 100px 36px', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
-                <div>วัตถุดิบ</div><div style={{ textAlign: 'right' }}>แพ็ค</div><div style={{ textAlign: 'right' }}>รับเข้า</div><div>หมดอายุ</div><div></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 70px 80px 90px 100px 36px', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+                <div>วัตถุดิบ</div><div style={{ textAlign: 'right' }}>แพ็ค</div><div style={{ textAlign: 'right' }}>รับเข้า</div><div style={{ textAlign: 'right' }}>ราคา/แพ็ค</div><div>หมดอายุ</div><div></div>
               </div>
               {!receipt?.lots || receipt.lots.length === 0 ? (
                 <div style={{ padding: 28, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>ยังไม่มีรายการ — เพิ่มสินค้าด้านบน</div>
               ) : receipt.lots.map((lot: StockLot, idx: number) => {
                 const badge = expiryBadge(lot.expiryDate);
                 return (
-                  <div key={lot.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 80px 90px 100px 36px', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === receipt.lots.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
+                  <div key={lot.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 70px 80px 90px 100px 36px', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === receipt.lots.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{lot.inventoryItemName}</div>
                     <div className="num" style={{ fontSize: 13, textAlign: 'right', color: 'var(--color-text-secondary)' }}>{lot.qtyPacks.toLocaleString()}</div>
                     <div className="num" style={{ fontSize: 13, textAlign: 'right' }}>{lot.qtyReceived.toLocaleString()}</div>
+                    <div className="num" style={{ fontSize: 13, textAlign: 'right', fontWeight: 600 }}>฿{lot.unitPrice.toFixed(2)}</div>
                     <div style={{ fontSize: 12 }}>
                       {lot.expiryDate ? (
                         <div>
@@ -813,8 +810,8 @@ const LotsModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void
       </div>
 
       <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '28px 110px 90px 90px 90px 110px', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
-          <div>#</div><div>วันที่รับ</div><div style={{ textAlign: 'right' }}>คงเหลือ</div><div style={{ textAlign: 'right' }}>แพ็ค</div><div style={{ textAlign: 'right' }}>ต้นทุน/หน่วย</div><div>หมดอายุ</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '28px 110px 90px 70px 90px 90px 110px', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+          <div>#</div><div>วันที่รับ</div><div style={{ textAlign: 'right' }}>คงเหลือ</div><div style={{ textAlign: 'right' }}>แพ็ค</div><div style={{ textAlign: 'right' }}>ราคา/แพ็ค</div><div style={{ textAlign: 'right' }}>ต้นทุน/หน่วย</div><div>หมดอายุ</div>
         </div>
         {isLoading ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>กำลังโหลด...</div>
@@ -824,7 +821,7 @@ const LotsModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void
           const badge = expiryBadge(lot.expiryDate);
           const isFirst = idx === 0;
           return (
-            <div key={lot.id} style={{ display: 'grid', gridTemplateColumns: '28px 110px 90px 90px 90px 110px', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === lots.length - 1 ? 'none' : '1px solid var(--color-border)', background: isFirst ? 'var(--color-accent-50)' : undefined }}>
+            <div key={lot.id} style={{ display: 'grid', gridTemplateColumns: '28px 110px 90px 70px 90px 90px 110px', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === lots.length - 1 ? 'none' : '1px solid var(--color-border)', background: isFirst ? 'var(--color-accent-50)' : undefined }}>
               <div className="num" style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 700 }}>{idx + 1}</div>
               <div>
                 <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{formatDate(lot.createdAt)}</div>
@@ -832,6 +829,7 @@ const LotsModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void
               </div>
               <div className="num" style={{ fontSize: 13, fontWeight: 700, textAlign: 'right' }}>{lot.qtyRemaining.toLocaleString()} {item.unit}</div>
               <div className="num" style={{ fontSize: 12, color: 'var(--color-text-secondary)', textAlign: 'right' }}>{lot.qtyPacks.toLocaleString()} แพ็ค</div>
+              <div className="num" style={{ fontSize: 12, fontWeight: 600, textAlign: 'right' }}>฿{lot.unitPrice.toFixed(2)}</div>
               <div className="num" style={{ fontSize: 12, color: 'var(--color-text-secondary)', textAlign: 'right' }}>฿{lot.costPerUnit.toFixed(2)}</div>
               <div style={{ fontSize: 12 }}>
                 {lot.expiryDate ? (
@@ -856,28 +854,24 @@ const LotsModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void
 // ── Add Ingredient Modal ───────────────────────────────────────────────────────
 const AddIngredientModal = ({ onClose, onSubmit, isPending }: {
   onClose: () => void;
-  onSubmit: (v: { name: string; unit: string; unitSize: string; unitPrice: string; parLevel: string }) => void;
+  onSubmit: (v: { name: string; unit: string; unitSize: string; parLevel: string }) => void;
   isPending?: boolean;
 }) => {
   const [name, setName]         = useState('');
   const [unit, setUnit]         = useState('');
   const [unitSize, setUnitSize] = useState('');
-  const [unitPrice, setUnitPrice] = useState('');
   const [parLevel, setParLevel] = useState('');
 
-  const sizeNum  = parseFloat(unitSize);
-  const priceNum = parseFloat(unitPrice);
-  const costPerUnit = (sizeNum > 0 && priceNum >= 0) ? priceNum / sizeNum : null;
-
-  const canSubmit = name.trim().length > 0 && unit.trim().length > 0 && sizeNum > 0 && priceNum >= 0;
+  const sizeNum = parseFloat(unitSize);
+  const canSubmit = name.trim().length > 0 && unit.trim().length > 0 && sizeNum > 0;
 
   const submit = () => {
     if (!canSubmit || isPending) return;
-    onSubmit({ name: name.trim(), unit: unit.trim(), unitSize, unitPrice, parLevel });
+    onSubmit({ name: name.trim(), unit: unit.trim(), unitSize, parLevel });
   };
 
   return (
-    <ModalShell title="เพิ่มวัตถุดิบใหม่" subtitle="ระบุข้อมูลการซื้อ — ระบบจะคำนวณต้นทุนต่อหน่วยให้อัตโนมัติ" onClose={onClose}>
+    <ModalShell title="เพิ่มวัตถุดิบใหม่" subtitle="ต้นทุนจะอัปเดตอัตโนมัติเมื่อรับสินค้าครั้งแรก" onClose={onClose}>
       <FormField label="ชื่อวัตถุดิบ *">
         <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="เช่น Whole Milk 2L, กาแฟอาราบิก้า" style={inputStyle()} autoFocus />
       </FormField>
@@ -888,25 +882,10 @@ const AddIngredientModal = ({ onClose, onSubmit, isPending }: {
 
       <div style={{ background: 'var(--color-surface-2)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>ข้อมูลการซื้อ *</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <FormField label={`ขนาดแพ็ค (${unit || 'unit'}/แพ็ค) *`}>
-            <input type="number" min={0.001} step="any" value={unitSize} onChange={e => setUnitSize(e.target.value)} placeholder={`เช่น 2000 (2000 ${unit || 'unit'}/ขวด)`} style={inputStyle()} />
-          </FormField>
-          <FormField label="ราคา/แพ็ค (฿) *">
-            <input type="number" min={0} step={0.01} value={unitPrice} onChange={e => setUnitPrice(e.target.value)} placeholder="เช่น 99.00" style={inputStyle()} />
-          </FormField>
-        </div>
-
-        {costPerUnit !== null ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--color-accent-50)', borderRadius: 8, marginTop: 4 }}>
-            <span style={{ fontSize: 13, color: 'var(--color-primary)', fontWeight: 700 }}>
-              ต้นทุน/{unit || 'หน่วย'}: ฿{costPerUnit.toFixed(4)}
-            </span>
-            <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>= {unitPrice} ÷ {unitSize}</span>
-          </div>
-        ) : (
-          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6 }}>ระบุขนาดแพ็คและราคาเพื่อดูต้นทุนต่อหน่วย</div>
-        )}
+        <FormField label={`ขนาดแพ็ค (${unit || 'unit'}/แพ็ค) *`}>
+          <input type="number" min={0.001} step="any" value={unitSize} onChange={e => setUnitSize(e.target.value)} placeholder={`เช่น 2000 (2000 ${unit || 'unit'}/ขวด)`} style={inputStyle()} />
+        </FormField>
+        <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>ราคา/แพ็คจะระบุตอนรับสินค้า — ต้นทุน/หน่วยจะคำนวณให้อัตโนมัติ</div>
       </div>
 
       <FormField label="Par Level — จุดสั่งซื้อ (ไม่บังคับ)">
