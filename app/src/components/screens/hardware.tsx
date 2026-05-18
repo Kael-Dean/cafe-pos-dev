@@ -6,14 +6,79 @@ import { useToast } from '../app-common';
 
 type PrinterStatus = 'online' | 'offline' | 'checking';
 
-const TEST_PAYLOAD = {
-  storeName:    'ร้านตะวันอ้อมข้าว',
-  orderNumber:  'TEST',
-  items:        [{ name: 'ทดสอบการพิมพ์', qty: 1, unitPrice: 0, mods: [] }],
-  subtotal:     0,
-  total:        0,
-  paymentLabel: 'ทดสอบ',
-};
+interface ReceiptItem { name: string; qty: number; unitPrice: number; mods?: string[] }
+interface ReceiptData {
+  storeName: string;
+  orderNumber: string;
+  items: ReceiptItem[];
+  subtotal: number;
+  total: number;
+  paymentLabel: string;
+}
+
+const PREVIEW_ITEMS: ReceiptItem[] = [
+  { name: 'ลาเต้เย็น', qty: 2, unitPrice: 65, mods: ['หวานน้อย', 'นมโอ๊ต'] },
+  { name: 'คาปูชิโน่ร้อน', qty: 1, unitPrice: 55, mods: [] },
+  { name: 'ชีสเค้ก', qty: 1, unitPrice: 120, mods: [] },
+];
+
+function ReceiptPreview({ data }: { data: ReceiptData }) {
+  const W = 32;
+  const dash = '-'.repeat(W);
+  const fmt  = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const center = (s: string) => {
+    const pad = Math.max(0, Math.floor((W - s.length) / 2));
+    return ' '.repeat(pad) + s;
+  };
+  const leftRight = (l: string, r: string) => {
+    const maxL = W - r.length - 1;
+    const left = l.length > maxL ? l.substring(0, maxL) : l;
+    return left + ' '.repeat(Math.max(1, W - left.length - r.length)) + r;
+  };
+
+  const now = new Date().toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' });
+
+  return (
+    <div style={{
+      fontFamily: '"Courier New", Courier, monospace',
+      fontSize: 13,
+      lineHeight: 1.6,
+      whiteSpace: 'pre',
+      background: '#fffef8',
+      color: '#111',
+      padding: '20px 16px 28px',
+      borderRadius: '4px 4px 18px 18px',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+      width: `${W + 2}ch`,
+      maxWidth: '100%',
+      overflowX: 'auto',
+      borderTop: '3px dashed #ccc',
+    }}>
+      {/* Store name — big */}
+      <div style={{ textAlign: 'center', fontSize: 17, fontWeight: 900, letterSpacing: 1, marginBottom: 2 }}>
+        {data.storeName}
+      </div>
+      <div style={{ marginBottom: 0 }}>{center(`ออเดอร์ #${data.orderNumber}`)}</div>
+      <div style={{ marginBottom: 2 }}>{center(now)}</div>
+      <div>{dash}</div>
+      {data.items.map((item, i) => (
+        <div key={i}>
+          <div>{leftRight(item.name, fmt(item.qty * item.unitPrice))}</div>
+          <div>{'  '}{item.qty} x {fmt(item.unitPrice)}</div>
+          {item.mods?.filter(Boolean).map((mod, j) => (
+            <div key={j} style={{ color: '#555' }}>{'  + '}{mod}</div>
+          ))}
+        </div>
+      ))}
+      <div>{dash}</div>
+      <div>{leftRight('รวม', fmt(data.subtotal))}</div>
+      <div style={{ fontWeight: 700 }}>{leftRight('รวมทั้งสิ้น', fmt(data.total))}</div>
+      <div>{'ชำระ: '}{data.paymentLabel}</div>
+      <div>{dash}</div>
+      <div style={{ textAlign: 'center', marginTop: 4 }}>ขอบคุณที่ใช้บริการ</div>
+    </div>
+  );
+}
 
 export default function HardwareScreen() {
   const toast = useToast();
@@ -25,6 +90,21 @@ export default function HardwareScreen() {
   const [scanResults, setScanResults] = useState<string[]>([]);
   const [testing, setTesting]     = useState(false);
   const [lastPrint, setLastPrint] = useState<string | null>(null);
+
+  const [storeName, setStoreName]       = useState('');
+  const [storeInput, setStoreInput]     = useState('');
+  const [savingStore, setSavingStore]   = useState(false);
+  const [previewOpen, setPreviewOpen]   = useState(false);
+
+  const subtotal = PREVIEW_ITEMS.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+  const previewData: ReceiptData = {
+    storeName: storeInput || storeName || 'ชื่อร้าน',
+    orderNumber: '0042',
+    items: PREVIEW_ITEMS,
+    subtotal,
+    total: subtotal,
+    paymentLabel: 'เงินสด',
+  };
 
   const checkStatus = useCallback(async () => {
     setPrinter('checking');
@@ -40,8 +120,10 @@ export default function HardwareScreen() {
 
   useEffect(() => {
     fetch('/api/print/config').then(r => r.json()).then(cfg => {
-      setPrinterIp(cfg.ip);
-      setIpInput(cfg.ip);
+      setPrinterIp(cfg.ip ?? '');
+      setIpInput(cfg.ip ?? '');
+      setStoreName(cfg.storeName ?? '');
+      setStoreInput(cfg.storeName ?? '');
     });
     checkStatus();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -87,13 +169,40 @@ export default function HardwareScreen() {
     }
   };
 
+  const saveStoreName = async () => {
+    const name = storeInput.trim();
+    if (!name) return;
+    setSavingStore(true);
+    try {
+      const res = await fetch('/api/print/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip: printerIp, storeName: name }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      setStoreName(name);
+      toast({ kind: 'success', title: 'บันทึกชื่อร้านแล้ว', msg: name });
+    } catch (err: any) {
+      toast({ kind: 'warning', title: 'บันทึกไม่สำเร็จ', msg: err.message });
+    } finally {
+      setSavingStore(false);
+    }
+  };
+
   const testPrint = async () => {
     setTesting(true);
     try {
       const res = await fetch('/api/print', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(TEST_PAYLOAD),
+        body: JSON.stringify({
+          storeName,
+          orderNumber:  'TEST',
+          items:        [{ name: 'ทดสอบการพิมพ์', qty: 1, unitPrice: 0, mods: [] }],
+          subtotal:     0,
+          total:        0,
+          paymentLabel: 'ทดสอบ',
+        }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
       setLastPrint(new Date().toLocaleTimeString('th-TH'));
@@ -119,7 +228,10 @@ export default function HardwareScreen() {
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
-      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} } @keyframes spin { to{transform:rotate(360deg)} }`}</style>
+      <style>{`
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+        @keyframes spin  { to{transform:rotate(360deg)} }
+      `}</style>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
         <div>
@@ -219,18 +331,79 @@ export default function HardwareScreen() {
         )}
       </div>
 
-      {/* Settings */}
+      {/* Receipt Settings */}
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 20, boxShadow: 'var(--shadow-xs)' }}>
         <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>การตั้งค่าใบเสร็จ</div>
-        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>ขนาดกระดาษ 80mm · พิมพ์อัตโนมัติหลังชำระเงิน</div>
-        <button
-          onClick={testPrint}
-          disabled={testing || printer === 'offline'}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', fontSize: 14, fontWeight: 500, cursor: printer === 'offline' ? 'not-allowed' : 'pointer', opacity: printer === 'offline' ? 0.5 : 1 }}
-        >
-          <Icon name="print" size={15} /> ทดสอบพิมพ์ใบเสร็จ
-        </button>
+        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>ชื่อร้านที่แสดงบนใบเสร็จ · ขนาดกระดาษ 80mm</div>
+
+        {/* Store name */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>ชื่อร้าน</label>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <input
+              value={storeInput}
+              onChange={e => setStoreInput(e.target.value)}
+              placeholder="ชื่อร้านของคุณ"
+              style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: 14 }}
+              onKeyDown={e => e.key === 'Enter' && saveStoreName()}
+            />
+            <button
+              onClick={saveStoreName}
+              disabled={savingStore || storeInput.trim() === storeName}
+              style={{ padding: '9px 20px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 14, cursor: (savingStore || storeInput.trim() === storeName) ? 'not-allowed' : 'pointer', opacity: (savingStore || storeInput.trim() === storeName) ? 0.6 : 1, whiteSpace: 'nowrap' }}
+            >
+              {savingStore ? 'กำลังบันทึก...' : 'บันทึก'}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={() => setPreviewOpen(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
+          >
+            <Icon name="eye" size={15} /> ดูตัวอย่างใบเสร็จ
+          </button>
+          <button
+            onClick={testPrint}
+            disabled={testing || printer === 'offline'}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', fontSize: 14, fontWeight: 500, cursor: printer === 'offline' ? 'not-allowed' : 'pointer', opacity: printer === 'offline' ? 0.5 : 1 }}
+          >
+            <Icon name="print" size={15} /> ทดสอบพิมพ์ใบเสร็จ
+          </button>
+        </div>
       </div>
+
+      {/* Receipt Preview Modal */}
+      {previewOpen && (
+        <div
+          onClick={e => { if (e.target === e.currentTarget) setPreviewOpen(false); }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <div style={{ background: 'var(--color-surface)', borderRadius: 16, padding: 28, maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 17 }}>ตัวอย่างใบเสร็จ</div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>แสดงหน้าตาที่จะปริ้นออกมาจริง</div>
+              </div>
+              <button
+                onClick={() => setPreviewOpen(false)}
+                style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', cursor: 'pointer', display: 'grid', placeItems: 'center', fontSize: 18, lineHeight: 1 }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <ReceiptPreview data={previewData} />
+            </div>
+
+            <div style={{ marginTop: 20, padding: '12px 14px', background: 'var(--color-surface-2)', borderRadius: 8, fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
+              <strong>ตัวอย่างนี้ใช้ข้อมูลสมมติ</strong> — รายการจริงจะแสดงเมื่อกด ชำระเงิน ในหน้า POS
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

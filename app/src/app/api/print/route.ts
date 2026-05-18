@@ -8,15 +8,15 @@ const CONFIG_PATH = path.join(process.cwd(), 'printer-config.json');
 // If PRINT_BRIDGE_URL is set (e.g. Cloudflare Tunnel), forward requests there instead of direct TCP
 const BRIDGE_URL = process.env.PRINT_BRIDGE_URL?.replace(/\/$/, '');
 
-function loadConfig(): { ip: string; port: number } {
-  if (process.env.PRINTER_IP) {
-    return { ip: process.env.PRINTER_IP, port: Number(process.env.PRINTER_PORT ?? 9100) };
-  }
-  try {
-    return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-  } catch {
-    return { ip: '192.168.1.129', port: 9100 };
-  }
+function loadConfig(): { ip: string; port: number; storeName: string } {
+  const base = (() => {
+    try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch { return {}; }
+  })();
+  return {
+    storeName: base.storeName ?? 'ร้านของฉัน',
+    ip:   process.env.PRINTER_IP ?? base.ip  ?? '192.168.1.129',
+    port: Number(process.env.PRINTER_PORT ?? base.port ?? 9100),
+  };
 }
 
 function checkPrinter(ip: string, port: number): Promise<boolean> {
@@ -139,9 +139,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { ip, port } = loadConfig();
+  const { ip, port, storeName } = loadConfig();
   try {
-    const receipt = buildESCPOS(body);
+    const receipt = buildESCPOS({ ...body, storeName });
 
     await new Promise<void>((resolve, reject) => {
       const socket = new net.Socket();

@@ -4,24 +4,33 @@ import path from 'path';
 
 const CONFIG_PATH = path.join(process.cwd(), 'printer-config.json');
 
-export async function GET() {
+function readConfig() {
   try {
-    const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    return NextResponse.json(config);
+    return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
   } catch {
-    return NextResponse.json({ ip: '192.168.1.129', port: 9100 });
+    return { storeName: 'ร้านของฉัน', ip: '192.168.1.129', port: 9100 };
   }
+}
+
+export async function GET() {
+  return NextResponse.json(readConfig());
 }
 
 export async function PUT(req: NextRequest) {
   try {
-    const { ip, port } = await req.json();
-    if (!ip || typeof ip !== 'string') {
+    const body = await req.json();
+    const current = readConfig();
+    const updated = {
+      ...current,
+      ...(body.ip        !== undefined ? { ip: body.ip.trim() }           : {}),
+      ...(body.port      !== undefined ? { port: Number(body.port) }      : {}),
+      ...(body.storeName !== undefined ? { storeName: body.storeName.trim() } : {}),
+    };
+    if (!updated.ip || typeof updated.ip !== 'string') {
       return NextResponse.json({ ok: false, error: 'IP ไม่ถูกต้อง' }, { status: 400 });
     }
-    const config = { ip: ip.trim(), port: port ?? 9100 };
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8');
-    return NextResponse.json({ ok: true, ...config });
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2), 'utf8');
+    return NextResponse.json({ ok: true, ...updated });
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
