@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Icon from '../icons';
 import { useToast, Tag, baht } from '../app-common';
 import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, type MenuItem } from '@/hooks/use-products';
@@ -774,6 +774,74 @@ const bomInputStyle = (): React.CSSProperties => ({
   boxSizing: 'border-box', background: 'var(--color-surface)',
 });
 
+const BomSelect = ({ value, onChange, options }: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selectedLabel = options.find(o => o.value === value)?.label ?? options[0]?.label;
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        style={{
+          ...bomInputStyle(),
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          cursor: 'pointer', textAlign: 'left',
+          border: `1px solid ${open ? 'var(--color-accent)' : 'var(--color-border)'}`,
+          boxShadow: open ? 'var(--shadow-focus)' : 'none',
+          transition: 'border-color 150ms, box-shadow 150ms',
+          color: value ? 'var(--color-text)' : 'var(--color-text-muted)',
+        }}
+      >
+        <span>{selectedLabel}</span>
+        <Icon name="chevronDown" size={14} style={{ color: 'var(--color-text-secondary)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }} />
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+          background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+          borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 200,
+          overflow: 'hidden',
+        }}>
+          {options.map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              style={{
+                width: '100%', textAlign: 'left', padding: '10px 12px',
+                fontSize: 14, fontFamily: 'inherit', cursor: 'pointer', border: 'none',
+                background: opt.value === value ? 'var(--color-accent-50)' : 'transparent',
+                color: opt.value === value ? 'var(--color-primary-700)' : 'var(--color-text)',
+                fontWeight: opt.value === value ? 600 : 400,
+                transition: 'background 100ms',
+                display: 'block',
+              }}
+              onMouseEnter={e => { if (opt.value !== value) e.currentTarget.style.background = 'var(--color-surface-2)'; }}
+              onMouseLeave={e => { if (opt.value !== value) e.currentTarget.style.background = 'transparent'; }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const BomFormField = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div style={{ marginBottom: 14 }}>
     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{label}</div>
@@ -853,10 +921,14 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
 
       {type === 'MENU' && (
         <BomFormField label="หมวดหมู่">
-          <select value={categoryId} onChange={e => setCategoryId(e.target.value)} style={{ ...bomInputStyle(), appearance: 'auto' }}>
-            <option value="">— ไม่ระบุหมวดหมู่ —</option>
-            {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-          </select>
+          <BomSelect
+            value={categoryId}
+            onChange={setCategoryId}
+            options={[
+              { value: '', label: '— ไม่ระบุหมวดหมู่ —' },
+              ...categories.map(c => ({ value: c.id, label: c.label })),
+            ]}
+          />
         </BomFormField>
       )}
 
