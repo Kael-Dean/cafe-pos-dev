@@ -19,12 +19,6 @@ export default function HardwareScreen() {
   const [urlInput, setUrlInput]     = useState(DEFAULT_BRIDGE);
   const [connecting, setConnecting] = useState(false);
 
-  useEffect(() => {
-    const saved = getBridgeUrl();
-    setBridgeUrl(saved);
-    setUrlInput(saved);
-  }, []);
-
   const checkStatus = useCallback(async (url?: string) => {
     const target = url ?? bridgeUrl;
     setBridge('checking');
