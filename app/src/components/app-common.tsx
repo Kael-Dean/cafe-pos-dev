@@ -89,7 +89,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
   });
 
   return (
-    <div className="hidden md:flex" style={{ position: 'relative', flexShrink: 0 }}>
+    <div className="hidden md:block" style={{ position: 'relative', flexShrink: 0 }}>
     {onToggle && (
       <button
         onClick={onToggle}
@@ -332,6 +332,8 @@ const MORE_ITEMS = [
   { id: 'hardware',     label: 'Hardware',           icon: 'printer' },
 ] as const;
 
+const MAIN_TAB_IDS = new Set<string>(MAIN_TABS.map((t) => t.id));
+
 export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) => {
   const [moreOpen, setMoreOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -339,23 +341,25 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
   // Close sheet on outside tap
   useEffect(() => {
     if (!moreOpen) return;
-    const handler = (e: MouseEvent) => {
+    const handler = (e: PointerEvent) => {
       if (sheetRef.current && !sheetRef.current.contains(e.target as Node)) {
         setMoreOpen(false);
       }
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('pointerdown', handler);
+    return () => document.removeEventListener('pointerdown', handler);
   }, [moreOpen]);
 
-  const mainTabIds = MAIN_TABS.map((t) => t.id as string);
-  const activeIsMore = !mainTabIds.includes(currentScreen);
+  const activeIsMore = !MAIN_TAB_IDS.has(currentScreen);
 
   return (
     <>
       {/* Sheet overlay */}
       {moreOpen && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="More options"
           style={{
             position: 'fixed', inset: 0, zIndex: 60,
             background: 'rgba(26,16,8,0.45)',
@@ -368,7 +372,7 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
               position: 'absolute', left: 0, right: 0, bottom: 0,
               background: 'var(--color-surface)',
               borderRadius: '16px 16px 0 0',
-              paddingBottom: 'calc(env(safe-area-inset-bottom) + 80px)',
+              paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)',
               boxShadow: 'var(--shadow-lg)',
               animation: 'sheet-in 220ms var(--ease-out)',
             }}
@@ -381,6 +385,7 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
               <span style={{ fontWeight: 700, fontSize: 16 }}>เมนูเพิ่มเติม</span>
               <button
                 onClick={() => setMoreOpen(false)}
+                aria-label="Close more options"
                 style={{
                   width: 32, height: 32, borderRadius: 999,
                   background: 'var(--color-surface-2)',
@@ -425,6 +430,7 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
 
       {/* Tab Bar */}
       <nav
+        aria-label="Main navigation"
         className="md:hidden"
         style={{
           position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
@@ -442,6 +448,7 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
             <button
               key={tab.id}
               onClick={() => onNavigate(tab.id)}
+              aria-current={active ? 'page' : undefined}
               style={{
                 flex: 1, display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',
@@ -462,6 +469,7 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
         {/* More tab */}
         <button
           onClick={() => setMoreOpen((v) => !v)}
+          aria-current={activeIsMore ? 'page' : undefined}
           style={{
             flex: 1, display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
@@ -478,12 +486,6 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
         </button>
       </nav>
 
-      <style>{`
-        @keyframes sheet-in {
-          from { transform: translateY(100%); opacity: 0; }
-          to   { transform: translateY(0);    opacity: 1; }
-        }
-      `}</style>
     </>
   );
 };
