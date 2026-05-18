@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, createContext, useContext } from 'react';
+import { useState, useCallback, createContext, useContext, useRef, useEffect } from 'react';
 import Icon from './icons';
 import { useCurrentUser } from '@/hooks/use-current-user';
 
@@ -89,7 +89,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
   });
 
   return (
-    <div style={{ position: 'relative', flexShrink: 0 }}>
+    <div className="hidden md:flex" style={{ position: 'relative', flexShrink: 0 }}>
     {onToggle && (
       <button
         onClick={onToggle}
@@ -305,3 +305,185 @@ export const Tag = ({ children, tone = 'neutral' }: TagProps) => {
 };
 
 export const baht = (n: number) => `฿${(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+
+// ---------- Bottom Tab Bar (mobile only) ----------
+interface BottomTabBarProps {
+  currentScreen: string;
+  onNavigate: (screen: string) => void;
+}
+
+const MAIN_TABS = [
+  { id: 'pos',       label: 'POS',       icon: 'pos' },
+  { id: 'kds',       label: 'KDS',       icon: 'kds' },
+  { id: 'inventory', label: 'Inventory', icon: 'inv' },
+  { id: 'dashboard', label: 'Dashboard', icon: 'chart' },
+] as const;
+
+const MORE_ITEMS = [
+  { id: 'bom',          label: 'BOM Builder',       icon: 'inv' },
+  { id: 'pre-orders',   label: 'Pre-Orders',         icon: 'calendar' },
+  { id: 'catalog',      label: 'Catalog',            icon: 'tag' },
+  { id: 'hr',           label: 'HR & Admin',         icon: 'staff' },
+  { id: 'promotions',   label: 'Promotions',         icon: 'tag' },
+  { id: 'protocols',    label: 'Protocols / SOP',    icon: 'check' },
+  { id: 'shifts',       label: 'ตารางกะ',             icon: 'calendar' },
+  { id: 'cash',         label: 'Cash',               icon: 'cash' },
+  { id: 'shopping-list',label: 'Shopping List',      icon: 'cart' },
+  { id: 'hardware',     label: 'Hardware',           icon: 'printer' },
+] as const;
+
+export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) => {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const sheetRef = useRef<HTMLDivElement>(null);
+
+  // Close sheet on outside tap
+  useEffect(() => {
+    if (!moreOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (sheetRef.current && !sheetRef.current.contains(e.target as Node)) {
+        setMoreOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [moreOpen]);
+
+  const mainTabIds = MAIN_TABS.map((t) => t.id as string);
+  const activeIsMore = !mainTabIds.includes(currentScreen);
+
+  return (
+    <>
+      {/* Sheet overlay */}
+      {moreOpen && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 60,
+            background: 'rgba(26,16,8,0.45)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            ref={sheetRef}
+            style={{
+              position: 'absolute', left: 0, right: 0, bottom: 0,
+              background: 'var(--color-surface)',
+              borderRadius: '16px 16px 0 0',
+              paddingBottom: 'calc(env(safe-area-inset-bottom) + 80px)',
+              boxShadow: 'var(--shadow-lg)',
+              animation: 'sheet-in 220ms var(--ease-out)',
+            }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '16px 20px 12px',
+              borderBottom: '1px solid var(--color-border)',
+            }}>
+              <span style={{ fontWeight: 700, fontSize: 16 }}>เมนูเพิ่มเติม</span>
+              <button
+                onClick={() => setMoreOpen(false)}
+                style={{
+                  width: 32, height: 32, borderRadius: 999,
+                  background: 'var(--color-surface-2)',
+                  display: 'grid', placeItems: 'center',
+                  border: 'none', cursor: 'pointer',
+                }}
+              >
+                <Icon name="x" size={16} />
+              </button>
+            </div>
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+              padding: '12px 8px',
+              gap: 4,
+            }}>
+              {MORE_ITEMS.map((item) => {
+                const active = currentScreen === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => { onNavigate(item.id); setMoreOpen(false); }}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center',
+                      gap: 6, padding: '12px 4px', borderRadius: 10,
+                      background: active ? 'rgba(212,165,116,0.15)' : 'transparent',
+                      color: active ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                      border: 'none', cursor: 'pointer', transition: 'background 150ms',
+                      minHeight: 72,
+                    }}
+                  >
+                    <Icon name={item.icon} size={22} color={active ? 'var(--color-accent)' : 'var(--color-text-secondary)'} />
+                    <span style={{ fontSize: 11, fontWeight: active ? 600 : 500, textAlign: 'center', lineHeight: 1.2 }}>
+                      {item.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab Bar */}
+      <nav
+        className="md:hidden"
+        style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
+          height: 64,
+          background: 'var(--color-surface)',
+          borderTop: '1px solid var(--color-border)',
+          display: 'flex',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+          boxShadow: '0 -2px 12px rgba(61,40,23,0.08)',
+        }}
+      >
+        {MAIN_TABS.map((tab) => {
+          const active = currentScreen === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => onNavigate(tab.id)}
+              style={{
+                flex: 1, display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: 3, border: 'none', background: 'transparent',
+                color: active ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                cursor: 'pointer', padding: '4px 0',
+                transition: 'color 150ms',
+              }}
+            >
+              <Icon name={tab.icon} size={22} color={active ? 'var(--color-accent)' : 'var(--color-text-muted)'} />
+              <span style={{ fontSize: 10, fontWeight: active ? 700 : 500, letterSpacing: '0.01em' }}>
+                {tab.label}
+              </span>
+            </button>
+          );
+        })}
+
+        {/* More tab */}
+        <button
+          onClick={() => setMoreOpen((v) => !v)}
+          style={{
+            flex: 1, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            gap: 3, border: 'none', background: 'transparent',
+            color: activeIsMore || moreOpen ? 'var(--color-accent)' : 'var(--color-text-muted)',
+            cursor: 'pointer', padding: '4px 0',
+            transition: 'color 150ms',
+          }}
+        >
+          <Icon name="dots" size={22} color={activeIsMore || moreOpen ? 'var(--color-accent)' : 'var(--color-text-muted)'} />
+          <span style={{ fontSize: 10, fontWeight: activeIsMore || moreOpen ? 700 : 500, letterSpacing: '0.01em' }}>
+            More
+          </span>
+        </button>
+      </nav>
+
+      <style>{`
+        @keyframes sheet-in {
+          from { transform: translateY(100%); opacity: 0; }
+          to   { transform: translateY(0);    opacity: 1; }
+        }
+      `}</style>
+    </>
+  );
+};

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ToastProvider, Sidebar } from '@/components/app-common';
+import { ToastProvider, Sidebar, BottomTabBar } from '@/components/app-common';
 import { getToken, clearToken } from '@/lib/token-store';
 import LoginScreen from '@/components/screens/login';
 import POSTerminal from '@/components/screens/pos';
@@ -64,10 +64,11 @@ export default function POS() {
     <ToastProvider>
       <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
         <Sidebar current={screen} onNavigate={(s) => setScreen(s as Screen)} onLogout={handleLogout} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
-        <main style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'auto' }}>
+        <main className="pb-16 md:pb-0" style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'auto' }}>
           {screens[screen]}
         </main>
       </div>
+      <BottomTabBar currentScreen={screen} onNavigate={(s) => setScreen(s as Screen)} />
     </ToastProvider>
   );
 }

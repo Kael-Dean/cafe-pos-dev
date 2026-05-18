@@ -173,3 +173,18 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .btn-block { width: 100%; }
 .btn-lg { padding: 14px 18px; font-size: var(--fs-16); }
 .btn-xl { padding: 18px 20px; font-size: var(--fs-16); min-height: 64px; }
+
+/* ---------- Mobile touch targets ---------- */
+@media (max-width: 767px) {
+  button, [role="button"], a {
+    min-height: 44px;
+  }
+  input, select, textarea {
+    font-size: 16px; /* prevent iOS auto-zoom on focus */
+  }
+}
+
+/* ---------- Safe area ---------- */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
