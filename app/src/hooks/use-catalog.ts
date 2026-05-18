@@ -1,0 +1,137 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api-client';
+
+// ── Category types ────────────────────────────────────────────────────────────
+
+export interface CategoryRead {
+  id: string;
+  store_id: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Modifier types ────────────────────────────────────────────────────────────
+
+export interface ModifierReadAdmin {
+  id: string;
+  name: string;
+  price_delta: string;
+  inventory_item_id: string | null;
+  inventory_qty: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface ModifierGroupReadAdmin {
+  id: string;
+  store_id: string;
+  name: string;
+  required: boolean;
+  min_select: number;
+  max_select: number | null;
+  is_active: boolean;
+  modifiers: ModifierReadAdmin[];
+}
+
+// ── ModifierCreate payload (used in create + bulk-replace) ────────────────────
+
+export interface ModifierCreatePayload {
+  name: string;
+  price_delta?: string;
+  inventory_item_id?: string | null;
+  inventory_qty?: string | null;
+  sort_order?: number;
+}
+
+// ── Category hooks ─────────────────────────────────────────────────────────────
+
+export function useCategoriesAdmin() {
+  return useQuery<CategoryRead[]>({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      const data = await api.get<CategoryRead[]>('/api/v1/categories');
+      return data.slice().sort((a, b) => a.sort_order - b.sort_order);
+    },
+  });
+}
+
+export function useCreateCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { name: string; sort_order?: number }) =>
+      api.post<CategoryRead>('/api/v1/categories', payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] }),
+  });
+}
+
+export function useUpdateCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...payload }: { id: string; name?: string; sort_order?: number }) =>
+      api.patch<CategoryRead>(`/api/v1/categories/${id}`, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] }),
+  });
+}
+
+export function useDeleteCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/api/v1/categories/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] }),
+  });
+}
+
+// ── Modifier Group hooks ───────────────────────────────────────────────────────
+
+export function useModifierGroupsAdmin() {
+  return useQuery<ModifierGroupReadAdmin[]>({
+    queryKey: ['modifier-groups', 'admin'],
+    queryFn: () =>
+      api.get<ModifierGroupReadAdmin[]>('/api/v1/modifier-groups?is_active=true'),
+  });
+}
+
+interface ModifierGroupCreatePayload {
+  name: string;
+  required?: boolean;
+  min_select?: number;
+  max_select?: number | null;
+  modifiers?: ModifierCreatePayload[];
+}
+
+interface ModifierGroupUpdatePayload {
+  name?: string;
+  required?: boolean;
+  min_select?: number;
+  max_select?: number | null;
+  modifiers?: ModifierCreatePayload[];
+}
+
+export function useCreateModifierGroupAdmin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ModifierGroupCreatePayload) =>
+      api.post<ModifierGroupReadAdmin>('/api/v1/modifier-groups', payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['modifier-groups'] }),
+  });
+}
+
+export function useUpdateModifierGroupAdmin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...payload }: { id: string } & ModifierGroupUpdatePayload) =>
+      api.patch<ModifierGroupReadAdmin>(`/api/v1/modifier-groups/${id}`, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['modifier-groups'] }),
+  });
+}
+
+export function useDeleteModifierGroupAdmin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/api/v1/modifier-groups/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['modifier-groups'] }),
+  });
+}
