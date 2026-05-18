@@ -6,6 +6,9 @@ import path from 'path';
 const CONFIG_PATH = path.join(process.cwd(), 'printer-config.json');
 
 function loadConfig(): { ip: string; port: number } {
+  if (process.env.PRINTER_IP) {
+    return { ip: process.env.PRINTER_IP, port: Number(process.env.PRINTER_PORT ?? 9100) };
+  }
   try {
     return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
   } catch {
