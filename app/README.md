@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Kafé OS — POS Frontend
+
+Next.js 15 front-end for the Kafé OS cafe point-of-sale system. Connects to the FastAPI backend in `../caf-pos-repo-main/api`.
+
+## Stack
+
+- **Next.js 15** (App Router, client components)
+- **React Query** (`@tanstack/react-query`) for server state
+- **Prisma** (local dev DB / migrations)
+- **pnpm** workspaces
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# From repo root
+pnpm --filter app dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_API_BASE_URL` to your backend URL.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Screens
 
-## Learn More
+| Screen | Route key | Role |
+|--------|-----------|------|
+| POS Terminal | `pos` | All |
+| Kitchen (KDS) | `kds` | All |
+| Dashboard | `dashboard` | All |
+| BOM Builder | `bom` | All |
+| Inventory | `inventory` | All |
+| Pre-Orders | `pre-orders` | All |
+| Shopping List | `shopping-list` | All |
+| Cash Reconciliation | `cash` | OWNER / MANAGER |
+| Promotions | `promotions` | All |
+| Protocols / SOP | `protocols` | All |
+| ตารางกะ | `shifts` | All |
+| HR & Admin | `hr` | OWNER / MANAGER |
+| Hardware | `hardware` | All |
+| Catalog Admin | `catalog` | **OWNER only** |
+| Settings | `settings` | All |
 
-To learn more about Next.js, take a look at the following resources:
+## Catalog Admin
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+OWNER-only page (`catalog`) for managing:
+- **หมวดหมู่ (Categories)** — create, rename, re-sort, delete. Feeds the "หมวดหมู่" dropdown in the New Menu dialog.
+- **กลุ่มตัวเลือก (Modifier Groups)** — create groups with child modifier options, edit flags (`required`, `min_select`, `max_select`), bulk-replace modifiers on save. Feeds the "เปลี่ยนตัวเลือก" picker in BOM Builder and the POS options modal.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Project Structure
 
-## Deploy on Vercel
+```
+app/src/
+  app/          Next.js app router (page.tsx is the single-page root)
+  components/
+    screens/    One file per screen
+    app-common  Sidebar, ToastProvider, shared UI helpers
+    icons       Icon component
+  hooks/        React Query hooks (one file per domain)
+  lib/
+    api-client  Typed fetch wrapper with bearer token
+    token-store JWT token storage
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## API
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+All requests go to `NEXT_PUBLIC_API_BASE_URL/api/v1/`. The bearer token is stored in `localStorage` via `token-store.ts` and attached automatically by `api-client.ts`.
