@@ -5,6 +5,9 @@ import path from 'path';
 
 const CONFIG_PATH = path.join(process.cwd(), 'printer-config.json');
 
+// If PRINT_BRIDGE_URL is set (e.g. Cloudflare Tunnel), forward requests there instead of direct TCP
+const BRIDGE_URL = process.env.PRINT_BRIDGE_URL?.replace(/\/$/, '');
+
 function loadConfig(): { ip: string; port: number } {
   if (process.env.PRINTER_IP) {
     return { ip: process.env.PRINTER_IP, port: Number(process.env.PRINTER_PORT ?? 9100) };
@@ -27,6 +30,15 @@ function checkPrinter(ip: string, port: number): Promise<boolean> {
 }
 
 export async function GET() {
+  if (BRIDGE_URL) {
+    try {
+      const res  = await fetch(`${BRIDGE_URL}/status`, { signal: AbortSignal.timeout(4000) });
+      const data = await res.json();
+      return NextResponse.json({ ok: true, printer: data.printer ?? false, ip: data.ip ?? '—', bridge: BRIDGE_URL });
+    } catch {
+      return NextResponse.json({ ok: false, printer: false, bridge: BRIDGE_URL });
+    }
+  }
   const { ip, port } = loadConfig();
   const online = await checkPrinter(ip, port);
   return NextResponse.json({ ok: true, printer: online, ip });
@@ -109,10 +121,27 @@ function buildESCPOS(data: {
 }
 
 export async function POST(req: NextRequest) {
+  const body = await req.json();
+
+  // Forward to Cloudflare Tunnel bridge if configured
+  if (BRIDGE_URL) {
+    try {
+      const res = await fetch(`${BRIDGE_URL}/print`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10000),
+      });
+      const data = await res.json();
+      return NextResponse.json(data, { status: res.ok ? 200 : 500 });
+    } catch (err: any) {
+      return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    }
+  }
+
   const { ip, port } = loadConfig();
   try {
-    const data = await req.json();
-    const receipt = buildESCPOS(data);
+    const receipt = buildESCPOS(body);
 
     await new Promise<void>((resolve, reject) => {
       const socket = new net.Socket();
