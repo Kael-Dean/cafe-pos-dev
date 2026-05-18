@@ -40,7 +40,6 @@ function buildESCPOS(data) {
 
   const parts = [
     cmd(ESC, 0x40),       // initialize
-    cmd(ESC, 0x74, 0x14), // TIS-620 Thai codepage
     cmd(ESC, 0x61, 0x01), // center
     cmd(GS,  0x21, 0x10), // double height
     line(data.storeName),
