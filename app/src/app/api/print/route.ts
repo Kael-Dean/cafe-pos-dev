@@ -4,6 +4,21 @@ import net from 'net';
 const PRINTER_IP = '192.168.192.168';
 const PRINTER_PORT = 9100;
 
+function checkPrinter(): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(2000);
+    socket.connect(PRINTER_PORT, PRINTER_IP, () => { socket.destroy(); resolve(true); });
+    socket.on('timeout', () => { socket.destroy(); resolve(false); });
+    socket.on('error',   () => { socket.destroy(); resolve(false); });
+  });
+}
+
+export async function GET() {
+  const online = await checkPrinter();
+  return NextResponse.json({ ok: true, printer: online, ip: PRINTER_IP });
+}
+
 // Thai Unicode (U+0E00–U+0E7F) → TIS-620 (0xA0–0xFF)
 function toTIS620(text: string): Buffer {
   const bytes: number[] = [];
