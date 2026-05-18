@@ -1,0 +1,30 @@
+# Secrets and credentials
+.env
+credentials.json
+token.json
+*.pem
+*.key
+
+# Temporary / regenerable
+.tmp/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.obsidian/
+
+# uv
+.venv/
