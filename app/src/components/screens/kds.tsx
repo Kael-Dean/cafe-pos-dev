@@ -95,7 +95,7 @@ export default function KDS() {
             <div>ไม่มีออเดอร์ค้างในคิว</div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {sorted.map(t => (
               <OrderTicket
                 key={t.orderId}
@@ -160,7 +160,7 @@ const OrderTicket = ({ ticket, mins, nameToId, onBump, onDone, onStepsClick }: {
   }[ticket.status] || { label: '', bg: '', color: '' };
 
   return (
-    <div style={{ background: 'white', borderRadius: 12, borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: ticket.status === 'new' ? 'newCard 400ms var(--ease-out)' : 'none' }}>
+    <div className="min-h-[120px] text-lg md:text-base" style={{ background: 'white', borderRadius: 12, borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: ticket.status === 'new' ? 'newCard 400ms var(--ease-out)' : 'none' }}>
       <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--color-border)' }}>
         <div className="num" style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.01em' }}>#{ticket.queue}</div>
         <div style={{ flex: 1 }}>
@@ -210,17 +210,17 @@ const OrderTicket = ({ ticket, mins, nameToId, onBump, onDone, onStepsClick }: {
 
       <div style={{ padding: 12, background: 'var(--color-surface-2)', display: 'flex', gap: 8 }}>
         {ticket.status === 'new' && (
-          <button onClick={onBump} className="btn btn-primary" style={{ flex: 1 }}>
+          <button onClick={onBump} className="btn btn-primary min-h-[44px]" style={{ flex: 1 }}>
             <Icon name="coffee" size={14} /> เริ่มทำ
           </button>
         )}
         {ticket.status === 'progress' && (
-          <button onClick={onDone} className="btn btn-accent" style={{ flex: 1 }}>
+          <button onClick={onDone} className="btn btn-accent min-h-[44px]" style={{ flex: 1 }}>
             <Icon name="check" size={14} /> เสร็จแล้ว
           </button>
         )}
         {ticket.status === 'ready' && (
-          <button onClick={onDone} className="btn btn-primary" style={{ flex: 1, background: 'var(--color-success)', borderColor: 'var(--color-success)' }}>
+          <button onClick={onDone} className="btn btn-primary min-h-[44px]" style={{ flex: 1, background: 'var(--color-success)', borderColor: 'var(--color-success)' }}>
             <Icon name="check" size={14} /> ส่งมอบลูกค้า
           </button>
         )}
