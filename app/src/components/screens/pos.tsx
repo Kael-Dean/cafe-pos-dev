@@ -127,7 +127,7 @@ export default function POSTerminal() {
       }).then(() => {
         toast({ kind: 'success', title: 'ชำระเงินสำเร็จ', msg: `บิล ${order.order_number} • ${baht(totalSnapshot)} • ส่งครัวแล้ว`, duration: 3500 });
           printReceipt({
-            orderNumber: order.order_number,
+            orderNumber: String(order.order_number),
             items: cartSnapshot.map(l => ({ name: l.name, qty: l.qty, unitPrice: l.unitPrice, mods: l.mods.length ? l.mods : undefined })),
             subtotal: subtotalSnapshot,
             total: totalSnapshot,
