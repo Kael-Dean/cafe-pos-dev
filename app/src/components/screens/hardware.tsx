@@ -23,7 +23,7 @@ const PREVIEW_ITEMS: ReceiptItem[] = [
 ];
 
 function ReceiptPreview({ data }: { data: ReceiptData }) {
-  const W = 32;
+  const W = 42;
   const dash = '-'.repeat(W);
   const fmt  = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const center = (s: string) => {

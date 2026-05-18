@@ -75,7 +75,7 @@ function buildESCPOS(data: {
   total: number;
   paymentLabel: string;
 }): Buffer {
-  const W = 32;
+  const W = 42;
   const dash = '-'.repeat(W);
 
   const fmt = (n: number) => n.toFixed(2);
