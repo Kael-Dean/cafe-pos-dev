@@ -175,7 +175,7 @@ export default function Inventory() {
   ];
 
   return (
-    <div className="scroll" style={{ height: '100%', overflow: 'auto', padding: 24, background: 'var(--color-bg)' }}>
+    <div className="scroll" style={{ height: '100%', overflow: 'auto', padding: 'clamp(12px, 3vw, 24px)', background: 'var(--color-bg)' }}>
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 4 }}>P1 — Inventory</div>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>Inventory</h1>
@@ -186,23 +186,26 @@ export default function Inventory() {
         <div style={{ padding: 60, textAlign: 'center', color: 'var(--color-text-muted)' }}>กำลังโหลดข้อมูลคลัง...</div>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+          <div className="grid grid-cols-2 md:grid-cols-4" style={{ gap: 12, marginBottom: 16 }}>
             <KPISmall label="วัตถุดิบทั้งหมด"          value={`${counts.total} รายการ`} />
             <KPISmall label="ใกล้หมด (Low)"            value={`${counts.low} รายการ`} />
             <KPISmall label="ต่ำกว่าครึ่ง par (Critical)" value={`${counts.critical} รายการ`} />
             <KPISmall label="ล็อตหมดอายุ (มีสต็อก)"   value={`${counts.expiring} ล็อต`} highlight={counts.expiring > 0 ? 'warning' : undefined} />
           </div>
 
-          <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--color-surface-2)', borderRadius: 10, marginBottom: 16, width: 'fit-content' }}>
-            {TABS.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{
-                padding: '8px 16px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer',
-                background: tab === t.id ? 'var(--color-surface)' : 'transparent',
-                color: tab === t.id ? 'var(--color-text)' : 'var(--color-text-secondary)',
-                boxShadow: tab === t.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)',
-              }}>{t.label}</button>
-            ))}
+          <div className="overflow-x-auto" style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--color-surface-2)', borderRadius: 10, width: 'fit-content', minWidth: 'max-content' }}>
+              {TABS.map(t => (
+                <button key={t.id} onClick={() => setTab(t.id)} style={{
+                  padding: '8px 16px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer',
+                  background: tab === t.id ? 'var(--color-surface)' : 'transparent',
+                  color: tab === t.id ? 'var(--color-text)' : 'var(--color-text-secondary)',
+                  boxShadow: tab === t.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                  fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)',
+                  whiteSpace: 'nowrap',
+                }}>{t.label}</button>
+              ))}
+            </div>
           </div>
 
           {tab === 'items'   && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onWaste={openWastage} onAddIngredient={() => setAddIngredientOpen(true)} onDelete={setDeleteConfirmItem} onSupplierHistory={setSupplierHistoryItem} onLots={setLotsItem} />}
@@ -345,61 +348,155 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
   onLots: (item: InventoryItem) => void;
 }) => (
   <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
-    <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-      <div style={{ position: 'relative', flex: 1, minWidth: 240 }}>
-        <div style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', display: 'grid', placeItems: 'center' }}>
-          <Icon name="search" size={16} color="var(--color-text-muted)" />
+    {/* Filter bar — stacks on mobile, row on desktop */}
+    <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)' }}>
+      {/* Mobile: search full-width + icon-only filter row */}
+      <div className="flex md:hidden" style={{ gap: 8, marginBottom: 8 }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <div style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', display: 'grid', placeItems: 'center' }}>
+            <Icon name="search" size={16} color="var(--color-text-muted)" />
+          </div>
+          <input type="text" placeholder="ค้นหาวัตถุดิบ..." value={search} onChange={e => setSearch(e.target.value)}
+            style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
+          />
         </div>
-        <input type="text" placeholder="ค้นหาวัตถุดิบ..." value={search} onChange={e => setSearch(e.target.value)}
-          style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
-        />
+        <button onClick={onAddIngredient} style={{ ...primaryBtnStyle(), padding: '10px 12px' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={16} /></button>
       </div>
-      <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--color-surface-2)', borderRadius: 8 }}>
-        {[{ id: 'all', label: 'ทั้งหมด' }, { id: 'critical', label: 'Critical' }, { id: 'low', label: 'Low' }, { id: 'ok', label: 'OK' }].map(s => (
-          <button key={s.id} onClick={() => setStatusFilter(s.id)} style={{
-            padding: '6px 12px', fontSize: 12, fontWeight: 600, border: 'none', borderRadius: 6, cursor: 'pointer',
-            background: statusFilter === s.id ? 'var(--color-surface)' : 'transparent',
-            color: statusFilter === s.id ? 'var(--color-text)' : 'var(--color-text-secondary)',
-            fontFamily: 'inherit',
-          }}>{s.label}</button>
-        ))}
+      <div className="flex md:hidden" style={{ gap: 4 }}>
+        <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--color-surface-2)', borderRadius: 8, flex: 1 }}>
+          {[{ id: 'all', label: 'ทั้งหมด' }, { id: 'critical', label: 'Crit' }, { id: 'low', label: 'Low' }, { id: 'ok', label: 'OK' }].map(s => (
+            <button key={s.id} onClick={() => setStatusFilter(s.id)} style={{
+              flex: 1, padding: '6px 4px', fontSize: 11, fontWeight: 600, border: 'none', borderRadius: 6, cursor: 'pointer',
+              background: statusFilter === s.id ? 'var(--color-surface)' : 'transparent',
+              color: statusFilter === s.id ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              fontFamily: 'inherit',
+            }}>{s.label}</button>
+          ))}
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-muted)', alignSelf: 'center', paddingLeft: 4, whiteSpace: 'nowrap' }}>{items.length}/{totalCount}</div>
       </div>
-      <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{items.length}/{totalCount} รายการ</div>
-      <button onClick={onAddIngredient} style={primaryBtnStyle()} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={14} /> เพิ่มวัตถุดิบ</button>
+
+      {/* Desktop: single row */}
+      <div className="hidden md:flex" style={{ gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 240 }}>
+          <div style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', display: 'grid', placeItems: 'center' }}>
+            <Icon name="search" size={16} color="var(--color-text-muted)" />
+          </div>
+          <input type="text" placeholder="ค้นหาวัตถุดิบ..." value={search} onChange={e => setSearch(e.target.value)}
+            style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--color-surface-2)', borderRadius: 8 }}>
+          {[{ id: 'all', label: 'ทั้งหมด' }, { id: 'critical', label: 'Critical' }, { id: 'low', label: 'Low' }, { id: 'ok', label: 'OK' }].map(s => (
+            <button key={s.id} onClick={() => setStatusFilter(s.id)} style={{
+              padding: '6px 12px', fontSize: 12, fontWeight: 600, border: 'none', borderRadius: 6, cursor: 'pointer',
+              background: statusFilter === s.id ? 'var(--color-surface)' : 'transparent',
+              color: statusFilter === s.id ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              fontFamily: 'inherit',
+            }}>{s.label}</button>
+          ))}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{items.length}/{totalCount} รายการ</div>
+        <button onClick={onAddIngredient} style={primaryBtnStyle()} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={14} /> เพิ่มวัตถุดิบ</button>
+      </div>
     </div>
 
-    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 240px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
-      <div>วัตถุดิบ</div><div>หน่วย</div><div style={{ textAlign: 'right' }}>คงเหลือ</div><div style={{ textAlign: 'right' }}>Par level</div><div>สถานะ</div><div style={{ textAlign: 'right' }}>ต้นทุน/หน่วย</div><div></div>
-    </div>
+    {/* Desktop table — hidden on mobile */}
+    <div className="hidden md:block">
+      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 240px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+        <div>วัตถุดิบ</div>
+        <div className="hidden lg:block">หน่วย</div>
+        <div style={{ textAlign: 'right' }}>คงเหลือ</div>
+        <div className="hidden lg:block" style={{ textAlign: 'right' }}>Par level</div>
+        <div>สถานะ</div>
+        <div className="hidden lg:block" style={{ textAlign: 'right' }}>ต้นทุน/หน่วย</div>
+        <div></div>
+      </div>
 
-    {items.length === 0 ? (
-      <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>ไม่พบวัตถุดิบที่ตรงเงื่อนไข</div>
-    ) : items.map((it, idx) => {
-      const ratio = it.parLevel > 0 ? Math.min(100, (it.stock / it.parLevel) * 100) : 100;
-      return (
-        <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 240px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === items.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>{it.name}</div>
-            <div style={{ marginTop: 4, height: 4, background: 'var(--color-surface-2)', borderRadius: 999, overflow: 'hidden', maxWidth: 200 }}>
-              <div style={{ height: '100%', width: `${ratio}%`, background: it.status.tone === 'danger' ? 'var(--color-danger)' : it.status.tone === 'warning' ? 'var(--color-warning)' : 'var(--color-success)', transition: 'width 200ms var(--ease-out)' }} />
+      {items.length === 0 ? (
+        <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>ไม่พบวัตถุดิบที่ตรงเงื่อนไข</div>
+      ) : items.map((it, idx) => {
+        const ratio = it.parLevel > 0 ? Math.min(100, (it.stock / it.parLevel) * 100) : 100;
+        return (
+          <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 240px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === items.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{it.name}</div>
+              <div style={{ marginTop: 4, height: 4, background: 'var(--color-surface-2)', borderRadius: 999, overflow: 'hidden', maxWidth: 200 }}>
+                <div style={{ height: '100%', width: `${ratio}%`, background: it.status.tone === 'danger' ? 'var(--color-danger)' : it.status.tone === 'warning' ? 'var(--color-warning)' : 'var(--color-success)', transition: 'width 200ms var(--ease-out)' }} />
+              </div>
+            </div>
+            <div className="hidden lg:block" style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{it.unit}</div>
+            <div className="num" style={{ fontSize: 14, fontWeight: 700, textAlign: 'right' }}>{it.stock.toLocaleString()}</div>
+            <div className="num hidden lg:block" style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'right' }}>{it.parLevel.toLocaleString()}</div>
+            <div><Tag tone={it.status.tone}>{it.status.label}</Tag></div>
+            <div className="num hidden lg:block" style={{ fontSize: 13, color: it.costPerUnit === 0 ? 'var(--color-text-muted)' : 'var(--color-text-secondary)', textAlign: 'right' }}>
+              {it.costPerUnit === 0 ? '—' : `฿${it.costPerUnit.toFixed(2)}`}
+            </div>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button onClick={() => onLots(it)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="list" size={12} /> Lots</button>
+              <button onClick={() => onWaste(it.id)} style={miniBtnStyle('ghost')} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-warning-50)'; e.currentTarget.style.color = '#9C6A1F'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}><Icon name="trash" size={12} /> Waste</button>
+              <button onClick={() => onSupplierHistory(it)} style={miniBtnStyle('ghost')} title="ประวัติ Supplier" onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-primary)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>ประวัติ</button>
+              <button onClick={() => onDelete(it)} style={miniBtnStyle('danger')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-danger-50)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'} title="ลบวัตถุดิบ"><Icon name="trash" size={12} /></button>
             </div>
           </div>
-          <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{it.unit}</div>
-          <div className="num" style={{ fontSize: 14, fontWeight: 700, textAlign: 'right' }}>{it.stock.toLocaleString()}</div>
-          <div className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'right' }}>{it.parLevel.toLocaleString()}</div>
-          <div><Tag tone={it.status.tone}>{it.status.label}</Tag></div>
-          <div className="num" style={{ fontSize: 13, color: it.costPerUnit === 0 ? 'var(--color-text-muted)' : 'var(--color-text-secondary)', textAlign: 'right' }}>
-            {it.costPerUnit === 0 ? '—' : `฿${it.costPerUnit.toFixed(2)}`}
-          </div>
-          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-            <button onClick={() => onLots(it)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="list" size={12} /> Lots</button>
-            <button onClick={() => onWaste(it.id)} style={miniBtnStyle('ghost')} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-warning-50)'; e.currentTarget.style.color = '#9C6A1F'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}><Icon name="trash" size={12} /> Waste</button>
-            <button onClick={() => onSupplierHistory(it)} style={miniBtnStyle('ghost')} title="ประวัติ Supplier" onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-primary)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>ประวัติ</button>
-            <button onClick={() => onDelete(it)} style={miniBtnStyle('danger')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-danger-50)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'} title="ลบวัตถุดิบ"><Icon name="trash" size={12} /></button>
-          </div>
+        );
+      })}
+    </div>
+
+    {/* Mobile card list — hidden on md+ */}
+    <div className="md:hidden">
+      {items.length === 0 ? (
+        <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>ไม่พบวัตถุดิบที่ตรงเงื่อนไข</div>
+      ) : (
+        <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {items.map((it) => {
+            const ratio = it.parLevel > 0 ? Math.min(100, (it.stock / it.parLevel) * 100) : 100;
+            return (
+              <div key={it.id} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 10, padding: '12px 14px' }}>
+                {/* Row 1: name + status badge */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.3 }}>{it.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>{it.unit}</div>
+                  </div>
+                  <Tag tone={it.status.tone}>{it.status.label}</Tag>
+                </div>
+                {/* Stock bar */}
+                <div style={{ height: 4, background: 'var(--color-surface-2)', borderRadius: 999, overflow: 'hidden', marginBottom: 8 }}>
+                  <div style={{ height: '100%', width: `${ratio}%`, background: it.status.tone === 'danger' ? 'var(--color-danger)' : it.status.tone === 'warning' ? 'var(--color-warning)' : 'var(--color-success)', transition: 'width 200ms var(--ease-out)' }} />
+                </div>
+                {/* Row 2: stock + cost */}
+                <div style={{ display: 'flex', gap: 16, marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>คงเหลือ</div>
+                    <div className="num" style={{ fontSize: 15, fontWeight: 700 }}>{it.stock.toLocaleString()} <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-secondary)' }}>{it.unit}</span></div>
+                  </div>
+                  <div style={{ width: 1, background: 'var(--color-border)' }} />
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Par</div>
+                    <div className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{it.parLevel.toLocaleString()}</div>
+                  </div>
+                  <div style={{ width: 1, background: 'var(--color-border)' }} />
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ต้นทุน/หน่วย</div>
+                    <div className="num" style={{ fontSize: 13, color: it.costPerUnit === 0 ? 'var(--color-text-muted)' : 'var(--color-text-secondary)' }}>
+                      {it.costPerUnit === 0 ? '—' : `฿${it.costPerUnit.toFixed(2)}`}
+                    </div>
+                  </div>
+                </div>
+                {/* Row 3: action buttons */}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button onClick={() => onLots(it)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="list" size={12} /> Lots</button>
+                  <button onClick={() => onWaste(it.id)} style={miniBtnStyle('ghost')} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-warning-50)'; e.currentTarget.style.color = '#9C6A1F'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}><Icon name="trash" size={12} /> Waste</button>
+                  <button onClick={() => onSupplierHistory(it)} style={miniBtnStyle('ghost')} title="ประวัติ Supplier" onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-primary)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>ประวัติ</button>
+                  <button onClick={() => onDelete(it)} style={miniBtnStyle('danger')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-danger-50)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'} title="ลบวัตถุดิบ"><Icon name="trash" size={12} /></button>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      );
-    })}
+      )}
+    </div>
   </div>
 );
 
