@@ -21,6 +21,7 @@ export default function POSTerminal() {
   const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
   const [modifierGroupIds, setModifierGroupIds] = useState<string[]>([]);
   const [payment, setPayment] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'menu' | 'cart'>('menu');
 
   const { data: categories, isLoading: catsLoading } = useCategories();
   const { data: products, isLoading: prodLoading, isError } = useAllProducts();
@@ -139,124 +140,176 @@ export default function POSTerminal() {
     });
   };
 
+  const cartCount = cart.reduce((s, l) => s + l.qty, 0);
+
   return (
-    <div style={{display: 'flex', height: '100%', overflow: 'hidden', background: 'var(--color-bg)'}}>
-      {/* LEFT: Menu (60%) */}
-      <div style={{flex: '0 0 60%', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--color-border)'}}>
-        <div style={{padding: '16px 20px 0 20px', display: 'flex', flexDirection: 'column', gap: 12}}>
-          <div style={{display: 'flex', gap: 12, alignItems: 'center'}}>
-            <h1 style={{margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em'}}>เมนู</h1>
-            <div style={{flex: 1, position: 'relative'}}>
-              <div style={{position: 'absolute', top: 10, left: 12, color: 'var(--color-text-muted)'}}>
-                <Icon name="search" size={16} />
+    <div style={{display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--color-bg)'}}>
+      {/* Mobile tab strip — hidden on md+ */}
+      <div className="flex md:hidden shrink-0" style={{
+        height: 44,
+        borderBottom: '1px solid var(--color-border)',
+        background: 'var(--color-surface)',
+      }}>
+        <button
+          onClick={() => setActiveTab('menu')}
+          style={{
+            flex: 1, fontWeight: 600, fontSize: 14,
+            color: activeTab === 'menu' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+            borderBottom: activeTab === 'menu' ? '2px solid var(--color-accent)' : '2px solid transparent',
+            background: 'none', transition: 'all 150ms',
+          }}
+        >
+          เมนู
+        </button>
+        <button
+          onClick={() => setActiveTab('cart')}
+          style={{
+            flex: 1, fontWeight: 600, fontSize: 14,
+            color: activeTab === 'cart' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+            borderBottom: activeTab === 'cart' ? '2px solid var(--color-accent)' : '2px solid transparent',
+            background: 'none', transition: 'all 150ms',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          }}
+        >
+          ตะกร้า
+          {cartCount > 0 && (
+            <span style={{
+              background: 'var(--color-primary)', color: 'white',
+              borderRadius: 999, fontSize: 11, fontWeight: 700,
+              padding: '1px 6px', lineHeight: '16px',
+            }}>{cartCount}</span>
+          )}
+        </button>
+      </div>
+
+      {/* Two-panel row */}
+      <div style={{display: 'flex', flex: 1, overflow: 'hidden'}}>
+        {/* LEFT: Menu — full-width on mobile, 60% on md+ */}
+        <div
+          className={`${activeTab === 'menu' ? 'flex' : 'hidden'} md:flex w-full md:w-[60%] md:max-w-[60%] shrink-0`}
+          style={{flexDirection: 'column', borderRight: '1px solid var(--color-border)'}}
+        >
+          <div style={{padding: '16px 20px 0 20px', display: 'flex', flexDirection: 'column', gap: 12}}>
+            <div style={{display: 'flex', gap: 12, alignItems: 'center'}}>
+              <h1 style={{margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em'}}>เมนู</h1>
+              <div style={{flex: 1, position: 'relative'}}>
+                <div style={{position: 'absolute', top: 10, left: 12, color: 'var(--color-text-muted)'}}>
+                  <Icon name="search" size={16} />
+                </div>
+                <input type="text" placeholder="ค้นหาเมนู ชื่อ หรือ hotkey..."
+                  value={search} onChange={(e) => setSearch(e.target.value)}
+                  style={{
+                    width: '100%', padding: '10px 12px 10px 36px',
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)', borderRadius: 8,
+                    fontSize: 14, outline: 'none',
+                  }}
+                  onFocus={(e) => e.target.style.boxShadow = 'var(--shadow-focus)'}
+                  onBlur={(e) => e.target.style.boxShadow = 'none'}
+                />
               </div>
-              <input type="text" placeholder="ค้นหาเมนู ชื่อ หรือ hotkey..."
-                value={search} onChange={(e) => setSearch(e.target.value)}
-                style={{
-                  width: '100%', padding: '10px 12px 10px 36px',
-                  background: 'var(--color-surface)',
-                  border: '1px solid var(--color-border)', borderRadius: 8,
-                  fontSize: 14, outline: 'none',
-                }}
-                onFocus={(e) => e.target.style.boxShadow = 'var(--shadow-focus)'}
-                onBlur={(e) => e.target.style.boxShadow = 'none'}
-              />
+            </div>
+            <div style={{display: 'flex', gap: 6, overflowX: 'auto'}} className="scroll">
+              <CategoryTab label="★ ขายดี" active={category === 'fav'} onClick={() => { setCategory('fav'); setSearch(''); }} highlight />
+              {catsLoading && !categories ? (
+                <div style={{ padding: '8px 14px', fontSize: 13, color: 'var(--color-text-muted)' }}>กำลังโหลด...</div>
+              ) : (
+                (categories ?? []).map((c) => (
+                  <CategoryTab key={c.id} label={c.label} active={category === c.id} onClick={() => { setCategory(c.id); setSearch(''); }} />
+                ))
+              )}
             </div>
           </div>
-          <div style={{display: 'flex', gap: 6, overflowX: 'auto'}} className="scroll">
-            <CategoryTab label="★ ขายดี" active={category === 'fav'} onClick={() => { setCategory('fav'); setSearch(''); }} highlight />
-            {catsLoading && !categories ? (
-              <div style={{ padding: '8px 14px', fontSize: 13, color: 'var(--color-text-muted)' }}>กำลังโหลด...</div>
+
+          <div className="scroll" style={{flex: 1, overflow: 'auto', padding: 20}}>
+            {isError ? (
+              <div style={{textAlign: 'center', padding: 60, color: 'var(--color-danger)'}}>
+                <div style={{marginBottom: 8}}><Icon name="warning" size={32}/></div>
+                ไม่สามารถโหลดเมนูได้ กรุณาตรวจสอบการเชื่อมต่อ
+              </div>
+            ) : prodLoading ? (
+              <div style={{textAlign: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
+                กำลังโหลดเมนู...
+              </div>
             ) : (
-              (categories ?? []).map((c) => (
-                <CategoryTab key={c.id} label={c.label} active={category === c.id} onClick={() => { setCategory(c.id); setSearch(''); }} />
-              ))
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(160px,1fr))]" style={{gap: 12}}>
+                  {filtered.map((m) => <MenuCard key={m.id} item={m} onClick={() => onMenuClick(m)} />)}
+                </div>
+                {filtered.length === 0 && (
+                  <div style={{textAlign: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
+                    <div style={{marginBottom: 8}}><Icon name="search" size={32}/></div>
+                    ไม่พบเมนูที่ค้นหา
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
 
-        <div className="scroll" style={{flex: 1, overflow: 'auto', padding: 20}}>
-          {isError ? (
-            <div style={{textAlign: 'center', padding: 60, color: 'var(--color-danger)'}}>
-              <div style={{marginBottom: 8}}><Icon name="warning" size={32}/></div>
-              ไม่สามารถโหลดเมนูได้ กรุณาตรวจสอบการเชื่อมต่อ
+        {/* RIGHT: Cart — full-width on mobile, 40% on md+ */}
+        <div
+          className={`${activeTab === 'cart' ? 'flex' : 'hidden'} md:flex w-full md:w-[40%] md:max-w-[40%] shrink-0`}
+          style={{flexDirection: 'column', background: 'var(--color-surface)'}}
+        >
+          <div style={{padding: '20px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+            <div>
+              <div style={{fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500}}>บิลปัจจุบัน</div>
+              <div style={{fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em'}} className="num">A0{billNo}</div>
             </div>
-          ) : prodLoading ? (
-            <div style={{textAlign: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
-              กำลังโหลดเมนู...
+            <div style={{display: 'flex', gap: 6}}>
+              <button className="btn btn-ghost" style={{padding: '8px 12px', fontSize: 12}}>
+                <Icon name="user" size={14}/> ลูกค้า
+              </button>
+              <button className="btn btn-ghost" style={{padding: 8}} title="Park bill">
+                <Icon name="park" size={16}/>
+              </button>
             </div>
-          ) : (
-            <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
-                {filtered.map((m) => <MenuCard key={m.id} item={m} onClick={() => onMenuClick(m)} />)}
+          </div>
+
+          <div className="scroll" style={{flex: 1, overflow: 'auto', padding: '8px 0'}}>
+            {cart.length === 0 ? (
+              <div style={{padding: 60, textAlign: 'center', color: 'var(--color-text-muted)'}}>
+                <div style={{marginBottom: 12, opacity: 0.6}}><Icon name="cart" size={48}/></div>
+                <div style={{fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4}}>ตะกร้าว่าง</div>
+                <div style={{fontSize: 13}}>เลือกเมนูจากด้านซ้ายเพื่อเริ่มออเดอร์</div>
               </div>
-              {filtered.length === 0 && (
-                <div style={{textAlign: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
-                  <div style={{marginBottom: 8}}><Icon name="search" size={32}/></div>
-                  ไม่พบเมนูที่ค้นหา
+            ) : cart.map((l, i) => (
+              <CartLine key={i} line={l} onInc={() => updateQty(i, +1)} onDec={() => updateQty(i, -1)} onRemove={() => removeLine(i)} />
+            ))}
+          </div>
+
+          {/* Sticky checkout section on mobile */}
+          <div style={{flexShrink: 0, borderTop: '1px solid var(--color-border)'}}>
+            <div style={{padding: 20, background: 'var(--color-surface-2)'}}>
+              <Row label="Subtotal" value={baht(subtotal)} />
+              <Row label="VAT 7%"  value={baht(vat)} />
+              <Row label="ส่วนลด"  value={baht(0)} muted />
+              <div style={{height: 1, background: 'var(--color-border)', margin: '12px 0'}}/>
+              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'baseline'}}>
+                <div style={{fontSize: 15, fontWeight: 600}}>รวมทั้งสิ้น</div>
+                <div className="num" style={{fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--color-primary)'}}>
+                  {baht(total)}
                 </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* RIGHT: Cart (40%) */}
-      <div style={{flex: '0 0 40%', display: 'flex', flexDirection: 'column', background: 'var(--color-surface)'}}>
-        <div style={{padding: '20px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-          <div>
-            <div style={{fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500}}>บิลปัจจุบัน</div>
-            <div style={{fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em'}} className="num">A0{billNo}</div>
-          </div>
-          <div style={{display: 'flex', gap: 6}}>
-            <button className="btn btn-ghost" style={{padding: '8px 12px', fontSize: 12}}>
-              <Icon name="user" size={14}/> ลูกค้า
-            </button>
-            <button className="btn btn-ghost" style={{padding: 8}} title="Park bill">
-              <Icon name="park" size={16}/>
-            </button>
-          </div>
-        </div>
-
-        <div className="scroll" style={{flex: 1, overflow: 'auto', padding: '8px 0'}}>
-          {cart.length === 0 ? (
-            <div style={{padding: 60, textAlign: 'center', color: 'var(--color-text-muted)'}}>
-              <div style={{marginBottom: 12, opacity: 0.6}}><Icon name="cart" size={48}/></div>
-              <div style={{fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4}}>ตะกร้าว่าง</div>
-              <div style={{fontSize: 13}}>เลือกเมนูจากด้านซ้ายเพื่อเริ่มออเดอร์</div>
+              </div>
             </div>
-          ) : cart.map((l, i) => (
-            <CartLine key={i} line={l} onInc={() => updateQty(i, +1)} onDec={() => updateQty(i, -1)} onRemove={() => removeLine(i)} />
-          ))}
-        </div>
 
-        <div style={{padding: 20, borderTop: '1px solid var(--color-border)', background: 'var(--color-surface-2)'}}>
-          <Row label="Subtotal" value={baht(subtotal)} />
-          <Row label="VAT 7%"  value={baht(vat)} />
-          <Row label="ส่วนลด"  value={baht(0)} muted />
-          <div style={{height: 1, background: 'var(--color-border)', margin: '12px 0'}}/>
-          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'baseline'}}>
-            <div style={{fontSize: 15, fontWeight: 600}}>รวมทั้งสิ้น</div>
-            <div className="num" style={{fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--color-primary)'}}>
-              {baht(total)}
+            <div style={{padding: '0 20px 20px', display: 'grid', gap: 8}}>
+              <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8}}>
+                <PayButton icon="cash"  label="เงินสด"      onClick={() => cart.length && setPayment('cash')} disabled={!cart.length} />
+                <PayButton icon="card"  label="บัตร"         onClick={() => cart.length && setPayment('card')} disabled={!cart.length} />
+                <PayButton icon="qr"    label="QR PromptPay" onClick={() => cart.length && setPayment('qr')}   disabled={!cart.length} primary />
+                <PayButton icon="line"  label="LINE Pay"     onClick={() => cart.length && setPayment('line')} disabled={!cart.length} />
+              </div>
+              <div style={{display: 'flex', gap: 8, marginTop: 4}}>
+                <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8}}>
+                  <Icon name="discount" size={14}/> Discount
+                </button>
+                <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8}} onClick={() => cart.length && clearCart()}>
+                  <Icon name="void" size={14}/> Void
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-
-        <div style={{padding: '0 20px 20px', display: 'grid', gap: 8}}>
-          <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8}}>
-            <PayButton icon="cash"  label="เงินสด"      onClick={() => cart.length && setPayment('cash')} disabled={!cart.length} />
-            <PayButton icon="card"  label="บัตร"         onClick={() => cart.length && setPayment('card')} disabled={!cart.length} />
-            <PayButton icon="qr"    label="QR PromptPay" onClick={() => cart.length && setPayment('qr')}   disabled={!cart.length} primary />
-            <PayButton icon="line"  label="LINE Pay"     onClick={() => cart.length && setPayment('line')} disabled={!cart.length} />
-          </div>
-          <div style={{display: 'flex', gap: 8, marginTop: 4}}>
-            <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8}}>
-              <Icon name="discount" size={14}/> Discount
-            </button>
-            <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8}} onClick={() => cart.length && clearCart()}>
-              <Icon name="void" size={14}/> Void
-            </button>
           </div>
         </div>
       </div>
