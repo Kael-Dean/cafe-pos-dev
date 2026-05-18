@@ -1,22 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import net from 'net';
+import fs from 'fs';
+import path from 'path';
 
-const PRINTER_IP = '192.168.1.129';
-const PRINTER_PORT = 9100;
+const CONFIG_PATH = path.join(process.cwd(), 'printer-config.json');
 
-function checkPrinter(): Promise<boolean> {
+function loadConfig(): { ip: string; port: number } {
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+  } catch {
+    return { ip: '192.168.1.129', port: 9100 };
+  }
+}
+
+function checkPrinter(ip: string, port: number): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const socket = new net.Socket();
     socket.setTimeout(2000);
-    socket.connect(PRINTER_PORT, PRINTER_IP, () => { socket.destroy(); resolve(true); });
+    socket.connect(port, ip, () => { socket.destroy(); resolve(true); });
     socket.on('timeout', () => { socket.destroy(); resolve(false); });
     socket.on('error',   () => { socket.destroy(); resolve(false); });
   });
 }
 
 export async function GET() {
-  const online = await checkPrinter();
-  return NextResponse.json({ ok: true, printer: online, ip: PRINTER_IP });
+  const { ip, port } = loadConfig();
+  const online = await checkPrinter(ip, port);
+  return NextResponse.json({ ok: true, printer: online, ip });
 }
 
 // Thai Unicode (U+0E00–U+0E7F) → TIS-620 (0xA0–0xFF)
@@ -29,7 +39,7 @@ function toTIS620(text: string): Buffer {
     } else if (cp < 0x80) {
       bytes.push(cp);
     } else {
-      bytes.push(0x3f); // '?'
+      bytes.push(0x3f);
     }
   }
   return Buffer.from(bytes);
@@ -60,16 +70,16 @@ function buildESCPOS(data: {
   };
 
   const parts: Buffer[] = [
-    cmd(ESC, 0x40),        // ESC @ initialize
-    cmd(ESC, 0x74, 0x15),  // Thai Code 2 (TIS-620)
-    cmd(ESC, 0x61, 0x01),  // center
-    cmd(GS,  0x21, 0x10),  // double height
+    cmd(ESC, 0x40),
+    cmd(ESC, 0x74, 0x15),
+    cmd(ESC, 0x61, 0x01),
+    cmd(GS,  0x21, 0x10),
     line(data.storeName),
-    cmd(GS,  0x21, 0x00),  // normal
+    cmd(GS,  0x21, 0x00),
     line(`ออเดอร์ #${data.orderNumber}`),
     line(new Date().toLocaleString('th-TH')),
     line(dash),
-    cmd(ESC, 0x61, 0x00),  // left
+    cmd(ESC, 0x61, 0x00),
   ];
 
   for (const item of data.items) {
@@ -81,21 +91,22 @@ function buildESCPOS(data: {
   parts.push(
     line(dash),
     line(leftRight('รวม', fmt(data.subtotal))),
-    cmd(ESC, 0x45, 0x01),  // bold on
+    cmd(ESC, 0x45, 0x01),
     line(leftRight('รวมทั้งสิ้น', fmt(data.total))),
-    cmd(ESC, 0x45, 0x00),  // bold off
+    cmd(ESC, 0x45, 0x00),
     line(`ชำระ: ${data.paymentLabel}`),
     line(dash),
-    cmd(ESC, 0x61, 0x01),  // center
+    cmd(ESC, 0x61, 0x01),
     line('ขอบคุณที่ใช้บริการ'),
     Buffer.from([LF, LF, LF]),
-    cmd(GS,  0x56, 0x42, 0x03),  // full cut
+    cmd(GS,  0x56, 0x42, 0x03),
   );
 
   return Buffer.concat(parts);
 }
 
 export async function POST(req: NextRequest) {
+  const { ip, port } = loadConfig();
   try {
     const data = await req.json();
     const receipt = buildESCPOS(data);
@@ -103,7 +114,7 @@ export async function POST(req: NextRequest) {
     await new Promise<void>((resolve, reject) => {
       const socket = new net.Socket();
       socket.setTimeout(5000);
-      socket.connect(PRINTER_PORT, PRINTER_IP, () => {
+      socket.connect(port, ip, () => {
         socket.write(receipt, (err) => {
           socket.destroy();
           err ? reject(err) : resolve();

@@ -18,7 +18,9 @@ const TEST_PAYLOAD = {
 export default function HardwareScreen() {
   const toast = useToast();
   const [printer, setPrinter]     = useState<PrinterStatus>('checking');
-  const [printerIp, setPrinterIp] = useState('192.168.192.168');
+  const [printerIp, setPrinterIp] = useState('');
+  const [ipInput, setIpInput]     = useState('');
+  const [saving, setSaving]       = useState(false);
   const [testing, setTesting]     = useState(false);
   const [lastPrint, setLastPrint] = useState<string | null>(null);
 
@@ -28,13 +30,40 @@ export default function HardwareScreen() {
       const res  = await fetch('/api/print', { signal: AbortSignal.timeout(5000) });
       const data = await res.json();
       setPrinter(data.printer ? 'online' : 'offline');
-      if (data.ip) setPrinterIp(data.ip);
+      if (data.ip) { setPrinterIp(data.ip); setIpInput(data.ip); }
     } catch {
       setPrinter('offline');
     }
   }, []);
 
-  useEffect(() => { checkStatus(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    fetch('/api/print/config').then(r => r.json()).then(cfg => {
+      setPrinterIp(cfg.ip);
+      setIpInput(cfg.ip);
+    });
+    checkStatus();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveIp = async () => {
+    const ip = ipInput.trim();
+    if (!ip) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/print/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      setPrinterIp(ip);
+      toast({ kind: 'success', title: 'บันทึกแล้ว', msg: `IP: ${ip}` });
+      checkStatus();
+    } catch (err: any) {
+      toast({ kind: 'warning', title: 'บันทึกไม่สำเร็จ', msg: err.message });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const testPrint = async () => {
     setTesting(true);
@@ -81,6 +110,33 @@ export default function HardwareScreen() {
         </button>
       </div>
 
+      {/* IP Config */}
+      <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: 'var(--shadow-xs)' }}>
+        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>IP เครื่องพิมพ์</div>
+        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 14 }}>
+          เปลี่ยน WiFi หรือย้ายร้าน แค่แก้ IP ตรงนี้ — ไม่ต้องแตะโค้ด
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <input
+            value={ipInput}
+            onChange={e => setIpInput(e.target.value)}
+            placeholder="192.168.1.129"
+            style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: 14, fontFamily: 'monospace' }}
+            onKeyDown={e => e.key === 'Enter' && saveIp()}
+          />
+          <button
+            onClick={saveIp}
+            disabled={saving || ipInput.trim() === printerIp}
+            style={{ padding: '9px 20px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 14, cursor: (saving || ipInput.trim() === printerIp) ? 'not-allowed' : 'pointer', opacity: (saving || ipInput.trim() === printerIp) ? 0.6 : 1, whiteSpace: 'nowrap' }}
+          >
+            {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+          </button>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 8 }}>
+          ดู IP เครื่องปริ้นได้จาก EpsonNet Config หรือพิมพ์ใบ Self-test
+        </div>
+      </div>
+
       {/* Printer card */}
       <div style={{ background: 'var(--color-surface)', border: `1px solid ${printer === 'offline' ? 'var(--color-danger-50)' : 'var(--color-border)'}`, borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: 'var(--shadow-xs)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -94,7 +150,7 @@ export default function HardwareScreen() {
             </div>
             <div style={{ display: 'flex', gap: 14, fontSize: 12, color: 'var(--color-text-secondary)', flexWrap: 'wrap' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="wifi" size={12} /> LAN</span>
-              <span>IP: {printerIp}</span>
+              <span>IP: {printerIp || '—'}</span>
               <span>กระดาษ: 80mm</span>
               {lastPrint && <span>พิมพ์ล่าสุด: {lastPrint}</span>}
             </div>
@@ -113,8 +169,8 @@ export default function HardwareScreen() {
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>ตรวจสอบ:</div>
             <ul style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: 0, paddingLeft: 16, lineHeight: 1.8 }}>
               <li>เปิดเครื่องปริ้นอยู่ไหม?</li>
-              <li>สายแลนเสียบอยู่ไหม?</li>
-              <li>เครื่องปริ้นอยู่ในเครือข่ายเดียวกันกับ router ไหม?</li>
+              <li>สายแลนเสียบเข้า Router อยู่ไหม?</li>
+              <li>IP ข้างบนตรงกับที่ EpsonNet Config แสดงไหม?</li>
             </ul>
           </div>
         )}
