@@ -145,23 +145,30 @@ export default function POSTerminal() {
   return (
     <div style={{display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--color-bg)'}}>
       {/* Mobile tab strip — hidden on md+ */}
-      <div className="flex md:hidden shrink-0" style={{
+      <div role="tablist" aria-label="POS sections" className="flex md:hidden shrink-0" style={{
         height: 44,
         borderBottom: '1px solid var(--color-border)',
         background: 'var(--color-surface)',
       }}>
         <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'menu'}
           onClick={() => setActiveTab('menu')}
           style={{
             flex: 1, fontWeight: 600, fontSize: 14,
             color: activeTab === 'menu' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
             borderBottom: activeTab === 'menu' ? '2px solid var(--color-accent)' : '2px solid transparent',
             background: 'none', transition: 'all 150ms',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
           เมนู
         </button>
         <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'cart'}
           onClick={() => setActiveTab('cart')}
           style={{
             flex: 1, fontWeight: 600, fontSize: 14,
@@ -173,7 +180,7 @@ export default function POSTerminal() {
         >
           ตะกร้า
           {cartCount > 0 && (
-            <span style={{
+            <span aria-label={`${cartCount} รายการ`} style={{
               background: 'var(--color-primary)', color: 'white',
               borderRadius: 999, fontSize: 11, fontWeight: 700,
               padding: '1px 6px', lineHeight: '16px',
@@ -186,8 +193,8 @@ export default function POSTerminal() {
       <div style={{display: 'flex', flex: 1, overflow: 'hidden'}}>
         {/* LEFT: Menu — full-width on mobile, 60% on md+ */}
         <div
-          className={`${activeTab === 'menu' ? 'flex' : 'hidden'} md:flex w-full md:w-[60%] md:max-w-[60%] shrink-0`}
-          style={{flexDirection: 'column', borderRight: '1px solid var(--color-border)'}}
+          className={`${activeTab === 'menu' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-[60%] md:max-w-[60%] shrink-0`}
+          style={{borderRight: '1px solid var(--color-border)'}}
         >
           <div style={{padding: '16px 20px 0 20px', display: 'flex', flexDirection: 'column', gap: 12}}>
             <div style={{display: 'flex', gap: 12, alignItems: 'center'}}>
@@ -249,8 +256,8 @@ export default function POSTerminal() {
 
         {/* RIGHT: Cart — full-width on mobile, 40% on md+ */}
         <div
-          className={`${activeTab === 'cart' ? 'flex' : 'hidden'} md:flex w-full md:w-[40%] md:max-w-[40%] shrink-0`}
-          style={{flexDirection: 'column', background: 'var(--color-surface)'}}
+          className={`${activeTab === 'cart' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-[40%] md:max-w-[40%] shrink-0`}
+          style={{background: 'var(--color-surface)'}}
         >
           <div style={{padding: '20px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
             <div>
