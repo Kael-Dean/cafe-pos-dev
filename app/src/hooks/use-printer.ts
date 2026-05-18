@@ -9,6 +9,13 @@ const PAY_LABEL: Record<string, string> = {
   line: 'LINE Pay',
 };
 
+export const DEFAULT_BRIDGE = 'http://localhost:3456';
+
+export function getBridgeUrl(): string {
+  if (typeof window === 'undefined') return DEFAULT_BRIDGE;
+  return localStorage.getItem('print_bridge_url') ?? DEFAULT_BRIDGE;
+}
+
 export interface PrintReceiptArgs {
   orderNumber: string;
   items: Array<{ name: string; qty: number; unitPrice: number; mods?: string[] }>;
@@ -19,7 +26,8 @@ export interface PrintReceiptArgs {
 
 export function usePrinter() {
   const printReceipt = useCallback(async (args: PrintReceiptArgs): Promise<void> => {
-    const res = await fetch('http://localhost:3456/print', {
+    const bridge = getBridgeUrl();
+    const res = await fetch(`${bridge}/print`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

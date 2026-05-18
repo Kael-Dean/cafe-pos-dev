@@ -3,8 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Icon from '../icons';
 import { useToast } from '../app-common';
-
-const BRIDGE = 'http://localhost:3456';
+import { DEFAULT_BRIDGE, getBridgeUrl } from '@/hooks/use-printer';
 
 type BridgeStatus = 'checking' | 'online' | 'offline';
 type PrinterStatus = 'online' | 'offline' | 'checking';
@@ -16,12 +15,22 @@ export default function HardwareScreen() {
   const [printerIp, setPrinterIp]   = useState('192.168.192.168');
   const [testing, setTesting]       = useState(false);
   const [lastPrint, setLastPrint]   = useState<string | null>(null);
+  const [bridgeUrl, setBridgeUrl]   = useState(DEFAULT_BRIDGE);
+  const [urlInput, setUrlInput]     = useState(DEFAULT_BRIDGE);
+  const [connecting, setConnecting] = useState(false);
 
-  const checkStatus = useCallback(async () => {
+  useEffect(() => {
+    const saved = getBridgeUrl();
+    setBridgeUrl(saved);
+    setUrlInput(saved);
+  }, []);
+
+  const checkStatus = useCallback(async (url?: string) => {
+    const target = url ?? bridgeUrl;
     setBridge('checking');
     setPrinter('checking');
     try {
-      const res  = await fetch(`${BRIDGE}/status`, { signal: AbortSignal.timeout(3000) });
+      const res  = await fetch(`${target}/status`, { signal: AbortSignal.timeout(3000) });
       const data = await res.json();
       setBridge('online');
       setPrinter(data.printer ? 'online' : 'offline');
@@ -30,9 +39,32 @@ export default function HardwareScreen() {
       setBridge('offline');
       setPrinter('offline');
     }
-  }, []);
+  }, [bridgeUrl]);
 
-  useEffect(() => { checkStatus(); }, [checkStatus]);
+  const connectBridge = async () => {
+    const url = urlInput.trim().replace(/\/$/, '');
+    setConnecting(true);
+    try {
+      const res  = await fetch(`${url}/status`, { signal: AbortSignal.timeout(3000) });
+      const data = await res.json();
+      if (data.bridge) {
+        localStorage.setItem('print_bridge_url', url);
+        setBridgeUrl(url);
+        setBridge('online');
+        setPrinter(data.printer ? 'online' : 'offline');
+        if (data.ip) setPrinterIp(data.ip);
+        toast({ kind: 'success', title: 'เชื่อมต่อสำเร็จ', msg: url });
+      }
+    } catch {
+      toast({ kind: 'warning', title: 'เชื่อมต่อไม่ได้', msg: 'ตรวจสอบว่า print-server.js รันอยู่บนเครื่องนั้น' });
+      setBridge('offline');
+      setPrinter('offline');
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  useEffect(() => { const url = getBridgeUrl(); setBridgeUrl(url); setUrlInput(url); checkStatus(url); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const testPrint = async () => {
     if (bridge !== 'online') {
@@ -41,7 +73,7 @@ export default function HardwareScreen() {
     }
     setTesting(true);
     try {
-      const res = await fetch(`${BRIDGE}/test`, { method: 'POST' });
+      const res = await fetch(`${bridgeUrl}/test`, { method: 'POST' });
       if (!res.ok) throw new Error((await res.json()).error);
       setLastPrint(new Date().toLocaleTimeString('th-TH'));
       toast({ kind: 'success', title: 'พิมพ์ทดสอบสำเร็จ', msg: 'ตรวจสอบใบเสร็จที่พิมพ์ออกมา' });
@@ -73,10 +105,38 @@ export default function HardwareScreen() {
           <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Hardware / เครื่องพิมพ์</h1>
           <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>จัดการเครื่องพิมพ์ใบเสร็จ</div>
         </div>
-        <button onClick={checkStatus} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>
+        <button onClick={() => checkStatus()} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>
           <Icon name="refresh" size={15} style={{ animation: bridge === 'checking' ? 'spin 1s linear infinite' : 'none' }} />
           รีเฟรชสถานะ
         </button>
+      </div>
+
+      {/* Connect section */}
+      <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: 'var(--shadow-xs)' }}>
+        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>เชื่อมต่อ Print Bridge</div>
+        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 14 }}>
+          ถ้าเครื่องปริ้นอยู่คนละเครื่อง ให้ใส่ IP ของเครื่องที่รัน print-server.js
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <input
+            value={urlInput}
+            onChange={e => setUrlInput(e.target.value)}
+            placeholder="http://localhost:3456"
+            style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: 14, fontFamily: 'monospace' }}
+            onKeyDown={e => e.key === 'Enter' && connectBridge()}
+          />
+          <button
+            onClick={connectBridge}
+            disabled={connecting}
+            style={{ padding: '9px 20px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 14, cursor: connecting ? 'default' : 'pointer', whiteSpace: 'nowrap' }}
+          >
+            {connecting ? 'กำลังเชื่อม...' : 'เชื่อมต่อ'}
+          </button>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 8 }}>
+          เครื่องเดียวกับ printer: <code style={{ background: 'var(--color-surface-2)', padding: '1px 6px', borderRadius: 4 }}>http://localhost:3456</code>
+          {' '}· เครื่องอื่นในร้าน: <code style={{ background: 'var(--color-surface-2)', padding: '1px 6px', borderRadius: 4 }}>http://[IP เครื่อง]:3456</code>
+        </div>
       </div>
 
       {/* Bridge status card */}
@@ -87,7 +147,7 @@ export default function HardwareScreen() {
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-              <span style={{ fontWeight: 700, fontSize: 15 }}>Print Bridge (localhost:3456)</span>
+              <span style={{ fontWeight: 700, fontSize: 15 }}>Print Bridge ({bridgeUrl.replace('http://', '')})</span>
               <StatusDot s={bridge} />
             </div>
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>สคริปต์ที่รันบนเครื่อง PC ร้าน — เชื่อม web app กับ printer</div>

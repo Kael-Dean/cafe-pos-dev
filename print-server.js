@@ -157,7 +157,7 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(LISTEN_PORT, '127.0.0.1', () => {
+server.listen(LISTEN_PORT, '0.0.0.0', () => {
   console.log(`Print bridge รันอยู่ที่ http://localhost:${LISTEN_PORT}`);
   console.log(`Printer: ${PRINTER_IP}:${PRINTER_PORT}`);
 });
