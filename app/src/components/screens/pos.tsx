@@ -8,6 +8,7 @@ import { useProductDetail } from '@/hooks/use-bom';
 import { useCreateOrder, usePayOrder } from '@/hooks/use-orders';
 import ModifierModal from './modifier-modal';
 import PaymentModal from './payment-modal';
+import { usePrinter } from '@/hooks/use-printer';
 
 interface CartLine { menuId: string; name: string; basePrice: number; unitPrice: number; qty: number; mods: string[]; modIds: string[]; modKey: string; }
 
@@ -25,6 +26,7 @@ export default function POSTerminal() {
   const { data: products, isLoading: prodLoading, isError } = useAllProducts();
   const createOrder = useCreateOrder();
   const payOrder = usePayOrder();
+  const { printReceipt } = usePrinter();
 
   // Prefetch product detail when hovered so click is instant
   const [pendingModifierId, setPendingModifierId] = useState<string | null>(null);
@@ -103,6 +105,7 @@ export default function POSTerminal() {
   const onPaid = () => {
     const method = payment;
     const cartSnapshot = [...cart];
+    const subtotalSnapshot = subtotal;
     const totalSnapshot = total;
     setPayment(null);
     clearCart();
@@ -123,6 +126,13 @@ export default function POSTerminal() {
         payment_method: methodMap[method ?? 'cash'] ?? 'CASH',
       }).then(() => {
         toast({ kind: 'success', title: 'ชำระเงินสำเร็จ', msg: `บิล ${order.order_number} • ${baht(totalSnapshot)} • ส่งครัวแล้ว`, duration: 3500 });
+          printReceipt({
+            orderNumber: order.order_number,
+            items: cartSnapshot.map(l => ({ name: l.name, qty: l.qty, unitPrice: l.unitPrice, mods: l.mods.length ? l.mods : undefined })),
+            subtotal: subtotalSnapshot,
+            total: totalSnapshot,
+            paymentMethod: method ?? 'cash',
+          }).catch(() => {});
       })
     ).catch(() => {
       toast({ kind: 'warning', title: 'บิลบันทึกไม่สำเร็จ', msg: 'กรุณาแจ้งผู้จัดการ', duration: 4000 });
