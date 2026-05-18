@@ -9,7 +9,7 @@
 const http = require('http');
 const net  = require('net');
 
-const PRINTER_IP   = '192.168.192.168';
+const PRINTER_IP   = '192.168.1.129';
 const PRINTER_PORT = 9100;
 const LISTEN_PORT  = 3456;
 

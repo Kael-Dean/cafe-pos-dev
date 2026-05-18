@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import net from 'net';
 
-const PRINTER_IP = '192.168.192.168';
+const PRINTER_IP = '192.168.1.129';
 const PRINTER_PORT = 9100;
 
 function checkPrinter(): Promise<boolean> {
