@@ -160,11 +160,11 @@ const OrderTicket = ({ ticket, mins, nameToId, onBump, onDone, onStepsClick }: {
   }[ticket.status] || { label: '', bg: '', color: '' };
 
   return (
-    <div className="min-h-[120px] text-lg md:text-base" style={{ background: 'white', borderRadius: 12, borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: ticket.status === 'new' ? 'newCard 400ms var(--ease-out)' : 'none' }}>
+    <div className="min-h-[120px]" style={{ background: 'white', borderRadius: 12, borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: ticket.status === 'new' ? 'newCard 400ms var(--ease-out)' : 'none' }}>
       <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--color-border)' }}>
         <div className="num" style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.01em' }}>#{ticket.queue}</div>
         <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--color-text-secondary)' }}>
+          <div className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--color-text-secondary)' }}>
             <Icon name={typeIconMap[ticket.type] || 'cart'} size={12} /> {ticket.type}
           </div>
           <Tag tone={urgency === 'red' ? 'danger' : urgency === 'yellow' ? 'warning' : 'accent'}>
@@ -179,7 +179,7 @@ const OrderTicket = ({ ticket, mins, nameToId, onBump, onDone, onStepsClick }: {
           <div key={i}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.3 }}>{it.name}</div>
+                <div className="text-base" style={{ fontWeight: 600, lineHeight: 1.3 }}>{it.name}</div>
                 {nameToId.has(it.name) && (
                   <button
                     onClick={() => onStepsClick(nameToId.get(it.name)!, it.name)}
@@ -193,7 +193,7 @@ const OrderTicket = ({ ticket, mins, nameToId, onBump, onDone, onStepsClick }: {
               <div className="num" style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-primary)' }}>×{it.qty}</div>
             </div>
             {it.mods.length > 0 && (
-              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 2, lineHeight: 1.5 }}>
+              <div className="text-sm" style={{ color: 'var(--color-text-secondary)', marginTop: 2, lineHeight: 1.5 }}>
                 {it.mods.map((m, k) => {
                   const isSpecial = m.startsWith('+') || m.includes('นมโอ๊ต') || m.includes('นมอัลมอนด์');
                   return (
