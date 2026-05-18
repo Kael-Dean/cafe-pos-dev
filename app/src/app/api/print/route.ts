@@ -46,6 +46,7 @@ function buildESCPOS(data: {
 
   const parts: Buffer[] = [
     cmd(ESC, 0x40),        // ESC @ initialize
+    cmd(ESC, 0x74, 0x15),  // Thai Code 2 (TIS-620)
     cmd(ESC, 0x61, 0x01),  // center
     cmd(GS,  0x21, 0x10),  // double height
     line(data.storeName),
