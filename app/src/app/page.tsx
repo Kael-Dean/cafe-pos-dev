@@ -28,6 +28,7 @@ type Screen =
 export default function POS() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!getToken());
   const [screen, setScreen] = useState<Screen>('pos');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   if (!isLoggedIn) {
     return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
@@ -60,7 +61,7 @@ export default function POS() {
   return (
     <ToastProvider>
       <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
-        <Sidebar current={screen} onNavigate={(s) => setScreen(s as Screen)} onLogout={handleLogout} />
+        <Sidebar current={screen} onNavigate={(s) => setScreen(s as Screen)} onLogout={handleLogout} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
         <main style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'auto' }}>
           {screens[screen]}
         </main>

@@ -72,6 +72,7 @@ export default function Inventory() {
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<InventoryItem | null>(null);
   const [supplierHistoryItem, setSupplierHistoryItem] = useState<InventoryItem | null>(null);
   const [lotsItem, setLotsItem] = useState<InventoryItem | null>(null);
+  const [viewReceiptId, setViewReceiptId] = useState<string | null>(null);
 
   const { data: inventoryItems, isLoading: invLoading } = useInventory();
   const { data: movementsData } = useInventoryMovements();
@@ -206,7 +207,7 @@ export default function Inventory() {
 
           {tab === 'items'   && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onWaste={openWastage} onAddIngredient={() => setAddIngredientOpen(true)} onDelete={setDeleteConfirmItem} onSupplierHistory={setSupplierHistoryItem} onLots={setLotsItem} />}
           {tab === 'usage'   && <UsageTab stats={usageStats} movements={saleMovements} />}
-          {tab === 'receive' && <ReceiveTab onNewReceipt={openNewReceipt} onContinueDraft={openDraftReceipt} />}
+          {tab === 'receive' && <ReceiveTab onNewReceipt={openNewReceipt} onContinueDraft={openDraftReceipt} onViewReceipt={setViewReceiptId} />}
           {tab === 'waste'   && <WastageTab items={inventoryItems ?? []} movements={recentWastage} totalCost={wastageThisMonth} onAdd={() => openWastage()} />}
         </>
       )}
@@ -240,6 +241,9 @@ export default function Inventory() {
       )}
       {lotsItem && (
         <LotsModal item={lotsItem} onClose={() => setLotsItem(null)} />
+      )}
+      {viewReceiptId && (
+        <ReceiptDetailModal id={viewReceiptId} onClose={() => setViewReceiptId(null)} />
       )}
     </div>
   );
@@ -481,7 +485,7 @@ const UsageTab = ({ stats, movements }: {
 };
 
 // ── Receive Tab (receipts list) ───────────────────────────────────────────────
-const ReceiveTab = ({ onNewReceipt, onContinueDraft }: { onNewReceipt: () => void; onContinueDraft: (id: string) => void }) => {
+const ReceiveTab = ({ onNewReceipt, onContinueDraft, onViewReceipt }: { onNewReceipt: () => void; onContinueDraft: (id: string) => void; onViewReceipt: (id: string) => void }) => {
   const { data: receipts, isLoading } = useReceipts();
 
   return (
@@ -512,7 +516,7 @@ const ReceiveTab = ({ onNewReceipt, onContinueDraft }: { onNewReceipt: () => voi
               {r.status === 'DRAFT' ? (
                 <button onClick={() => onContinueDraft(r.id)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}>ต่อ →</button>
               ) : (
-                <span style={{ fontSize: 12, color: 'var(--color-success)', fontWeight: 600 }}>✓ เสร็จสิ้น</span>
+                <button onClick={() => onViewReceipt(r.id)} style={miniBtnStyle('ghost')} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-primary)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>ดูรายการ</button>
               )}
             </div>
           </div>
@@ -581,8 +585,10 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
   // Add-lot form state
   const [lotItemId, setLotItemId] = useState('');
   const [lotPacks, setLotPacks] = useState('');
-  const [lotUnitPrice, setLotUnitPrice] = useState('');
+  const [lotTotalPrice, setLotTotalPrice] = useState('');
   const [lotExpiry, setLotExpiry] = useState('');
+  const [ingredientSearch, setIngredientSearch] = useState('');
+  const [ingredientOpen, setIngredientOpen] = useState(false);
 
   const [headerError, setHeaderError] = useState('');
   const [lotError, setLotError] = useState('');
@@ -600,7 +606,7 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
     setLotItemId(id);
   };
 
-  const resetLotForm = () => { setLotItemId(''); setLotPacks(''); setLotUnitPrice(''); setLotExpiry(''); setLotError(''); };
+  const resetLotForm = () => { setLotItemId(''); setLotPacks(''); setLotTotalPrice(''); setLotExpiry(''); setLotError(''); setIngredientSearch(''); setIngredientOpen(false); };
 
   const handleCreateReceipt = async () => {
     setHeaderError('');
@@ -619,7 +625,11 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
   };
 
   const handleAddLot = async () => {
-    if (!receiptId || !lotItemId || Number(lotPacks) <= 0 || Number(lotUnitPrice) <= 0) return;
+    const packs = Number(lotPacks);
+    const total = Number(lotTotalPrice);
+    if (!receiptId || !lotItemId || packs <= 0 || total <= 0) return;
+    const computedUnitPrice = (total / packs).toFixed(2);
+    if (Number(computedUnitPrice) > 99999.99) { setLotError('ราคา/แพ็ค ที่คำนวณได้เกินขีดจำกัด (99,999.99)'); return; }
     setLotError('');
     try {
       await addLot.mutateAsync({
@@ -627,7 +637,7 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
         lot: {
           inventory_item_id: lotItemId,
           qty_packs: lotPacks,
-          unit_price: lotUnitPrice,
+          unit_price: computedUnitPrice,
           expiry_date: lotExpiry || undefined,
         },
       });
@@ -662,7 +672,7 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
   };
 
   const isConfirmed = receipt?.status === 'CONFIRMED';
-  const canAddLot = !!lotItemId && Number(lotPacks) > 0 && Number(lotUnitPrice) > 0 && !isConfirmed;
+  const canAddLot = !!lotItemId && Number(lotPacks) > 0 && Number(lotTotalPrice) > 0 && !isConfirmed;
   const canConfirm = (receipt?.lots?.length ?? 0) > 0 && !isConfirmed && !confirmReceipt.isPending;
 
   return (
@@ -694,11 +704,31 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
           {!isConfirmed && (
             <div style={{ background: 'var(--color-surface-2)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>เพิ่มรายการสินค้า</div>
-              <div style={{ marginBottom: 10 }}>
-                <select value={lotItemId} onChange={e => handleSelectLotItem(e.target.value)} style={{ ...smallInputStyle(), appearance: 'auto' }}>
-                  <option value="" disabled>เลือกวัตถุดิบ...</option>
-                  {items.map(it => <option key={it.id} value={it.id}>{it.name} · {it.unit}</option>)}
-                </select>
+              <div style={{ position: 'relative', marginBottom: 10 }}>
+                <input
+                  type="text"
+                  placeholder="เลือกวัตถุดิบ..."
+                  value={ingredientSearch}
+                  onChange={e => { setIngredientSearch(e.target.value); setIngredientOpen(true); }}
+                  onFocus={() => setIngredientOpen(true)}
+                  onBlur={() => setTimeout(() => setIngredientOpen(false), 150)}
+                  style={smallInputStyle()}
+                />
+                {ingredientOpen && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50, maxHeight: 200, overflow: 'auto', marginTop: 4 }}>
+                    {items.filter(it => !ingredientSearch || it.name.toLowerCase().includes(ingredientSearch.toLowerCase())).length === 0 ? (
+                      <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>ไม่พบวัตถุดิบ</div>
+                    ) : items.filter(it => !ingredientSearch || it.name.toLowerCase().includes(ingredientSearch.toLowerCase())).map(it => (
+                      <div
+                        key={it.id}
+                        onMouseDown={() => { handleSelectLotItem(it.id); setIngredientSearch(it.name); setIngredientOpen(false); }}
+                        style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', background: it.id === lotItemId ? 'var(--color-accent-50)' : undefined, color: it.id === lotItemId ? 'var(--color-primary)' : undefined, fontWeight: it.id === lotItemId ? 600 : undefined }}
+                      >
+                        {it.name} · {it.unit}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'flex-end' }}>
                 <div>
@@ -706,8 +736,8 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
                   <input type="number" min={0.001} step="any" value={lotPacks} onChange={e => setLotPacks(e.target.value)} placeholder="0" style={smallInputStyle()} />
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ราคา/แพ็ค (฿) *</div>
-                  <input type="number" min={0.01} max={99999.99} step={0.01} value={lotUnitPrice} onChange={e => setLotUnitPrice(e.target.value)} placeholder="0.00" style={smallInputStyle()} />
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ราคารวม (฿) *</div>
+                  <input type="number" min={0.01} step={0.01} value={lotTotalPrice} onChange={e => setLotTotalPrice(e.target.value)} placeholder="0.00" style={smallInputStyle()} />
                 </div>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>วันหมดอายุ</div>
@@ -717,11 +747,10 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
                   {addLot.isPending ? '...' : '+ เพิ่ม'}
                 </button>
               </div>
-              {selectedLotItem && Number(lotPacks) > 0 && Number(lotUnitPrice) > 0 && selectedLotItem.unitSize && (
+              {selectedLotItem && Number(lotPacks) > 0 && Number(lotTotalPrice) > 0 && (
                 <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--color-accent-50)', borderRadius: 8, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>
-                  {Number(lotPacks).toLocaleString()} แพ็ค × ฿{Number(lotUnitPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
-                  = <strong>฿{(Number(lotPacks) * Number(lotUnitPrice)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} รวม</strong>
-                  {' · '}฿{(Number(lotUnitPrice) / Number(selectedLotItem.unitSize)).toFixed(2)}/{selectedLotItem.unit}
+                  {Number(lotPacks).toLocaleString()} แพ็ค × ฿{(Number(lotTotalPrice) / Number(lotPacks)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/แพ็ค{' '}
+                  = <strong>฿{Number(lotTotalPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} รวม</strong>
                 </div>
               )}
               {selectedLotItem && !selectedLotItem.unitSize && (
@@ -970,6 +999,62 @@ const WastageModal = ({ items, presetItemId, onClose, onSubmit }: { items: Inven
       <ModalActions>
         <button onClick={onClose} style={ghostBtnStyle()}>ยกเลิก</button>
         <button onClick={submit} disabled={!canSubmit} style={{ ...primaryBtnStyle(), opacity: canSubmit ? 1 : 0.45, cursor: canSubmit ? 'pointer' : 'not-allowed' }}><Icon name="check" size={14} /> บันทึก</button>
+      </ModalActions>
+    </ModalShell>
+  );
+};
+
+// ── Receipt Detail Modal (confirmed receipt read-only view) ───────────────────
+const ReceiptDetailModal = ({ id, onClose }: { id: string; onClose: () => void }) => {
+  const { data: receipt, isLoading } = useReceipt(id);
+  const total = receipt?.lots.reduce((s, lot) => s + lot.qtyPacks * lot.unitPrice, 0) ?? 0;
+
+  return (
+    <ModalShell
+      title={`ใบรับสินค้า${receipt?.receiptRef ? ` — ${receipt.receiptRef}` : ''}`}
+      subtitle={receipt ? `${receipt.supplierName || 'ไม่ระบุ Supplier'} · ${formatDate(receipt.receivedAt)}` : undefined}
+      onClose={onClose}
+      maxWidth={680}
+    >
+      {isLoading ? (
+        <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>กำลังโหลด...</div>
+      ) : (
+        <>
+          <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 80px 90px 90px 110px', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+              <div>วัตถุดิบ</div><div style={{ textAlign: 'right' }}>จำนวนแพ็ค</div><div style={{ textAlign: 'right' }}>ราคา/แพ็ค</div><div style={{ textAlign: 'right' }}>ราคารวม</div><div>วันหมดอายุ</div>
+            </div>
+            {!receipt?.lots || receipt.lots.length === 0 ? (
+              <div style={{ padding: 28, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>ไม่มีรายการ</div>
+            ) : receipt.lots.map((lot: StockLot, idx: number) => {
+              const rowTotal = lot.qtyPacks * lot.unitPrice;
+              const badge = expiryBadge(lot.expiryDate);
+              return (
+                <div key={lot.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 80px 90px 90px 110px', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === receipt.lots.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{lot.inventoryItemName}</div>
+                  <div className="num" style={{ fontSize: 13, textAlign: 'right', color: 'var(--color-text-secondary)' }}>{lot.qtyPacks.toLocaleString()}</div>
+                  <div className="num" style={{ fontSize: 13, textAlign: 'right' }}>฿{lot.unitPrice.toFixed(2)}</div>
+                  <div className="num" style={{ fontSize: 13, fontWeight: 600, textAlign: 'right' }}>฿{rowTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  <div style={{ fontSize: 12 }}>
+                    {lot.expiryDate ? (
+                      <div>
+                        <div style={{ color: badge ? badge.color : 'var(--color-text-secondary)', fontWeight: badge ? 600 : 400 }}>{formatDate(lot.expiryDate)}</div>
+                        {badge && <div style={{ fontSize: 10, marginTop: 2, color: badge.color, fontWeight: 600 }}>⚠ {badge.label}</div>}
+                      </div>
+                    ) : <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ padding: '12px 16px', background: 'var(--color-surface-2)', borderRadius: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)' }}>รวมทั้งหมด</div>
+            <div className="num" style={{ fontSize: 18, fontWeight: 800 }}>฿{total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          </div>
+        </>
+      )}
+      <ModalActions>
+        <button onClick={onClose} style={ghostBtnStyle()}>ปิด</button>
       </ModalActions>
     </ModalShell>
   );

@@ -66,7 +66,7 @@ export const NAV: NavItem[] = [
   { id: 'settings',  label: 'Settings',        icon: 'settings', soft: true },
 ];
 
-interface SidebarProps { current: string; onNavigate: (id: string) => void; onLogout?: () => void; branchName?: string; }
+interface SidebarProps { current: string; onNavigate: (id: string) => void; onLogout?: () => void; branchName?: string; collapsed?: boolean; onToggle?: () => void; }
 
 const ROLE_LABEL: Record<string, string> = {
   OWNER: 'เจ้าของ',
@@ -75,7 +75,7 @@ const ROLE_LABEL: Record<string, string> = {
   BAKER: 'เบเกอรี่',
 };
 
-export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit 49' }: SidebarProps) => {
+export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit 49', collapsed = false, onToggle }: SidebarProps) => {
   const { data: me } = useCurrentUser();
   const role = me?.role;
   const isAdmin = role === 'OWNER' || role === 'MANAGER';
@@ -84,25 +84,47 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
 
   return (
     <aside style={{
-      width: 240, flexShrink: 0,
+      width: collapsed ? 64 : 240, flexShrink: 0,
       background: 'var(--color-primary)',
       color: 'rgba(255,255,255,0.92)',
       display: 'flex', flexDirection: 'column',
       borderRight: '1px solid rgba(0,0,0,0.15)',
+      transition: 'width 220ms cubic-bezier(0.4,0,0.2,1)',
+      overflow: 'hidden',
     }}>
-      <div style={{padding: '20px 20px 16px', display: 'flex', alignItems: 'center', gap: 12}}>
+      <div style={{padding: collapsed ? '20px 14px 16px' : '20px 20px 16px', display: 'flex', alignItems: 'center', gap: 12, position: 'relative', transition: 'padding 220ms'}}>
         <div style={{
-          width: 36, height: 36, borderRadius: 10,
+          width: 36, height: 36, borderRadius: 10, flexShrink: 0,
           background: 'var(--color-accent)', color: 'var(--color-primary-700)',
           display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 18,
         }}>K</div>
-        <div>
-          <div style={{fontWeight: 700, fontSize: 15, letterSpacing: '-0.01em'}}>Kafé OS</div>
-          <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)'}}>{me?.store_name ?? branchName}</div>
-        </div>
+        {!collapsed && (
+          <div style={{flex: 1, minWidth: 0}}>
+            <div style={{fontWeight: 700, fontSize: 15, letterSpacing: '-0.01em', whiteSpace: 'nowrap'}}>Kafé OS</div>
+            <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)', whiteSpace: 'nowrap'}}>{me?.store_name ?? branchName}</div>
+          </div>
+        )}
+        {onToggle && (
+          <button
+            onClick={onToggle}
+            title={collapsed ? 'ขยาย sidebar' : 'ย่อ sidebar'}
+            style={{
+              width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+              background: 'rgba(255,255,255,0.08)', border: 'none',
+              color: 'rgba(255,255,255,0.6)', cursor: 'pointer',
+              display: 'grid', placeItems: 'center',
+              transition: 'background 150ms, color 150ms',
+              marginLeft: collapsed ? 'auto' : 0,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.16)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
+          >
+            <Icon name={collapsed ? 'chevronRight' : 'chevronLeft'} size={14} />
+          </button>
+        )}
       </div>
 
-      <nav style={{padding: '8px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto'}}>
+      <nav style={{padding: collapsed ? '8px 8px' : '8px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', overflowX: 'hidden', transition: 'padding 220ms'}}>
         {visibleNav.map((n) => {
           if (n.divider) {
             return <div key={n.id} style={{height: 1, background: 'rgba(255,255,255,0.07)', margin: '6px 2px'}} />;
@@ -110,13 +132,15 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
           const active = current === n.id;
           return (
             <button key={n.id} onClick={() => onNavigate(n.id)}
+              title={collapsed ? n.label : undefined}
               style={{
                 display: 'flex', alignItems: 'center', gap: 12,
-                padding: '10px 12px', borderRadius: 8,
+                padding: collapsed ? '10px 0' : '10px 12px', borderRadius: 8,
+                justifyContent: collapsed ? 'center' : 'flex-start',
                 background: active ? 'rgba(212,165,116,0.18)' : 'transparent',
                 color: active ? 'var(--color-accent)' : 'rgba(255,255,255,0.78)',
                 fontWeight: active ? 600 : 500, fontSize: 14,
-                textAlign: 'left',
+                textAlign: 'left', width: '100%',
                 transition: 'all 150ms var(--ease-out)',
                 position: 'relative',
               }}
@@ -124,20 +148,22 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
               onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
             >
               {n.icon && <Icon name={n.icon} size={18} />}
-              <span style={{flex: 1}}>{n.label}</span>
-              {n.soft && <span style={{fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 500}}>P1</span>}
+              {!collapsed && <span style={{flex: 1, whiteSpace: 'nowrap'}}>{n.label}</span>}
+              {!collapsed && n.soft && <span style={{fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 500}}>P1</span>}
             </button>
           );
         })}
       </nav>
 
-      <div style={{ padding: '8px 12px', marginBottom: 4 }}>
+      <div style={{ padding: collapsed ? '8px 8px' : '8px 12px', marginBottom: 4, transition: 'padding 220ms' }}>
         <div style={{
-          padding: 12,
+          padding: collapsed ? '8px 0' : 12,
           background: 'rgba(255,255,255,0.05)',
           borderRadius: 10,
           display: 'flex', alignItems: 'center', gap: 10,
+          justifyContent: collapsed ? 'center' : 'flex-start',
           marginBottom: 8,
+          transition: 'padding 220ms',
         }}>
           <div style={{
             width: 32, height: 32, borderRadius: 999,
@@ -145,12 +171,14 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
             display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13,
             flexShrink: 0,
           }}>{initial}</div>
-          <div style={{flex: 1, minWidth: 0}}>
-            <div style={{fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{me?.name ?? '...'}</div>
-            <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)'}}>{role ? ROLE_LABEL[role] ?? role : ''}</div>
-          </div>
+          {!collapsed && (
+            <div style={{flex: 1, minWidth: 0}}>
+              <div style={{fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{me?.name ?? '...'}</div>
+              <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)'}}>{role ? ROLE_LABEL[role] ?? role : ''}</div>
+            </div>
+          )}
         </div>
-        {onLogout && (
+        {onLogout && !collapsed && (
           <button
             onClick={onLogout}
             style={{
@@ -166,6 +194,24 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
           >
             <Icon name="x" size={15} />
             ออกจากระบบ
+          </button>
+        )}
+        {onLogout && collapsed && (
+          <button
+            onClick={onLogout}
+            title="ออกจากระบบ"
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '9px 0', borderRadius: 8,
+              background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
+              color: 'rgba(255,255,255,0.65)',
+              cursor: 'pointer', fontFamily: 'inherit',
+              transition: 'all 150ms var(--ease-out)',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.18)'; e.currentTarget.style.color = '#fca5a5'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.65)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; }}
+          >
+            <Icon name="x" size={15} />
           </button>
         )}
       </div>
