@@ -21,6 +21,8 @@ export default function HardwareScreen() {
   const [printerIp, setPrinterIp] = useState('');
   const [ipInput, setIpInput]     = useState('');
   const [saving, setSaving]       = useState(false);
+  const [scanning, setScanning]   = useState(false);
+  const [scanResults, setScanResults] = useState<string[]>([]);
   const [testing, setTesting]     = useState(false);
   const [lastPrint, setLastPrint] = useState<string | null>(null);
 
@@ -43,6 +45,26 @@ export default function HardwareScreen() {
     });
     checkStatus();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const scanPrinters = async () => {
+    setScanning(true);
+    setScanResults([]);
+    try {
+      const res = await fetch('/api/print/scan', { signal: AbortSignal.timeout(120000) });
+      const data = await res.json();
+      setScanResults(data.found ?? []);
+      if (data.found?.length === 1) {
+        setIpInput(data.found[0]);
+        toast({ kind: 'success', title: 'พบเครื่องปริ้น', msg: data.found[0] });
+      } else if (data.found?.length === 0) {
+        toast({ kind: 'warning', title: 'ไม่พบเครื่องปริ้น', msg: 'ตรวจสอบว่าเปิดเครื่องและต่อสายแลนอยู่' });
+      }
+    } catch (err: any) {
+      toast({ kind: 'warning', title: 'scan ไม่สำเร็จ', msg: err.message });
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const saveIp = async () => {
     const ip = ipInput.trim();
@@ -125,6 +147,15 @@ export default function HardwareScreen() {
             onKeyDown={e => e.key === 'Enter' && saveIp()}
           />
           <button
+            onClick={scanPrinters}
+            disabled={scanning}
+            title="ค้นหาเครื่องปริ้นในเครือข่ายอัตโนมัติ"
+            style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: 13, fontWeight: 500, cursor: scanning ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <Icon name="refresh" size={14} style={{ animation: scanning ? 'spin 1s linear infinite' : 'none' }} />
+            {scanning ? 'กำลังค้นหา...' : 'ค้นหา'}
+          </button>
+          <button
             onClick={saveIp}
             disabled={saving || ipInput.trim() === printerIp}
             style={{ padding: '9px 20px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 14, cursor: (saving || ipInput.trim() === printerIp) ? 'not-allowed' : 'pointer', opacity: (saving || ipInput.trim() === printerIp) ? 0.6 : 1, whiteSpace: 'nowrap' }}
@@ -132,8 +163,20 @@ export default function HardwareScreen() {
             {saving ? 'กำลังบันทึก...' : 'บันทึก'}
           </button>
         </div>
+        {scanResults.length > 1 && (
+          <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--color-surface-2)', borderRadius: 8, border: '1px solid var(--color-border)' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>พบอุปกรณ์ที่เป็นไปได้ {scanResults.length} เครื่อง — เลือก IP ที่ถูกต้อง:</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {scanResults.map(ip => (
+                <button key={ip} onClick={() => setIpInput(ip)} style={{ padding: '4px 12px', borderRadius: 6, border: `1px solid ${ipInput === ip ? 'var(--color-accent)' : 'var(--color-border)'}`, background: ipInput === ip ? 'var(--color-accent)' : 'var(--color-surface)', fontSize: 13, fontFamily: 'monospace', cursor: 'pointer' }}>
+                  {ip}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 8 }}>
-          ดู IP เครื่องปริ้นได้จาก EpsonNet Config หรือพิมพ์ใบ Self-test
+          กด <strong>ค้นหา</strong> เพื่อหา IP เครื่องปริ้นอัตโนมัติ (ใช้เวลา ~30 วินาที) หรือดูจาก EpsonNet Config
         </div>
       </div>
 
