@@ -113,12 +113,13 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
     )}
     <aside style={{
       width: collapsed ? 64 : 240,
+      height: '100dvh',
       background: 'var(--color-primary)',
       color: 'rgba(255,255,255,0.92)',
       display: 'flex', flexDirection: 'column',
       borderRight: '1px solid rgba(0,0,0,0.15)',
       transition: 'width 220ms cubic-bezier(0.4,0,0.2,1)',
-      overflowX: 'hidden',
+      overflow: 'hidden',
     }}>
       <div style={{padding: collapsed ? '20px 14px 16px' : '20px 20px 16px', display: 'flex', alignItems: 'center', gap: 12, position: 'relative', transition: 'padding 220ms'}}>
         <div style={{
