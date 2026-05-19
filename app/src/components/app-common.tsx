@@ -100,7 +100,14 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
       transition: 'width 220ms cubic-bezier(0.4,0,0.2,1)',
       overflow: 'hidden',
     }}>
-      <div style={{padding: collapsed ? '20px 14px 16px' : '20px 20px 16px', display: 'flex', alignItems: 'center', gap: 12, position: 'relative', transition: 'padding 220ms'}}>
+      <div style={{
+        padding: collapsed ? '16px 0 12px' : '20px 20px 16px',
+        display: 'flex',
+        flexDirection: collapsed ? 'column' : 'row',
+        alignItems: 'center',
+        gap: collapsed ? 8 : 12,
+        transition: 'padding 220ms',
+      }}>
         <div style={{
           width: 36, height: 36, borderRadius: 10, flexShrink: 0,
           background: 'var(--color-accent)', color: 'var(--color-primary-700)',
@@ -122,7 +129,6 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
               color: 'rgba(255,255,255,0.6)', cursor: 'pointer',
               display: 'grid', placeItems: 'center',
               transition: 'background 150ms, color 150ms',
-              marginLeft: collapsed ? 'auto' : 0,
             }}
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.16)'; e.currentTarget.style.color = '#fff'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
