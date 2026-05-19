@@ -8,6 +8,7 @@ import { useProductDetail } from '@/hooks/use-bom';
 import { useCreateOrder, usePayOrder } from '@/hooks/use-orders';
 import ModifierModal from './modifier-modal';
 import PaymentModal from './payment-modal';
+import ReceiptModal, { type ReceiptData } from './receipt-modal';
 import { usePrinter } from '@/hooks/use-printer';
 
 interface CartLine { menuId: string; name: string; basePrice: number; unitPrice: number; qty: number; mods: string[]; modIds: string[]; modKey: string; }
@@ -21,6 +22,7 @@ export default function POSTerminal() {
   const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
   const [modifierGroupIds, setModifierGroupIds] = useState<string[]>([]);
   const [payment, setPayment] = useState<string | null>(null);
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   const [activeTab, setActiveTab] = useState<'menu' | 'cart'>('menu');
 
   const { data: categories, isLoading: catsLoading } = useCategories();
@@ -103,10 +105,15 @@ export default function POSTerminal() {
   const removeLine = (i: number) => setCart((cur) => cur.filter((_, k) => k !== i));
   const clearCart = () => { setCart([]); setBillNo((b) => b + 1); };
 
+  const PAY_LABEL: Record<string, string> = {
+    cash: 'เงินสด', card: 'บัตรเครดิต', qr: 'QR PromptPay', line: 'LINE Pay',
+  };
+
   const onPaid = () => {
     const method = payment;
     const cartSnapshot = [...cart];
     const subtotalSnapshot = subtotal;
+    const vatSnapshot = vat;
     const totalSnapshot = total;
     setPayment(null);
     clearCart();
@@ -127,13 +134,15 @@ export default function POSTerminal() {
         payment_method: methodMap[method ?? 'cash'] ?? 'CASH',
       }).then(() => {
         toast({ kind: 'success', title: 'ชำระเงินสำเร็จ', msg: `บิล ${order.order_number} • ${baht(totalSnapshot)} • ส่งครัวแล้ว`, duration: 3500 });
-          printReceipt({
-            orderNumber: String(order.order_number),
-            items: cartSnapshot.map(l => ({ name: l.name, qty: l.qty, unitPrice: l.unitPrice, mods: l.mods.length ? l.mods : undefined })),
-            subtotal: subtotalSnapshot,
-            total: totalSnapshot,
-            paymentMethod: method ?? 'cash',
-          }).catch(() => {});
+        setReceiptData({
+          orderNumber: String(order.order_number),
+          items: cartSnapshot.map(l => ({ name: l.name, qty: l.qty, unitPrice: l.unitPrice, mods: l.mods.length ? l.mods : undefined })),
+          subtotal: subtotalSnapshot,
+          vat: vatSnapshot,
+          total: totalSnapshot,
+          paymentMethod: method ?? 'cash',
+          paymentLabel: PAY_LABEL[method ?? 'cash'] ?? method ?? 'cash',
+        });
       })
     ).catch(() => {
       toast({ kind: 'warning', title: 'บิลบันทึกไม่สำเร็จ', msg: 'กรุณาแจ้งผู้จัดการ', duration: 4000 });
@@ -336,6 +345,24 @@ export default function POSTerminal() {
       )}
       {payment && (
         <PaymentModal method={payment} total={total} billNo={billNo} onClose={() => setPayment(null)} onPaid={onPaid} />
+      )}
+      {receiptData && (
+        <ReceiptModal
+          data={receiptData}
+          onClose={() => setReceiptData(null)}
+          onPrint={async ({ buyerInfo }) => {
+            await printReceipt({
+              orderNumber: receiptData.orderNumber,
+              invoiceNo: buyerInfo ? `IV${new Date().getFullYear() + 543}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${receiptData.orderNumber.padStart(4, '0')}` : undefined,
+              items: receiptData.items,
+              subtotal: receiptData.subtotal,
+              vat: receiptData.vat,
+              total: receiptData.total,
+              paymentMethod: receiptData.paymentMethod,
+              buyerInfo,
+            });
+          }}
+        />
       )}
     </div>
   );
