@@ -89,7 +89,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
   });
 
   return (
-    <div className="hidden md:block" style={{ position: 'relative', flexShrink: 0 }}>
+    <div style={{ position: 'relative', flexShrink: 0 }}>
     {onToggle && (
       <button
         onClick={onToggle}
