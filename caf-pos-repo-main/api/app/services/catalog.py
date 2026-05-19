@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import Conflict, NotFound
 from app.models.catalog import (
     Category,
+    CookingStep,
     Modifier,
     ModifierGroup,
     Product,
@@ -15,11 +16,16 @@ from app.models.catalog import (
 from app.schemas.catalog import (
     CategoryCreate,
     CategoryUpdate,
+    CookingStepCreate,
+    CookingStepRead,
+    CookingStepsBulkReplace,
+    CookingStepUpdate,
     ModifierCreate,
     ModifierGroupCreate,
     ModifierGroupRead,
     ModifierGroupUpdate,
     ModifierRead,
+    ModifierUpdate,
     ProductCreate,
     ProductDetail,
     ProductModifierGroupsReplace,
@@ -40,7 +46,7 @@ logger = logging.getLogger(__name__)
 async def list_categories(db: AsyncSession, *, store_id: str) -> list[Category]:
     result = await db.execute(
         select(Category)
-        .where(Category.store_id == store_id)
+        .where(Category.store_id == store_id, Category.is_active.is_(True))
         .order_by(Category.sort_order, Category.name)
     )
     return list(result.scalars())
@@ -213,6 +219,92 @@ async def replace_recipe(
     ]
 
 
+
+# ---------------------------------------------------------------------------
+# Cooking Steps
+# ---------------------------------------------------------------------------
+
+
+async def list_steps(
+    db: AsyncSession, *, store_id: str, product_id: str
+) -> list[CookingStepRead]:
+    await _load_product(db, store_id=store_id, product_id=product_id)
+    result = await db.execute(
+        select(CookingStep)
+        .where(CookingStep.product_id == product_id)
+        .order_by(CookingStep.sort_order)
+    )
+    return [CookingStepRead.model_validate(s) for s in result.scalars()]
+
+
+async def add_step(
+    db: AsyncSession, *, store_id: str, product_id: str, payload: CookingStepCreate
+) -> CookingStepRead:
+    async with db.begin():
+        await _load_product(db, store_id=store_id, product_id=product_id)
+        if payload.sort_order is not None:
+            order = payload.sort_order
+        else:
+            r = await db.execute(
+                select(CookingStep.sort_order)
+                .where(CookingStep.product_id == product_id)
+                .order_by(CookingStep.sort_order.desc())
+                .limit(1)
+            )
+            max_order = r.scalar_one_or_none()
+            order = 0 if max_order is None else max_order + 1
+        step = CookingStep(
+            product_id=product_id,
+            sort_order=order,
+            instruction=payload.instruction,
+        )
+        db.add(step)
+    return CookingStepRead.model_validate(step)
+
+
+async def update_step(
+    db: AsyncSession,
+    *,
+    store_id: str,
+    product_id: str,
+    step_id: str,
+    payload: CookingStepUpdate,
+) -> CookingStepRead:
+    async with db.begin():
+        await _load_product(db, store_id=store_id, product_id=product_id)
+        step = await _load_step(db, product_id=product_id, step_id=step_id)
+        for field in payload.model_fields_set:
+            setattr(step, field, getattr(payload, field))
+    return CookingStepRead.model_validate(step)
+
+
+async def delete_step(
+    db: AsyncSession, *, store_id: str, product_id: str, step_id: str
+) -> None:
+    async with db.begin():
+        await _load_product(db, store_id=store_id, product_id=product_id)
+        step = await _load_step(db, product_id=product_id, step_id=step_id)
+        await db.delete(step)
+
+
+async def replace_steps(
+    db: AsyncSession, *, store_id: str, product_id: str, payload: CookingStepsBulkReplace
+) -> list[CookingStepRead]:
+    async with db.begin():
+        await _load_product(db, store_id=store_id, product_id=product_id)
+        await db.execute(delete(CookingStep).where(CookingStep.product_id == product_id))
+        new_steps = [
+            CookingStep(
+                product_id=product_id,
+                sort_order=s.sort_order if s.sort_order is not None else idx,
+                instruction=s.instruction,
+            )
+            for idx, s in enumerate(payload.steps)
+        ]
+        db.add_all(new_steps)
+    return [CookingStepRead.model_validate(s) for s in new_steps]
+
+
 # ---------------------------------------------------------------------------
 # Modifier Groups
 # ---------------------------------------------------------------------------
@@ -281,6 +373,48 @@ async def delete_modifier_group(
 
 
 # ---------------------------------------------------------------------------
+# Individual Modifier management
+# ---------------------------------------------------------------------------
+
+
+async def add_modifier(
+    db: AsyncSession, *, store_id: str, group_id: str, payload: ModifierCreate
+) -> ModifierRead:
+    async with db.begin():
+        await _load_modifier_group(db, store_id=store_id, group_id=group_id)
+        mod = Modifier(
+            group_id=group_id,
+            name=payload.name,
+            price_delta=payload.price_delta,
+            inventory_item_id=payload.inventory_item_id,
+            inventory_qty=payload.inventory_qty,
+            sort_order=payload.sort_order,
+        )
+        db.add(mod)
+    return ModifierRead.model_validate(mod)
+
+
+async def update_modifier(
+    db: AsyncSession, *, store_id: str, group_id: str, modifier_id: str, payload: ModifierUpdate
+) -> ModifierRead:
+    async with db.begin():
+        await _load_modifier_group(db, store_id=store_id, group_id=group_id)
+        mod = await _load_modifier(db, group_id=group_id, modifier_id=modifier_id)
+        for field in payload.model_fields_set:
+            setattr(mod, field, getattr(payload, field))
+    return ModifierRead.model_validate(mod)
+
+
+async def remove_modifier(
+    db: AsyncSession, *, store_id: str, group_id: str, modifier_id: str
+) -> None:
+    async with db.begin():
+        await _load_modifier_group(db, store_id=store_id, group_id=group_id)
+        mod = await _load_modifier(db, group_id=group_id, modifier_id=modifier_id)
+        await db.delete(mod)
+
+
+# ---------------------------------------------------------------------------
 # Product ↔ ModifierGroup links
 # ---------------------------------------------------------------------------
 
@@ -337,6 +471,18 @@ async def _load_product(
     return product
 
 
+async def _load_modifier(
+    db: AsyncSession, *, group_id: str, modifier_id: str
+) -> Modifier:
+    result = await db.execute(
+        select(Modifier).where(Modifier.id == modifier_id, Modifier.group_id == group_id)
+    )
+    mod = result.scalar_one_or_none()
+    if not mod:
+        raise NotFound("Modifier not found")
+    return mod
+
+
 async def _load_modifier_group(
     db: AsyncSession, *, store_id: str, group_id: str
 ) -> ModifierGroup:
@@ -349,6 +495,20 @@ async def _load_modifier_group(
     if not group:
         raise NotFound("Modifier group not found")
     return group
+
+
+async def _load_step(
+    db: AsyncSession, *, product_id: str, step_id: str
+) -> CookingStep:
+    result = await db.execute(
+        select(CookingStep).where(
+            CookingStep.id == step_id, CookingStep.product_id == product_id
+        )
+    )
+    step = result.scalar_one_or_none()
+    if not step:
+        raise NotFound("Cooking step not found")
+    return step
 
 
 async def _load_groups_with_modifiers(

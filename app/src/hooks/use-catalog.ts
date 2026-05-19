@@ -53,7 +53,9 @@ export function useCategoriesAdmin() {
     queryKey: ['categories', 'admin'],
     queryFn: async () => {
       const data = await api.get<CategoryRead[]>('/api/v1/categories');
-      return data.slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+      return data
+        .filter(c => c.is_active)
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
     },
   });
 }
