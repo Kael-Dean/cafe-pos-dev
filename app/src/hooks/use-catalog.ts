@@ -50,10 +50,10 @@ export interface ModifierCreatePayload {
 
 export function useCategoriesAdmin() {
   return useQuery<CategoryRead[]>({
-    queryKey: ['categories'],
+    queryKey: ['categories', 'admin'],
     queryFn: async () => {
       const data = await api.get<CategoryRead[]>('/api/v1/categories');
-      return data.slice().sort((a, b) => a.sort_order - b.sort_order);
+      return data.slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
     },
   });
 }
@@ -63,7 +63,7 @@ export function useCreateCategory() {
   return useMutation({
     mutationFn: (payload: { name: string; sort_order?: number }) =>
       api.post<CategoryRead>('/api/v1/categories', payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories', 'admin'] }),
   });
 }
 
@@ -72,7 +72,7 @@ export function useUpdateCategory() {
   return useMutation({
     mutationFn: ({ id, ...payload }: { id: string; name?: string; sort_order?: number }) =>
       api.patch<CategoryRead>(`/api/v1/categories/${id}`, payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories', 'admin'] }),
   });
 }
 
@@ -80,7 +80,7 @@ export function useDeleteCategory() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete<void>(`/api/v1/categories/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories', 'admin'] }),
   });
 }
 
