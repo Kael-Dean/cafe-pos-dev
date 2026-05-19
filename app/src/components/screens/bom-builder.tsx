@@ -59,10 +59,6 @@ export default function BOMBuilder() {
   }, [productDetail]);
 
   useEffect(() => {
-    setEditedCategoryId(selectedProduct?.cat ?? '');
-  }, [selectedProduct?.id]);
-
-  useEffect(() => {
     setEditedSteps(stepsData ?? []);
     setNewStepText('');
   }, [stepsData, selectedId]);
@@ -86,6 +82,12 @@ export default function BOMBuilder() {
   }, 0);
 
   const selectedProduct = products?.find(m => m.id === selectedId);
+
+  useEffect(() => {
+    setEditedCategoryId(selectedProduct?.cat ?? '');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
   const totalCost = computeCost(editedRecipe);
   const margin = editedPrice - totalCost;
   const marginPct = editedPrice > 0 ? (margin / editedPrice) * 100 : 0;
