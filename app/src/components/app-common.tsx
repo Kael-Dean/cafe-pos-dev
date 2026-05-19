@@ -90,27 +90,6 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
 
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
-    {onToggle && (
-      <button
-        onClick={onToggle}
-        title={collapsed ? 'ขยาย sidebar' : 'ย่อ sidebar'}
-        style={{
-          position: 'absolute', right: -10, top: '50%',
-          transform: 'translateY(-50%)',
-          width: 20, height: 48, zIndex: 10,
-          borderRadius: '0 8px 8px 0',
-          background: 'var(--color-primary)',
-          border: '1px solid rgba(0,0,0,0.15)', borderLeft: 'none',
-          color: 'rgba(255,255,255,0.65)', cursor: 'pointer',
-          display: 'grid', placeItems: 'center',
-          transition: 'background 150ms, color 150ms',
-        }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-primary-700, #5a3d28)'; e.currentTarget.style.color = '#fff'; }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-primary)'; e.currentTarget.style.color = 'rgba(255,255,255,0.65)'; }}
-      >
-        <Icon name={collapsed ? 'chevronRight' : 'chevronLeft'} size={12} />
-      </button>
-    )}
     <aside style={{
       width: collapsed ? 64 : 240,
       height: '100dvh',
