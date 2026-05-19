@@ -287,15 +287,34 @@ export function ReceiptPaper({ data, buyer, invoiceNo, now, fmt, formatDate, for
       fontFamily: '"IBM Plex Sans Thai", "Sarabun", sans-serif',
       boxShadow: '0 4px 16px rgba(61,40,23,0.08)',
     }}>
-      {/* ─── Dark header band ─── */}
-      <div style={{
+      {/* B&W print override — thermal-friendly: removes dark backgrounds, keeps structure */}
+      <style>{`
+        @media print {
+          .receipt-header-band {
+            background: white !important;
+            border-bottom: 2px solid black !important;
+          }
+          .receipt-header-band .rh-label { color: #555 !important; }
+          .receipt-header-band .rh-name  { color: black !important; }
+          .receipt-header-band .rh-type  {
+            background: transparent !important;
+            color: black !important;
+            border: 1px solid black !important;
+          }
+          .receipt-meta-row { background: white !important; }
+          .receipt-section-label { color: black !important; }
+        }
+      `}</style>
+
+      {/* ─── Dark header band (screen: espresso; print: clean B&W) ─── */}
+      <div className="receipt-header-band" style={{
         background: 'linear-gradient(135deg, #3D2817 0%, #5A3A22 100%)',
         padding: '18px 20px 14px',
-        textAlign: 'center', position: 'relative',
+        textAlign: 'center',
       }}>
-        <div style={{ color: '#D4A574', fontSize: 10, letterSpacing: '0.2em', marginBottom: 6 }}>ต้นฉบับ · ORIGINAL</div>
-        <div style={{ color: '#FFFFFF', fontSize: 18, fontWeight: 800, letterSpacing: '0.01em' }}>{S.name}</div>
-        <div style={{
+        <div className="rh-label" style={{ color: '#D4A574', fontSize: 10, letterSpacing: '0.2em', marginBottom: 6 }}>ต้นฉบับ · ORIGINAL</div>
+        <div className="rh-name" style={{ color: '#FFFFFF', fontSize: 18, fontWeight: 800, letterSpacing: '0.01em' }}>{S.name}</div>
+        <div className="rh-type" style={{
           display: 'inline-block', marginTop: 6,
           background: 'rgba(255,255,255,0.12)',
           color: '#F0E4D4', fontSize: 11, fontWeight: 500,
@@ -312,7 +331,7 @@ export function ReceiptPaper({ data, buyer, invoiceNo, now, fmt, formatDate, for
       }}>
         {/* Seller */}
         <div style={{ padding: '14px 16px' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#3D2817', letterSpacing: '0.1em', marginBottom: 8 }}>ผู้ขาย (SELLER)</div>
+          <div className="receipt-section-label" style={{ fontSize: 10, fontWeight: 700, color: '#3D2817', letterSpacing: '0.1em', marginBottom: 8 }}>ผู้ขาย (SELLER)</div>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: '#1A1A1A' }}>{S.name}</div>
           {S.address && <div style={{ fontSize: 11, color: '#5A5249', lineHeight: 1.65 }}>{S.address}</div>}
           {S.taxId && (
@@ -330,7 +349,7 @@ export function ReceiptPaper({ data, buyer, invoiceNo, now, fmt, formatDate, for
 
         {/* Buyer */}
         <div style={{ padding: '14px 16px' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#3D2817', letterSpacing: '0.1em', marginBottom: 8 }}>ผู้ซื้อ (BUYER)</div>
+          <div className="receipt-section-label" style={{ fontSize: 10, fontWeight: 700, color: '#3D2817', letterSpacing: '0.1em', marginBottom: 8 }}>ผู้ซื้อ (BUYER)</div>
           {buyer ? (
             <>
               <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: '#1A1A1A' }}>{buyer.name}</div>
@@ -350,7 +369,7 @@ export function ReceiptPaper({ data, buyer, invoiceNo, now, fmt, formatDate, for
       </div>
 
       {/* ─── Meta row ─── */}
-      <div style={{
+      <div className="receipt-meta-row" style={{
         display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
         background: '#FAF7F2', borderBottom: '1px solid #DDD5C8',
         padding: '10px 16px', gap: 8,
