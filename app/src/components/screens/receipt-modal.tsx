@@ -28,13 +28,21 @@ export interface BuyerInfo {
   branch: string;
 }
 
+export interface StoreInfo {
+  name: string;
+  address?: string;
+  taxId?: string;
+  branch?: string;
+  phone?: string;
+}
+
 interface Props {
   data: ReceiptData;
   onClose: () => void;
   onPrint: (args: { buyerInfo?: BuyerInfo }) => Promise<void>;
 }
 
-const STORE = {
+export const DEFAULT_STORE: StoreInfo = {
   name: 'ร้านตะวันอ้อมข้าว',
   address: '123 ถ.ราชดำเนิน ต.ในเมือง อ.เมืองสุรินทร์ จ.สุรินทร์ 32000',
   taxId: '0105544000001',
@@ -197,6 +205,7 @@ export default function ReceiptModal({ data, onClose, onPrint }: Props) {
                 data={data} buyer={showBuyer ? buyer : undefined}
                 invoiceNo={invoiceNo} now={now}
                 fmt={fmt} formatDate={formatDate} formatTime={formatTime}
+                storeInfo={DEFAULT_STORE}
               />
             </div>
           )}
@@ -258,11 +267,13 @@ function BuyerField({ label, value, onChange, mono }: {
   );
 }
 
-function ReceiptPaper({ data, buyer, invoiceNo, now, fmt, formatDate, formatTime }: {
+export function ReceiptPaper({ data, buyer, invoiceNo, now, fmt, formatDate, formatTime, storeInfo }: {
   data: ReceiptData; buyer?: BuyerInfo; invoiceNo: string; now: Date;
   fmt: (n: number) => string;
   formatDate: (d: Date) => string; formatTime: (d: Date) => string;
+  storeInfo?: StoreInfo;
 }) {
+  const S = { ...DEFAULT_STORE, ...storeInfo };
   const mono: React.CSSProperties = { fontFamily: '"Courier New", monospace' };
   const label: React.CSSProperties = { fontSize: 10, color: '#8A7B6E', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 };
   const val: React.CSSProperties = { fontSize: 12, fontWeight: 500, color: '#1A1A1A' };
@@ -283,7 +294,7 @@ function ReceiptPaper({ data, buyer, invoiceNo, now, fmt, formatDate, formatTime
         textAlign: 'center', position: 'relative',
       }}>
         <div style={{ color: '#D4A574', fontSize: 10, letterSpacing: '0.2em', marginBottom: 6 }}>ต้นฉบับ · ORIGINAL</div>
-        <div style={{ color: '#FFFFFF', fontSize: 18, fontWeight: 800, letterSpacing: '0.01em' }}>{STORE.name}</div>
+        <div style={{ color: '#FFFFFF', fontSize: 18, fontWeight: 800, letterSpacing: '0.01em' }}>{S.name}</div>
         <div style={{
           display: 'inline-block', marginTop: 6,
           background: 'rgba(255,255,255,0.12)',
@@ -302,14 +313,16 @@ function ReceiptPaper({ data, buyer, invoiceNo, now, fmt, formatDate, formatTime
         {/* Seller */}
         <div style={{ padding: '14px 16px' }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: '#3D2817', letterSpacing: '0.1em', marginBottom: 8 }}>ผู้ขาย (SELLER)</div>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: '#1A1A1A' }}>{STORE.name}</div>
-          <div style={{ fontSize: 11, color: '#5A5249', lineHeight: 1.65 }}>{STORE.address}</div>
-          <div style={{ fontSize: 11, color: '#5A5249', marginTop: 6 }}>
-            <span style={{ color: '#8A7B6E' }}>เลขที่ผู้เสียภาษี:</span>{' '}
-            <span style={{ ...mono, fontSize: 11 }}>{STORE.taxId}</span>
-          </div>
-          <div style={{ fontSize: 11, color: '#5A5249' }}>{STORE.branch}</div>
-          {STORE.phone && <div style={{ fontSize: 11, color: '#5A5249' }}>โทร. {STORE.phone}</div>}
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: '#1A1A1A' }}>{S.name}</div>
+          {S.address && <div style={{ fontSize: 11, color: '#5A5249', lineHeight: 1.65 }}>{S.address}</div>}
+          {S.taxId && (
+            <div style={{ fontSize: 11, color: '#5A5249', marginTop: 6 }}>
+              <span style={{ color: '#8A7B6E' }}>เลขที่ผู้เสียภาษี:</span>{' '}
+              <span style={{ ...mono, fontSize: 11 }}>{S.taxId}</span>
+            </div>
+          )}
+          {S.branch && <div style={{ fontSize: 11, color: '#5A5249' }}>{S.branch}</div>}
+          {S.phone && <div style={{ fontSize: 11, color: '#5A5249' }}>โทร. {S.phone}</div>}
         </div>
 
         {/* Vertical divider */}

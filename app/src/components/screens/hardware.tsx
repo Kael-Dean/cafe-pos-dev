@@ -3,82 +3,45 @@
 import { useState, useEffect, useCallback } from 'react';
 import Icon from '../icons';
 import { useToast } from '../app-common';
+import { ReceiptPaper, type ReceiptData, type BuyerInfo, type StoreInfo } from './receipt-modal';
 
 type PrinterStatus = 'online' | 'offline' | 'checking';
 
-interface ReceiptItem { name: string; qty: number; unitPrice: number; mods?: string[] }
-interface ReceiptData {
-  storeName: string;
-  orderNumber: string;
-  items: ReceiptItem[];
-  subtotal: number;
-  total: number;
-  paymentLabel: string;
-}
+/* ── Mock data for live preview ─────────────────────────────────── */
 
-const PREVIEW_ITEMS: ReceiptItem[] = [
+const MOCK_ITEMS = [
   { name: 'ลาเต้เย็น', qty: 2, unitPrice: 65, mods: ['หวานน้อย', 'นมโอ๊ต'] },
-  { name: 'คาปูชิโน่ร้อน', qty: 1, unitPrice: 55, mods: [] },
-  { name: 'ชีสเค้ก', qty: 1, unitPrice: 120, mods: [] },
+  { name: 'คาปูชิโน่ร้อน', qty: 1, unitPrice: 55 },
+  { name: 'ชีสเค้ก', qty: 1, unitPrice: 120 },
 ];
 
-function ReceiptPreview({ data }: { data: ReceiptData }) {
-  const W = 42;
-  const dash = '-'.repeat(W);
-  const fmt  = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const center = (s: string) => {
-    const pad = Math.max(0, Math.floor((W - s.length) / 2));
-    return ' '.repeat(pad) + s;
-  };
-  const leftRight = (l: string, r: string) => {
-    const maxL = W - r.length - 1;
-    const left = l.length > maxL ? l.substring(0, maxL) : l;
-    return left + ' '.repeat(Math.max(1, W - left.length - r.length)) + r;
-  };
+const MOCK_BUYER: BuyerInfo = {
+  name: 'บริษัท ตัวอย่าง จำกัด',
+  address: '456 ถ.สุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพฯ 10110',
+  taxId: '0105500000001',
+  branch: 'สำนักงานใหญ่',
+};
 
-  const now = new Date().toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' });
-
-  return (
-    <div style={{
-      fontFamily: '"Courier New", Courier, monospace',
-      fontSize: 13,
-      lineHeight: 1.6,
-      whiteSpace: 'pre',
-      background: '#fffef8',
-      color: '#111',
-      padding: '20px 16px 28px',
-      borderRadius: '4px 4px 18px 18px',
-      boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
-      width: `${W + 2}ch`,
-      maxWidth: '100%',
-      overflowX: 'auto',
-      borderTop: '3px dashed #ccc',
-    }}>
-      {/* Store name — big */}
-      <div style={{ textAlign: 'center', fontSize: 17, fontWeight: 900, letterSpacing: 1, marginBottom: 2 }}>
-        {data.storeName}
-      </div>
-      <div style={{ marginBottom: 0 }}>{center(`ออเดอร์ #${data.orderNumber}`)}</div>
-      <div style={{ marginBottom: 2 }}>{center(now)}</div>
-      <div>{dash}</div>
-      {data.items.map((item, i) => (
-        <div key={i}>
-          <div>{leftRight(item.name, fmt(item.qty * item.unitPrice))}</div>
-          <div>{'  '}{item.qty} x {fmt(item.unitPrice)}</div>
-          {item.mods?.filter(Boolean).map((mod, j) => (
-            <div key={j} style={{ color: '#555' }}>{'  + '}{mod}</div>
-          ))}
-        </div>
-      ))}
-      <div>{dash}</div>
-      <div>{leftRight('รวม', fmt(data.subtotal))}</div>
-      <div style={{ fontWeight: 700 }}>{leftRight('รวมทั้งสิ้น', fmt(data.total))}</div>
-      <div>{'ชำระ: '}{data.paymentLabel}</div>
-      <div>{dash}</div>
-      <div style={{ textAlign: 'center', marginTop: 4 }}>ขอบคุณที่ใช้บริการ</div>
-    </div>
-  );
+function makeMockReceipt(items: typeof MOCK_ITEMS): ReceiptData {
+  const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+  const vat = Math.round(subtotal * 0.07);
+  return {
+    orderNumber: '0042',
+    items,
+    subtotal,
+    vat,
+    total: subtotal + vat,
+    paymentMethod: 'cash',
+    paymentLabel: 'เงินสด',
+    cashGiven: subtotal + vat + 5,
+  };
 }
+
+const FMT = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const FMT_DATE = (d: Date) => d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+const FMT_TIME = (d: Date) => d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+/* ─────────────────────────────────────────────────────────────────── */
 
 export default function HardwareScreen() {
   const toast = useToast();
@@ -91,20 +54,28 @@ export default function HardwareScreen() {
   const [testing, setTesting]     = useState(false);
   const [lastPrint, setLastPrint] = useState<string | null>(null);
 
-  const [storeName, setStoreName]       = useState('');
+  // Store info (editable)
   const [storeInput, setStoreInput]     = useState('');
+  const [addressInput, setAddressInput] = useState('');
+  const [taxIdInput, setTaxIdInput]     = useState('');
+  const [branchInput, setBranchInput]   = useState('');
   const [savingStore, setSavingStore]   = useState(false);
-  const [previewOpen, setPreviewOpen]   = useState(false);
 
-  const subtotal = PREVIEW_ITEMS.reduce((s, i) => s + i.qty * i.unitPrice, 0);
-  const previewData: ReceiptData = {
-    storeName: storeInput || storeName || 'ชื่อร้าน',
-    orderNumber: '0042',
-    items: PREVIEW_ITEMS,
-    subtotal,
-    total: subtotal,
-    paymentLabel: 'เงินสด',
+  // Preview options
+  const [showBuyer, setShowBuyer] = useState(false);
+  const [now]                     = useState(() => new Date());
+
+  const liveStore: StoreInfo = {
+    name:    storeInput    || 'ชื่อร้านของคุณ',
+    address: addressInput  || undefined,
+    taxId:   taxIdInput    || undefined,
+    branch:  branchInput   || undefined,
   };
+
+  const mockReceipt = makeMockReceipt(MOCK_ITEMS);
+  const invoiceNo   = `IV${now.getFullYear() + 543}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-0042`;
+
+  /* ── API ── */
 
   const checkStatus = useCallback(async () => {
     setPrinter('checking');
@@ -113,39 +84,32 @@ export default function HardwareScreen() {
       const data = await res.json();
       setPrinter(data.printer ? 'online' : 'offline');
       if (data.ip) { setPrinterIp(data.ip); setIpInput(data.ip); }
-    } catch {
-      setPrinter('offline');
-    }
+    } catch { setPrinter('offline'); }
   }, []);
 
   useEffect(() => {
     fetch('/api/print/config').then(r => r.json()).then(cfg => {
-      setPrinterIp(cfg.ip ?? '');
-      setIpInput(cfg.ip ?? '');
-      setStoreName(cfg.storeName ?? '');
+      setPrinterIp(cfg.ip         ?? '');
+      setIpInput(cfg.ip           ?? '');
       setStoreInput(cfg.storeName ?? '');
+      setAddressInput(cfg.storeAddress ?? '');
+      setTaxIdInput(cfg.storeTaxId    ?? '');
+      setBranchInput(cfg.storeBranch  ?? '');
     });
     checkStatus();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const scanPrinters = async () => {
-    setScanning(true);
-    setScanResults([]);
+    setScanning(true); setScanResults([]);
     try {
-      const res = await fetch('/api/print/scan', { signal: AbortSignal.timeout(120000) });
+      const res  = await fetch('/api/print/scan', { signal: AbortSignal.timeout(120000) });
       const data = await res.json();
       setScanResults(data.found ?? []);
-      if (data.found?.length === 1) {
-        setIpInput(data.found[0]);
-        toast({ kind: 'success', title: 'พบเครื่องปริ้น', msg: data.found[0] });
-      } else if (data.found?.length === 0) {
-        toast({ kind: 'warning', title: 'ไม่พบเครื่องปริ้น', msg: 'ตรวจสอบว่าเปิดเครื่องและต่อสายแลนอยู่' });
-      }
-    } catch (err: any) {
-      toast({ kind: 'warning', title: 'scan ไม่สำเร็จ', msg: err.message });
-    } finally {
-      setScanning(false);
-    }
+      if (data.found?.length === 1)      toast({ kind: 'success', title: 'พบเครื่องปริ้น', msg: data.found[0] });
+      else if (!data.found?.length)      toast({ kind: 'warning', title: 'ไม่พบเครื่องปริ้น', msg: 'ตรวจสอบว่าเปิดเครื่องและต่อสายแลนอยู่' });
+    } catch (err: unknown) {
+      toast({ kind: 'warning', title: 'scan ไม่สำเร็จ', msg: (err as Error).message });
+    } finally { setScanning(false); }
   };
 
   const saveIp = async () => {
@@ -154,256 +118,299 @@ export default function HardwareScreen() {
     setSaving(true);
     try {
       const res = await fetch('/api/print/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ip }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
       setPrinterIp(ip);
       toast({ kind: 'success', title: 'บันทึกแล้ว', msg: `IP: ${ip}` });
       checkStatus();
-    } catch (err: any) {
-      toast({ kind: 'warning', title: 'บันทึกไม่สำเร็จ', msg: err.message });
-    } finally {
-      setSaving(false);
-    }
+    } catch (err: unknown) {
+      toast({ kind: 'warning', title: 'บันทึกไม่สำเร็จ', msg: (err as Error).message });
+    } finally { setSaving(false); }
   };
 
-  const saveStoreName = async () => {
+  const saveStoreInfo = async () => {
     const name = storeInput.trim();
     if (!name) return;
     setSavingStore(true);
     try {
       const res = await fetch('/api/print/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ip: printerIp, storeName: name }),
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ip: printerIp,
+          storeName:    name,
+          storeAddress: addressInput.trim() || undefined,
+          storeTaxId:   taxIdInput.trim()   || undefined,
+          storeBranch:  branchInput.trim()  || undefined,
+        }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
-      setStoreName(name);
-      toast({ kind: 'success', title: 'บันทึกชื่อร้านแล้ว', msg: name });
-    } catch (err: any) {
-      toast({ kind: 'warning', title: 'บันทึกไม่สำเร็จ', msg: err.message });
-    } finally {
-      setSavingStore(false);
-    }
+      toast({ kind: 'success', title: 'บันทึกข้อมูลร้านแล้ว', msg: name });
+    } catch (err: unknown) {
+      toast({ kind: 'warning', title: 'บันทึกไม่สำเร็จ', msg: (err as Error).message });
+    } finally { setSavingStore(false); }
   };
 
   const testPrint = async () => {
     setTesting(true);
     try {
       const res = await fetch('/api/print', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          storeName,
-          orderNumber:  'TEST',
-          items:        [{ name: 'ทดสอบการพิมพ์', qty: 1, unitPrice: 0, mods: [] }],
-          subtotal:     0,
-          total:        0,
-          paymentLabel: 'ทดสอบ',
+          orderNumber: 'TEST', items: [{ name: 'ทดสอบการพิมพ์', qty: 1, unitPrice: 0 }],
+          subtotal: 0, total: 0, paymentLabel: 'ทดสอบ',
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
       setLastPrint(new Date().toLocaleTimeString('th-TH'));
       toast({ kind: 'success', title: 'พิมพ์ทดสอบสำเร็จ', msg: 'ตรวจสอบใบเสร็จที่พิมพ์ออกมา' });
-    } catch (err: any) {
-      toast({ kind: 'warning', title: 'พิมพ์ไม่สำเร็จ', msg: err.message });
-    } finally {
-      setTesting(false);
-    }
+    } catch (err: unknown) {
+      toast({ kind: 'warning', title: 'พิมพ์ไม่สำเร็จ', msg: (err as Error).message });
+    } finally { setTesting(false); }
   };
 
-  const StatusDot = ({ s }: { s: PrinterStatus }) => {
-    const color = s === 'online' ? 'var(--color-success)' : s === 'offline' ? 'var(--color-danger)' : 'var(--color-warning)';
-    const label = s === 'online' ? 'ออนไลน์' : s === 'offline' ? 'ออฟไลน์' : 'กำลังตรวจสอบ...';
-    const bg    = s === 'online' ? 'var(--color-success-50)' : s === 'offline' ? 'var(--color-danger-50)' : 'var(--color-warning-50)';
-    return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 10px', borderRadius: 99, background: bg }}>
-        <span style={{ width: 7, height: 7, borderRadius: 99, background: color, animation: s === 'checking' ? 'pulse 1s ease-in-out infinite' : 'none' }} />
-        <span style={{ fontSize: 12, fontWeight: 600, color }}>{label}</span>
-      </span>
-    );
-  };
+  /* ── Render ── */
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
+    <div style={{ height: '100%', display: 'flex', overflow: 'hidden' }}>
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
         @keyframes spin  { to{transform:rotate(360deg)} }
       `}</style>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Hardware / เครื่องพิมพ์</h1>
-          <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>จัดการเครื่องพิมพ์ใบเสร็จ</div>
+      {/* ── LEFT: Settings panel ── */}
+      <div style={{
+        width: 380, flexShrink: 0, overflowY: 'auto',
+        borderRight: '1px solid var(--color-border)',
+        padding: '28px 24px',
+        background: 'var(--color-bg)',
+      }}>
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 3 }}>Hardware</h1>
+          <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>เครื่องพิมพ์ · ข้อมูลร้าน</div>
         </div>
-        <button onClick={checkStatus} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>
-          <Icon name="refresh" size={15} style={{ animation: printer === 'checking' ? 'spin 1s linear infinite' : 'none' }} />
-          รีเฟรชสถานะ
-        </button>
-      </div>
 
-      {/* IP Config */}
-      <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: 'var(--shadow-xs)' }}>
-        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>IP เครื่องพิมพ์</div>
-        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 14 }}>
-          เปลี่ยน WiFi หรือย้ายร้าน แค่แก้ IP ตรงนี้ — ไม่ต้องแตะโค้ด
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <input
-            value={ipInput}
-            onChange={e => setIpInput(e.target.value)}
-            placeholder="192.168.1.129"
-            style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: 14, fontFamily: 'monospace' }}
-            onKeyDown={e => e.key === 'Enter' && saveIp()}
-          />
-          <button
-            onClick={scanPrinters}
-            disabled={scanning}
-            title="ค้นหาเครื่องปริ้นในเครือข่ายอัตโนมัติ"
-            style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: 13, fontWeight: 500, cursor: scanning ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <Icon name="refresh" size={14} style={{ animation: scanning ? 'spin 1s linear infinite' : 'none' }} />
-            {scanning ? 'กำลังค้นหา...' : 'ค้นหา'}
-          </button>
-          <button
-            onClick={saveIp}
-            disabled={saving || ipInput.trim() === printerIp}
-            style={{ padding: '9px 20px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 14, cursor: (saving || ipInput.trim() === printerIp) ? 'not-allowed' : 'pointer', opacity: (saving || ipInput.trim() === printerIp) ? 0.6 : 1, whiteSpace: 'nowrap' }}
-          >
-            {saving ? 'กำลังบันทึก...' : 'บันทึก'}
-          </button>
-        </div>
-        {scanResults.length > 1 && (
-          <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--color-surface-2)', borderRadius: 8, border: '1px solid var(--color-border)' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>พบอุปกรณ์ที่เป็นไปได้ {scanResults.length} เครื่อง — เลือก IP ที่ถูกต้อง:</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {scanResults.map(ip => (
-                <button key={ip} onClick={() => setIpInput(ip)} style={{ padding: '4px 12px', borderRadius: 6, border: `1px solid ${ipInput === ip ? 'var(--color-accent)' : 'var(--color-border)'}`, background: ipInput === ip ? 'var(--color-accent)' : 'var(--color-surface)', fontSize: 13, fontFamily: 'monospace', cursor: 'pointer' }}>
-                  {ip}
-                </button>
-              ))}
+        {/* Printer status */}
+        <Card title="เครื่องพิมพ์" marginBottom={14}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 10,
+              background: 'var(--color-surface-2)', display: 'grid', placeItems: 'center', flexShrink: 0,
+            }}>
+              <Icon name="printer" size={24} color="var(--color-text-secondary)" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>EPSON TM-T82X</span>
+                <StatusDot s={printer} />
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
+                IP: {printerIp || '—'} · กระดาษ 80mm{lastPrint ? ` · พิมพ์ล่าสุด ${lastPrint}` : ''}
+              </div>
             </div>
           </div>
-        )}
-        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 8 }}>
-          กด <strong>ค้นหา</strong> เพื่อหา IP เครื่องปริ้นอัตโนมัติ (ใช้เวลา ~30 วินาที) หรือดูจาก EpsonNet Config
-        </div>
-      </div>
-
-      {/* Printer card */}
-      <div style={{ background: 'var(--color-surface)', border: `1px solid ${printer === 'offline' ? 'var(--color-danger-50)' : 'var(--color-border)'}`, borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: 'var(--shadow-xs)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 10, background: 'var(--color-surface-2)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-            <Icon name="printer" size={26} color="var(--color-text-secondary)" />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <span style={{ fontWeight: 700, fontSize: 15 }}>EPSON TM-T82X</span>
-              <StatusDot s={printer} />
-            </div>
-            <div style={{ display: 'flex', gap: 14, fontSize: 12, color: 'var(--color-text-secondary)', flexWrap: 'wrap' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="wifi" size={12} /> LAN</span>
-              <span>IP: {printerIp || '—'}</span>
-              <span>กระดาษ: 80mm</span>
-              {lastPrint && <span>พิมพ์ล่าสุด: {lastPrint}</span>}
-            </div>
-          </div>
-          <button
-            onClick={testPrint}
-            disabled={testing || printer === 'offline'}
-            style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--color-border)', background: testing ? 'var(--color-success-50)' : 'var(--color-surface-2)', fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, cursor: (testing || printer === 'offline') ? 'not-allowed' : 'pointer', color: testing ? 'var(--color-success)' : 'inherit', opacity: printer === 'offline' ? 0.5 : 1 }}
-          >
-            <Icon name={testing ? 'check' : 'print'} size={14} color={testing ? 'var(--color-success)' : 'currentColor'} />
-            {testing ? 'กำลังพิมพ์...' : 'ทดสอบพิมพ์'}
-          </button>
-        </div>
-        {printer === 'offline' && (
-          <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--color-surface)', borderRadius: 8, border: '1px solid var(--color-border)' }}>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>ตรวจสอบ:</div>
-            <ul style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: 0, paddingLeft: 16, lineHeight: 1.8 }}>
-              <li>เปิดเครื่องปริ้นอยู่ไหม?</li>
-              <li>สายแลนเสียบเข้า Router อยู่ไหม?</li>
-              <li>IP ข้างบนตรงกับที่ EpsonNet Config แสดงไหม?</li>
-            </ul>
-          </div>
-        )}
-      </div>
-
-      {/* Receipt Settings */}
-      <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 20, boxShadow: 'var(--shadow-xs)' }}>
-        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>การตั้งค่าใบเสร็จ</div>
-        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>ชื่อร้านที่แสดงบนใบเสร็จ · ขนาดกระดาษ 80mm</div>
-
-        {/* Store name */}
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>ชื่อร้าน</label>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input
-              value={storeInput}
-              onChange={e => setStoreInput(e.target.value)}
-              placeholder="ชื่อร้านของคุณ"
-              style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: 14 }}
-              onKeyDown={e => e.key === 'Enter' && saveStoreName()}
-            />
-            <button
-              onClick={saveStoreName}
-              disabled={savingStore || storeInput.trim() === storeName}
-              style={{ padding: '9px 20px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 14, cursor: (savingStore || storeInput.trim() === storeName) ? 'not-allowed' : 'pointer', opacity: (savingStore || storeInput.trim() === storeName) ? 0.6 : 1, whiteSpace: 'nowrap' }}
-            >
-              {savingStore ? 'กำลังบันทึก...' : 'บันทึก'}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={checkStatus} style={btnGhost}>
+              <Icon name="refresh" size={13} style={{ animation: printer === 'checking' ? 'spin 1s linear infinite' : 'none' }} />
+              ตรวจสอบ
+            </button>
+            <button onClick={testPrint} disabled={testing || printer === 'offline'} style={{
+              ...btnGhost, opacity: (testing || printer === 'offline') ? 0.5 : 1,
+              cursor: (testing || printer === 'offline') ? 'not-allowed' : 'pointer',
+            }}>
+              <Icon name={testing ? 'check' : 'print'} size={13} />
+              {testing ? 'กำลังพิมพ์...' : 'ทดสอบพิมพ์'}
             </button>
           </div>
-        </div>
+          {printer === 'offline' && (
+            <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--color-danger-50)', borderRadius: 6, fontSize: 12, color: 'var(--color-danger)' }}>
+              ออฟไลน์ — ตรวจสอบ IP และสายแลน
+            </div>
+          )}
+        </Card>
 
-        <div style={{ display: 'flex', gap: 10 }}>
+        {/* IP config */}
+        <Card title="IP เครื่องพิมพ์" desc="เปลี่ยน WiFi ก็แค่แก้ตรงนี้" marginBottom={14}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={ipInput} onChange={e => setIpInput(e.target.value)}
+              placeholder="192.168.1.129"
+              style={{ ...inputStyle, flex: 1, fontFamily: 'monospace' }}
+              onKeyDown={e => e.key === 'Enter' && saveIp()}
+            />
+            <button onClick={scanPrinters} disabled={scanning} style={{ ...btnGhost, whiteSpace: 'nowrap' }}>
+              <Icon name="refresh" size={13} style={{ animation: scanning ? 'spin 1s linear infinite' : 'none' }} />
+              {scanning ? 'ค้นหา...' : 'ค้นหา'}
+            </button>
+            <button onClick={saveIp} disabled={saving || ipInput.trim() === printerIp} style={{
+              ...btnAccent,
+              opacity: (saving || ipInput.trim() === printerIp) ? 0.5 : 1,
+            }}>
+              {saving ? 'บันทึก...' : 'บันทึก'}
+            </button>
+          </div>
+          {scanResults.length > 1 && (
+            <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {scanResults.map(ip => (
+                <button key={ip} onClick={() => setIpInput(ip)} style={{
+                  padding: '3px 10px', borderRadius: 6, fontSize: 12,
+                  border: `1px solid ${ipInput === ip ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                  background: ipInput === ip ? 'var(--color-accent-50)' : 'var(--color-surface)',
+                  fontFamily: 'monospace',
+                }}>{ip}</button>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Store info — editable, updates preview live */}
+        <Card title="ข้อมูลร้าน" desc="แสดงบนใบเสร็จ · อัปเดต preview ทางขวาทันที" marginBottom={0}>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <Field label="ชื่อร้าน *" value={storeInput} onChange={setStoreInput} placeholder="ร้านตะวันอ้อมข้าว" />
+            <Field label="ที่อยู่" value={addressInput} onChange={setAddressInput} placeholder="123 ถ.ราชดำเนิน ต.ในเมือง..." />
+            <Field label="เลขที่ผู้เสียภาษี" value={taxIdInput} onChange={setTaxIdInput} placeholder="0105544000001" mono />
+            <Field label="สาขา" value={branchInput} onChange={setBranchInput} placeholder="สาขาที่ 00001" />
+          </div>
           <button
-            onClick={() => setPreviewOpen(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
+            onClick={saveStoreInfo}
+            disabled={savingStore || !storeInput.trim()}
+            style={{
+              marginTop: 12, width: '100%', padding: '10px', borderRadius: 8,
+              background: (savingStore || !storeInput.trim()) ? 'var(--color-border)' : 'var(--color-primary)',
+              color: 'white', fontSize: 14, fontWeight: 700,
+              opacity: !storeInput.trim() ? 0.5 : 1,
+            }}
           >
-            <Icon name="eye" size={15} /> ดูตัวอย่างใบเสร็จ
+            {savingStore ? 'กำลังบันทึก...' : 'บันทึกข้อมูลร้าน'}
           </button>
-          <button
-            onClick={testPrint}
-            disabled={testing || printer === 'offline'}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', fontSize: 14, fontWeight: 500, cursor: printer === 'offline' ? 'not-allowed' : 'pointer', opacity: printer === 'offline' ? 0.5 : 1 }}
-          >
-            <Icon name="print" size={15} /> ทดสอบพิมพ์ใบเสร็จ
-          </button>
-        </div>
+        </Card>
       </div>
 
-      {/* Receipt Preview Modal */}
-      {previewOpen && (
-        <div
-          onClick={e => { if (e.target === e.currentTarget) setPreviewOpen(false); }}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-        >
-          <div style={{ background: 'var(--color-surface)', borderRadius: 16, padding: 28, maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 17 }}>ตัวอย่างใบเสร็จ</div>
-                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>แสดงหน้าตาที่จะปริ้นออกมาจริง</div>
-              </div>
-              <button
-                onClick={() => setPreviewOpen(false)}
-                style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', cursor: 'pointer', display: 'grid', placeItems: 'center', fontSize: 18, lineHeight: 1 }}
-              >
-                ×
-              </button>
-            </div>
+      {/* ── RIGHT: Live receipt preview ── */}
+      <div style={{
+        flex: 1, overflowY: 'auto',
+        background: '#F0EBE3',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {/* Preview toolbar */}
+        <div style={{
+          padding: '14px 24px',
+          background: 'var(--color-surface)',
+          borderBottom: '1px solid var(--color-border)',
+          display: 'flex', alignItems: 'center', gap: 12,
+          flexShrink: 0,
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>ตัวอย่างใบเสร็จ (เรียลไทม์)</div>
+          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>ข้อมูลสมมติ · อัปเดตตามข้อมูลร้านด้านซ้าย</div>
+          <div style={{ flex: 1 }} />
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+            padding: '5px 12px', borderRadius: 8, border: '1px solid',
+            borderColor: showBuyer ? 'var(--color-accent)' : 'var(--color-border)',
+            background: showBuyer ? 'var(--color-accent-50)' : 'transparent',
+            fontSize: 13, fontWeight: showBuyer ? 600 : 400,
+            color: showBuyer ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+            userSelect: 'none',
+          }}>
+            <input
+              type="checkbox" checked={showBuyer} onChange={e => setShowBuyer(e.target.checked)}
+              style={{ accentColor: 'var(--color-accent)' }}
+            />
+            แสดงข้อมูลผู้ซื้อ (ใบกำกับภาษี)
+          </label>
+        </div>
 
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <ReceiptPreview data={previewData} />
-            </div>
-
-            <div style={{ marginTop: 20, padding: '12px 14px', background: 'var(--color-surface-2)', borderRadius: 8, fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
-              <strong>ตัวอย่างนี้ใช้ข้อมูลสมมติ</strong> — รายการจริงจะแสดงเมื่อกด ชำระเงิน ในหน้า POS
+        {/* Receipt paper */}
+        <div style={{ flex: 1, padding: '32px 24px', display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
+          <div style={{ width: '100%', maxWidth: 620 }}>
+            <ReceiptPaper
+              data={mockReceipt}
+              buyer={showBuyer ? MOCK_BUYER : undefined}
+              invoiceNo={invoiceNo}
+              now={now}
+              fmt={FMT}
+              formatDate={FMT_DATE}
+              formatTime={FMT_TIME}
+              storeInfo={liveStore}
+            />
+            <div style={{
+              marginTop: 12, padding: '10px 14px',
+              background: 'rgba(61,40,23,0.06)', borderRadius: 8,
+              fontSize: 12, color: '#6B5C4E', textAlign: 'center',
+            }}>
+              ข้อมูลสมมติ — ใบเสร็จจริงจะแสดงหลังชำระเงินในหน้า POS
             </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
+
+/* ─── Small helper components ─────────────────────────────────────── */
+
+function Card({ title, desc, children, marginBottom }: {
+  title: string; desc?: string; children: React.ReactNode; marginBottom?: number;
+}) {
+  return (
+    <div style={{
+      background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+      borderRadius: 12, padding: 18, marginBottom: marginBottom ?? 14,
+      boxShadow: 'var(--shadow-xs)',
+    }}>
+      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: desc ? 3 : 12 }}>{title}</div>
+      {desc && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 12 }}>{desc}</div>}
+      {children}
+    </div>
+  );
+}
+
+function Field({ label, value, onChange, placeholder, mono }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean;
+}) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>{label}</div>
+      <input
+        value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        style={{ ...inputStyle, fontFamily: mono ? '"Courier New", monospace' : 'inherit' }}
+        onFocus={e => (e.currentTarget.style.borderColor = 'var(--color-accent)')}
+        onBlur={e => (e.currentTarget.style.borderColor = 'var(--color-border)')}
+      />
+    </div>
+  );
+}
+
+function StatusDot({ s }: { s: PrinterStatus }) {
+  const color = s === 'online' ? 'var(--color-success)' : s === 'offline' ? 'var(--color-danger)' : 'var(--color-warning)';
+  const label = s === 'online' ? 'ออนไลน์' : s === 'offline' ? 'ออฟไลน์' : 'กำลังตรวจ...';
+  const bg    = s === 'online' ? 'var(--color-success-50)' : s === 'offline' ? 'var(--color-danger-50)' : 'var(--color-warning-50)';
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 99, background: bg }}>
+      <span style={{ width: 6, height: 6, borderRadius: 99, background: color, animation: s === 'checking' ? 'pulse 1s ease-in-out infinite' : 'none' }} />
+      <span style={{ fontSize: 11, fontWeight: 600, color }}>{label}</span>
+    </span>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '9px 12px', borderRadius: 8,
+  border: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
+  fontSize: 13, outline: 'none', boxSizing: 'border-box',
+};
+
+const btnGhost: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 6,
+  padding: '8px 12px', borderRadius: 8,
+  border: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
+  fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap',
+};
+
+const btnAccent: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 6,
+  padding: '8px 16px', borderRadius: 8,
+  background: 'var(--color-accent)', color: 'var(--color-primary-700)',
+  fontWeight: 600, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
+  border: 'none',
+};

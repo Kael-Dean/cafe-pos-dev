@@ -22,9 +22,12 @@ export async function PUT(req: NextRequest) {
     const current = readConfig();
     const updated = {
       ...current,
-      ...(body.ip        !== undefined ? { ip: body.ip.trim() }           : {}),
-      ...(body.port      !== undefined ? { port: Number(body.port) }      : {}),
-      ...(body.storeName !== undefined ? { storeName: body.storeName.trim() } : {}),
+      ...(body.ip           !== undefined ? { ip: body.ip.trim() }                       : {}),
+      ...(body.port         !== undefined ? { port: Number(body.port) }                  : {}),
+      ...(body.storeName    !== undefined ? { storeName: body.storeName.trim() }         : {}),
+      ...(body.storeAddress !== undefined ? { storeAddress: body.storeAddress ?? null }  : {}),
+      ...(body.storeTaxId   !== undefined ? { storeTaxId:   body.storeTaxId   ?? null }  : {}),
+      ...(body.storeBranch  !== undefined ? { storeBranch:  body.storeBranch  ?? null }  : {}),
     };
     if (!updated.ip || typeof updated.ip !== 'string') {
       return NextResponse.json({ ok: false, error: 'IP ไม่ถูกต้อง' }, { status: 400 });
