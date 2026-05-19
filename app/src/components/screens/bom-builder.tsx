@@ -108,24 +108,13 @@ export default function BOMBuilder() {
     }
   };
 
-  const submitAddMenu = async ({ name, categoryId, price, description, type, isDrink }: { name: string; categoryId: string; price: number; description: string; type: ProductType; isDrink: boolean }) => {
+  const submitAddMenu = async ({ name, categoryId, price, description, type }: { name: string; categoryId: string; price: number; description: string; type: ProductType }) => {
     try {
       const newProduct = await createProduct.mutateAsync({ name, category_id: categoryId || undefined, price, description: description || undefined });
-      if (isDrink) {
-        let groupIds = (modifierGroups ?? []).map(g => g.id);
-        if (groupIds.length === 0) {
-          // First drink ever — auto-bootstrap default modifier groups in backend
-          const newGroups = await Promise.all(
-            DEFAULT_DRINK_MODIFIER_GROUPS.map(g => createModifierGroup.mutateAsync(g))
-          );
-          groupIds = newGroups.map(g => g.id);
-        }
-        await linkModifierGroups.mutateAsync({ productId: newProduct.id, groupIds });
-      }
       setAddMenuOpen(false);
       setSelectedId(newProduct.id);
       setProductType(type);
-      toast({ kind: 'success', title: 'เพิ่มรายการแล้ว', msg: `${name}${isDrink ? ' · เปิดตัวเลือกแล้ว' : ''}` });
+      toast({ kind: 'success', title: 'เพิ่มรายการแล้ว', msg: name });
     } catch (err) {
       toast({ kind: 'warning', title: 'เกิดข้อผิดพลาด', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
     }
@@ -906,16 +895,15 @@ const DeleteConfirmModal = ({ name, deleting, onConfirm, onClose }: {
 const AddMenuModal = ({ categories, onClose, onSubmit }: {
   categories: import('@/hooks/use-products').Category[];
   onClose: () => void;
-  onSubmit: (v: { name: string; categoryId: string; price: number; description: string; type: ProductType; isDrink: boolean }) => void;
+  onSubmit: (v: { name: string; categoryId: string; price: number; description: string; type: ProductType }) => void;
 }) => {
   const [type, setType] = useState<ProductType>('MENU');
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
-  const [isDrink, setIsDrink] = useState(false);
   const canSubmit = name.trim().length > 0 && price !== '' && Number(price) >= 0;
-  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), categoryId, price: Number(price), description: description.trim(), type, isDrink: type === 'MENU' && isDrink }); };
+  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), categoryId, price: Number(price), description: description.trim(), type }); };
 
   return (
     <BomModalShell title="เพิ่มรายการใหม่" subtitle="สร้างรายการในระบบ BOM" onClose={onClose}>
@@ -958,19 +946,6 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
         <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} placeholder="ไม่บังคับ" style={{ ...bomInputStyle(), resize: 'vertical', fontFamily: 'inherit' }} />
       </BomFormField>
 
-      {type === 'MENU' && (
-        <BomFormField label="ตัวเลือกเพิ่มเติม">
-          <label onClick={() => setIsDrink(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '10px 12px', border: `2px solid ${isDrink ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 8, background: isDrink ? 'var(--color-accent-50)' : 'transparent', transition: 'all 150ms var(--ease-out)', userSelect: 'none' }}>
-            <div style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${isDrink ? 'var(--color-accent)' : 'var(--color-border)'}`, background: isDrink ? 'var(--color-accent)' : 'transparent', display: 'grid', placeItems: 'center', flexShrink: 0, transition: 'all 150ms var(--ease-out)' }}>
-              {isDrink && <Icon name="check" size={12} color="#fff" />}
-            </div>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: isDrink ? 'var(--color-primary-700)' : 'var(--color-text)' }}>เครื่องดื่ม — มีตัวเลือก</div>
-              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>แสดงหน้าเลือกความหวาน, ขนาด ฯลฯ เมื่อสั่งจาก POS</div>
-            </div>
-          </label>
-        </BomFormField>
-      )}
 
       <BomModalActions>
         <button onClick={onClose} style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
