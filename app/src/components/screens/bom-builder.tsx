@@ -737,7 +737,7 @@ const IngredientPicker = ({ existingIds, inventory, onConfirm, onClose }: {
         </div>
 
         {selected.size > 0 && (
-          <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-accent-50)', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', maxHeight: 140, overflowY: 'auto' }}>
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-accent-50)', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', maxHeight: 140, overflowY: 'auto', flexShrink: 0 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>เลือกแล้ว:</span>
             {[...selected].map(id => {
               const inv = inventory.find(i => i.id === id);
