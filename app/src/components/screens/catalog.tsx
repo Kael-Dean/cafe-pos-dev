@@ -112,7 +112,8 @@ function CategoriesTab() {
   const [editingName, setEditingName] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<CategoryRead | null>(null);
 
-  const maxOrder = categories ? Math.max(0, ...categories.map(c => c.sort_order)) : 0;
+  const rawMax = categories?.length ? Math.max(...categories.map(c => c.sort_order ?? 0)) : 0;
+  const maxOrder = Number.isFinite(rawMax) ? rawMax : 0;
 
   const handleCreate = async () => {
     if (!addingName.trim()) return;

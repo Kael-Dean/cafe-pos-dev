@@ -21,8 +21,10 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    const msg = body?.detail ?? `HTTP ${res.status}`;
-    throw new ApiError(res.status, typeof msg === 'string' ? msg : JSON.stringify(msg));
+    // Backend uses {"error": {"message": "...", "details": [...]}} envelope; FastAPI default uses "detail"
+    const raw = body?.error?.message ?? body?.detail ?? `HTTP ${res.status}`;
+    const msg = typeof raw === 'string' ? raw : JSON.stringify(raw);
+    throw new ApiError(res.status, msg);
   }
 
   if (res.status === 204) return undefined as T;

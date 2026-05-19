@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ToastProvider, Sidebar, BottomTabBar } from '@/components/app-common';
 import { getToken, clearToken } from '@/lib/token-store';
 import LoginScreen from '@/components/screens/login';
@@ -27,9 +27,17 @@ type Screen =
   | 'hardware' | 'customers' | 'reports' | 'catalog' | 'settings';
 
 export default function POS() {
-  const [isLoggedIn, setIsLoggedIn] = useState(() => !!getToken());
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [screen, setScreen] = useState<Screen>('pos');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    setIsLoggedIn(!!getToken());
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
 
   if (!isLoggedIn) {
     return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
