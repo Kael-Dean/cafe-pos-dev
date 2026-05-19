@@ -736,6 +736,24 @@ const IngredientPicker = ({ existingIds, inventory, onConfirm, onClose }: {
           </div>
         </div>
 
+        {selected.size > 0 && (
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-accent-50)', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>เลือกแล้ว:</span>
+            {[...selected].map(id => {
+              const inv = inventory.find(i => i.id === id);
+              if (!inv) return null;
+              return (
+                <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', background: 'var(--color-surface)', border: '1px solid var(--color-accent)', borderRadius: 20, fontSize: 12, fontWeight: 600, color: 'var(--color-primary-700)' }}>
+                  {inv.name}
+                  <button onClick={() => toggle(id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'grid', placeItems: 'center', color: 'var(--color-text-muted)', lineHeight: 1 }}>
+                    <Icon name="x" size={11} />
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+
         <div className="scroll" style={{ overflow: 'auto', flex: 1, padding: 8 }}>
           {list.map(inv => {
             const already = existingIds.includes(inv.id);
