@@ -829,12 +829,6 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
                         {it.name} · {it.unit}
                       </div>
                     ))}
-                    <div
-                      onMouseDown={() => { setIngredientOpen(false); onAddIngredient(); }}
-                      style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', color: 'var(--color-primary)', fontWeight: 600, borderTop: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 6 }}
-                    >
-                      <Icon name="plus" size={13} /> เพิ่มวัตถุดิบใหม่
-                    </div>
                   </div>
                 )}
               </div>
@@ -916,6 +910,11 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
 
           <ModalActions>
             <button onClick={onClose} style={ghostBtnStyle()}>ปิด</button>
+            {!isConfirmed && (
+              <button onClick={onAddIngredient} style={{ ...ghostBtnStyle(), marginLeft: 'auto', marginRight: 8 }}>
+                <Icon name="plus" size={13} /> เพิ่มวัตถุดิบ
+              </button>
+            )}
             {!isConfirmed && (
               <button onClick={handleConfirm} disabled={!canConfirm} style={{ ...primaryBtnStyle(), opacity: canConfirm ? 1 : 0.45, cursor: canConfirm ? 'pointer' : 'not-allowed' }}>
                 <Icon name="check" size={14} /> {confirmReceipt.isPending ? 'กำลังยืนยัน...' : 'ยืนยันรับสินค้า'}
