@@ -220,6 +220,7 @@ export default function Inventory() {
           items={inventoryItems ?? []}
           initialReceiptId={draftReceiptId}
           onClose={() => setReceiptOpen(false)}
+          onAddIngredient={() => setAddIngredientOpen(true)}
           onConfirmed={() => {
             setReceiptOpen(false);
             toast({ kind: 'success', title: 'ยืนยันการรับสินค้าแล้ว', msg: 'สต็อกถูกอัปเดตแล้ว' });
@@ -667,11 +668,12 @@ const WastageTab = ({ items, movements, totalCost, onAdd }: { items: InventoryIt
 );
 
 // ── Receipt Flow Modal (multi-step: header → lines → confirm) ─────────────────
-const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
+const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAddIngredient }: {
   items: InventoryItem[];
   initialReceiptId: string | null;
   onClose: () => void;
   onConfirmed: () => void;
+  onAddIngredient: () => void;
 }) => {
   const [step, setStep] = useState<'header' | 'lines'>(initialReceiptId ? 'lines' : 'header');
   const [receiptId, setReceiptId] = useState<string | null>(initialReceiptId);
@@ -827,6 +829,12 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed }: {
                         {it.name} · {it.unit}
                       </div>
                     ))}
+                    <div
+                      onMouseDown={() => { setIngredientOpen(false); onAddIngredient(); }}
+                      style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', color: 'var(--color-primary)', fontWeight: 600, borderTop: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 6 }}
+                    >
+                      <Icon name="plus" size={13} /> เพิ่มวัตถุดิบใหม่
+                    </div>
                   </div>
                 )}
               </div>
