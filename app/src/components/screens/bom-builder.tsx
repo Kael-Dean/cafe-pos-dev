@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Icon from '../icons';
 import { useToast, Tag, baht } from '../app-common';
-import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, type MenuItem } from '@/hooks/use-products';
+import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, useUpdateProduct, type MenuItem, type Category } from '@/hooks/use-products';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
 import { useProductDetail, useUpdateRecipe, useLinkModifierGroups, type RecipeItem } from '@/hooks/use-bom';
 import { useModifierGroups, useCreateModifierGroup, useAddModifier, useDeleteModifier, DEFAULT_DRINK_MODIFIER_GROUPS, type ModifierGroup } from '@/hooks/use-modifier-groups';
@@ -22,6 +22,7 @@ export default function BOMBuilder() {
 
   const [editedRecipe, setEditedRecipe] = useState<RecipeItem[]>([]);
   const [editedPrice, setEditedPrice] = useState(0);
+  const [editedCategoryId, setEditedCategoryId] = useState('');
   const [productType, setProductType] = useState<ProductType>('MENU');
   const [modifierGroupPickerOpen, setModifierGroupPickerOpen] = useState(false);
 
@@ -30,6 +31,7 @@ export default function BOMBuilder() {
   const { data: inventoryItems } = useInventory();
   const { data: productDetail, isLoading: detailLoading } = useProductDetail(selectedId);
   const updateRecipe = useUpdateRecipe();
+  const updateProduct = useUpdateProduct();
   const createProduct = useCreateProduct();
   const deleteProduct = useDeleteProduct();
   const linkModifierGroups = useLinkModifierGroups();
@@ -55,6 +57,10 @@ export default function BOMBuilder() {
       setEditedPrice(productDetail.price);
     }
   }, [productDetail]);
+
+  useEffect(() => {
+    setEditedCategoryId(selectedProduct?.cat ?? '');
+  }, [selectedProduct?.id]);
 
   useEffect(() => {
     setEditedSteps(stepsData ?? []);
@@ -101,7 +107,10 @@ export default function BOMBuilder() {
   const saveRecipe = async () => {
     if (!selectedId) return;
     try {
-      await updateRecipe.mutateAsync({ productId: selectedId, items: editedRecipe });
+      await Promise.all([
+        updateRecipe.mutateAsync({ productId: selectedId, items: editedRecipe }),
+        updateProduct.mutateAsync({ productId: selectedId, price: editedPrice, category_id: editedCategoryId || null }),
+      ]);
       toast({ kind: 'success', title: 'บันทึกสูตรแล้ว', msg: `${selectedProduct?.name ?? ''} • ${editedRecipe.length} วัตถุดิบ • ต้นทุน ฿${totalCost.toFixed(2)} • Margin ${marginPct.toFixed(1)}%` });
     } catch (err) {
       toast({ kind: 'warning', title: 'บันทึกไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
@@ -199,6 +208,8 @@ export default function BOMBuilder() {
             productType={productType}
             recipe={editedRecipe}
             editedPrice={editedPrice}
+            editedCategoryId={editedCategoryId}
+            categories={categories ?? []}
             inventoryItems={inventoryItems ?? []}
             totalCost={totalCost}
             margin={margin}
@@ -206,11 +217,12 @@ export default function BOMBuilder() {
             marginToneOf={marginToneOf}
             marginColorOf={marginColorOf}
             onPriceChange={setEditedPrice}
+            onCategoryChange={setEditedCategoryId}
             onQtyChange={updateQty}
             onRemove={removeItem}
             onPickerOpen={() => setPicker(true)}
             onSave={saveRecipe}
-            saving={updateRecipe.isPending}
+            saving={updateRecipe.isPending || updateProduct.isPending}
             onDeleteRequest={() => setDeleteConfirmOpen(true)}
             linkedGroupIds={productDetail?.modifierGroupIds ?? []}
             allModifierGroups={modifierGroups ?? []}
@@ -294,6 +306,8 @@ interface RightPanelProps {
   productType: ProductType;
   recipe: RecipeItem[];
   editedPrice: number;
+  editedCategoryId: string;
+  categories: Category[];
   inventoryItems: InventoryItem[];
   totalCost: number;
   margin: number;
@@ -301,6 +315,7 @@ interface RightPanelProps {
   marginToneOf: (pct: number) => 'success' | 'warning' | 'danger';
   marginColorOf: (pct: number) => string;
   onPriceChange: (p: number) => void;
+  onCategoryChange: (id: string) => void;
   onQtyChange: (idx: number, qty: number) => void;
   onRemove: (idx: number) => void;
   onPickerOpen: () => void;
@@ -314,16 +329,19 @@ interface RightPanelProps {
   onDeleteModifier: (groupId: string, modifierId: string) => Promise<void>;
 }
 
-const RightPanel = ({ product, productType, recipe, editedPrice, inventoryItems, totalCost, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen, onAddModifier, onDeleteModifier }: RightPanelProps) => (
+const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryId, categories, inventoryItems, totalCost, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onCategoryChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen, onAddModifier, onDeleteModifier }: RightPanelProps) => (
   <>
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
       <div style={{ width: 80, height: 80, borderRadius: 12, background: product.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 800, flexShrink: 0 }}>{product.tag}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500 }}>{product.nameEn}</div>
         <h1 style={{ margin: '2px 0 8px', fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>{product.name}</h1>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <Tag tone={productType === 'MENU' ? 'info' : 'accent'}>{productType === 'MENU' ? 'เมนูขาย' : 'ส่วนผสม'}</Tag>
           <Tag tone={recipe.length > 0 ? 'success' : 'warning'}>{recipe.length > 0 ? `${recipe.length} วัตถุดิบ` : 'ยังไม่มีสูตร'}</Tag>
+          {productType === 'MENU' && (
+            <CategorySelector value={editedCategoryId} categories={categories} onChange={onCategoryChange} />
+          )}
         </div>
       </div>
       <div>
@@ -425,6 +443,74 @@ const RightPanel = ({ product, productType, recipe, editedPrice, inventoryItems,
     )}
   </>
 );
+
+// ── Category inline selector ─────────────────────────────────────────────────
+const CategorySelector = ({ value, categories, onChange }: {
+  value: string;
+  categories: Category[];
+  onChange: (id: string) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const current = categories.find(c => c.id === value);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          padding: '3px 8px', fontSize: 11, fontWeight: 600, borderRadius: 20,
+          background: current ? 'var(--color-accent-50)' : 'var(--color-surface-2)',
+          color: current ? 'var(--color-primary-700)' : 'var(--color-text-muted)',
+          border: `1px solid ${current ? 'var(--color-accent)' : 'var(--color-border)'}`,
+          cursor: 'pointer', fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)',
+          lineHeight: 1.6,
+        }}
+      >
+        {current ? current.label : '+ หมวดหมู่'}
+        <Icon name="chevronDown" size={10} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }} />
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0,
+          background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+          borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 200,
+          overflow: 'hidden', minWidth: 160,
+        }}>
+          {[{ id: '', label: '— ไม่มีหมวดหมู่ —' }, ...categories].map(opt => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => { onChange(opt.id); setOpen(false); }}
+              style={{
+                width: '100%', textAlign: 'left', padding: '9px 12px',
+                fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', border: 'none',
+                background: opt.id === value ? 'var(--color-accent-50)' : 'transparent',
+                color: opt.id === value ? 'var(--color-primary-700)' : opt.id === '' ? 'var(--color-text-secondary)' : 'var(--color-text)',
+                fontWeight: opt.id === value ? 600 : 400,
+                transition: 'background 100ms', display: 'block',
+              }}
+              onMouseEnter={e => { if (opt.id !== value) e.currentTarget.style.background = 'var(--color-surface-2)'; }}
+              onMouseLeave={e => { if (opt.id !== value) e.currentTarget.style.background = 'transparent'; }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ── BOM Row with inline unit converter ───────────────────────────────────────
 const BOMRow = ({ inv, qty, lineCost, stockOk, isLast, onQtyChange, onRemove }: {

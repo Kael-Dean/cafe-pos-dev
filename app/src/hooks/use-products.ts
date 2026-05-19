@@ -136,3 +136,22 @@ export function useDeleteProduct() {
     },
   });
 }
+
+interface ProductUpdatePayload {
+  productId: string;
+  price?: number;
+  category_id?: string | null;
+  name?: string;
+}
+
+export function useUpdateProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ productId, ...payload }: ProductUpdatePayload) =>
+      api.patch<ProductRead>(`/api/v1/products/${productId}`, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['product-detail'] });
+    },
+  });
+}
