@@ -210,7 +210,7 @@ export default function Inventory() {
 
           {tab === 'items'   && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onWaste={openWastage} onAddIngredient={() => setAddIngredientOpen(true)} onDelete={setDeleteConfirmItem} onSupplierHistory={setSupplierHistoryItem} onLots={setLotsItem} />}
           {tab === 'usage'   && <UsageTab stats={usageStats} movements={saleMovements} />}
-          {tab === 'receive' && <ReceiveTab onNewReceipt={openNewReceipt} onContinueDraft={openDraftReceipt} onViewReceipt={setViewReceiptId} />}
+          {tab === 'receive' && <ReceiveTab onNewReceipt={openNewReceipt} onContinueDraft={openDraftReceipt} onViewReceipt={setViewReceiptId} onAddIngredient={() => setAddIngredientOpen(true)} />}
           {tab === 'waste'   && <WastageTab items={inventoryItems ?? []} movements={recentWastage} totalCost={wastageThisMonth} onAdd={() => openWastage()} />}
         </>
       )}
@@ -582,7 +582,7 @@ const UsageTab = ({ stats, movements }: {
 };
 
 // ── Receive Tab (receipts list) ───────────────────────────────────────────────
-const ReceiveTab = ({ onNewReceipt, onContinueDraft, onViewReceipt }: { onNewReceipt: () => void; onContinueDraft: (id: string) => void; onViewReceipt: (id: string) => void }) => {
+const ReceiveTab = ({ onNewReceipt, onContinueDraft, onViewReceipt, onAddIngredient }: { onNewReceipt: () => void; onContinueDraft: (id: string) => void; onViewReceipt: (id: string) => void; onAddIngredient: () => void }) => {
   const { data: receipts, isLoading } = useReceipts();
 
   return (
@@ -592,7 +592,10 @@ const ReceiveTab = ({ onNewReceipt, onContinueDraft, onViewReceipt }: { onNewRec
           <div style={{ fontSize: 16, fontWeight: 700 }}>ใบรับสินค้า</div>
           <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>สร้างใบรับ → เพิ่มรายการ → ยืนยัน เพื่ออัปเดตสต็อก</div>
         </div>
-        <button onClick={onNewReceipt} style={primaryBtnStyle()} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={14} /> รับเข้าสต็อกใหม่</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onAddIngredient} style={{ ...primaryBtnStyle(), background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-surface-2)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-surface)'; }}><Icon name="plus" size={14} /> เพิ่มวัตถุดิบ</button>
+          <button onClick={onNewReceipt} style={primaryBtnStyle()} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={14} /> รับเข้าสต็อกใหม่</button>
+        </div>
       </div>
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '130px 160px 1.5fr 110px 80px 120px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
