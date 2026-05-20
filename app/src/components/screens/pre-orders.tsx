@@ -623,9 +623,9 @@ function DetailPanel({
                       style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 12, background: 'var(--color-bg)', boxSizing: 'border-box' }}
                     />
                     {showAddDropdown && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 6, background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+                      <div onMouseDown={e => e.preventDefault()} style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 6, background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
                         {filteredProducts.slice(0, 6).map(p => (
-                          <div key={p.id} onClick={() => onAddItemProductSelect(p.id, p.name)} style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
+                          <div key={p.id} onMouseDown={() => onAddItemProductSelect(p.id, p.name)} style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
                             <span>{p.name}</span><span style={{ color: 'var(--color-text-secondary)' }}>฿{p.price.toFixed(2)}</span>
                           </div>
                         ))}
@@ -842,7 +842,9 @@ function CreateModal({
                   <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: idx < cItems.length - 1 ? '1px solid var(--color-border)' : 'none', fontSize: 13 }}>
                     <div style={{ flex: 1 }}>{nameById(ci.product_id)}</div>
                     <div style={{ color: 'var(--color-text-secondary)' }}>×{ci.quantity}</div>
-                    {ci.unit_price && <div style={{ color: 'var(--color-text-secondary)' }}>฿{ci.unit_price}</div>}
+                    <div style={{ fontWeight: 500 }}>
+                      ฿{((ci.unit_price ? Number(ci.unit_price) : (allProducts.find(p => p.id === ci.product_id)?.price ?? 0)) * ci.quantity).toFixed(2)}
+                    </div>
                     <button onClick={() => onRemoveItem(idx)} style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
                       <Icon name="x" size={12} />
                     </button>
@@ -858,9 +860,9 @@ function CreateModal({
                   onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
                   style={inputStyle} />
                 {showDropdown && (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 6, background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+                  <div onMouseDown={e => e.preventDefault()} style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 6, background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
                     {filtered.slice(0, 6).map(p => (
-                      <div key={p.id} onClick={() => onItemProductSelect(p.id, p.name)} style={{ padding: '7px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
+                      <div key={p.id} onMouseDown={() => onItemProductSelect(p.id, p.name)} style={{ padding: '7px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
                         <span>{p.name}</span><span style={{ color: 'var(--color-text-secondary)' }}>฿{p.price.toFixed(2)}</span>
                       </div>
                     ))}
