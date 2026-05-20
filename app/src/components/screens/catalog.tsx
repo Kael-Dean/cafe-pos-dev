@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useToast } from '../app-common';
-import { useCurrentUser } from '@/hooks/use-current-user';
+import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import {
   useCategoriesAdmin,
   useCreateCategory,
@@ -15,6 +15,12 @@ import {
   type CategoryRead,
   type ModifierGroupReadAdmin,
 } from '@/hooks/use-catalog';
+import {
+  useProductsAdmin,
+  useUpdateProductAdmin,
+  type ProductReadAdmin,
+  type ProductUpdateAdminPayload,
+} from '@/hooks/use-products';
 import { ApiError } from '@/lib/api-client';
 
 // ── Shared style helpers ──────────────────────────────────────────────────────
@@ -49,13 +55,13 @@ const labelCss: React.CSSProperties = {
 
 // ── Root page ─────────────────────────────────────────────────────────────────
 
-type Tab = 'categories' | 'modifiers';
+type Tab = 'categories' | 'modifiers' | 'products';
 
 export default function CatalogAdmin() {
   const [tab, setTab] = useState<Tab>('categories');
   const { data: me } = useCurrentUser();
 
-  if (me && me.role !== 'OWNER') {
+  if (me && !isAdmin(me.role)) {
     return (
       <div style={{ display: 'grid', placeItems: 'center', height: '100%', background: 'var(--color-bg)' }}>
         <p style={{ color: 'var(--color-text-secondary)', fontSize: 14 }}>ไม่มีสิทธิ์เข้าถึงหน้านี้</p>
@@ -68,13 +74,13 @@ export default function CatalogAdmin() {
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>Catalog</h1>
         <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 4, marginBottom: 0 }}>
-          จัดการหมวดหมู่และกลุ่มตัวเลือก
+          จัดการสินค้า หมวดหมู่ และกลุ่มตัวเลือก
         </p>
       </div>
 
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'var(--color-surface-2)', padding: 4, borderRadius: 10, width: 'fit-content' }}>
-        {([['categories', 'หมวดหมู่'], ['modifiers', 'กลุ่มตัวเลือก']] as [Tab, string][]).map(([id, label]) => (
+        {([['products', 'สินค้า'], ['categories', 'หมวดหมู่'], ['modifiers', 'กลุ่มตัวเลือก']] as [Tab, string][]).map(([id, label]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -92,8 +98,186 @@ export default function CatalogAdmin() {
         ))}
       </div>
 
-      {tab === 'categories' ? <CategoriesTab /> : <ModifierGroupsTab />}
+      {tab === 'products'   && <ProductsTab />}
+      {tab === 'categories' && <CategoriesTab />}
+      {tab === 'modifiers'  && <ModifierGroupsTab />}
     </div>
+  );
+}
+
+// ── Products Tab ──────────────────────────────────────────────────────────────
+
+function ProductsTab() {
+  const toast = useToast();
+  const { data: products, isLoading } = useProductsAdmin();
+  const { data: categories } = useCategoriesAdmin();
+  const updateProduct = useUpdateProductAdmin();
+
+  const [editTarget, setEditTarget] = useState<ProductReadAdmin | null>(null);
+  const [formName, setFormName]     = useState('');
+  const [formPrice, setFormPrice]   = useState('');
+  const [formCatId, setFormCatId]   = useState('');
+  const [formDesc, setFormDesc]     = useState('');
+  const [formActive, setFormActive] = useState(true);
+
+  const openEdit = (p: ProductReadAdmin) => {
+    setEditTarget(p);
+    setFormName(p.name);
+    setFormPrice(p.price);
+    setFormCatId(p.category_id ?? '');
+    setFormDesc(p.description ?? '');
+    setFormActive(p.is_active);
+  };
+
+  const handleSave = async () => {
+    if (!editTarget) return;
+    const patch: ProductUpdateAdminPayload = {};
+    const trimName = formName.trim();
+    if (trimName && trimName !== editTarget.name) patch.name = trimName;
+    if (formPrice !== editTarget.price) patch.price = formPrice;
+    const catId = formCatId || null;
+    if (catId !== editTarget.category_id) patch.category_id = catId;
+    const desc = formDesc.trim() || null;
+    if (desc !== editTarget.description) patch.description = desc;
+    if (formActive !== editTarget.is_active) patch.is_active = formActive;
+
+    try {
+      await updateProduct.mutateAsync({ productId: editTarget.id, ...patch });
+      setEditTarget(null);
+      toast({ kind: 'success', title: 'อัพเดทสินค้าแล้ว' });
+    } catch (err) {
+      toast({ kind: 'danger', title: 'อัพเดทไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+    }
+  };
+
+  if (isLoading) return (
+    <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>กำลังโหลด…</div>
+  );
+
+  return (
+    <>
+      <div style={{ background: 'var(--color-surface)', borderRadius: 12, border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)' }}>
+          <span style={{ fontWeight: 600, fontSize: 14 }}>สินค้าทั้งหมด ({products?.length ?? 0})</span>
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <thead>
+            <tr style={{ background: 'var(--color-surface-2)' }}>
+              {['ชื่อสินค้า', 'หมวดหมู่', 'ราคา', 'สถานะ', ''].map((h, i) => (
+                <th key={i} style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: 12, color: 'var(--color-text-secondary)', borderBottom: '1px solid var(--color-border)', whiteSpace: 'nowrap' }}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(products ?? []).map(p => {
+              const cat = categories?.find(c => c.id === p.category_id);
+              return (
+                <tr key={p.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                  <td style={{ padding: '10px 16px', fontWeight: 500 }}>{p.name}</td>
+                  <td style={{ padding: '10px 16px', color: 'var(--color-text-secondary)', fontSize: 13 }}>
+                    {cat?.name ?? <em style={{ color: 'var(--color-text-muted)' }}>ไม่มีหมวดหมู่</em>}
+                  </td>
+                  <td style={{ padding: '10px 16px', fontFamily: 'var(--font-num)' }}>
+                    ฿{Number(p.price).toFixed(2)}
+                  </td>
+                  <td style={{ padding: '10px 16px' }}>
+                    <span style={{
+                      padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600,
+                      background: p.is_active ? 'var(--color-success-50)' : 'var(--color-surface-2)',
+                      color: p.is_active ? 'var(--color-success)' : 'var(--color-text-muted)',
+                    }}>
+                      {p.is_active ? 'ใช้งาน' : 'ปิดใช้งาน'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                    <button onClick={() => openEdit(p)} style={btnSm('ghost')}>แก้ไข</button>
+                  </td>
+                </tr>
+              );
+            })}
+            {!products?.length && (
+              <tr>
+                <td colSpan={5} style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                  ยังไม่มีสินค้า
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Edit modal */}
+      {editTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+          <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 460, maxWidth: '90vw', boxShadow: 'var(--shadow-lg)' }}>
+            <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700 }}>แก้ไขสินค้า</h3>
+            <div style={{ display: 'grid', gap: 14, marginBottom: 20 }}>
+              <div>
+                <label style={labelCss}>ชื่อสินค้า</label>
+                <input value={formName} onChange={e => setFormName(e.target.value)} style={inputCss} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div>
+                  <label style={labelCss}>ราคา (฿)</label>
+                  <input
+                    value={formPrice}
+                    onChange={e => setFormPrice(e.target.value)}
+                    placeholder="0.00"
+                    style={{ ...inputCss, fontFamily: 'var(--font-num)' }}
+                  />
+                </div>
+                <div>
+                  <label style={labelCss}>หมวดหมู่</label>
+                  <select
+                    value={formCatId}
+                    onChange={e => setFormCatId(e.target.value)}
+                    style={{ ...inputCss, appearance: 'auto' }}
+                  >
+                    <option value="">ไม่มีหมวดหมู่</option>
+                    {(categories ?? []).map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={labelCss}>คำอธิบาย</label>
+                <textarea
+                  value={formDesc}
+                  onChange={e => setFormDesc(e.target.value)}
+                  rows={3}
+                  placeholder="ไม่บังคับ"
+                  style={{ ...inputCss, resize: 'vertical' }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox" id="prod-active-chk"
+                  checked={formActive}
+                  onChange={e => setFormActive(e.target.checked)}
+                  style={{ width: 16, height: 16, accentColor: 'var(--color-primary)', cursor: 'pointer' }}
+                />
+                <label htmlFor="prod-active-chk" style={{ fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>
+                  เปิดใช้งาน (แสดงในเมนู POS)
+                </label>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setEditTarget(null)} style={btnSm('ghost')}>ยกเลิก</button>
+              <button
+                onClick={handleSave}
+                disabled={!formName.trim() || updateProduct.isPending}
+                style={btnSm('primary')}
+              >
+                {updateProduct.isPending ? 'กำลังบันทึก…' : 'บันทึก'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

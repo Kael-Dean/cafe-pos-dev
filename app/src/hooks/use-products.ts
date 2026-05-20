@@ -155,3 +155,41 @@ export function useUpdateProduct() {
     },
   });
 }
+
+// ── Admin product management (full shape, no mapping) ─────────────────────────
+
+export interface ProductReadAdmin {
+  id: string;
+  store_id: string;
+  category_id: string | null;
+  name: string;
+  description: string | null;
+  price: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductUpdateAdminPayload {
+  category_id?: string | null;
+  name?: string;
+  description?: string | null;
+  price?: string;
+  is_active?: boolean;
+}
+
+export function useProductsAdmin() {
+  return useQuery<ProductReadAdmin[]>({
+    queryKey: ['products', 'admin'],
+    queryFn: () => api.get<ProductReadAdmin[]>('/api/v1/products'),
+  });
+}
+
+export function useUpdateProductAdmin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ productId, ...payload }: { productId: string } & ProductUpdateAdminPayload) =>
+      api.patch<ProductReadAdmin>(`/api/v1/products/${productId}`, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['products'] }),
+  });
+}

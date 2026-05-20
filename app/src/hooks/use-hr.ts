@@ -1,11 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 
-export interface StaffMember {
+export type StaffRole = 'OWNER' | 'MANAGER' | 'BARISTA' | 'BAKER';
+export type StaffPosition = 'JUNIOR' | 'SENIOR' | 'HEAD_OF_STAFF';
+
+export interface StaffRead {
   id: string;
   name: string;
-  role: 'OWNER' | 'MANAGER' | 'BARISTA' | 'BAKER';
+  role: StaffRole;
+  position: StaffPosition;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  is_active: boolean;
 }
+
+export type StaffMember = StaffRead;
 
 export interface LeaveRequest {
   id: string;
@@ -60,9 +70,50 @@ const MY_LEAVES_KEY = ['hr-my-leaves'] as const;
 const TASKS_KEY = ['hr-tasks'] as const;
 
 export function useStaffList() {
-  return useQuery<StaffMember[]>({
+  return useQuery<StaffRead[]>({
     queryKey: STAFF_KEY,
-    queryFn: () => api.get<StaffMember[]>('/api/v1/hr/staff'),
+    queryFn: () => api.get<StaffRead[]>('/api/v1/hr/staff'),
+  });
+}
+
+export function useCreateStaff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      name: string;
+      role: StaffRole;
+      position: StaffPosition;
+      pin: string;
+      phone: string;
+      email?: string | null;
+      address?: string | null;
+    }) => api.post<StaffRead>('/api/v1/hr/staff', payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: STAFF_KEY }),
+  });
+}
+
+export function useUpdateStaff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, ...payload }: {
+      userId: string;
+      name?: string | null;
+      role?: StaffRole | null;
+      position?: StaffPosition | null;
+      pin?: string | null;
+      phone?: string | null;
+      email?: string | null;
+      address?: string | null;
+    }) => api.patch<StaffRead>(`/api/v1/hr/staff/${userId}`, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: STAFF_KEY }),
+  });
+}
+
+export function useDeactivateStaff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => api.delete<void>(`/api/v1/hr/staff/${userId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: STAFF_KEY }),
   });
 }
 

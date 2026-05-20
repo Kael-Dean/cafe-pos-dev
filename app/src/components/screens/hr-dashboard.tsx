@@ -7,9 +7,11 @@ import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import {
   useAllLeaves, useMyLeaves, useCreateLeave, useReviewLeave,
   useTasks, useCreateTask, useUpdateTask, useConfirmTask, useDeleteTask,
-  useStaffList,
+  useStaffList, useCreateStaff, useUpdateStaff, useDeactivateStaff,
   type LeaveRequest, type TaskRead, type TaskStatus,
+  type StaffRead, type StaffRole, type StaffPosition,
 } from '@/hooks/use-hr';
+import { ApiError } from '@/lib/api-client';
 
 const LEAVE_TYPE_LABEL: Record<string, string> = {
   VACATION: 'ลาพักร้อน',
@@ -118,6 +120,324 @@ function TaskCard({ task, admin, myId, onStatusChange, onConfirm, onDelete }: {
         )}
       </div>
     </div>
+  );
+}
+
+// ── Staff Tab ─────────────────────────────────────────────────────────────────
+
+const ROLE_LABEL: Record<StaffRole, string> = {
+  OWNER: 'Owner', MANAGER: 'Manager', BARISTA: 'Barista', BAKER: 'Baker',
+};
+const POS_LABEL: Record<StaffPosition, string> = {
+  JUNIOR: 'Junior', SENIOR: 'Senior', HEAD_OF_STAFF: 'Head of Staff',
+};
+const ALL_ROLES: StaffRole[] = ['OWNER', 'MANAGER', 'BARISTA', 'BAKER'];
+const ALL_POSITIONS: StaffPosition[] = ['JUNIOR', 'SENIOR', 'HEAD_OF_STAFF'];
+
+const EMPTY_CREATE = {
+  name: '', role: 'BARISTA' as StaffRole, position: 'JUNIOR' as StaffPosition,
+  pin: '', phone: '', email: '', address: '',
+};
+
+function StaffTab({ admin }: { admin: boolean }) {
+  const toast = useToast();
+  const { data: staffList, isLoading } = useStaffList();
+  const createStaff    = useCreateStaff();
+  const updateStaff    = useUpdateStaff();
+  const deactivateStaff = useDeactivateStaff();
+
+  const [showCreate, setShowCreate]         = useState(false);
+  const [editTarget, setEditTarget]         = useState<StaffRead | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<StaffRead | null>(null);
+  const [cForm, setCForm]                   = useState(EMPTY_CREATE);
+
+  // Edit form state
+  const [eName, setEName]         = useState('');
+  const [eRole, setERole]         = useState<StaffRole>('BARISTA');
+  const [ePosition, setEPosition] = useState<StaffPosition>('JUNIOR');
+  const [ePin, setEPin]           = useState('');
+  const [ePhone, setEPhone]       = useState('');
+  const [eEmail, setEEmail]       = useState('');
+  const [eAddress, setEAddress]   = useState('');
+
+  const openEdit = (s: StaffRead) => {
+    setEditTarget(s);
+    setEName(s.name);
+    setERole(s.role);
+    setEPosition(s.position);
+    setEPin('');
+    setEPhone(s.phone ?? '');
+    setEEmail(s.email ?? '');
+    setEAddress(s.address ?? '');
+  };
+
+  const handleCreate = async () => {
+    if (!cForm.name.trim() || !cForm.phone.trim() || !cForm.pin.trim()) {
+      toast({ kind: 'warning', title: 'กรอกชื่อ เบอร์โทร และ PIN' });
+      return;
+    }
+    try {
+      await createStaff.mutateAsync({
+        name: cForm.name.trim(),
+        role: cForm.role,
+        position: cForm.position,
+        pin: cForm.pin,
+        phone: cForm.phone.trim(),
+        email: cForm.email.trim() || null,
+        address: cForm.address.trim() || null,
+      });
+      setShowCreate(false);
+      setCForm(EMPTY_CREATE);
+      toast({ kind: 'success', title: 'เพิ่มพนักงานแล้ว' });
+    } catch (err) {
+      const msg = err instanceof ApiError && err.status === 409
+        ? 'เบอร์โทรหรืออีเมลนี้มีพนักงานคนอื่นใช้อยู่แล้ว'
+        : err instanceof Error ? err.message : 'กรุณาลองใหม่';
+      toast({ kind: 'danger', title: 'เพิ่มพนักงานไม่สำเร็จ', msg });
+    }
+  };
+
+  const handleUpdate = async () => {
+    if (!editTarget) return;
+    const payload: Record<string, unknown> = {};
+    const trimName = eName.trim();
+    if (trimName && trimName !== editTarget.name) payload.name = trimName;
+    if (eRole !== editTarget.role) payload.role = eRole;
+    if (ePosition !== editTarget.position) payload.position = ePosition;
+    if (ePin.trim()) payload.pin = ePin.trim();
+    if (ePhone.trim() !== (editTarget.phone ?? '')) payload.phone = ePhone.trim() || null;
+    // email / address: null = clear, value = update, omit = no change
+    const newEmail = eEmail.trim() || null;
+    if (newEmail !== editTarget.email) payload.email = newEmail;
+    const newAddress = eAddress.trim() || null;
+    if (newAddress !== editTarget.address) payload.address = newAddress;
+
+    try {
+      await updateStaff.mutateAsync({ userId: editTarget.id, ...payload });
+      setEditTarget(null);
+      toast({ kind: 'success', title: 'อัพเดทพนักงานแล้ว' });
+    } catch (err) {
+      const msg = err instanceof ApiError && err.status === 409
+        ? 'เบอร์โทรหรืออีเมลนี้มีพนักงานคนอื่นใช้อยู่แล้ว'
+        : err instanceof Error ? err.message : 'กรุณาลองใหม่';
+      toast({ kind: 'danger', title: 'อัพเดทไม่สำเร็จ', msg });
+    }
+  };
+
+  const handleDeactivate = async () => {
+    if (!deactivateTarget) return;
+    try {
+      await deactivateStaff.mutateAsync(deactivateTarget.id);
+      setDeactivateTarget(null);
+      toast({ kind: 'success', title: `${deactivateTarget.name} ออกจากระบบแล้ว` });
+    } catch (err) {
+      setDeactivateTarget(null);
+      toast({ kind: 'danger', title: 'ดำเนินการไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+    }
+  };
+
+  const inputSt: React.CSSProperties = {
+    padding: '8px 10px', borderRadius: 7, border: '1px solid var(--color-border)',
+    background: 'var(--color-surface-2)', color: 'var(--color-text)',
+    fontSize: 13, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit',
+  };
+  const labelSt: React.CSSProperties = {
+    fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4,
+  };
+
+  if (isLoading) return (
+    <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-muted)' }}>กำลังโหลด…</div>
+  );
+
+  return (
+    <>
+      {admin && (
+        <div style={{ marginBottom: 16 }}>
+          <button
+            onClick={() => { setShowCreate(true); setCForm(EMPTY_CREATE); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 8, background: 'var(--color-primary)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}
+          >
+            <Icon name="plus" size={15} /> เพิ่มพนักงาน
+          </button>
+        </div>
+      )}
+
+      {/* Staff table */}
+      <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <thead>
+            <tr style={{ background: 'var(--color-surface-2)' }}>
+              {['ชื่อ', 'Role', 'ตำแหน่ง', 'เบอร์โทร', 'อีเมล', ''].map((h, i) => (
+                <th key={i} style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: 12, color: 'var(--color-text-secondary)', borderBottom: '1px solid var(--color-border)', whiteSpace: 'nowrap' }}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(staffList ?? []).map(s => (
+              <tr key={s.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                <td style={{ padding: '10px 16px', fontWeight: 500 }}>{s.name}</td>
+                <td style={{ padding: '10px 16px' }}>
+                  <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: 'var(--color-accent-50)', color: 'var(--color-accent-700)' }}>
+                    {ROLE_LABEL[s.role] ?? s.role}
+                  </span>
+                </td>
+                <td style={{ padding: '10px 16px', color: 'var(--color-text-secondary)', fontSize: 13 }}>
+                  {POS_LABEL[s.position] ?? s.position}
+                </td>
+                <td style={{ padding: '10px 16px', color: 'var(--color-text-secondary)', fontSize: 13, fontFamily: 'var(--font-num)' }}>
+                  {s.phone ?? <em style={{ color: 'var(--color-text-muted)' }}>—</em>}
+                </td>
+                <td style={{ padding: '10px 16px', color: 'var(--color-text-secondary)', fontSize: 13 }}>
+                  {s.email ?? <em style={{ color: 'var(--color-text-muted)' }}>—</em>}
+                </td>
+                <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  {admin && (
+                    <>
+                      <button onClick={() => openEdit(s)}
+                        style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'transparent', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', marginRight: 6 }}>
+                        แก้ไข
+                      </button>
+                      <button onClick={() => setDeactivateTarget(s)}
+                        style={{ padding: '5px 12px', borderRadius: 7, border: 'none', background: 'var(--color-danger-50)', color: 'var(--color-danger)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        ลาออก
+                      </button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {!staffList?.length && (
+              <tr>
+                <td colSpan={6} style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                  ยังไม่มีพนักงาน
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Create modal */}
+      {showCreate && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+          <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 500, maxWidth: '90vw', boxShadow: 'var(--shadow-lg)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700 }}>เพิ่มพนักงานใหม่</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelSt}>ชื่อ *</label>
+                <input value={cForm.name} onChange={e => setCForm(f => ({ ...f, name: e.target.value }))} placeholder="ชื่อพนักงาน" style={inputSt} autoFocus />
+              </div>
+              <div>
+                <label style={labelSt}>Role *</label>
+                <select value={cForm.role} onChange={e => setCForm(f => ({ ...f, role: e.target.value as StaffRole }))} style={{ ...inputSt, appearance: 'auto' }}>
+                  {ALL_ROLES.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelSt}>ตำแหน่ง *</label>
+                <select value={cForm.position} onChange={e => setCForm(f => ({ ...f, position: e.target.value as StaffPosition }))} style={{ ...inputSt, appearance: 'auto' }}>
+                  {ALL_POSITIONS.map(p => <option key={p} value={p}>{POS_LABEL[p]}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelSt}>เบอร์โทร *</label>
+                <input value={cForm.phone} onChange={e => setCForm(f => ({ ...f, phone: e.target.value }))} placeholder="0812345678" style={{ ...inputSt, fontFamily: 'var(--font-num)' }} />
+              </div>
+              <div>
+                <label style={labelSt}>PIN (4–8 หลัก) *</label>
+                <input value={cForm.pin} onChange={e => setCForm(f => ({ ...f, pin: e.target.value }))} placeholder="••••" type="password" style={{ ...inputSt, fontFamily: 'var(--font-num)' }} />
+              </div>
+              <div>
+                <label style={labelSt}>อีเมล</label>
+                <input value={cForm.email} onChange={e => setCForm(f => ({ ...f, email: e.target.value }))} placeholder="ไม่บังคับ" type="email" style={inputSt} />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelSt}>ที่อยู่</label>
+                <textarea value={cForm.address} onChange={e => setCForm(f => ({ ...f, address: e.target.value }))} rows={2} placeholder="ไม่บังคับ" style={{ ...inputSt, resize: 'vertical' }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowCreate(false)} style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
+              <button onClick={handleCreate} disabled={createStaff.isPending}
+                style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-primary)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
+                {createStaff.isPending ? 'กำลังเพิ่ม…' : 'เพิ่ม'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit modal */}
+      {editTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+          <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 500, maxWidth: '90vw', boxShadow: 'var(--shadow-lg)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700 }}>แก้ไขพนักงาน — {editTarget.name}</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelSt}>ชื่อ</label>
+                <input value={eName} onChange={e => setEName(e.target.value)} style={inputSt} />
+              </div>
+              <div>
+                <label style={labelSt}>Role</label>
+                <select value={eRole} onChange={e => setERole(e.target.value as StaffRole)} style={{ ...inputSt, appearance: 'auto' }}>
+                  {ALL_ROLES.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelSt}>ตำแหน่ง</label>
+                <select value={ePosition} onChange={e => setEPosition(e.target.value as StaffPosition)} style={{ ...inputSt, appearance: 'auto' }}>
+                  {ALL_POSITIONS.map(p => <option key={p} value={p}>{POS_LABEL[p]}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelSt}>เบอร์โทร</label>
+                <input value={ePhone} onChange={e => setEPhone(e.target.value)} style={{ ...inputSt, fontFamily: 'var(--font-num)' }} />
+              </div>
+              <div>
+                <label style={labelSt}>PIN ใหม่ (ว่าง = ไม่เปลี่ยน)</label>
+                <input value={ePin} onChange={e => setEPin(e.target.value)} placeholder="ว่าง = ไม่เปลี่ยน" type="password" style={{ ...inputSt, fontFamily: 'var(--font-num)' }} />
+              </div>
+              <div>
+                <label style={labelSt}>อีเมล (ว่าง = ลบออก)</label>
+                <input value={eEmail} onChange={e => setEEmail(e.target.value)} type="email" style={inputSt} />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelSt}>ที่อยู่ (ว่าง = ลบออก)</label>
+                <textarea value={eAddress} onChange={e => setEAddress(e.target.value)} rows={2} style={{ ...inputSt, resize: 'vertical' }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setEditTarget(null)} style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
+              <button onClick={handleUpdate} disabled={updateStaff.isPending}
+                style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-primary)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
+                {updateStaff.isPending ? 'กำลังบันทึก…' : 'บันทึก'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Deactivate confirm */}
+      {deactivateTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+          <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 360, boxShadow: 'var(--shadow-lg)' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700 }}>ยืนยันการลาออก</h3>
+            <p style={{ margin: '0 0 20px', fontSize: 14, color: 'var(--color-text-secondary)' }}>
+              <strong>{deactivateTarget.name}</strong> จะถูกปิดการใช้งาน ไม่สามารถล็อกอินได้อีก แต่ประวัติการทำงานยังคงอยู่
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setDeactivateTarget(null)} style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
+              <button onClick={handleDeactivate} disabled={deactivateStaff.isPending}
+                style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-danger)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
+                {deactivateStaff.isPending ? 'กำลังดำเนินการ…' : 'ยืนยัน'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -299,6 +619,7 @@ export default function HRDashboard() {
 
   const adminTabs = [
     { id: 'overview', label: 'ภาพรวม' },
+    { id: 'staff', label: 'พนักงาน' },
     { id: 'leaves', label: 'จัดการวันลา' },
     { id: 'tasks', label: 'งาน / Tasks' },
     { id: 'calendar', label: 'ปฏิทินทีม' },
@@ -371,6 +692,9 @@ export default function HRDashboard() {
           <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>ดู KPI รายพนักงานได้ที่ Dashboard → รายงาน</div>
         </div>
       )}
+
+      {/* Staff management */}
+      {tab === 'staff' && admin && <StaffTab admin={admin} />}
 
       {/* Admin leave management */}
       {tab === 'leaves' && admin && (
