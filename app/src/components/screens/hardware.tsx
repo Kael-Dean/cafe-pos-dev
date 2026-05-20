@@ -165,7 +165,7 @@ export default function HardwareScreen() {
   /* ── Render ── */
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: '28px 32px', maxWidth: 640 }}>
+    <div style={{ height: '100%', overflowY: 'auto', padding: '28px 32px' }}>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
       <div style={{ marginBottom: 24 }}>
@@ -173,103 +173,110 @@ export default function HardwareScreen() {
         <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>จัดการเครื่องพิมพ์ใบเสร็จ</div>
       </div>
 
-      {/* Printer status card */}
-      <Section title="เครื่องพิมพ์">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-          <div style={{
-            width: 44, height: 44, borderRadius: 10,
-            background: 'var(--color-surface-2)', display: 'grid', placeItems: 'center', flexShrink: 0,
-          }}>
-            <Icon name="printer" size={24} color="var(--color-text-secondary)" />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-              <span style={{ fontWeight: 700, fontSize: 14 }}>EPSON TM-T82X</span>
-              <StatusDot s={printer} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
+        {/* Left column: printer + IP */}
+        <div>
+          {/* Printer status card */}
+          <Section title="เครื่องพิมพ์">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 10,
+                background: 'var(--color-surface-2)', display: 'grid', placeItems: 'center', flexShrink: 0,
+              }}>
+                <Icon name="printer" size={24} color="var(--color-text-secondary)" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                  <span style={{ fontWeight: 700, fontSize: 14 }}>EPSON TM-T82X</span>
+                  <StatusDot s={printer} />
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
+                  IP: {printerIp || '—'} · กระดาษ 80mm · B&W thermal
+                  {lastPrint ? ` · พิมพ์ล่าสุด ${lastPrint}` : ''}
+                </div>
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
-              IP: {printerIp || '—'} · กระดาษ 80mm · B&W thermal
-              {lastPrint ? ` · พิมพ์ล่าสุด ${lastPrint}` : ''}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={checkStatus} style={btnGhost}>
+                <Icon name="refresh" size={13} style={{ animation: printer === 'checking' ? 'spin 1s linear infinite' : 'none' }} />
+                ตรวจสอบ
+              </button>
+              <button onClick={testPrint} disabled={testing || printer === 'offline'} style={{
+                ...btnGhost, opacity: (testing || printer === 'offline') ? 0.5 : 1,
+                cursor: (testing || printer === 'offline') ? 'not-allowed' : 'pointer',
+              }}>
+                <Icon name={testing ? 'check' : 'print'} size={13} />
+                {testing ? 'กำลังพิมพ์...' : 'ทดสอบพิมพ์'}
+              </button>
             </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={checkStatus} style={btnGhost}>
-            <Icon name="refresh" size={13} style={{ animation: printer === 'checking' ? 'spin 1s linear infinite' : 'none' }} />
-            ตรวจสอบ
-          </button>
-          <button onClick={testPrint} disabled={testing || printer === 'offline'} style={{
-            ...btnGhost, opacity: (testing || printer === 'offline') ? 0.5 : 1,
-            cursor: (testing || printer === 'offline') ? 'not-allowed' : 'pointer',
-          }}>
-            <Icon name={testing ? 'check' : 'print'} size={13} />
-            {testing ? 'กำลังพิมพ์...' : 'ทดสอบพิมพ์'}
-          </button>
-        </div>
-        {printer === 'offline' && (
-          <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--color-danger-50)', borderRadius: 6, fontSize: 12, color: 'var(--color-danger)' }}>
-            ออฟไลน์ — ตรวจสอบ IP และสายแลน
-          </div>
-        )}
-      </Section>
+            {printer === 'offline' && (
+              <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--color-danger-50)', borderRadius: 6, fontSize: 12, color: 'var(--color-danger)' }}>
+                ออฟไลน์ — ตรวจสอบ IP และสายแลน
+              </div>
+            )}
+          </Section>
 
-      {/* IP config */}
-      <Section title="IP เครื่องพิมพ์" desc="เปลี่ยน WiFi ก็แค่แก้ตรงนี้">
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            value={ipInput} onChange={e => setIpInput(e.target.value)}
-            placeholder="192.168.1.129"
-            style={{ ...inputStyle, flex: 1, fontFamily: 'monospace' }}
-            onKeyDown={e => e.key === 'Enter' && saveIp()}
-          />
-          <button onClick={scanPrinters} disabled={scanning} style={{ ...btnGhost, whiteSpace: 'nowrap' }}>
-            <Icon name="refresh" size={13} style={{ animation: scanning ? 'spin 1s linear infinite' : 'none' }} />
-            {scanning ? 'ค้นหา...' : 'ค้นหา'}
-          </button>
-          <button onClick={saveIp} disabled={saving || ipInput.trim() === printerIp}
-            style={{ ...btnAccent, opacity: (saving || ipInput.trim() === printerIp) ? 0.5 : 1 }}>
-            {saving ? 'บันทึก...' : 'บันทึก'}
-          </button>
+          {/* IP config */}
+          <Section title="IP เครื่องพิมพ์" desc="เปลี่ยน WiFi ก็แค่แก้ตรงนี้">
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                value={ipInput} onChange={e => setIpInput(e.target.value)}
+                placeholder="192.168.1.129"
+                style={{ ...inputStyle, flex: 1, fontFamily: 'monospace' }}
+                onKeyDown={e => e.key === 'Enter' && saveIp()}
+              />
+              <button onClick={scanPrinters} disabled={scanning} style={{ ...btnGhost, whiteSpace: 'nowrap' }}>
+                <Icon name="refresh" size={13} style={{ animation: scanning ? 'spin 1s linear infinite' : 'none' }} />
+                {scanning ? 'ค้นหา...' : 'ค้นหา'}
+              </button>
+              <button onClick={saveIp} disabled={saving || ipInput.trim() === printerIp}
+                style={{ ...btnAccent, opacity: (saving || ipInput.trim() === printerIp) ? 0.5 : 1 }}>
+                {saving ? 'บันทึก...' : 'บันทึก'}
+              </button>
+            </div>
+            {scanResults.length > 1 && (
+              <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {scanResults.map(ip => (
+                  <button key={ip} onClick={() => setIpInput(ip)} style={{
+                    padding: '3px 10px', borderRadius: 6, fontSize: 12, fontFamily: 'monospace',
+                    border: `1px solid ${ipInput === ip ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                    background: ipInput === ip ? 'var(--color-accent-50)' : 'var(--color-surface)',
+                  }}>{ip}</button>
+                ))}
+              </div>
+            )}
+          </Section>
         </div>
-        {scanResults.length > 1 && (
-          <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {scanResults.map(ip => (
-              <button key={ip} onClick={() => setIpInput(ip)} style={{
-                padding: '3px 10px', borderRadius: 6, fontSize: 12, fontFamily: 'monospace',
-                border: `1px solid ${ipInput === ip ? 'var(--color-accent)' : 'var(--color-border)'}`,
-                background: ipInput === ip ? 'var(--color-accent-50)' : 'var(--color-surface)',
-              }}>{ip}</button>
-            ))}
-          </div>
-        )}
-      </Section>
 
-      {/* Store info */}
-      <Section title="ข้อมูลร้าน" desc="แสดงบนส่วนหัวใบเสร็จ">
-        <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
-          <Field label="ชื่อร้าน *" value={storeInput} onChange={setStoreInput} placeholder="ร้านตะวันอ้อมข้าว" />
-          <Field label="ที่อยู่" value={addressInput} onChange={setAddressInput} placeholder="123 ถ.ราชดำเนิน ต.ในเมือง..." />
-          <Field label="เลขที่ผู้เสียภาษี" value={taxIdInput} onChange={setTaxIdInput} placeholder="0105544000001" mono />
-          <Field label="สาขา" value={branchInput} onChange={setBranchInput} placeholder="สาขาที่ 00001" />
+        {/* Right column: store info */}
+        <div>
+          <Section title="ข้อมูลร้าน" desc="แสดงบนส่วนหัวใบเสร็จ">
+            <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
+              <Field label="ชื่อร้าน *" value={storeInput} onChange={setStoreInput} placeholder="ร้านตะวันอ้อมข้าว" />
+              <Field label="ที่อยู่" value={addressInput} onChange={setAddressInput} placeholder="123 ถ.ราชดำเนิน ต.ในเมือง..." />
+              <Field label="เลขที่ผู้เสียภาษี" value={taxIdInput} onChange={setTaxIdInput} placeholder="0105544000001" mono />
+              <Field label="สาขา" value={branchInput} onChange={setBranchInput} placeholder="สาขาที่ 00001" />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={saveStoreInfo}
+                disabled={savingStore || !storeInput.trim()}
+                style={{
+                  flex: 1, padding: '10px', borderRadius: 8,
+                  background: (savingStore || !storeInput.trim()) ? 'var(--color-border)' : 'var(--color-primary)',
+                  color: 'white', fontSize: 14, fontWeight: 700,
+                  opacity: !storeInput.trim() ? 0.5 : 1,
+                }}
+              >
+                {savingStore ? 'กำลังบันทึก...' : 'บันทึกข้อมูลร้าน'}
+              </button>
+              <button onClick={() => setPreviewOpen(true)} style={{ ...btnGhost, whiteSpace: 'nowrap' }}>
+                <Icon name="eye" size={14} /> ดูตัวอย่างใบเสร็จ
+              </button>
+            </div>
+          </Section>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={saveStoreInfo}
-            disabled={savingStore || !storeInput.trim()}
-            style={{
-              flex: 1, padding: '10px', borderRadius: 8,
-              background: (savingStore || !storeInput.trim()) ? 'var(--color-border)' : 'var(--color-primary)',
-              color: 'white', fontSize: 14, fontWeight: 700,
-              opacity: !storeInput.trim() ? 0.5 : 1,
-            }}
-          >
-            {savingStore ? 'กำลังบันทึก...' : 'บันทึกข้อมูลร้าน'}
-          </button>
-          <button onClick={() => setPreviewOpen(true)} style={{ ...btnGhost, whiteSpace: 'nowrap' }}>
-            <Icon name="eye" size={14} /> ดูตัวอย่างใบเสร็จ
-          </button>
-        </div>
-      </Section>
+      </div>
 
       {/* Preview modal */}
       {previewOpen && (
