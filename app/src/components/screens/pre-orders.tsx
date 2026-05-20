@@ -625,7 +625,7 @@ function DetailPanel({
                     {showAddDropdown && (
                       <div onMouseDown={e => e.preventDefault()} style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 6, background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
                         {filteredProducts.slice(0, 6).map(p => (
-                          <div key={p.id} onMouseDown={() => onAddItemProductSelect(p.id, p.name)} style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
+                          <div key={p.id} onMouseDown={() => { onAddItemProductSelect(p.id, p.name); setAddSearchFocused(false); }} style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
                             <span>{p.name}</span><span style={{ color: 'var(--color-text-secondary)' }}>฿{p.price.toFixed(2)}</span>
                           </div>
                         ))}
@@ -862,7 +862,7 @@ function CreateModal({
                 {showDropdown && (
                   <div onMouseDown={e => e.preventDefault()} style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 6, background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
                     {filtered.slice(0, 6).map(p => (
-                      <div key={p.id} onMouseDown={() => onItemProductSelect(p.id, p.name)} style={{ padding: '7px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
+                      <div key={p.id} onMouseDown={() => { onItemProductSelect(p.id, p.name); setSearchFocused(false); }} style={{ padding: '7px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
                         <span>{p.name}</span><span style={{ color: 'var(--color-text-secondary)' }}>฿{p.price.toFixed(2)}</span>
                       </div>
                     ))}
