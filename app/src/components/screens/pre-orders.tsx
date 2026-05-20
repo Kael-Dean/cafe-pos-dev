@@ -519,11 +519,13 @@ function DetailPanel({
   completePending: boolean;
   cancelPending: boolean;
 }) {
+  const [addSearchFocused, setAddSearchFocused] = useState(false);
   const isPending = detail.status === 'PENDING';
   const totalStr = detail.items.reduce((s, it) => s + Number(it.lineTotal), 0).toFixed(2);
   const filteredProducts = addItemProductSearch
     ? allProducts.filter(p => p.name.toLowerCase().includes(addItemProductSearch.toLowerCase()))
-    : [];
+    : allProducts;
+  const showAddDropdown = addSearchFocused && filteredProducts.length > 0;
 
   return (
     <div style={{ padding: 24, maxWidth: 720 }}>
@@ -616,9 +618,11 @@ function DetailPanel({
                 <div style={{ padding: '10px 12px', borderTop: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <div style={{ position: 'relative', flex: 2, minWidth: 160 }}>
                     <input placeholder="ค้นหาสินค้า..." value={addItemProductSearch} onChange={e => onAddItemProductSearch(e.target.value)}
+                      onFocus={() => setAddSearchFocused(true)}
+                      onBlur={() => setTimeout(() => setAddSearchFocused(false), 150)}
                       style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 12, background: 'var(--color-bg)', boxSizing: 'border-box' }}
                     />
-                    {filteredProducts.length > 0 && (
+                    {showAddDropdown && (
                       <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 6, background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
                         {filteredProducts.slice(0, 6).map(p => (
                           <div key={p.id} onClick={() => onAddItemProductSelect(p.id, p.name)} style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
@@ -781,9 +785,11 @@ function CreateModal({
   cItemPrice: string; onItemPriceChange: (s: string) => void;
   onConfirm: () => void; onClose: () => void; isPending: boolean;
 }) {
+  const [searchFocused, setSearchFocused] = useState(false);
   const filtered = cItemProductSearch
     ? allProducts.filter(p => p.name.toLowerCase().includes(cItemProductSearch.toLowerCase()))
-    : [];
+    : allProducts;
+  const showDropdown = searchFocused && filtered.length > 0;
   const nameById = (id: string) => allProducts.find(p => p.id === id)?.name ?? id;
 
   return (
@@ -847,8 +853,11 @@ function CreateModal({
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div style={{ flex: 2, minWidth: 160, position: 'relative' }}>
                 <label style={labelStyle}>สินค้า</label>
-                <input placeholder="ค้นหาสินค้า..." value={cItemProductSearch} onChange={e => onItemProductSearch(e.target.value)} style={inputStyle} />
-                {filtered.length > 0 && (
+                <input placeholder="ค้นหาสินค้า..." value={cItemProductSearch} onChange={e => onItemProductSearch(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+                  style={inputStyle} />
+                {showDropdown && (
                   <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 6, background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
                     {filtered.slice(0, 6).map(p => (
                       <div key={p.id} onClick={() => onItemProductSelect(p.id, p.name)} style={{ padding: '7px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
