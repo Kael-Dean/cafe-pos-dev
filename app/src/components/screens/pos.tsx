@@ -239,12 +239,12 @@ export default function POSTerminal() {
 
           <div className="scroll" style={{flex: 1, overflow: 'auto', padding: 20}}>
             {isError ? (
-              <div style={{textAlign: 'center', padding: 60, color: 'var(--color-danger)'}}>
+              <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: 'var(--color-danger)'}}>
                 <div style={{marginBottom: 8}}><Icon name="warning" size={32}/></div>
                 ไม่สามารถโหลดเมนูได้ กรุณาตรวจสอบการเชื่อมต่อ
               </div>
             ) : prodLoading ? (
-              <div style={{textAlign: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
+              <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
                 กำลังโหลดเมนู...
               </div>
             ) : (
@@ -253,7 +253,7 @@ export default function POSTerminal() {
                   {filtered.map((m) => <MenuCard key={m.id} item={m} onClick={() => onMenuClick(m)} />)}
                 </div>
                 {filtered.length === 0 && (
-                  <div style={{textAlign: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
+                  <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
                     <div style={{marginBottom: 8}}><Icon name="search" size={32}/></div>
                     ไม่พบเมนูที่ค้นหา
                   </div>
@@ -285,7 +285,7 @@ export default function POSTerminal() {
 
           <div className="scroll" style={{flex: 1, overflow: 'auto', padding: '8px 0'}}>
             {cart.length === 0 ? (
-              <div style={{padding: 60, textAlign: 'center', color: 'var(--color-text-muted)'}}>
+              <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
                 <div style={{marginBottom: 12, opacity: 0.6}}><Icon name="cart" size={48}/></div>
                 <div style={{fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4}}>ตะกร้าว่าง</div>
                 <div style={{fontSize: 13}}>เลือกเมนูจากด้านซ้ายเพื่อเริ่มออเดอร์</div>
