@@ -146,7 +146,7 @@ export default function ShoppingListScreen() {
       {isLoading ? (
         <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-secondary)', fontSize: 14 }}>กำลังโหลด...</div>
       ) : items.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 60, color: 'var(--color-text-secondary)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: 'var(--color-text-secondary)' }}>
           <Icon name="cart" size={40} color="var(--color-border-strong)" />
           <div style={{ marginTop: 12, fontSize: 14 }}>รายการว่างเปล่า</div>
           <div style={{ fontSize: 12, marginTop: 4 }}>เพิ่มวัตถุดิบที่ต้องซื้อเข้ามาได้เลย</div>

@@ -84,12 +84,12 @@ export default function KDS() {
 
       <div className="scroll" style={{ flex: 1, overflow: 'auto', padding: 24 }}>
         {isLoading && localTickets.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 80, color: 'rgba(255,255,255,0.55)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 300, color: 'rgba(255,255,255,0.55)' }}>
             <div style={{ marginBottom: 12, opacity: 0.4 }}><Icon name="clock" size={40} /></div>
             <div style={{ fontSize: 16 }}>กำลังโหลดออเดอร์...</div>
           </div>
         ) : sorted.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 80, color: 'rgba(255,255,255,0.55)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 300, color: 'rgba(255,255,255,0.55)' }}>
             <div style={{ marginBottom: 12, opacity: 0.4 }}><Icon name="check" size={56} /></div>
             <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>เคลียร์หมดแล้ว 🎉</div>
             <div>ไม่มีออเดอร์ค้างในคิว</div>
