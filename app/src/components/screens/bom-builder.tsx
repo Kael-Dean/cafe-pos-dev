@@ -11,6 +11,7 @@ import { useCookingSteps, useReplaceCookingSteps, type CookingStepRead } from '@
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 
 type ProductType = 'MENU' | 'INGREDIENT';
+type ApiProductType = 'MADE_TO_ORDER' | 'PRODUCED';
 
 export default function BOMBuilder() {
   const toast = useToast();
@@ -119,9 +120,9 @@ export default function BOMBuilder() {
     }
   };
 
-  const submitAddMenu = async ({ name, categoryId, price, description, type }: { name: string; categoryId: string; price: number; description: string; type: ProductType }) => {
+  const submitAddMenu = async ({ name, categoryId, price, description, type, apiProductType, servingsPerBatch }: { name: string; categoryId: string; price: number; description: string; type: ProductType; apiProductType: ApiProductType; servingsPerBatch: number }) => {
     try {
-      const newProduct = await createProduct.mutateAsync({ name, category_id: categoryId || undefined, price, description: description || undefined });
+      const newProduct = await createProduct.mutateAsync({ name, category_id: categoryId || undefined, price, description: description || undefined, product_type: type === 'MENU' ? apiProductType : undefined, servings_per_batch: (type === 'MENU' && apiProductType === 'PRODUCED') ? servingsPerBatch : undefined });
       setAddMenuOpen(false);
       setSelectedId(newProduct.id);
       setProductType(type);
@@ -340,6 +341,7 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
         <h1 style={{ margin: '2px 0 8px', fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>{product.name}</h1>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <Tag tone={productType === 'MENU' ? 'info' : 'accent'}>{productType === 'MENU' ? 'เมนูขาย' : 'ส่วนผสม'}</Tag>
+          {product.productType === 'PRODUCED' && <Tag tone="accent">ผลิตล่วงหน้า</Tag>}
           <Tag tone={recipe.length > 0 ? 'success' : 'warning'}>{recipe.length > 0 ? `${recipe.length} วัตถุดิบ` : 'ยังไม่มีสูตร'}</Tag>
           {productType === 'MENU' && (
             <CategorySelector value={editedCategoryId} categories={categories} onChange={onCategoryChange} />
@@ -983,15 +985,17 @@ const DeleteConfirmModal = ({ name, deleting, onConfirm, onClose }: {
 const AddMenuModal = ({ categories, onClose, onSubmit }: {
   categories: import('@/hooks/use-products').Category[];
   onClose: () => void;
-  onSubmit: (v: { name: string; categoryId: string; price: number; description: string; type: ProductType }) => void;
+  onSubmit: (v: { name: string; categoryId: string; price: number; description: string; type: ProductType; apiProductType: ApiProductType; servingsPerBatch: number }) => void;
 }) => {
   const [type, setType] = useState<ProductType>('MENU');
+  const [apiProductType, setApiProductType] = useState<ApiProductType>('MADE_TO_ORDER');
+  const [servingsPerBatch, setServingsPerBatch] = useState(24);
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
-  const canSubmit = name.trim().length > 0 && price !== '' && Number(price) >= 0;
-  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), categoryId, price: Number(price), description: description.trim(), type }); };
+  const canSubmit = name.trim().length > 0 && price !== '' && Number(price) >= 0 && (type !== 'MENU' || apiProductType !== 'PRODUCED' || servingsPerBatch >= 1);
+  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), categoryId, price: Number(price), description: description.trim(), type, apiProductType, servingsPerBatch }); };
 
   return (
     <BomModalShell title="เพิ่มรายการใหม่" subtitle="สร้างรายการในระบบ BOM" onClose={onClose}>
@@ -1008,6 +1012,27 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
           ))}
         </div>
       </BomFormField>
+
+      {type === 'MENU' && (
+        <BomFormField label="วิธีผลิต *">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {(['MADE_TO_ORDER', 'PRODUCED'] as ApiProductType[]).map(t => (
+              <button key={t} onClick={() => setApiProductType(t)} style={{ padding: '10px 12px', borderRadius: 8, border: `2px solid ${apiProductType === t ? 'var(--color-accent)' : 'var(--color-border)'}`, background: apiProductType === t ? 'var(--color-accent-50)' : 'transparent', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: apiProductType === t ? 'var(--color-primary-700)' : 'var(--color-text-secondary)', transition: 'all 150ms var(--ease-out)' }}>
+                {t === 'MADE_TO_ORDER' ? '🛎️ ทำตามออเดอร์' : '🏭 ผลิตล่วงหน้า'}
+                <div style={{ fontSize: 11, fontWeight: 400, marginTop: 2, color: apiProductType === t ? 'var(--color-text-secondary)' : 'var(--color-text-muted)' }}>
+                  {t === 'MADE_TO_ORDER' ? 'หักวัตถุดิบตามออเดอร์' : 'หักจากสต็อกสำเร็จรูป'}
+                </div>
+              </button>
+            ))}
+          </div>
+        </BomFormField>
+      )}
+
+      {type === 'MENU' && apiProductType === 'PRODUCED' && (
+        <BomFormField label="จำนวนหน่วย/แบทช์ *">
+          <input type="number" min={1} step={1} value={servingsPerBatch} onChange={e => setServingsPerBatch(Math.max(1, Number(e.target.value)))} placeholder="เช่น 24" style={bomInputStyle()} />
+        </BomFormField>
+      )}
 
       <BomFormField label="ชื่อ *">
         <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder={type === 'MENU' ? 'เช่น Flat White, ครัวซองต์เนย' : 'เช่น น้ำเชื่อมชาไทย, เบสเยลลี่'} style={bomInputStyle()} autoFocus />

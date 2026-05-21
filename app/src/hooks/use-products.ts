@@ -18,6 +18,9 @@ interface ProductRead {
   description: string | null;
   price: string | number;  // Decimal serialised as string
   is_active: boolean;
+  product_type: 'MADE_TO_ORDER' | 'PRODUCED';
+  servings_per_batch: number;
+  finished_goods_item_id: string | null;
 }
 
 // ── Frontend shapes ───────────────────────────────────────────────────────────
@@ -31,6 +34,9 @@ export interface MenuItem {
   color: string;        // generated from id
   tag: string;          // first 2 chars of name
   needsModifier: boolean; // set to true in POS when modifier groups exist
+  productType: 'MADE_TO_ORDER' | 'PRODUCED';
+  servingsPerBatch: number;
+  finishedGoodsItemId: string | null;
 }
 
 export interface Category {
@@ -61,6 +67,9 @@ function mapProduct(p: ProductRead): MenuItem {
     color: colorFromId(p.id),
     tag: p.name.slice(0, 2).toUpperCase(),
     needsModifier: false, // POS overrides this at render time
+    productType: p.product_type ?? 'MADE_TO_ORDER',
+    servingsPerBatch: p.servings_per_batch ?? 1,
+    finishedGoodsItemId: p.finished_goods_item_id ?? null,
   };
 }
 
@@ -113,6 +122,8 @@ interface ProductCreatePayload {
   description?: string;
   price: number;
   is_active?: boolean;
+  product_type?: 'MADE_TO_ORDER' | 'PRODUCED';
+  servings_per_batch?: number;
 }
 
 export function useCreateProduct() {
