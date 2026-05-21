@@ -53,6 +53,7 @@ export const NAV: NavItem[] = [
   { id: 'inventory', label: 'Inventory',       icon: 'inv',      soft: true },
   { id: 'pre-orders',    label: 'Pre-Orders',    icon: 'calendar' },
   { id: 'shopping-list', label: 'Shopping List',  icon: 'cart' },
+  { id: 'stock-take',    label: 'Stock Take',      icon: 'check' },
   { id: 'cash',      label: 'Cash',            icon: 'cash',     adminOnly: true },
   { id: 'div1',      label: '',                divider: true },
   { id: 'promotions',label: 'Promotions',      icon: 'tag' },

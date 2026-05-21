@@ -19,10 +19,11 @@ import ShiftSchedule from '@/components/screens/shift-schedule';
 import { Customers, Reports, Settings } from '@/components/screens/placeholders';
 import HardwareScreen from '@/components/screens/hardware';
 import CatalogAdmin from '@/components/screens/catalog';
+import StockTakeScreen from '@/components/screens/stock-take';
 
 type Screen =
   | 'pos' | 'kds' | 'dashboard' | 'bom' | 'inventory'
-  | 'pre-orders' | 'shopping-list'
+  | 'pre-orders' | 'shopping-list' | 'stock-take'
   | 'cash' | 'promotions' | 'protocols' | 'hr' | 'shifts'
   | 'hardware' | 'customers' | 'reports' | 'catalog' | 'settings';
 
@@ -56,6 +57,7 @@ export default function POS() {
     inventory:  <Inventory />,
     'pre-orders':    <PreOrders />,
     'shopping-list': <ShoppingListScreen />,
+    'stock-take':    <StockTakeScreen />,
     cash:       <CashReconciliation />,
     promotions: <PromotionsScreen />,
     protocols:  <ProtocolsScreen />,
