@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
-import { setToken } from '@/lib/token-store';
+import { useState, useEffect, FormEvent } from 'react';
+import { setTokens } from '@/lib/token-store';
+import { readAndClearLogoutReason } from '@/lib/auth';
 import Icon from '../icons';
 
 interface Props { onLogin: () => void; }
@@ -19,6 +20,11 @@ export default function LoginScreen({ onLogin }: Props) {
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [expiredNotice, setExpiredNotice] = useState(false);
+
+  useEffect(() => {
+    if (readAndClearLogoutReason() === 'expired') setExpiredNotice(true);
+  }, []);
 
   const canSubmit = storeSlug.trim().length > 0 && pin.length >= 4;
 
@@ -39,7 +45,8 @@ export default function LoginScreen({ onLogin }: Props) {
         throw new Error(typeof msg === 'string' ? msg : 'รหัส PIN หรือ Store ID ไม่ถูกต้อง');
       }
       const data: TokenPair = await res.json();
-      setToken(data.access_token);
+      setTokens({ access: data.access_token, refresh: data.refresh_token });
+      setExpiredNotice(false);
       onLogin();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด กรุณาลองใหม่');
@@ -71,6 +78,24 @@ export default function LoginScreen({ onLogin }: Props) {
             กรุณาเข้าสู่ระบบเพื่อดำเนินการต่อ
           </div>
         </div>
+
+        {/* Session-expired banner */}
+        {expiredNotice && (
+          <div
+            role="status"
+            style={{
+              marginBottom: 16, padding: '10px 14px',
+              background: 'var(--color-warning-50)',
+              border: '1px solid var(--color-warning)',
+              borderRadius: 8, fontSize: 13,
+              color: 'var(--color-warning)', fontWeight: 500,
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}
+          >
+            <Icon name="warning" size={16} color="var(--color-warning)" />
+            <span>เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่</span>
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit}>

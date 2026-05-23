@@ -1,4 +1,5 @@
 import { getToken } from './token-store';
+import { AUTH_LOGIN_PATH, AUTH_REFRESH_PATH, forceLogout, refreshAccessToken } from './auth';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
 
@@ -8,9 +9,20 @@ class ApiError extends Error {
   }
 }
 
-async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = getToken();
-  const res = await fetch(`${BASE_URL}${path}`, {
+class SessionExpiredError extends ApiError {
+  constructor(message = 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่') {
+    super(401, message);
+    this.name = 'SessionExpiredError';
+  }
+}
+
+function isAuthPath(path: string): boolean {
+  return path.startsWith(AUTH_LOGIN_PATH) || path.startsWith(AUTH_REFRESH_PATH);
+}
+
+async function doFetch(path: string, options?: RequestInit, tokenOverride?: string | null): Promise<Response> {
+  const token = tokenOverride !== undefined ? tokenOverride : getToken();
+  return fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -18,6 +30,25 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
       ...options?.headers,
     },
   });
+}
+
+async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  let res = await doFetch(path, options);
+
+  // 401 handling — refresh once, retry once, else force logout. Skip for auth endpoints.
+  if (res.status === 401 && !isAuthPath(path)) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      res = await doFetch(path, options, newToken);
+      if (res.status === 401) {
+        forceLogout('expired');
+        throw new SessionExpiredError();
+      }
+    } else {
+      forceLogout('expired');
+      throw new SessionExpiredError();
+    }
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -39,4 +70,4 @@ export const api = {
   delete: <T>(path: string)                        => apiFetch<T>(path, { method: 'DELETE' }),
 };
 
-export { ApiError };
+export { ApiError, SessionExpiredError };

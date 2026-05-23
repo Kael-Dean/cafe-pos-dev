@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { ToastProvider, Sidebar, BottomTabBar } from '@/components/app-common';
-import { getToken, clearToken } from '@/lib/token-store';
+import { getToken, clearToken, subscribeAuth } from '@/lib/token-store';
 import LoginScreen from '@/components/screens/login';
 import POSTerminal from '@/components/screens/pos';
 import KDS from '@/components/screens/kds';
@@ -37,6 +37,11 @@ export default function POS() {
   useEffect(() => {
     setIsLoggedIn(!!getToken());
     setMounted(true);
+    // React to mid-session token changes (expiry, cross-tab logout, manual clear).
+    const unsub = subscribeAuth(() => {
+      setIsLoggedIn(!!getToken());
+    });
+    return unsub;
   }, []);
 
   if (!mounted) return null;
