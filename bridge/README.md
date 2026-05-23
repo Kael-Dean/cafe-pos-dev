@@ -44,6 +44,24 @@ Leave the window open. Bridge prints log lines on each print job.
 
 Then open https://cafe-pos-sable.vercel.app in a browser **on this PC**.
 
+For a no-console "install once, runs at boot" setup, see [installer/](installer/).
+
+## Distributing to other shops
+
+`bridge/installer/` contains a zero-config installer that ships bridge as a
+Windows Service. Shop owners run `install.bat` as administrator once and never
+think about it again. The bridge auto-discovers their printer by scanning the
+local subnet for TCP 9100.
+
+Build the zip with:
+
+```powershell
+pwsh bridge\installer\build.ps1
+# -> bridge\dist\cafe-pos-bridge-v1.0.zip  (~33 MB)
+```
+
+Then upload to a GitHub Release or share directly.
+
 ## Verify
 
 ```powershell

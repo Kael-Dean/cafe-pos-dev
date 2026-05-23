@@ -11,3 +11,8 @@ build/
 bridge/.token
 bridge/.env
 bridge/cloudflared.exe
+
+# bridge installer build artifacts
+bridge/dist-build/
+bridge/dist/
+bridge/installer/.cache/

@@ -13,6 +13,7 @@
 
 import http from 'node:http';
 import net from 'node:net';
+import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,8 +23,14 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 
 const PORT         = Number(process.env.BRIDGE_PORT ?? 8080);
 const TOKEN        = process.env.BRIDGE_TOKEN ?? null;
-const CONFIG_PATH  = process.env.PRINTER_CONFIG_PATH
-  ?? path.join(REPO_ROOT, 'app', 'printer-config.json');
+const CONFIG_PATH  = (() => {
+  if (process.env.PRINTER_CONFIG_PATH) return process.env.PRINTER_CONFIG_PATH;
+  const beside = path.join(__dirname, 'printer-config.json');
+  if (fs.existsSync(beside)) return beside;
+  const repoFallback = path.join(REPO_ROOT, 'app', 'printer-config.json');
+  if (fs.existsSync(repoFallback)) return repoFallback;
+  return beside;
+})();
 
 function loadConfig() {
   let base = {};
@@ -281,10 +288,54 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '127.0.0.1', () => {
+/* ── Auto-discovery (run on startup if current IP unreachable) ──── */
+
+function localSubnets() {
+  const subnets = new Set();
+  for (const ifaces of Object.values(os.networkInterfaces())) {
+    for (const i of ifaces ?? []) {
+      if (i.family !== 'IPv4' || i.internal) continue;
+      const parts = i.address.split('.');
+      if (parts.length === 4) subnets.add(`${parts[0]}.${parts[1]}.${parts[2]}`);
+    }
+  }
+  return [...subnets];
+}
+
+async function autoDiscover(port) {
+  const subnets = localSubnets();
+  console.log(`[discover] scanning subnets: ${subnets.join(', ')}`);
+  for (const subnet of subnets) {
+    const found = await scanSubnet(subnet, port);
+    if (found.length > 0) {
+      console.log(`[discover] found ${found.length} candidate(s) on ${subnet}.x: ${found.join(', ')}`);
+      return found[0];
+    }
+  }
+  console.log(`[discover] no printer found on any subnet`);
+  return null;
+}
+
+async function startup() {
+  const cfg = loadConfig();
+  const reachable = await checkPrinter(cfg.ip, cfg.port);
+  if (!reachable) {
+    console.log(`[startup] ${cfg.ip}:${cfg.port} unreachable — running auto-discovery`);
+    const found = await autoDiscover(cfg.port);
+    if (found && found !== cfg.ip) {
+      saveConfig({ ip: found });
+      console.log(`[startup] saved discovered IP: ${found}`);
+    }
+  } else {
+    console.log(`[startup] ${cfg.ip}:${cfg.port} reachable`);
+  }
+}
+
+server.listen(PORT, '127.0.0.1', async () => {
   const cfg = loadConfig();
   console.log(`Print bridge listening on http://127.0.0.1:${PORT}`);
   console.log(`Printer: ${cfg.ip}:${cfg.port}`);
   console.log(`Auth:    ${TOKEN ? 'token required' : 'OPEN (no token)'}`);
   console.log(`Config:  ${CONFIG_PATH}`);
+  await startup();
 });
