@@ -8,12 +8,15 @@ import {
   useCreatePreOrder, useUpdatePreOrder,
   useAddPreOrderItem, useRemovePreOrderItem,
   useStartPreOrder, useCompletePreOrder, useCancelPreOrder,
+  useSetFulfillmentMode,
   type PreOrder, type PreOrderListItem, type PreOrderStatus,
   type CreatePreOrderPayload, type CreatePreOrderItemPayload,
   type UpdatePreOrderPayload, type IngredientsResult,
+  type FulfillmentMode,
 } from '@/hooks/use-pre-orders';
 import { useAddToShoppingList } from '@/hooks/use-shopping-list';
-import { useAllProducts } from '@/hooks/use-products';
+import { useAllProducts, type MenuItem } from '@/hooks/use-products';
+import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const STATUS_LABELS: Record<PreOrderStatus, string> = {
@@ -115,6 +118,7 @@ export default function PreOrders() {
     threshold,
   );
   const { data: allProducts = [] } = useAllProducts();
+  const { data: inventoryItems = [] } = useInventory();
 
   // Mutations
   const createMut   = useCreatePreOrder();
@@ -124,7 +128,11 @@ export default function PreOrders() {
   const startMut    = useStartPreOrder();
   const completeMut = useCompletePreOrder();
   const cancelMut   = useCancelPreOrder();
+  const setFulfillmentMut = useSetFulfillmentMode();
   const addToList   = useAddToShoppingList();
+
+  // Which item is currently mid-PATCH (to show row-level spinner)
+  const [settingFulfillmentItemId, setSettingFulfillmentItemId] = useState<string | null>(null);
 
   const listItems = listData?.items ?? [];
 
@@ -232,7 +240,33 @@ export default function PreOrders() {
       await startMut.mutateAsync(selectedId);
       toast({ kind: 'success', title: 'เริ่มผลิตแล้ว — ตัดสต็อกเรียบร้อย' });
     } catch (err) {
-      toast({ kind: 'danger', title: 'เริ่มผลิตไม่สำเร็จ', msg: err instanceof Error ? err.message : undefined });
+      const raw = err instanceof Error ? err.message : '';
+      // Backend returns 422 INSUFFICIENT_INGREDIENTS when a FROM_INVENTORY item
+      // has shortfall that raw ingredients can't cover.
+      const isInsufficient = /INSUFFICIENT_INGREDIENTS/i.test(raw) || /ingredient/i.test(raw);
+      toast({
+        kind: 'danger',
+        title: 'เริ่มผลิตไม่สำเร็จ',
+        msg: isInsufficient
+          ? 'วัตถุดิบไม่พอสำหรับรายการที่ตั้งเป็น "ใช้สต็อกสำเร็จรูป" — เช็คแท็บวัตถุดิบและพิจารณาเปลี่ยนเป็น "ผลิตใหม่"'
+          : (raw || undefined),
+      });
+    }
+  };
+
+  const handleSetFulfillmentMode = async (itemId: string, mode: FulfillmentMode) => {
+    if (!selectedId) return;
+    setSettingFulfillmentItemId(itemId);
+    try {
+      await setFulfillmentMut.mutateAsync({ orderId: selectedId, itemId, mode });
+      toast({
+        kind: 'success',
+        title: mode === 'FROM_INVENTORY' ? 'ตั้งเป็น: ใช้สต็อกสำเร็จรูป' : 'ตั้งเป็น: ผลิตใหม่',
+      });
+    } catch (err) {
+      toast({ kind: 'danger', title: 'ตั้งโหมดไม่สำเร็จ', msg: err instanceof Error ? err.message : undefined });
+    } finally {
+      setSettingFulfillmentItemId(null);
     }
   };
 
@@ -376,9 +410,12 @@ export default function PreOrders() {
             addItemPrice={addItemPrice}
             onAddItemPriceChange={setAddItemPrice}
             allProducts={allProducts}
+            inventoryItems={inventoryItems}
             onAddItem={handleAddItem}
             onCancelAddItem={() => { setAddItemOpen(false); setAddItemProductId(''); setAddItemProductSearch(''); setAddItemQty(1); setAddItemPrice(''); }}
             onRemoveItem={handleRemoveItem}
+            onSetFulfillmentMode={handleSetFulfillmentMode}
+            settingFulfillmentItemId={settingFulfillmentItemId}
             onEdit={() => openEdit(detail)}
             onStart={() => setConfirmStart(true)}
             onComplete={handleComplete}
@@ -486,7 +523,8 @@ function DetailPanel({
   addItemOpen, onAddItemToggle,
   addItemProductId, addItemProductSearch, onAddItemProductSearch, onAddItemProductSelect,
   addItemQty, onAddItemQtyChange, addItemPrice, onAddItemPriceChange,
-  allProducts, onAddItem, onCancelAddItem, onRemoveItem,
+  allProducts, inventoryItems, onAddItem, onCancelAddItem, onRemoveItem,
+  onSetFulfillmentMode, settingFulfillmentItemId,
   onEdit, onStart, onComplete, onCancel, onAddToShoppingList,
   startPending, completePending, cancelPending,
 }: {
@@ -506,10 +544,13 @@ function DetailPanel({
   onAddItemQtyChange: (n: number) => void;
   addItemPrice: string;
   onAddItemPriceChange: (s: string) => void;
-  allProducts: { id: string; name: string; price: number }[];
+  allProducts: MenuItem[];
+  inventoryItems: InventoryItem[];
   onAddItem: () => void;
   onCancelAddItem: () => void;
   onRemoveItem: (itemId: string) => void;
+  onSetFulfillmentMode: (itemId: string, mode: FulfillmentMode) => void;
+  settingFulfillmentItemId: string | null;
   onEdit: () => void;
   onStart: () => void;
   onComplete: () => void;
@@ -598,21 +639,41 @@ function DetailPanel({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px 32px', padding: '8px 12px', background: 'var(--color-surface-2)', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', gap: 8 }}>
                 <div>สินค้า</div><div style={{ textAlign: 'right' }}>จำนวน</div><div style={{ textAlign: 'right' }}>ราคา/ชิ้น</div><div style={{ textAlign: 'right' }}>รวม</div><div/>
               </div>
-              {detail.items.map(it => (
-                <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px 32px', padding: '10px 12px', borderTop: '1px solid var(--color-border)', fontSize: 13, gap: 8, alignItems: 'center' }}>
-                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.productName}</div>
-                  <div style={{ textAlign: 'right' }}>{it.quantity}</div>
-                  <div style={{ textAlign: 'right' }}>฿{Number(it.unitPrice).toFixed(2)}</div>
-                  <div style={{ textAlign: 'right', fontWeight: 500 }}>฿{Number(it.lineTotal).toFixed(2)}</div>
-                  <div style={{ display: 'grid', placeItems: 'center' }}>
-                    {isPending && (
-                      <button onClick={() => onRemoveItem(it.id)} style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
-                        <Icon name="x" size={12} />
-                      </button>
+              {detail.items.map(it => {
+                const product = it.productId ? allProducts.find(p => p.id === it.productId) : undefined;
+                const isProduced = product?.productType === 'PRODUCED';
+                const fgInv = isProduced && product?.finishedGoodsItemId
+                  ? inventoryItems.find(i => i.id === product.finishedGoodsItemId)
+                  : undefined;
+                return (
+                  <div key={it.id}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px 32px', padding: '10px 12px', borderTop: '1px solid var(--color-border)', fontSize: 13, gap: 8, alignItems: 'center' }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.productName}</div>
+                      <div style={{ textAlign: 'right' }}>{it.quantity}</div>
+                      <div style={{ textAlign: 'right' }}>฿{Number(it.unitPrice).toFixed(2)}</div>
+                      <div style={{ textAlign: 'right', fontWeight: 500 }}>฿{Number(it.lineTotal).toFixed(2)}</div>
+                      <div style={{ display: 'grid', placeItems: 'center' }}>
+                        {isPending && (
+                          <button onClick={() => onRemoveItem(it.id)} style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                            <Icon name="x" size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {isProduced && (
+                      <FulfillmentRow
+                        mode={it.fulfillmentMode}
+                        quantity={it.quantity}
+                        fgStock={fgInv ? fgInv.stock : null}
+                        fgUnit={fgInv ? fgInv.unit : 'ชิ้น'}
+                        canEdit={isPending}
+                        saving={settingFulfillmentItemId === it.id}
+                        onChange={(mode) => onSetFulfillmentMode(it.id, mode)}
+                      />
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {/* Add item inline row */}
               {isPending && addItemOpen && (
                 <div style={{ padding: '10px 12px', borderTop: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -694,6 +755,72 @@ function DetailPanel({
           onThresholdChange={onThresholdChange}
           onAddToShoppingList={onAddToShoppingList}
         />
+      )}
+    </div>
+  );
+}
+
+function FulfillmentRow({ mode, quantity, fgStock, fgUnit, canEdit, saving, onChange }: {
+  mode: FulfillmentMode | null;
+  quantity: number;
+  fgStock: number | null;
+  fgUnit: string;
+  canEdit: boolean;
+  saving: boolean;
+  onChange: (mode: FulfillmentMode) => void;
+}) {
+  // null treated as PRODUCE_FRESH per backend semantics
+  const effectiveMode: FulfillmentMode = mode ?? 'PRODUCE_FRESH';
+  const stockCovers = fgStock !== null && fgStock >= quantity;
+  const shortfall = fgStock !== null ? Math.max(0, quantity - fgStock) : null;
+
+  const Pill = ({ value, label }: { value: FulfillmentMode; label: string }) => {
+    const active = effectiveMode === value;
+    return (
+      <button
+        type="button"
+        onClick={() => !active && !saving && canEdit && onChange(value)}
+        disabled={!canEdit || saving}
+        style={{
+          padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 600,
+          border: '1px solid', cursor: !canEdit || saving ? 'default' : 'pointer',
+          borderColor: active ? 'var(--color-primary)' : 'var(--color-border)',
+          background: active ? 'var(--color-primary)' : 'transparent',
+          color: active ? '#fff' : 'var(--color-text-secondary)',
+          transition: 'all 120ms',
+          opacity: !canEdit ? 0.7 : 1,
+        }}
+      >
+        {label}
+      </button>
+    );
+  };
+
+  return (
+    <div style={{
+      padding: '6px 12px 10px 24px', borderTop: '1px dashed var(--color-border)',
+      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+      background: 'var(--color-surface-2)', fontSize: 12,
+    }}>
+      <span style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>วิธีจัดเตรียม:</span>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <Pill value="FROM_INVENTORY" label="ใช้สต็อกสำเร็จรูป" />
+        <Pill value="PRODUCE_FRESH" label="ผลิตใหม่" />
+      </div>
+      {saving && <span style={{ color: 'var(--color-text-secondary)', fontSize: 11 }}>กำลังบันทึก...</span>}
+      {fgStock !== null && (
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--color-text-secondary)' }}>
+          สต็อกพร้อมขาย:
+          <strong style={{ color: stockCovers ? 'var(--color-success)' : 'var(--color-warning)', fontWeight: 700 }}>
+            {fgStock.toLocaleString()} {fgUnit}
+          </strong>
+          {effectiveMode === 'FROM_INVENTORY' && shortfall !== null && shortfall > 0 && (
+            <span style={{ color: '#9C6A1F' }}>· ขาด {shortfall} → จะหักวัตถุดิบ</span>
+          )}
+        </span>
+      )}
+      {fgStock === null && effectiveMode === 'FROM_INVENTORY' && (
+        <span style={{ color: 'var(--color-danger)', fontSize: 11 }}>* ไม่พบสต็อกสำเร็จรูป</span>
       )}
     </div>
   );

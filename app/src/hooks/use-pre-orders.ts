@@ -4,6 +4,8 @@ import { api } from '@/lib/api-client';
 // ── Enums & backend shapes ────────────────────────────────────────────────────
 export type PreOrderStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
+export type FulfillmentMode = 'FROM_INVENTORY' | 'PRODUCE_FRESH';
+
 interface PreOrderItemRead {
   id: string;
   product_id: string | null;
@@ -11,6 +13,7 @@ interface PreOrderItemRead {
   quantity: number;
   unit_price: string;
   line_total: string;
+  fulfillment_mode: FulfillmentMode | null;
 }
 
 interface PreOrderRead {
@@ -75,6 +78,7 @@ export interface PreOrderItem {
   quantity: number;
   unitPrice: string;
   lineTotal: string;
+  fulfillmentMode: FulfillmentMode | null;
 }
 
 export interface PreOrder {
@@ -135,6 +139,7 @@ function mapOrderItem(i: PreOrderItemRead): PreOrderItem {
     quantity: i.quantity,
     unitPrice: i.unit_price,
     lineTotal: i.line_total,
+    fulfillmentMode: i.fulfillment_mode ?? null,
   };
 }
 
@@ -300,6 +305,21 @@ export function useRemovePreOrderItem() {
   return useMutation({
     mutationFn: ({ orderId, itemId }: { orderId: string; itemId: string }) =>
       api.delete<PreOrderRead>(`/api/v1/pre-orders/${orderId}/items/${itemId}`).then(mapPreOrder),
+    onSuccess: (_res, { orderId }) => {
+      qc.invalidateQueries({ queryKey: ['pre-order', orderId] });
+      qc.invalidateQueries({ queryKey: ['pre-order-ingredients', orderId] });
+    },
+  });
+}
+
+export function useSetFulfillmentMode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orderId, itemId, mode }: { orderId: string; itemId: string; mode: FulfillmentMode }) =>
+      api.patch<PreOrderRead>(
+        `/api/v1/pre-orders/${orderId}/items/${itemId}/fulfillment`,
+        { fulfillment_mode: mode },
+      ).then(mapPreOrder),
     onSuccess: (_res, { orderId }) => {
       qc.invalidateQueries({ queryKey: ['pre-order', orderId] });
       qc.invalidateQueries({ queryKey: ['pre-order-ingredients', orderId] });
