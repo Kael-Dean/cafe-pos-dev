@@ -1,93 +1,76 @@
 # Print Bridge
 
-Local HTTP server that lets the Vercel-hosted POS print to a LAN printer on this PC.
+Local HTTP server on the PC that talks to the LAN-connected printer.
+The browser (loaded from `cafe-pos-sable.vercel.app`) calls it **directly** —
+no tunnel, no Vercel roundtrip.
 
 ```
-[cafe-pos-sable.vercel.app]
-        │ POST /api/print  (server has PRINT_BRIDGE_URL set)
-        ▼
-[Cloudflare Tunnel  https://*.trycloudflare.com]
-        │
-        ▼
+[Browser on PC]  https://cafe-pos-sable.vercel.app
+       │
+       │ fetch('http://127.0.0.1:8080/print')
+       │ (Chrome treats http://127.0.0.1 as secure — no mixed-content block)
+       ▼
 [bridge/server.mjs  127.0.0.1:8080]
-        │ TCP 9100
-        ▼
+       │ TCP 9100
+       ▼
 [EPSON TM-T82X  192.168.192.168]
 ```
 
-## First-time setup
+## Requirements
 
-Already done:
+- The browser **must run on the same PC** as the bridge. The bridge binds `127.0.0.1` only.
+- Chrome / Edge / any Chromium-based browser. Firefox also treats `127.0.0.1` as secure.
 
-- `bridge/server.mjs` — the HTTP server (Node, no deps)
-- `bridge/cloudflared.exe` — downloaded to repo (gitignored)
-- `bridge/.token` — auto-generated random secret (gitignored)
-- Vercel route `app/src/app/api/print/route.ts` honors `PRINT_BRIDGE_URL` + `PRINT_BRIDGE_TOKEN`
+## Endpoints
 
-You need to set these on Vercel **once**:
+| Method | Path | Purpose |
+|---|---|---|
+| GET    | `/status` | `{ printer: bool, ip }` — is the printer reachable on TCP 9100 |
+| GET    | `/config` | returns `printer-config.json` |
+| PUT    | `/config` | merge-patch + persist `printer-config.json` |
+| GET    | `/scan`   | probe `<subnet>.1–254` on TCP 9100, return found IPs |
+| POST   | `/print`  | receive `PrintBody`, build ESC/POS, send to printer |
 
-| Env var | Value |
-|---|---|
-| `PRINT_BRIDGE_URL` | the tunnel URL (changes each restart unless using a named tunnel) |
-| `PRINT_BRIDGE_TOKEN` | contents of `bridge/.token` |
-
-Set at https://vercel.com → project → Settings → Environment Variables → Production. Then redeploy.
+CORS: `Access-Control-Allow-Origin: *` (any origin) — safe because bridge listens on loopback only.
 
 ## Daily startup (after PC reboot)
 
-Open two PowerShell windows.
-
-**Window 1 — bridge:**
-
 ```powershell
 cd d:\POS
-$env:BRIDGE_TOKEN = Get-Content bridge\.token -Raw
 node bridge\server.mjs
 ```
 
-**Window 2 — tunnel:**
+Leave the window open. Bridge prints log lines on each print job.
 
-```powershell
-cd d:\POS
-.\bridge\cloudflared.exe tunnel --url http://localhost:8080 --no-autoupdate
-```
-
-Watch for a line like:
-
-```
-https://xxxxx-xxxxx-xxxxx-xxxxx.trycloudflare.com
-```
-
-If that URL is **different from before**, update `PRINT_BRIDGE_URL` on Vercel and redeploy. To avoid this churn, see "Permanent URL" below.
+Then open https://cafe-pos-sable.vercel.app in a browser **on this PC**.
 
 ## Verify
 
 ```powershell
-$token = Get-Content d:\POS\bridge\.token -Raw
-$url = '<tunnel url>'
-Invoke-WebRequest "$url/status" -Headers @{'x-bridge-token' = $token} -UseBasicParsing
+Invoke-WebRequest http://127.0.0.1:8080/status -UseBasicParsing
 ```
 
 Expect: `{"printer":true,"ip":"192.168.192.168"}`
 
-## Permanent URL (optional, recommended)
+## Optional: auth + tunnel mode
 
-Free trycloudflare.com URLs are temporary. For a fixed URL:
+If you ever want to expose the bridge over the internet (e.g. print from a phone):
 
-1. Sign up at https://dash.cloudflare.com (free)
-2. Add a domain (or buy one cheap) and point it at Cloudflare
-3. `cloudflared tunnel login`
-4. `cloudflared tunnel create cafe-pos-print`
-5. `cloudflared tunnel route dns cafe-pos-print print.yourdomain.com`
-6. Replace daily startup with: `cloudflared tunnel run cafe-pos-print`
+```powershell
+$env:BRIDGE_TOKEN = '<random secret>'
+node bridge\server.mjs
+```
 
-Then `PRINT_BRIDGE_URL=https://print.yourdomain.com` never changes.
+Then run `cloudflared tunnel --url http://localhost:8080` and update the
+Vercel env vars `PRINT_BRIDGE_URL` + `PRINT_BRIDGE_TOKEN`. The Vercel
+`/api/print` route still supports this fallback path. Browser-direct mode
+is the default and is faster.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| `{"printer":false}` from bridge | Check printer powered on, LAN cable, `Test-NetConnection 192.168.192.168 -Port 9100` |
-| Vercel shows offline but bridge `/status` returns true | `PRINT_BRIDGE_URL` not set on Vercel, or wrong URL, or missing redeploy |
-| 401 unauthorized | `PRINT_BRIDGE_TOKEN` on Vercel doesn't match `bridge/.token` |
-| Tunnel disconnects often | Free trycloudflare.com is best-effort. Use named tunnel for production |
+| `bridge ไม่ตอบ` toast in the UI | Bridge not running. Open PowerShell and run `node bridge\server.mjs` |
+| `{"printer":false}` | Printer off, LAN cable unplugged, or wrong IP. Try `Test-NetConnection 192.168.192.168 -Port 9100` |
+| Works on PC, not on phone | Expected — browser must be on the PC with the bridge. Use tunnel mode if you need remote |
+| Browser console: "Failed to fetch" from vercel.app | You're not on the bridge PC, or bridge is down |

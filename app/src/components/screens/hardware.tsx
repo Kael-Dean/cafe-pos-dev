@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Icon from '../icons';
 import { useToast } from '../app-common';
 import { ReceiptPaper, type ReceiptData, type BuyerInfo, type StoreInfo } from './receipt-modal';
+import { fetchStatus, fetchConfig, saveConfig, scanPrinters, sendPrintJob } from '@/lib/printer-bridge';
 
 type PrinterStatus = 'online' | 'offline' | 'checking';
 
@@ -72,30 +73,28 @@ export default function HardwareScreen() {
   const checkStatus = useCallback(async () => {
     setPrinter('checking');
     try {
-      const res  = await fetch('/api/print', { signal: AbortSignal.timeout(5000) });
-      const data = await res.json();
+      const data = await fetchStatus(AbortSignal.timeout(5000));
       setPrinter(data.printer ? 'online' : 'offline');
       if (data.ip) { setPrinterIp(data.ip); setIpInput(data.ip); }
     } catch { setPrinter('offline'); }
   }, []);
 
   useEffect(() => {
-    fetch('/api/print/config').then(r => r.json()).then(cfg => {
+    fetchConfig().then(cfg => {
       setPrinterIp(cfg.ip              ?? '');
       setIpInput(cfg.ip                ?? '');
       setStoreInput(cfg.storeName      ?? '');
       setAddressInput(cfg.storeAddress ?? '');
       setTaxIdInput(cfg.storeTaxId     ?? '');
       setBranchInput(cfg.storeBranch   ?? '');
-    });
+    }).catch(() => {});
     checkStatus();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const scanPrinters = async () => {
+  const scanPrintersHandler = async () => {
     setScanning(true); setScanResults([]);
     try {
-      const res  = await fetch('/api/print/scan', { signal: AbortSignal.timeout(120000) });
-      const data = await res.json();
+      const data = await scanPrinters(AbortSignal.timeout(120000));
       setScanResults(data.found ?? []);
       if (data.found?.length === 1)  toast({ kind: 'success', title: 'พบเครื่องปริ้น', msg: data.found[0] });
       else if (!data.found?.length)  toast({ kind: 'warning', title: 'ไม่พบเครื่องปริ้น', msg: 'ตรวจสอบว่าเปิดเครื่องและต่อสายแลนอยู่' });
@@ -109,11 +108,7 @@ export default function HardwareScreen() {
     if (!ip) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/print/config', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ip }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error);
+      await saveConfig({ ip });
       setPrinterIp(ip);
       toast({ kind: 'success', title: 'บันทึกแล้ว', msg: `IP: ${ip}` });
       checkStatus();
@@ -127,17 +122,13 @@ export default function HardwareScreen() {
     if (!name) return;
     setSavingStore(true);
     try {
-      const res = await fetch('/api/print/config', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ip: printerIp,
-          storeName:    name,
-          storeAddress: addressInput.trim() || null,
-          storeTaxId:   taxIdInput.trim()   || null,
-          storeBranch:  branchInput.trim()  || null,
-        }),
+      await saveConfig({
+        ip: printerIp,
+        storeName:    name,
+        storeAddress: addressInput.trim() || null,
+        storeTaxId:   taxIdInput.trim()   || null,
+        storeBranch:  branchInput.trim()  || null,
       });
-      if (!res.ok) throw new Error((await res.json()).error);
       toast({ kind: 'success', title: 'บันทึกข้อมูลร้านแล้ว', msg: name });
     } catch (err: unknown) {
       toast({ kind: 'warning', title: 'บันทึกไม่สำเร็จ', msg: (err as Error).message });
@@ -147,14 +138,10 @@ export default function HardwareScreen() {
   const testPrint = async () => {
     setTesting(true);
     try {
-      const res = await fetch('/api/print', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderNumber: 'TEST', items: [{ name: 'ทดสอบการพิมพ์', qty: 1, unitPrice: 0 }],
-          subtotal: 0, total: 0, paymentLabel: 'ทดสอบ',
-        }),
+      await sendPrintJob({
+        orderNumber: 'TEST', items: [{ name: 'ทดสอบการพิมพ์', qty: 1, unitPrice: 0 }],
+        subtotal: 0, total: 0, paymentLabel: 'ทดสอบ',
       });
-      if (!res.ok) throw new Error((await res.json()).error);
       setLastPrint(new Date().toLocaleTimeString('th-TH'));
       toast({ kind: 'success', title: 'พิมพ์ทดสอบสำเร็จ', msg: 'ตรวจสอบใบเสร็จที่พิมพ์ออกมา' });
     } catch (err: unknown) {
@@ -225,7 +212,7 @@ export default function HardwareScreen() {
                 style={{ ...inputStyle, flex: 1, fontFamily: 'monospace' }}
                 onKeyDown={e => e.key === 'Enter' && saveIp()}
               />
-              <button onClick={scanPrinters} disabled={scanning} style={{ ...btnGhost, whiteSpace: 'nowrap' }}>
+              <button onClick={scanPrintersHandler} disabled={scanning} style={{ ...btnGhost, whiteSpace: 'nowrap' }}>
                 <Icon name="refresh" size={13} style={{ animation: scanning ? 'spin 1s linear infinite' : 'none' }} />
                 {scanning ? 'ค้นหา...' : 'ค้นหา'}
               </button>

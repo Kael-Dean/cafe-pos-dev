@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react';
 import type { BuyerInfo } from '@/components/screens/receipt-modal';
+import { sendPrintJob } from '@/lib/printer-bridge';
 
 const PAY_LABEL: Record<string, string> = {
   cash: 'เงินสด',
@@ -42,16 +43,7 @@ export function usePrinter() {
       body.buyerBranch  = args.buyerInfo.branch;
     }
 
-    const res = await fetch('/api/print', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error((data as { error?: string }).error ?? 'print failed');
-    }
+    await sendPrintJob(body);
   }, []);
 
   return { printReceipt };

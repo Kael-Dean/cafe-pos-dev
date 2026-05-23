@@ -162,6 +162,44 @@ function sendToPrinter(ip, port, buf) {
   });
 }
 
+function probeHost(ip, port, timeoutMs = 400) {
+  return new Promise((resolve) => {
+    const s = new net.Socket();
+    s.setTimeout(timeoutMs);
+    s.connect(port, ip, () => { s.destroy(); resolve(ip); });
+    s.on('timeout', () => { s.destroy(); resolve(null); });
+    s.on('error',   () => { s.destroy(); resolve(null); });
+  });
+}
+
+async function scanSubnet(subnet, port) {
+  const candidates = Array.from({ length: 254 }, (_, i) => `${subnet}.${i + 1}`);
+  const found = [];
+  for (let i = 0; i < candidates.length; i += 30) {
+    const batch = candidates.slice(i, i + 30);
+    const results = await Promise.all(batch.map((ip) => probeHost(ip, port)));
+    found.push(...results.filter((r) => r !== null));
+  }
+  return found;
+}
+
+function saveConfig(patch) {
+  let current = {};
+  try { current = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch {}
+  const updated = {
+    ...current,
+    ...(patch.ip           !== undefined ? { ip: String(patch.ip).trim() }                  : {}),
+    ...(patch.port         !== undefined ? { port: Number(patch.port) }                     : {}),
+    ...(patch.storeName    !== undefined ? { storeName: String(patch.storeName).trim() }    : {}),
+    ...(patch.storeAddress !== undefined ? { storeAddress: patch.storeAddress ?? null }     : {}),
+    ...(patch.storeTaxId   !== undefined ? { storeTaxId:   patch.storeTaxId   ?? null }     : {}),
+    ...(patch.storeBranch  !== undefined ? { storeBranch:  patch.storeBranch  ?? null }     : {}),
+  };
+  if (!updated.ip || typeof updated.ip !== 'string') throw new Error('IP ไม่ถูกต้อง');
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2), 'utf8');
+  return updated;
+}
+
 /* ── HTTP server ─────────────────────────────────────────────────── */
 
 function json(res, status, obj) {
@@ -214,6 +252,26 @@ const server = http.createServer(async (req, res) => {
       await sendToPrinter(cfg.ip, cfg.port, receipt);
       console.log(`[print] ok  order=${body.orderNumber}  items=${body.items?.length ?? 0}`);
       return json(res, 200, { ok: true });
+    }
+
+    if (req.method === 'GET' && url.pathname === '/config') {
+      return json(res, 200, loadConfig());
+    }
+
+    if (req.method === 'PUT' && url.pathname === '/config') {
+      const raw = await readBody(req);
+      const patch = JSON.parse(raw);
+      const updated = saveConfig(patch);
+      console.log(`[config] saved  ip=${updated.ip}  store=${updated.storeName}`);
+      return json(res, 200, { ok: true, ...updated });
+    }
+
+    if (req.method === 'GET' && url.pathname === '/scan') {
+      const cfg = loadConfig();
+      const parts = cfg.ip.split('.');
+      const subnet = parts.length === 4 ? `${parts[0]}.${parts[1]}.${parts[2]}` : '192.168.192';
+      const found = await scanSubnet(subnet, cfg.port);
+      return json(res, 200, { found, subnet });
     }
 
     return json(res, 404, { ok: false, error: 'not found' });
