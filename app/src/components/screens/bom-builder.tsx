@@ -90,7 +90,10 @@ export default function BOMBuilder() {
   }, [selectedId]);
 
   const totalCost = computeCost(editedRecipe);
-  const margin = editedPrice - totalCost;
+  const isProduced = selectedProduct?.productType === 'PRODUCED';
+  const batchSize = isProduced && selectedProduct ? Math.max(1, selectedProduct.servingsPerBatch) : 1;
+  const costPerUnit = totalCost / batchSize;
+  const margin = editedPrice - costPerUnit;
   const marginPct = editedPrice > 0 ? (margin / editedPrice) * 100 : 0;
 
   const updateQty = (idx: number, qty: number) => setEditedRecipe(r => {
@@ -114,7 +117,7 @@ export default function BOMBuilder() {
         updateRecipe.mutateAsync({ productId: selectedId, items: editedRecipe }),
         updateProduct.mutateAsync({ productId: selectedId, price: editedPrice, category_id: editedCategoryId || null }),
       ]);
-      toast({ kind: 'success', title: 'บันทึกสูตรแล้ว', msg: `${selectedProduct?.name ?? ''} • ${editedRecipe.length} วัตถุดิบ • ต้นทุน ฿${totalCost.toFixed(2)} • Margin ${marginPct.toFixed(1)}%` });
+      toast({ kind: 'success', title: 'บันทึกสูตรแล้ว', msg: `${selectedProduct?.name ?? ''} • ${editedRecipe.length} วัตถุดิบ • ต้นทุน${isProduced ? '/ชิ้น' : ''} ฿${costPerUnit.toFixed(2)} • Margin ${marginPct.toFixed(1)}%` });
     } catch (err) {
       toast({ kind: 'warning', title: 'บันทึกไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
     }
@@ -215,6 +218,9 @@ export default function BOMBuilder() {
             categories={categories ?? []}
             inventoryItems={inventoryItems ?? []}
             totalCost={totalCost}
+            isProduced={isProduced}
+            batchSize={batchSize}
+            costPerUnit={costPerUnit}
             margin={margin}
             marginPct={marginPct}
             marginToneOf={marginToneOf}
@@ -313,6 +319,9 @@ interface RightPanelProps {
   categories: Category[];
   inventoryItems: InventoryItem[];
   totalCost: number;
+  isProduced: boolean;
+  batchSize: number;
+  costPerUnit: number;
   margin: number;
   marginPct: number;
   marginToneOf: (pct: number) => 'success' | 'warning' | 'danger';
@@ -332,7 +341,7 @@ interface RightPanelProps {
   onDeleteModifier: (groupId: string, modifierId: string) => Promise<void>;
 }
 
-const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryId, categories, inventoryItems, totalCost, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onCategoryChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen, onAddModifier, onDeleteModifier }: RightPanelProps) => (
+const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryId, categories, inventoryItems, totalCost, isProduced, batchSize, costPerUnit, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onCategoryChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen, onAddModifier, onDeleteModifier }: RightPanelProps) => (
   <>
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
       <div style={{ width: 80, height: 80, borderRadius: 12, background: product.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 800, flexShrink: 0 }}>{product.tag}</div>
@@ -348,29 +357,42 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
           )}
         </div>
       </div>
-      <div>
-        <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>
-          {productType === 'MENU' ? 'ราคาขาย' : 'ต้นทุนผลิต'}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-          <span style={{ fontSize: 18, color: 'var(--color-text-secondary)' }}>฿</span>
-          <input type="number" min={0} step={5} value={editedPrice}
-            onChange={e => onPriceChange(Number(e.target.value))}
-            className="num"
-            style={{ width: 96, fontSize: 30, fontWeight: 700, textAlign: 'right', border: 'none', borderBottom: '2px solid var(--color-border)', outline: 'none', padding: '4px 0', background: 'transparent', fontFamily: 'inherit', letterSpacing: '-0.02em' }}
-            onFocus={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
-            onBlur={e => e.target.style.borderBottomColor = 'var(--color-border)'}
-          />
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16 }}>
+        {isProduced && (
+          <div style={{ textAlign: 'center', padding: '8px 12px', background: 'var(--color-accent-50)', border: '1px solid var(--color-accent)', borderRadius: 10 }}>
+            <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 4 }}>หน่วย/แบทช์</div>
+            <div className="num" style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-primary-700)', letterSpacing: '-0.02em', lineHeight: 1 }}>{batchSize}</div>
+            <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginTop: 4 }}>ชิ้น</div>
+          </div>
+        )}
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>
+            {productType === 'MENU' ? 'ราคาขาย' : 'ต้นทุนผลิต'}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+            <span style={{ fontSize: 18, color: 'var(--color-text-secondary)' }}>฿</span>
+            <input type="number" min={0} step={5} value={editedPrice}
+              onChange={e => onPriceChange(Number(e.target.value))}
+              className="num"
+              style={{ width: 96, fontSize: 30, fontWeight: 700, textAlign: 'right', border: 'none', borderBottom: '2px solid var(--color-border)', outline: 'none', padding: '4px 0', background: 'transparent', fontFamily: 'inherit', letterSpacing: '-0.02em' }}
+              onFocus={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
+              onBlur={e => e.target.style.borderBottomColor = 'var(--color-border)'}
+            />
+          </div>
         </div>
       </div>
     </div>
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
-      <SummaryCard label="ต้นทุนวัตถุดิบ" value={`฿${totalCost.toFixed(2)}`} />
+      <SummaryCard
+        label={isProduced ? 'ต้นทุนวัตถุดิบ/ชิ้น' : 'ต้นทุนวัตถุดิบ'}
+        value={`฿${costPerUnit.toFixed(2)}`}
+        hint={isProduced ? `฿${totalCost.toFixed(2)} / ${batchSize} ชิ้น` : undefined}
+      />
       <SummaryCard label="ส่วนต่าง (Contribution)" value={`฿${margin.toFixed(2)}`} color={margin >= 0 ? 'var(--color-text)' : 'var(--color-danger)'} />
       {productType === 'MENU'
         ? <SummaryCard label="Margin" value={`${marginPct.toFixed(1)}%`} highlight={marginToneOf(marginPct)} />
-        : <SummaryCard label="ต้นทุน/หน่วย" value={`฿${totalCost.toFixed(2)}`} highlight="info" />
+        : <SummaryCard label="ต้นทุน/หน่วย" value={`฿${costPerUnit.toFixed(2)}`} highlight="info" />
       }
     </div>
 
@@ -409,10 +431,17 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
             );
           })}
           <div style={{ padding: '14px 20px', display: 'grid', gridTemplateColumns: '1fr 90px 36px', gap: 12, alignItems: 'center', background: 'var(--color-surface-2)', borderTop: '2px solid var(--color-border)' }}>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>ต้นทุนรวมต่อหน่วยขาย</div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>{isProduced ? `ต้นทุนรวม/แบทช์ (${batchSize} ชิ้น)` : 'ต้นทุนรวมต่อหน่วยขาย'}</div>
             <div className="num" style={{ fontSize: 16, fontWeight: 800, textAlign: 'right' }}>฿{totalCost.toFixed(2)}</div>
             <div></div>
           </div>
+          {isProduced && (
+            <div style={{ padding: '10px 20px', display: 'grid', gridTemplateColumns: '1fr 90px 36px', gap: 12, alignItems: 'center', background: 'var(--color-accent-50)', borderTop: '1px solid var(--color-border)' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-primary-700)' }}>÷ {batchSize} ชิ้น = ต้นทุน/ชิ้น</div>
+              <div className="num" style={{ fontSize: 15, fontWeight: 800, textAlign: 'right', color: 'var(--color-primary-700)' }}>฿{costPerUnit.toFixed(2)}</div>
+              <div></div>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -584,7 +613,7 @@ const BOMRow = ({ inv, qty, lineCost, stockOk, isLast, onQtyChange, onRemove }: 
   );
 };
 
-const SummaryCard = ({ label, value, color, highlight }: { label: string; value: string; color?: string; highlight?: 'success' | 'warning' | 'danger' | 'info' }) => {
+const SummaryCard = ({ label, value, color, highlight, hint }: { label: string; value: string; color?: string; highlight?: 'success' | 'warning' | 'danger' | 'info'; hint?: string }) => {
   const tones = {
     success: { bg: 'var(--color-success-50)', border: 'var(--color-success)', fg: 'var(--color-success)' },
     warning: { bg: 'var(--color-warning-50)', border: 'var(--color-warning)', fg: '#9C6A1F' },
@@ -596,6 +625,7 @@ const SummaryCard = ({ label, value, color, highlight }: { label: string; value:
     <div style={{ background: t ? t.bg : 'var(--color-surface)', border: t ? `1px solid ${t.border}` : '1px solid var(--color-border)', borderRadius: 12, padding: 16 }}>
       <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: t ? t.fg : 'var(--color-text-secondary)' }}>{label}</div>
       <div className="num" style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: t ? t.fg : (color || 'var(--color-text)') }}>{value}</div>
+      {hint && <div className="num" style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>{hint}</div>}
     </div>
   );
 };
