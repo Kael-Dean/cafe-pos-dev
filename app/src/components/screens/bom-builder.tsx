@@ -23,6 +23,7 @@ export default function BOMBuilder() {
 
   const [editedRecipe, setEditedRecipe] = useState<RecipeItem[]>([]);
   const [editedPrice, setEditedPrice] = useState(0);
+  const [editedServingsPerBatch, setEditedServingsPerBatch] = useState(1);
   const [editedCategoryId, setEditedCategoryId] = useState('');
   const [productType, setProductType] = useState<ProductType>('MENU');
   const [modifierGroupPickerOpen, setModifierGroupPickerOpen] = useState(false);
@@ -89,9 +90,14 @@ export default function BOMBuilder() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
+  useEffect(() => {
+    setEditedServingsPerBatch(Math.max(1, selectedProduct?.servingsPerBatch ?? 1));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, selectedProduct?.servingsPerBatch]);
+
   const totalCost = computeCost(editedRecipe);
   const isProduced = selectedProduct?.productType === 'PRODUCED';
-  const batchSize = isProduced && selectedProduct ? Math.max(1, selectedProduct.servingsPerBatch) : 1;
+  const batchSize = isProduced ? Math.max(1, editedServingsPerBatch) : 1;
   const costPerUnit = totalCost / batchSize;
   const margin = editedPrice - costPerUnit;
   const marginPct = editedPrice > 0 ? (margin / editedPrice) * 100 : 0;
@@ -115,7 +121,12 @@ export default function BOMBuilder() {
     try {
       await Promise.all([
         updateRecipe.mutateAsync({ productId: selectedId, items: editedRecipe }),
-        updateProduct.mutateAsync({ productId: selectedId, price: editedPrice, category_id: editedCategoryId || null }),
+        updateProduct.mutateAsync({
+          productId: selectedId,
+          price: editedPrice,
+          category_id: editedCategoryId || null,
+          ...(isProduced ? { servings_per_batch: Math.max(1, editedServingsPerBatch) } : {}),
+        }),
       ]);
       toast({ kind: 'success', title: 'บันทึกสูตรแล้ว', msg: `${selectedProduct?.name ?? ''} • ${editedRecipe.length} วัตถุดิบ • ต้นทุน${isProduced ? '/ชิ้น' : ''} ฿${costPerUnit.toFixed(2)} • Margin ${marginPct.toFixed(1)}%` });
     } catch (err) {
@@ -220,6 +231,8 @@ export default function BOMBuilder() {
             totalCost={totalCost}
             isProduced={isProduced}
             batchSize={batchSize}
+            editedServingsPerBatch={editedServingsPerBatch}
+            onServingsPerBatchChange={setEditedServingsPerBatch}
             costPerUnit={costPerUnit}
             margin={margin}
             marginPct={marginPct}
@@ -321,6 +334,8 @@ interface RightPanelProps {
   totalCost: number;
   isProduced: boolean;
   batchSize: number;
+  editedServingsPerBatch: number;
+  onServingsPerBatchChange: (n: number) => void;
   costPerUnit: number;
   margin: number;
   marginPct: number;
@@ -341,7 +356,7 @@ interface RightPanelProps {
   onDeleteModifier: (groupId: string, modifierId: string) => Promise<void>;
 }
 
-const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryId, categories, inventoryItems, totalCost, isProduced, batchSize, costPerUnit, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onCategoryChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen, onAddModifier, onDeleteModifier }: RightPanelProps) => (
+const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryId, categories, inventoryItems, totalCost, isProduced, batchSize, editedServingsPerBatch, onServingsPerBatchChange, costPerUnit, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onCategoryChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen, onAddModifier, onDeleteModifier }: RightPanelProps) => (
   <>
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
       <div style={{ width: 80, height: 80, borderRadius: 12, background: product.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 800, flexShrink: 0 }}>{product.tag}</div>
@@ -357,14 +372,7 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
           )}
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16 }}>
-        {isProduced && (
-          <div style={{ textAlign: 'center', padding: '8px 12px', background: 'var(--color-accent-50)', border: '1px solid var(--color-accent)', borderRadius: 10 }}>
-            <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 4 }}>หน่วย/แบทช์</div>
-            <div className="num" style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-primary-700)', letterSpacing: '-0.02em', lineHeight: 1 }}>{batchSize}</div>
-            <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginTop: 4 }}>ชิ้น</div>
-          </div>
-        )}
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20 }}>
         <div>
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>
             {productType === 'MENU' ? 'ราคาขาย' : 'ต้นทุนผลิต'}
@@ -380,6 +388,25 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
             />
           </div>
         </div>
+        {isProduced && (
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>จำนวน/แบทช์</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={editedServingsPerBatch}
+                onChange={e => onServingsPerBatchChange(Math.max(1, Number(e.target.value) || 1))}
+                className="num"
+                style={{ width: 72, fontSize: 30, fontWeight: 700, textAlign: 'right', border: 'none', borderBottom: '2px solid var(--color-accent)', outline: 'none', padding: '4px 0', background: 'transparent', fontFamily: 'inherit', letterSpacing: '-0.02em', color: 'var(--color-primary-700)' }}
+                onFocus={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
+                onBlur={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
+              />
+              <span style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>ชิ้น</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
 

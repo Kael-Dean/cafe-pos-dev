@@ -8,6 +8,7 @@ import POSTerminal from '@/components/screens/pos';
 import KDS from '@/components/screens/kds';
 import Dashboard from '@/components/screens/dashboard';
 import BOMBuilder from '@/components/screens/bom-builder';
+import Bakery from '@/components/screens/bakery';
 import Inventory from '@/components/screens/inventory';
 import PreOrders from '@/components/screens/pre-orders';
 import ShoppingListScreen from '@/components/screens/shopping-list';
@@ -22,7 +23,7 @@ import CatalogAdmin from '@/components/screens/catalog';
 import StockTakeScreen from '@/components/screens/stock-take';
 
 type Screen =
-  | 'pos' | 'kds' | 'dashboard' | 'bom' | 'inventory'
+  | 'pos' | 'kds' | 'dashboard' | 'bom' | 'bakery' | 'inventory'
   | 'pre-orders' | 'shopping-list' | 'stock-take'
   | 'cash' | 'promotions' | 'protocols' | 'hr' | 'shifts'
   | 'hardware' | 'customers' | 'reports' | 'catalog' | 'settings';
@@ -54,6 +55,7 @@ export default function POS() {
     kds:        <KDS />,
     dashboard:  <Dashboard />,
     bom:        <BOMBuilder />,
+    bakery:     <Bakery />,
     inventory:  <Inventory />,
     'pre-orders':    <PreOrders />,
     'shopping-list': <ShoppingListScreen />,

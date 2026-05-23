@@ -153,6 +153,8 @@ interface ProductUpdatePayload {
   price?: number;
   category_id?: string | null;
   name?: string;
+  product_type?: 'MADE_TO_ORDER' | 'PRODUCED';
+  servings_per_batch?: number;
 }
 
 export function useUpdateProduct() {
