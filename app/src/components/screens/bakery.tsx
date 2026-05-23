@@ -47,10 +47,17 @@ export default function Bakery() {
     <div style={{ display: 'flex', height: '100%', background: 'var(--color-bg)' }}>
       {/* LEFT — produced product list */}
       <div style={{ width: 320, flexShrink: 0, background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--color-border)' }}>
-          <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 4 }}>P1 — Production</div>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}>เบเกอรี่ / Production</h2>
-          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>บันทึกการผลิตล่วงหน้า · จัดการสต็อกสำเร็จรูป</div>
+        <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--color-border)', background: 'linear-gradient(180deg, var(--color-accent-50) 0%, var(--color-surface) 100%)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--color-accent)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+              <Icon name="cake" size={20} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Bakery / Production</div>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}>โรงผลิตเบเกอรี่</h2>
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>บันทึกการผลิตล่วงหน้า · หักวัตถุดิบอัตโนมัติ · จัดการสต็อกสำเร็จรูป</div>
         </div>
         <div style={{ padding: 12, borderBottom: '1px solid var(--color-border)', position: 'relative' }}>
           <div style={{ position: 'absolute', left: 24, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', display: 'grid', placeItems: 'center' }}>
