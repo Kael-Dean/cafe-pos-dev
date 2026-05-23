@@ -6,3 +6,8 @@ build/
 .claude/
 
 .vercel
+
+# bridge secrets & binaries
+bridge/.token
+bridge/.env
+bridge/cloudflared.exe

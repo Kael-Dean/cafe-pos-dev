@@ -5,7 +5,12 @@ import path from 'path';
 
 const CONFIG_PATH = path.join(process.cwd(), 'printer-config.json');
 
-const BRIDGE_URL = process.env.PRINT_BRIDGE_URL?.replace(/\/$/, '');
+const BRIDGE_URL   = process.env.PRINT_BRIDGE_URL?.replace(/\/$/, '');
+const BRIDGE_TOKEN = process.env.PRINT_BRIDGE_TOKEN;
+const bridgeHeaders = (extra: Record<string, string> = {}) => ({
+  ...extra,
+  ...(BRIDGE_TOKEN ? { 'x-bridge-token': BRIDGE_TOKEN } : {}),
+});
 
 function loadConfig(): {
   ip: string; port: number;
@@ -37,7 +42,7 @@ function checkPrinter(ip: string, port: number): Promise<boolean> {
 export async function GET() {
   if (BRIDGE_URL) {
     try {
-      const res  = await fetch(`${BRIDGE_URL}/status`, { signal: AbortSignal.timeout(4000) });
+      const res  = await fetch(`${BRIDGE_URL}/status`, { headers: bridgeHeaders(), signal: AbortSignal.timeout(4000) });
       const data = await res.json();
       return NextResponse.json({ ok: true, printer: data.printer ?? false, ip: data.ip ?? '—', bridge: BRIDGE_URL });
     } catch {
@@ -189,7 +194,7 @@ export async function POST(req: NextRequest) {
     try {
       const res = await fetch(`${BRIDGE_URL}/print`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: bridgeHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(10000),
       });
