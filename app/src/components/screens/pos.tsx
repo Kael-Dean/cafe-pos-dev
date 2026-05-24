@@ -67,6 +67,7 @@ export default function POSTerminal() {
       const favs = products.filter(m => m.hot);
       return favs.length > 0 ? favs : products;
     }
+    if (category === 'all') return products;
     return products.filter(m => m.cat === category);
   }, [products, category, search]);
 
@@ -227,6 +228,7 @@ export default function POSTerminal() {
             </div>
             <div style={{display: 'flex', gap: 6, overflowX: 'auto'}} className="scroll">
               <CategoryTab label="★ ขายดี" active={category === 'fav'} onClick={() => { setCategory('fav'); setSearch(''); }} highlight />
+              <CategoryTab label="ทั้งหมด" active={category === 'all'} onClick={() => { setCategory('all'); setSearch(''); }} />
               {catsLoading && !categories ? (
                 <div style={{ padding: '8px 14px', fontSize: 13, color: 'var(--color-text-muted)' }}>กำลังโหลด...</div>
               ) : (
