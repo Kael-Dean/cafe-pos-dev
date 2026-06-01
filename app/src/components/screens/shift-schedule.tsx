@@ -5,8 +5,35 @@ import Icon from '../icons';
 import { useToast } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { useStaffList, useWeeklySchedule, useAssignShift, type ShiftAssignment } from '@/hooks/use-hr';
+import { usePreOrders, usePreOrder, type PreOrderStatus, type PreOrderListItem } from '@/hooks/use-pre-orders';
 
 const DAY_SHORT = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
+
+const PREORDER_STATUS_LABELS: Record<PreOrderStatus, string> = {
+  PENDING: 'รอเริ่ม',
+  IN_PROGRESS: 'กำลังทำ',
+  COMPLETED: 'เสร็จแล้ว',
+  CANCELLED: 'ยกเลิก',
+};
+
+const PREORDER_STATUS_COLORS: Record<PreOrderStatus, { fg: string; bg: string }> = {
+  PENDING:     { fg: '#9C6A1F',                    bg: 'var(--color-warning-50)' },
+  IN_PROGRESS: { fg: 'var(--color-info)',          bg: '#EFF6FF' },
+  COMPLETED:   { fg: 'var(--color-success)',       bg: '#F0FDF4' },
+  CANCELLED:   { fg: 'var(--color-text-secondary)', bg: 'var(--color-surface-2)' },
+};
+
+const thStyle: React.CSSProperties = {
+  padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)',
+};
+
+function fmtDateTh(s: string): string {
+  return new Date(s).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function preOrderLabel(po: { customerName: string | null; customerPhone: string | null }): string {
+  return po.customerName || po.customerPhone || 'ลูกค้า';
+}
 
 function getMondayOfWeek(d: Date): Date {
   const day = d.getDay();
@@ -45,10 +72,15 @@ export default function ShiftSchedule() {
   const [editingCell, setEditingCell] = useState<{ userId: string; date: string } | null>(null);
   const [editStart, setEditStart] = useState('08:00');
   const [editEnd, setEditEnd] = useState('16:00');
+  const [selectedPreOrderId, setSelectedPreOrderId] = useState<string | null>(null);
+  const [showCancelled, setShowCancelled] = useState(false);
 
   const { data: staff } = useStaffList();
   const { data: shifts } = useWeeklySchedule(weekStart);
   const assignShift = useAssignShift();
+  // Pre-orders: fetch all statuses (first 200, due_date asc) and filter to the
+  // visible week client-side — no backend date-range param needed.
+  const { data: preOrdersPage } = usePreOrders(undefined, 1, 200);
 
   const prevWeek = () => setWeekStart(dateStr(addDays(new Date(weekStart), -7)));
   const nextWeek = () => setWeekStart(dateStr(addDays(new Date(weekStart), 7)));
@@ -63,6 +95,18 @@ export default function ShiftSchedule() {
 
   const shiftsToday = staffList.filter(s => !!shiftMap[`${s.id}:${today}`]).length;
   const noShiftToday = staffList.length - shiftsToday;
+
+  // Group pre-orders by their due date (YYYY-MM-DD string matches dateStr(weekDate)).
+  const preOrdersByDate: Record<string, PreOrderListItem[]> = {};
+  (preOrdersPage?.items ?? []).forEach(po => {
+    if (po.status === 'CANCELLED' && !showCancelled) return;
+    if (!preOrdersByDate[po.dueDate]) preOrdersByDate[po.dueDate] = [];
+    preOrdersByDate[po.dueDate].push(po);
+  });
+  const weekPreOrderCount = weekDates.reduce((sum, d) => {
+    const list = preOrdersByDate[dateStr(d)] ?? [];
+    return sum + list.filter(p => p.status !== 'CANCELLED').length;
+  }, 0);
 
   const openEditor = (userId: string, date: string) => {
     const existing = shiftMap[`${userId}:${date}`];
@@ -98,6 +142,7 @@ export default function ShiftSchedule() {
           {[
             { label: 'มีกะวันนี้',    val: shiftsToday,  color: '#065f46', bg: '#d1fae5' },
             { label: 'ไม่มีกะวันนี้', val: noShiftToday, color: 'var(--color-text-muted)', bg: 'var(--color-surface-2)' },
+            { label: 'พรีออเดอร์',    val: weekPreOrderCount, color: '#9C6A1F', bg: 'var(--color-warning-50)' },
           ].map(st => (
             <div key={st.label} style={{ background: st.bg, borderRadius: 10, padding: '10px 16px', textAlign: 'center', minWidth: 80 }}>
               <div style={{ fontSize: 22, fontWeight: 700, color: st.color, fontVariantNumeric: 'tabular-nums' }}>{st.val}</div>
@@ -119,6 +164,10 @@ export default function ShiftSchedule() {
           <Icon name="chevronRight" size={15} />
         </button>
         <button onClick={goToday} style={{ padding: '6px 14px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: 13, color: 'var(--color-text-secondary)', fontWeight: 500, cursor: 'pointer' }}>สัปดาห์นี้</button>
+        <button onClick={() => setShowCancelled(v => !v)} title="แสดง/ซ่อนพรีออเดอร์ที่ยกเลิก" style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--color-border)', background: showCancelled ? 'var(--color-surface-2)' : 'transparent', fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, border: '1px solid var(--color-border-strong)', background: showCancelled ? 'var(--color-accent)' : 'transparent', display: 'inline-block', flexShrink: 0 }} />
+          แสดงที่ยกเลิก
+        </button>
       </div>
 
       {/* Grid */}
@@ -198,6 +247,54 @@ export default function ShiftSchedule() {
               </tr>
             ))}
           </tbody>
+
+          {/* Pre-orders due — one badge list per day column, aligned to the shift grid */}
+          <tbody>
+            <tr style={{ borderTop: '2px solid var(--color-border)' }}>
+              <td style={{ padding: '12px 16px', verticalAlign: 'top', background: 'var(--color-surface-2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                  <Icon name="cake" size={16} color="var(--color-accent)" />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>พรีออเดอร์</div>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>ส่งของวันนี้</div>
+                  </div>
+                </div>
+              </td>
+              {weekDates.map(d => {
+                const ds = dateStr(d);
+                const list = preOrdersByDate[ds] ?? [];
+                const isToday = ds === today;
+                const visible = list.slice(0, 3);
+                const extra = list.length - visible.length;
+                return (
+                  <td key={ds} style={{ padding: 5, verticalAlign: 'top', borderLeft: '1px solid var(--color-border)', background: isToday ? 'rgba(212,165,116,0.04)' : 'transparent' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 38 }}>
+                      {visible.map(po => {
+                        const c = PREORDER_STATUS_COLORS[po.status];
+                        const cancelled = po.status === 'CANCELLED';
+                        return (
+                          <button
+                            key={po.id}
+                            onClick={() => setSelectedPreOrderId(po.id)}
+                            title={`${preOrderLabel(po)} · ${PREORDER_STATUS_LABELS[po.status]}${po.itemCount > 0 ? ` · ${po.itemCount} รายการ` : ''}`}
+                            style={{ textAlign: 'left', border: 'none', cursor: 'pointer', borderRadius: 6, padding: '4px 6px', background: c.bg, color: c.fg, fontSize: 10, fontWeight: 600, lineHeight: 1.25, textDecoration: cancelled ? 'line-through' : 'none', opacity: cancelled ? 0.7 : 1, overflow: 'hidden', fontFamily: 'inherit' }}
+                          >
+                            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{preOrderLabel(po)}</div>
+                            {po.itemCount > 0 && <div style={{ fontSize: 9, fontWeight: 500, opacity: 0.8 }}>{po.itemCount} รายการ</div>}
+                          </button>
+                        );
+                      })}
+                      {extra > 0 && (
+                        <button onClick={() => setSelectedPreOrderId(list[3].id)} style={{ border: 'none', background: 'transparent', color: 'var(--color-text-muted)', fontSize: 10, fontWeight: 600, cursor: 'pointer', textAlign: 'left', padding: '0 6px', fontFamily: 'inherit' }}>
+                          +{extra} เพิ่มเติม
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          </tbody>
         </table>
       </div>
 
@@ -223,6 +320,89 @@ export default function ShiftSchedule() {
       </div>
 
       {admin && <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8 }}>คลิกที่ช่องเพื่อกำหนดเวลาเข้า-ออกงาน</div>}
+
+      {selectedPreOrderId && (
+        <PreOrderDetailModal id={selectedPreOrderId} onClose={() => setSelectedPreOrderId(null)} />
+      )}
+    </div>
+  );
+}
+
+// Read-only pre-order detail shown when a calendar badge is clicked.
+function PreOrderDetailModal({ id, onClose }: { id: string; onClose: () => void }) {
+  const { data: po, isLoading } = usePreOrder(id);
+  const fmtMoney = (v: string | null) =>
+    v == null ? '—' : `฿${Number(v).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 12, width: 560, maxWidth: '90vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: 'var(--shadow-lg)' }}>
+        {isLoading || !po ? (
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>กำลังโหลด…</div>
+        ) : (
+          <div style={{ padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 18 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>{preOrderLabel(po)}</div>
+                {po.customerPhone && <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', fontFamily: 'var(--font-num)' }}>{po.customerPhone}</div>}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', color: PREORDER_STATUS_COLORS[po.status].fg, background: PREORDER_STATUS_COLORS[po.status].bg }}>
+                  {PREORDER_STATUS_LABELS[po.status]}
+                </span>
+                <button onClick={onClose} title="ปิด" style={{ padding: 4, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }}>
+                  <Icon name="x" size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+              {[
+                { label: 'วันที่สั่ง', value: fmtDateTh(po.orderDate) },
+                { label: 'วันส่งของ', value: fmtDateTh(po.dueDate) },
+                { label: 'มัดจำ', value: po.depositAmount ? `${fmtMoney(po.depositAmount)}${po.depositPaid ? ' (ชำระแล้ว)' : ' (ยังไม่ชำระ)'}` : '—' },
+                { label: 'หมายเหตุ', value: po.notes || '—' },
+              ].map(m => (
+                <div key={m.label}>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 2 }}>{m.label}</div>
+                  <div style={{ fontSize: 13, fontWeight: 500, wordBreak: 'break-word' }}>{m.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: 'var(--color-surface-2)' }}>
+                    <th style={thStyle}>รายการ</th>
+                    <th style={{ ...thStyle, textAlign: 'center', width: 50 }}>จำนวน</th>
+                    <th style={{ ...thStyle, textAlign: 'right', width: 90 }}>ราคา</th>
+                    <th style={{ ...thStyle, textAlign: 'right', width: 100 }}>รวม</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {po.items.map(it => (
+                    <tr key={it.id} style={{ borderTop: '1px solid var(--color-border)' }}>
+                      <td style={{ padding: '8px 12px' }}>{it.productName}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'var(--font-num)' }}>{it.quantity}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-num)' }}>{fmtMoney(it.unitPrice)}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-num)', fontWeight: 600 }}>{fmtMoney(it.lineTotal)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ borderTop: '2px solid var(--color-border)', background: 'var(--color-surface-2)' }}>
+                    <td colSpan={3} style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>รวมทั้งหมด</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, fontFamily: 'var(--font-num)' }}>
+                      {fmtMoney(String(po.items.reduce((s, it) => s + Number(it.lineTotal), 0)))}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
