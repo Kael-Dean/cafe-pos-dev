@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Icon from '../icons';
 import { useToast } from '../app-common';
+import { useLookupMember, type AccountRead } from '@/hooks/use-membership';
 import {
   usePreOrders, usePreOrder, usePreOrderIngredients,
   useCreatePreOrder, useUpdatePreOrder,
@@ -919,6 +920,29 @@ function CreateModal({
   const showDropdown = searchFocused && filtered.length > 0;
   const nameById = (id: string) => allProducts.find(p => p.id === id)?.name ?? id;
 
+  // ── Member lookup: type a full phone → find & auto-fill the member's name ──
+  const lookup = useLookupMember();
+  const [foundMember, setFoundMember] = useState<AccountRead | null>(null);
+  const [lookupTried, setLookupTried] = useState(false);
+  useEffect(() => {
+    const digits = cPhone.replace(/\D/g, '');
+    let cancelled = false;
+    const t = setTimeout(() => {
+      if (cancelled) return;
+      if (digits.length < 9) { setFoundMember(null); setLookupTried(false); return; }
+      lookup.mutateAsync(cPhone.trim())
+        .then(res => {
+          if (cancelled) return;
+          const acc = res.found ? res.account : null;
+          setFoundMember(acc);
+          setLookupTried(true);
+          if (acc && !cName.trim()) onNameChange(acc.customer_name); // auto-fill when name is blank
+        })
+        .catch(() => { if (!cancelled) { setFoundMember(null); setLookupTried(true); } });
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [cPhone]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ background: 'var(--color-bg)', borderRadius: 16, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
@@ -940,6 +964,28 @@ function CreateModal({
               <div>
                 <label style={labelStyle}>เบอร์โทร *</label>
                 <input value={cPhone} onChange={e => onPhoneChange(e.target.value)} maxLength={30} placeholder="0812345678" style={inputStyle} />
+                {lookup.isPending ? (
+                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>กำลังค้นหาสมาชิก...</div>
+                ) : foundMember ? (
+                  <button
+                    type="button"
+                    onClick={() => onNameChange(foundMember.customer_name)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, width: '100%',
+                      padding: '6px 10px', borderRadius: 7, cursor: 'pointer', textAlign: 'left',
+                      border: '1px solid var(--color-success)', background: 'var(--color-success-50, #F0FDF4)',
+                      color: 'var(--color-success)', fontSize: 12, fontWeight: 600,
+                    }}
+                  >
+                    <Icon name="user" size={13} />
+                    <span style={{ flex: 1 }}>
+                      พบสมาชิก: {foundMember.customer_name} • {foundMember.points_balance.toLocaleString()} แต้ม
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 500, opacity: 0.85 }}>กดเพื่อกรอกชื่อ</span>
+                  </button>
+                ) : lookupTried ? (
+                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>ไม่พบสมาชิก — กรอกชื่อเอง</div>
+                ) : null}
               </div>
             </div>
           </section>

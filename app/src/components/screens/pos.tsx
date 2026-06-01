@@ -6,6 +6,7 @@ import { useToast, baht } from '../app-common';
 import { useAllProducts, useCategories, type MenuItem } from '@/hooks/use-products';
 import { useProductDetail } from '@/hooks/use-bom';
 import { useCreateOrder, usePayOrder } from '@/hooks/use-orders';
+import { useEvaluatePromotions, type EligiblePromotion } from '@/hooks/use-promotions';
 import ModifierModal from './modifier-modal';
 import PaymentModal from './payment-modal';
 import ReceiptModal, { type ReceiptData } from './receipt-modal';
@@ -39,12 +40,16 @@ export default function POSTerminal() {
   const [activeTab, setActiveTab] = useState<'menu' | 'cart'>('menu');
   const [showMembership, setShowMembership] = useState(false);
   const [memberInfo, setMemberInfo] = useState<MemberInfo | null>(null);
+  const [eligiblePromos, setEligiblePromos] = useState<EligiblePromotion[]>([]);
+  const [selectedPromoIds, setSelectedPromoIds] = useState<string[]>([]);
+  const [showPromoPanel, setShowPromoPanel] = useState(false);
 
   const { data: categories, isLoading: catsLoading } = useCategories();
   const { data: products, isLoading: prodLoading, isError } = useAllProducts();
   const { data: program } = useMembershipProgram();
   const createOrder = useCreateOrder();
   const payOrder = usePayOrder();
+  const evaluate = useEvaluatePromotions();
   const { printReceipt } = usePrinter();
 
   // Prefetch product detail when hovered so click is instant
@@ -87,8 +92,47 @@ export default function POSTerminal() {
     return products.filter(m => m.cat === category);
   }, [products, category, search]);
 
+  // ── Promotions: evaluate eligible promos whenever the cart changes (debounced 300ms) ──
+  const cartForEval = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const l of cart) map.set(l.menuId, (map.get(l.menuId) ?? 0) + l.qty);
+    return Array.from(map, ([product_id, quantity]) => ({ product_id, quantity }));
+  }, [cart]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const t = setTimeout(() => {
+      if (cancelled) return;
+      if (cartForEval.length === 0) { setEligiblePromos([]); setSelectedPromoIds([]); return; }
+      evaluate.mutateAsync(cartForEval)
+        .then(res => {
+          if (cancelled) return;
+          setEligiblePromos(res.eligible);
+          // keep only selections that are still eligible after the refresh
+          setSelectedPromoIds(prev => prev.filter(id => res.eligible.some(e => e.promotion_id === id)));
+        })
+        .catch(() => { if (!cancelled) setEligiblePromos([]); });
+    }, cartForEval.length === 0 ? 0 : 300);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [cartForEval]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const exclusiveSelected = eligiblePromos.find(e => selectedPromoIds.includes(e.promotion_id) && e.is_exclusive) ?? null;
+  const promoDiscount = eligiblePromos
+    .filter(e => selectedPromoIds.includes(e.promotion_id))
+    .reduce((s, e) => s + Number(e.discount_amount), 0);
+
+  const togglePromo = (e: EligiblePromotion) => {
+    setSelectedPromoIds(prev => {
+      if (prev.includes(e.promotion_id)) return prev.filter(id => id !== e.promotion_id);
+      if (e.is_exclusive) return [e.promotion_id];      // exclusive replaces all others
+      if (exclusiveSelected) return prev;                // locked while an exclusive promo is selected
+      return [...prev, e.promotion_id];
+    });
+  };
+
   const subtotal = cart.reduce((s, l) => s + l.unitPrice * l.qty, 0);
-  const discount = estimateMemberDiscount(memberInfo, program, subtotal);
+  const memberDiscount = estimateMemberDiscount(memberInfo, program, subtotal);
+  const discount = Math.min(subtotal, memberDiscount + promoDiscount);
   const vat = Math.round((subtotal - discount) * 0.07);
   const total = subtotal - discount + vat;
 
@@ -120,7 +164,7 @@ export default function POSTerminal() {
   };
 
   const removeLine = (i: number) => setCart((cur) => cur.filter((_, k) => k !== i));
-  const clearCart = () => { setCart([]); setBillNo((b) => b + 1); setMemberInfo(null); };
+  const clearCart = () => { setCart([]); setBillNo((b) => b + 1); setMemberInfo(null); setSelectedPromoIds([]); setEligiblePromos([]); setShowPromoPanel(false); };
 
   const PAY_LABEL: Record<string, string> = {
     cash: 'เงินสด', card: 'บัตรเครดิต', qr: 'QR PromptPay', line: 'LINE Pay',
@@ -134,6 +178,7 @@ export default function POSTerminal() {
     const totalSnapshot = total;
     const discountSnapshot = discount;
     const memberSnapshot = memberInfo;
+    const promoSnapshot = selectedPromoIds;
     setPayment(null);
     clearCart();
     const methodMap: Record<string, 'CASH' | 'CARD' | 'QR_PROMPTPAY' | 'LINE_PAY'> = {
@@ -152,18 +197,20 @@ export default function POSTerminal() {
         redeem_reward: memberSnapshot.redeemReward,
         reward_product_id: memberSnapshot.rewardProduct?.id ?? null,
       } : {}),
+      ...(promoSnapshot.length ? { promotion_ids: promoSnapshot } : {}),
     }).then(order =>
       payOrder.mutateAsync({
         orderId: order.id,
         payment_method: methodMap[method ?? 'cash'] ?? 'CASH',
       }).then(() => {
-        // Server is authoritative for discount/total when a member was attached.
+        // Server is authoritative for discount/total when a member and/or promotions were applied.
         const hasMember = !!memberSnapshot;
+        const serverAuthoritative = hasMember || promoSnapshot.length > 0;
         const serverTotal = order.total != null ? Number(order.total) : totalSnapshot;
         const serverDiscount = order.discount != null ? Number(order.discount) : discountSnapshot;
-        const finalTotal = hasMember ? serverTotal : totalSnapshot;
-        const finalDiscount = hasMember ? serverDiscount : 0;
-        const finalVat = hasMember ? Math.max(0, Math.round(finalTotal - (subtotalSnapshot - finalDiscount))) : vatSnapshot;
+        const finalTotal = serverAuthoritative ? serverTotal : totalSnapshot;
+        const finalDiscount = serverAuthoritative ? serverDiscount : 0;
+        const finalVat = serverAuthoritative ? Math.max(0, Math.round(finalTotal - (subtotalSnapshot - finalDiscount))) : vatSnapshot;
         const earned = order.points_earned ?? 0;
         toast({
           kind: 'success', title: 'ชำระเงินสำเร็จ',
@@ -184,8 +231,16 @@ export default function POSTerminal() {
           rewardRedeemed: order.reward_redeemed,
         });
       })
-    ).catch(() => {
-      toast({ kind: 'warning', title: 'บิลบันทึกไม่สำเร็จ', msg: 'กรุณาแจ้งผู้จัดการ', duration: 4000 });
+    ).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'กรุณาแจ้งผู้จัดการ';
+      // Backend re-validates promotions at checkout — surface a specific message if a promo was rejected.
+      const promoIssue = promoSnapshot.length > 0 && /promo|โปร|exclusive|expir|หมดอายุ|active|window|เวลา/i.test(msg);
+      toast({
+        kind: 'warning',
+        title: promoIssue ? 'โปรโมชั่นใช้ไม่ได้' : 'บิลบันทึกไม่สำเร็จ',
+        msg: promoIssue ? `${msg} — กรุณาตรวจสอบโปรโมชั่นแล้วลองใหม่` : msg,
+        duration: 4500,
+      });
     });
   };
 
@@ -360,9 +415,9 @@ export default function POSTerminal() {
             <div style={{padding: 20, background: 'var(--color-surface-2)'}}>
               <Row label="Subtotal" value={baht(subtotal)} />
               <Row label="VAT 7%"  value={baht(vat)} />
-              {discount > 0
-                ? <Row label="ส่วนลดสมาชิก (โดยประมาณ)" value={`-${baht(discount)}`} />
-                : <Row label="ส่วนลด" value={baht(0)} muted />}
+              {memberDiscount > 0 && <Row label="ส่วนลดสมาชิก (โดยประมาณ)" value={`-${baht(memberDiscount)}`} />}
+              {promoDiscount > 0 && <Row label="ส่วนลดโปรโมชั่น" value={`-${baht(promoDiscount)}`} />}
+              {discount === 0 && <Row label="ส่วนลด" value={baht(0)} muted />}
               <div style={{height: 1, background: 'var(--color-border)', margin: '12px 0'}}/>
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'baseline'}}>
                 <div style={{fontSize: 15, fontWeight: 600}}>รวมทั้งสิ้น</div>
@@ -380,8 +435,14 @@ export default function POSTerminal() {
                 <PayButton icon="line"  label="LINE Pay"     onClick={() => cart.length && setPayment('line')} disabled={!cart.length} />
               </div>
               <div style={{display: 'flex', gap: 8, marginTop: 4}}>
-                <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8}}>
-                  <Icon name="discount" size={14}/> Discount
+                <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8, opacity: eligiblePromos.length ? 1 : 0.5}}
+                  onClick={() => eligiblePromos.length && setShowPromoPanel(true)} disabled={!eligiblePromos.length}>
+                  <Icon name="discount" size={14}/> โปรโมชั่น
+                  {eligiblePromos.length > 0 && (
+                    <span style={{ marginLeft: 4, background: 'var(--color-accent)', color: 'var(--color-primary-700)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>
+                      {selectedPromoIds.length > 0 ? `${selectedPromoIds.length}/${eligiblePromos.length}` : eligiblePromos.length}
+                    </span>
+                  )}
                 </button>
                 <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8}} onClick={() => cart.length && clearCart()}>
                   <Icon name="void" size={14}/> Void
@@ -410,6 +471,40 @@ export default function POSTerminal() {
           onClose={() => setShowMembership(false)}
           onSelectMember={(info) => { setMemberInfo(info); setShowMembership(false); }}
         />
+      )}
+      {showPromoPanel && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setShowPromoPanel(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 520, maxHeight: '70vh', overflowY: 'auto', padding: 20, boxShadow: '0 -8px 30px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>โปรโมชั่นที่ใช้ได้</div>
+              <button onClick={() => setShowPromoPanel(false)} style={{ width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center' }}><Icon name="x" size={16} /></button>
+            </div>
+            {eligiblePromos.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--color-text-muted)' }}>ไม่มีโปรโมชั่นที่ใช้ได้กับตะกร้านี้</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {eligiblePromos.map(e => {
+                  const checked = selectedPromoIds.includes(e.promotion_id);
+                  const locked = !!exclusiveSelected && exclusiveSelected.promotion_id !== e.promotion_id;
+                  return (
+                    <label key={e.promotion_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10, border: `1px solid ${checked ? 'var(--color-accent)' : 'var(--color-border)'}`, background: checked ? 'var(--color-accent-50)' : 'var(--color-surface-2)', cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? 0.5 : 1 }}>
+                      <input type="checkbox" checked={checked} disabled={locked} onChange={() => togglePromo(e)} style={{ width: 16, height: 16 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600 }}>
+                          {e.name}{e.is_exclusive && <span style={{ fontSize: 11, color: 'var(--color-danger)', fontWeight: 600 }}> • ใช้เดี่ยว</span>}
+                        </div>
+                      </div>
+                      <div className="num" style={{ fontWeight: 700, color: 'var(--color-accent-600)' }}>-{baht(Number(e.discount_amount))}</div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <button onClick={() => setShowPromoPanel(false)} style={{ marginTop: 16, width: '100%', padding: 12, borderRadius: 10, background: 'var(--color-primary)', color: 'white', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+              ใช้ส่วนลด{promoDiscount > 0 ? ` (-${baht(promoDiscount)})` : ''}
+            </button>
+          </div>
+        </div>
       )}
       {payment && (
         <PaymentModal method={payment} total={total} billNo={billNo} onClose={() => setPayment(null)} onPaid={onPaid} />

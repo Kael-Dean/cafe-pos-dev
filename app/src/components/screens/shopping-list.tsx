@@ -15,6 +15,7 @@ export default function ShoppingListScreen() {
   const [addItemId, setAddItemId] = useState('');
   const [addNote, setAddNote] = useState('');
   const [invSearch, setInvSearch] = useState('');
+  const [invFocused, setInvFocused] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
 
   const { data: items = [], isLoading } = useShoppingList();
@@ -27,6 +28,7 @@ export default function ShoppingListScreen() {
     setAddItemId('');
     setAddNote('');
     setInvSearch('');
+    setInvFocused(false);
   };
 
   const handleAdd = async () => {
@@ -84,23 +86,25 @@ export default function ShoppingListScreen() {
               style={{ flex: 2, minWidth: 200, position: 'relative' }}
               onBlur={(e) => {
                 if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  setInvFocused(false);
                   setTimeout(() => { if (!addItemId) setInvSearch(''); }, 150);
                 }
               }}
             >
               <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>วัตถุดิบ</label>
               <input
-                placeholder="พิมพ์เพื่อค้นหา..."
+                placeholder="พิมพ์เพื่อค้นหา หรือกดเพื่อเลือก..."
                 value={invSearch}
+                onFocus={() => setInvFocused(true)}
                 onChange={e => { setInvSearch(e.target.value); setAddItemId(''); }}
                 style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--color-border)', fontSize: 13, background: 'var(--color-bg)', boxSizing: 'border-box' }}
               />
-              {invSearch.length > 0 && invItems.length > 0 && (
+              {invFocused && invItems.length > 0 && (
                 <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 7, background: 'var(--color-surface)', zIndex: 20, maxHeight: 180, overflowY: 'auto', marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
                   {invItems.slice(0, 8).map(it => (
                     <div
                       key={it.id}
-                      onClick={() => { setAddItemId(it.id); setInvSearch(it.name); }}
+                      onClick={() => { setAddItemId(it.id); setInvSearch(it.name); setInvFocused(false); }}
                       style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}
                     >
                       <span>{it.name}</span>

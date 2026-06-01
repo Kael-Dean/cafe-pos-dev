@@ -27,6 +27,8 @@ export interface CreateOrderPayload {
   member_id?: string;            // MembershipAccount.id from lookup (NOT customer_id)
   redeem_reward?: boolean;       // deduct points + apply server-computed discount
   reward_product_id?: string | null; // required when reward_type = FREE_ITEM
+  // ── Promotions (optional; defaults to [] server-side) ──
+  promotion_ids?: string[];      // selected eligible promotion ids; re-validated at checkout
 }
 
 // ── Backend shapes ────────────────────────────────────────────────────────────

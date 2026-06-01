@@ -6,6 +6,7 @@ interface RecipeItemRead {
   id: string;
   inventory_item_id: string;
   quantity: string | number;   // Decimal
+  cost_per_unit: string | number; // Decimal — unit cost of the ingredient (from inventory)
 }
 
 interface ModifierGroupSummary {
@@ -24,6 +25,7 @@ interface ProductDetailRead {
   description: string | null;
   price: string | number;
   is_active: boolean;
+  servings_per_batch: number;
   recipe: RecipeItemRead[];
   modifier_groups: ModifierGroupSummary[];
 }
@@ -32,6 +34,7 @@ interface ProductDetailRead {
 export interface RecipeItem {
   invId: string;
   qty: number;
+  costPerUnit?: number;   // populated from the API; absent on locally-added rows
 }
 
 export interface ProductDetail {
@@ -39,6 +42,7 @@ export interface ProductDetail {
   name: string;
   nameEn: string;
   price: number;
+  servingsPerBatch: number;
   hasModifiers: boolean;
   modifierGroupIds: string[];
   recipe: RecipeItem[];
@@ -51,11 +55,13 @@ function mapDetail(p: ProductDetailRead): ProductDetail {
     name: p.name,
     nameEn: p.name,
     price: Number(p.price),
+    servingsPerBatch: p.servings_per_batch ?? 1,
     hasModifiers: groups.length > 0,
     modifierGroupIds: groups.map(g => g.id),
     recipe: (p.recipe ?? []).map(r => ({
       invId: r.inventory_item_id,
       qty: Number(r.quantity),   // "quantity" in backend, "qty" in frontend
+      costPerUnit: Number(r.cost_per_unit ?? 0),
     })),
   };
 }
