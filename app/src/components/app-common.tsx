@@ -58,6 +58,7 @@ export const NAV: NavItem[] = [
   { id: 'cash',      label: 'Cash',            icon: 'cash',     adminOnly: true },
   { id: 'div1',      label: '',                divider: true },
   { id: 'promotions',label: 'Promotions',      icon: 'tag' },
+  { id: 'members',   label: 'สมาชิก / Members', icon: 'customers', adminOnly: true },
   { id: 'protocols', label: 'Protocols / SOP', icon: 'check' },
   { id: 'shifts',    label: 'ตารางกะ',          icon: 'calendar' },
   { id: 'hr',        label: 'HR & Admin',      icon: 'staff',    adminOnly: true },

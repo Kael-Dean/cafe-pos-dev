@@ -5,6 +5,7 @@ import Icon from '../icons';
 import { useToast, Tag, baht } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { usePromotions, useCreatePromotion, useUpdatePromotion, useDeletePromotion } from '@/hooks/use-promotions';
+import LoyaltyConfig from './loyalty-config';
 
 type DiscountType = 'PERCENT' | 'FIXED' | 'GIFT';
 
@@ -90,6 +91,7 @@ export default function PromotionsScreen() {
   const deletePromo = useDeletePromotion();
 
   const [showForm, setShowForm] = useState(false);
+  const [mainTab, setMainTab] = useState<'promos' | 'loyalty'>('promos');
   const [filterActive, setFilterActive] = useState<'all' | 'active' | 'inactive'>('all');
   const [form, setForm] = useState({
     name: '', description: '', discount_type: 'PERCENT' as DiscountType,
@@ -140,6 +142,21 @@ export default function PromotionsScreen() {
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
+      {/* Top-level section tabs */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+        {([['promos', 'โปรโมชั่น / คูปอง'], ['loyalty', 'สมาชิก / สะสมแต้ม']] as const).map(([v, l]) => (
+          <button key={v} onClick={() => setMainTab(v)}
+            style={{
+              padding: '9px 18px', borderRadius: 999, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              border: `1px solid ${mainTab === v ? 'var(--color-primary)' : 'var(--color-border)'}`,
+              background: mainTab === v ? 'var(--color-primary)' : 'var(--color-surface)',
+              color: mainTab === v ? 'white' : 'var(--color-text-secondary)',
+            }}>{l}</button>
+        ))}
+      </div>
+
+      {mainTab === 'loyalty' ? <LoyaltyConfig /> : (
+      <>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
@@ -251,6 +268,8 @@ export default function PromotionsScreen() {
             <PromoCard key={p.id} p={p as Parameters<typeof PromoCard>[0]['p']} onToggle={handleToggle} onDelete={handleDelete} admin={admin} />
           ))}
         </div>
+      )}
+      </>
       )}
     </div>
   );

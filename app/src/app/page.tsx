@@ -21,11 +21,12 @@ import { Customers, Reports, Settings } from '@/components/screens/placeholders'
 import HardwareScreen from '@/components/screens/hardware';
 import CatalogAdmin from '@/components/screens/catalog';
 import StockTakeScreen from '@/components/screens/stock-take';
+import MembersScreen from '@/components/screens/members';
 
 type Screen =
   | 'pos' | 'kds' | 'dashboard' | 'bom' | 'bakery' | 'inventory'
   | 'pre-orders' | 'shopping-list' | 'stock-take'
-  | 'cash' | 'promotions' | 'protocols' | 'hr' | 'shifts'
+  | 'cash' | 'promotions' | 'members' | 'protocols' | 'hr' | 'shifts'
   | 'hardware' | 'customers' | 'reports' | 'catalog' | 'settings';
 
 export default function POS() {
@@ -67,6 +68,7 @@ export default function POS() {
     'stock-take':    <StockTakeScreen />,
     cash:       <CashReconciliation />,
     promotions: <PromotionsScreen />,
+    members:    <MembersScreen />,
     protocols:  <ProtocolsScreen />,
     hr:         <HRDashboard />,
     shifts:     <ShiftSchedule />,

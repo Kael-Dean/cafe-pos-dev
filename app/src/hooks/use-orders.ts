@@ -23,6 +23,10 @@ export interface CreateOrderPayload {
     quantity: number;
     modifier_ids: string[];
   }[];
+  // ── Membership (optional; silently ignored when no/inactive programme) ──
+  member_id?: string;            // MembershipAccount.id from lookup (NOT customer_id)
+  redeem_reward?: boolean;       // deduct points + apply server-computed discount
+  reward_product_id?: string | null; // required when reward_type = FREE_ITEM
 }
 
 // ── Backend shapes ────────────────────────────────────────────────────────────
@@ -40,6 +44,11 @@ interface OrderRead {
   total: string | number;
   created_at: string;
   items?: OrderItemRead[];
+  // ── Membership (present when a member was attached) ──
+  discount?: string | number;
+  member_id?: string | null;
+  points_earned?: number;
+  reward_redeemed?: boolean;
 }
 
 interface OrdersPage {

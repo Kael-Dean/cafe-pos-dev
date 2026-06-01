@@ -19,6 +19,11 @@ export interface ReceiptData {
   paymentMethod: string;
   paymentLabel: string;
   cashGiven?: number;
+  // ── Membership (server-computed; present when a member was attached) ──
+  discount?: number;
+  memberName?: string;
+  pointsEarned?: number;
+  rewardRedeemed?: boolean;
 }
 
 export interface BuyerInfo {
@@ -414,6 +419,9 @@ export function ReceiptPaper({ data, buyer, invoiceNo, now, fmt, formatDate, for
       {/* ─── Summary ─── */}
       <div style={{ margin: '0 16px', borderTop: '2px solid #3D2817', padding: '12px 0 10px' }}>
         <SumRow label="มูลค่าก่อนภาษีมูลค่าเพิ่ม" value={fmt(data.subtotal)} fmt={fmt} />
+        {data.discount != null && data.discount > 0 && (
+          <SumRow label="ส่วนลดสมาชิก" value={`-${fmt(data.discount)}`} fmt={fmt} accent />
+        )}
         <SumRow label={`ภาษีมูลค่าเพิ่ม 7%`} value={fmt(data.vat)} fmt={fmt} />
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -436,6 +444,28 @@ export function ReceiptPaper({ data, buyer, invoiceNo, now, fmt, formatDate, for
             <SumRow label="รับเงินสด" value={fmt(data.cashGiven)} fmt={fmt} small />
             <SumRow label="เงินทอน" value={fmt(data.cashGiven - data.total)} fmt={fmt} small accent />
           </>
+        )}
+        {(data.memberName || data.pointsEarned != null || data.rewardRedeemed) && (
+          <div style={{ marginTop: 10, padding: '8px 0 0', borderTop: '1px dashed #DDD5C8' }}>
+            {data.memberName && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}>
+                <span style={{ color: '#8A7B6E' }}>สมาชิก</span>
+                <span style={{ fontWeight: 600, color: '#3D2817' }}>{data.memberName}</span>
+              </div>
+            )}
+            {data.rewardRedeemed && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}>
+                <span style={{ color: '#8A7B6E' }}>ใช้สิทธิ์แลกรางวัล</span>
+                <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>✓</span>
+              </div>
+            )}
+            {data.pointsEarned != null && data.pointsEarned > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}>
+                <span style={{ color: '#8A7B6E' }}>แต้มที่ได้รับ</span>
+                <span style={{ fontWeight: 700, color: 'var(--color-success)', fontFamily: '"Courier New", monospace' }}>+{data.pointsEarned}</span>
+              </div>
+            )}
+          </div>
         )}
       </div>
 

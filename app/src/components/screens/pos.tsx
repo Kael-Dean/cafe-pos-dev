@@ -9,9 +9,22 @@ import { useCreateOrder, usePayOrder } from '@/hooks/use-orders';
 import ModifierModal from './modifier-modal';
 import PaymentModal from './payment-modal';
 import ReceiptModal, { type ReceiptData } from './receipt-modal';
+import MembershipModal, { type MemberInfo } from './membership-modal';
+import { useMembershipProgram, type ProgramRead } from '@/hooks/use-membership';
 import { usePrinter } from '@/hooks/use-printer';
 
 interface CartLine { menuId: string; name: string; basePrice: number; unitPrice: number; qty: number; mods: string[]; modIds: string[]; modKey: string; }
+
+/** Cashier-facing ESTIMATE only — the server is authoritative for the final discount. */
+function estimateMemberDiscount(member: MemberInfo | null, program: ProgramRead | null | undefined, subtotal: number): number {
+  if (!member?.redeemReward) return 0;
+  const rt = member.program?.reward_type;
+  if (rt === 'FREE_ITEM') return Math.min(member.rewardProduct ? Math.round(Number(member.rewardProduct.price)) : 0, subtotal);
+  const rv = Number(program?.reward_value ?? 0);
+  if (rt === 'DISCOUNT_FIXED') return Math.min(Math.round(rv), subtotal);
+  if (rt === 'DISCOUNT_PERCENT') return Math.min(Math.round((subtotal * rv) / 100), subtotal);
+  return 0;
+}
 
 export default function POSTerminal() {
   const toast = useToast();
@@ -24,9 +37,12 @@ export default function POSTerminal() {
   const [payment, setPayment] = useState<string | null>(null);
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   const [activeTab, setActiveTab] = useState<'menu' | 'cart'>('menu');
+  const [showMembership, setShowMembership] = useState(false);
+  const [memberInfo, setMemberInfo] = useState<MemberInfo | null>(null);
 
   const { data: categories, isLoading: catsLoading } = useCategories();
   const { data: products, isLoading: prodLoading, isError } = useAllProducts();
+  const { data: program } = useMembershipProgram();
   const createOrder = useCreateOrder();
   const payOrder = usePayOrder();
   const { printReceipt } = usePrinter();
@@ -72,7 +88,7 @@ export default function POSTerminal() {
   }, [products, category, search]);
 
   const subtotal = cart.reduce((s, l) => s + l.unitPrice * l.qty, 0);
-  const discount = 0;
+  const discount = estimateMemberDiscount(memberInfo, program, subtotal);
   const vat = Math.round((subtotal - discount) * 0.07);
   const total = subtotal - discount + vat;
 
@@ -104,7 +120,7 @@ export default function POSTerminal() {
   };
 
   const removeLine = (i: number) => setCart((cur) => cur.filter((_, k) => k !== i));
-  const clearCart = () => { setCart([]); setBillNo((b) => b + 1); };
+  const clearCart = () => { setCart([]); setBillNo((b) => b + 1); setMemberInfo(null); };
 
   const PAY_LABEL: Record<string, string> = {
     cash: 'เงินสด', card: 'บัตรเครดิต', qr: 'QR PromptPay', line: 'LINE Pay',
@@ -116,6 +132,8 @@ export default function POSTerminal() {
     const subtotalSnapshot = subtotal;
     const vatSnapshot = vat;
     const totalSnapshot = total;
+    const discountSnapshot = discount;
+    const memberSnapshot = memberInfo;
     setPayment(null);
     clearCart();
     const methodMap: Record<string, 'CASH' | 'CARD' | 'QR_PROMPTPAY' | 'LINE_PAY'> = {
@@ -129,20 +147,41 @@ export default function POSTerminal() {
         quantity: l.qty,
         modifier_ids: l.modIds,
       })),
+      ...(memberSnapshot ? {
+        member_id: memberSnapshot.account.id,
+        redeem_reward: memberSnapshot.redeemReward,
+        reward_product_id: memberSnapshot.rewardProduct?.id ?? null,
+      } : {}),
     }).then(order =>
       payOrder.mutateAsync({
         orderId: order.id,
         payment_method: methodMap[method ?? 'cash'] ?? 'CASH',
       }).then(() => {
-        toast({ kind: 'success', title: 'ชำระเงินสำเร็จ', msg: `บิล ${order.order_number} • ${baht(totalSnapshot)} • ส่งครัวแล้ว`, duration: 3500 });
+        // Server is authoritative for discount/total when a member was attached.
+        const hasMember = !!memberSnapshot;
+        const serverTotal = order.total != null ? Number(order.total) : totalSnapshot;
+        const serverDiscount = order.discount != null ? Number(order.discount) : discountSnapshot;
+        const finalTotal = hasMember ? serverTotal : totalSnapshot;
+        const finalDiscount = hasMember ? serverDiscount : 0;
+        const finalVat = hasMember ? Math.max(0, Math.round(finalTotal - (subtotalSnapshot - finalDiscount))) : vatSnapshot;
+        const earned = order.points_earned ?? 0;
+        toast({
+          kind: 'success', title: 'ชำระเงินสำเร็จ',
+          msg: `บิล ${order.order_number} • ${baht(finalTotal)}${earned > 0 ? ` • +${earned} แต้ม` : ''} • ส่งครัวแล้ว`,
+          duration: 3500,
+        });
         setReceiptData({
           orderNumber: String(order.order_number),
           items: cartSnapshot.map(l => ({ name: l.name, qty: l.qty, unitPrice: l.unitPrice, mods: l.mods.length ? l.mods : undefined })),
           subtotal: subtotalSnapshot,
-          vat: vatSnapshot,
-          total: totalSnapshot,
+          vat: finalVat,
+          total: finalTotal,
           paymentMethod: method ?? 'cash',
           paymentLabel: PAY_LABEL[method ?? 'cash'] ?? method ?? 'cash',
+          discount: finalDiscount > 0 ? finalDiscount : undefined,
+          memberName: memberSnapshot?.account.customer_name,
+          pointsEarned: hasMember ? earned : undefined,
+          rewardRedeemed: order.reward_redeemed,
         });
       })
     ).catch(() => {
@@ -275,10 +314,29 @@ export default function POSTerminal() {
               <div style={{fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500}}>บิลปัจจุบัน</div>
               <div style={{fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em'}} className="num">A0{billNo}</div>
             </div>
-            <div style={{display: 'flex', gap: 6}}>
-              <button className="btn btn-ghost" style={{padding: '8px 12px', fontSize: 12}}>
-                <Icon name="user" size={14}/> ลูกค้า
-              </button>
+            <div style={{display: 'flex', gap: 6, alignItems: 'center'}}>
+              {memberInfo ? (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px 6px 12px',
+                  borderRadius: 999, background: 'var(--color-accent-50)', border: '1px solid var(--color-accent)',
+                }}>
+                  <Icon name="user" size={14} color="var(--color-accent-600)" />
+                  <div style={{lineHeight: 1.1}}>
+                    <div style={{fontSize: 12, fontWeight: 700, color: 'var(--color-primary-700)'}}>{memberInfo.account.customer_name}</div>
+                    <div style={{fontSize: 10, color: 'var(--color-accent-600)'}}>
+                      {memberInfo.account.points_balance.toLocaleString()} แต้ม{memberInfo.redeemReward ? ' • แลกรางวัล' : ''}
+                    </div>
+                  </div>
+                  <button onClick={() => setMemberInfo(null)} title="นำสมาชิกออก"
+                    style={{width: 22, height: 22, borderRadius: 999, display: 'grid', placeItems: 'center', color: 'var(--color-accent-600)'}}>
+                    <Icon name="x" size={13} />
+                  </button>
+                </div>
+              ) : (
+                <button className="btn btn-ghost" style={{padding: '8px 12px', fontSize: 12}} onClick={() => setShowMembership(true)}>
+                  <Icon name="user" size={14}/> ลูกค้า
+                </button>
+              )}
               <button className="btn btn-ghost" style={{padding: 8}} title="Park bill">
                 <Icon name="park" size={16}/>
               </button>
@@ -302,7 +360,9 @@ export default function POSTerminal() {
             <div style={{padding: 20, background: 'var(--color-surface-2)'}}>
               <Row label="Subtotal" value={baht(subtotal)} />
               <Row label="VAT 7%"  value={baht(vat)} />
-              <Row label="ส่วนลด"  value={baht(0)} muted />
+              {discount > 0
+                ? <Row label="ส่วนลดสมาชิก (โดยประมาณ)" value={`-${baht(discount)}`} />
+                : <Row label="ส่วนลด" value={baht(0)} muted />}
               <div style={{height: 1, background: 'var(--color-border)', margin: '12px 0'}}/>
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'baseline'}}>
                 <div style={{fontSize: 15, fontWeight: 600}}>รวมทั้งสิ้น</div>
@@ -343,6 +403,12 @@ export default function POSTerminal() {
             setModifierItem(null);
             setModifierGroupIds([]);
           }}
+        />
+      )}
+      {showMembership && (
+        <MembershipModal
+          onClose={() => setShowMembership(false)}
+          onSelectMember={(info) => { setMemberInfo(info); setShowMembership(false); }}
         />
       )}
       {payment && (
