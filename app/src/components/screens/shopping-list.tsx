@@ -104,8 +104,10 @@ export default function ShoppingListScreen() {
                   {invItems.slice(0, 8).map(it => (
                     <div
                       key={it.id}
-                      onClick={() => { setAddItemId(it.id); setInvSearch(it.name); setInvFocused(false); }}
-                      style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}
+                      onMouseDown={(e) => { e.preventDefault(); setAddItemId(it.id); setInvSearch(it.name); setInvFocused(false); }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-2)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                      style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', background: 'transparent' }}
                     >
                       <span>{it.name}</span>
                       <span style={{ color: 'var(--color-text-secondary)' }}>{it.unit}</span>
