@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import Icon from '../icons';
 import { useToast, Tag } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
@@ -8,6 +9,7 @@ import {
   useMembers,
   useMemberDetail,
   useAdjustPoints,
+  useRegisterMember,
   type MembershipTier,
   type PointTxType,
 } from '@/hooks/use-membership';
@@ -32,6 +34,7 @@ export default function MembersScreen() {
   const [query, setQuery] = useState<{ name?: string; phone?: string }>({});
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showRegister, setShowRegister] = useState(false);
 
   const limit = 50;
   const { data, isLoading } = useMembers({ ...query, page, limit });
@@ -54,9 +57,15 @@ export default function MembersScreen() {
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>สมาชิก / Members</h1>
-        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>จัดการสมาชิกสะสมแต้มและประวัติแต้ม · ทั้งหมด {total.toLocaleString()} คน</div>
+      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+        <div style={{ flex: 1 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>สมาชิก / Members</h1>
+          <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>จัดการสมาชิกสะสมแต้มและประวัติแต้ม · ทั้งหมด {total.toLocaleString()} คน</div>
+        </div>
+        <button onClick={() => setShowRegister(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 8, background: 'var(--color-primary)', color: 'white', fontWeight: 600, fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <Icon name="plus" size={16} /> สมัครสมาชิก
+        </button>
       </div>
 
       {/* Search */}
@@ -118,6 +127,77 @@ export default function MembersScreen() {
       )}
 
       {selectedId && <MemberDetailModal accountId={selectedId} onClose={() => setSelectedId(null)} />}
+      {showRegister && (
+        <RegisterMemberModal
+          onClose={() => setShowRegister(false)}
+          onRegistered={(account) => { setShowRegister(false); setSelectedId(account.id); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function RegisterMemberModal({ onClose, onRegistered }: { onClose: () => void; onRegistered: (account: { id: string }) => void }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const register = useRegisterMember();
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [dob, setDob] = useState('');
+
+  const submit = async () => {
+    if (!name.trim()) { toast({ kind: 'warning', title: 'กรอกชื่อสมาชิก' }); return; }
+    if (!phone.trim()) { toast({ kind: 'warning', title: 'กรอกเบอร์โทร' }); return; }
+    try {
+      const account = await register.mutateAsync({ name: name.trim(), phone: phone.trim(), date_of_birth: dob || undefined });
+      await qc.invalidateQueries({ queryKey: ['membership', 'members'] });
+      toast({ kind: 'success', title: 'สมัครสมาชิกแล้ว', msg: account.customer_name });
+      onRegistered(account);
+    } catch (e: unknown) {
+      // 409 when the phone is already a member — surfaced via ApiError.message.
+      toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) });
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 'min(440px, 94vw)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--color-accent-50)', color: 'var(--color-accent-600)', display: 'grid', placeItems: 'center' }}>
+            <Icon name="user" size={22} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 17, fontWeight: 700 }}>สมัครสมาชิกใหม่</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>กรอกข้อมูลเพื่อสมัครสมาชิกสะสมแต้ม</div>
+          </div>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center', color: 'var(--color-text-secondary)' }}><Icon name="x" size={18} /></button>
+        </div>
+
+        <div style={{ padding: '20px 24px', display: 'grid', gap: 14 }}>
+          <div>
+            <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ชื่อ *</label>
+            <input value={name} onChange={e => setName(e.target.value)} style={IS} placeholder="ชื่อ-นามสกุล" />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>เบอร์โทรศัพท์ *</label>
+            <input value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" style={IS} placeholder="08XXXXXXXX"
+              onKeyDown={e => { if (e.key === 'Enter') submit(); }} />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>วันเกิด (ไม่บังคับ)</label>
+            <input value={dob} onChange={e => setDob(e.target.value)} type="date" style={IS} />
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>ใช้สำหรับโบนัสวันเกิด</div>
+          </div>
+        </div>
+
+        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 10, background: 'var(--color-surface-2)' }}>
+          <button onClick={onClose} style={{ padding: '11px 18px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, cursor: 'pointer' }}>ยกเลิก</button>
+          <button onClick={submit} disabled={register.isPending}
+            style={{ flex: 1, padding: '11px 18px', borderRadius: 8, background: 'var(--color-primary)', color: 'white', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+            {register.isPending ? 'กำลังสมัคร...' : 'สมัครสมาชิก'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
