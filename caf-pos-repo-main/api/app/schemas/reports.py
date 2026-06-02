@@ -39,6 +39,8 @@ class CogsItem(BaseModel):
     quantity_sold: Decimal
     cost_per_unit: Decimal
     total_cogs: Decimal
+    unit_size: Decimal | None = None
+    pieces_consumed: Decimal | None = None
 
 
 class CogsReportRead(BaseModel):

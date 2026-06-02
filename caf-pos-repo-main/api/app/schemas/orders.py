@@ -18,6 +18,10 @@ class CreateOrderRequest(BaseModel):
     customer_id: str | None = None
     customer_note: str | None = None
     items: list[OrderItemIn] = Field(min_length=1)
+    member_id: str | None = None
+    redeem_reward: bool = False
+    reward_product_id: str | None = None
+    promotion_ids: list[str] = Field(default_factory=list)
 
 
 class PayOrderRequest(BaseModel):

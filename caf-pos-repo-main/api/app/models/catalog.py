@@ -1,10 +1,12 @@
 from decimal import Decimal
 
 from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
 from app.db.types import new_cuid
+from app.enums import ProductType
 
 
 class Category(Base, TimestampMixin):
@@ -34,6 +36,15 @@ class Product(Base, TimestampMixin):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    product_type: Mapped[ProductType] = mapped_column(
+        SAEnum(ProductType, name="product_type"),
+        nullable=False,
+        default=ProductType.MADE_TO_ORDER,
+    )
+    servings_per_batch: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    finished_goods_item_id: Mapped[str | None] = mapped_column(
+        String(24), ForeignKey("inventory_items.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class RecipeItem(Base):
@@ -93,3 +104,15 @@ class ProductModifierGroup(Base):
         String(24), ForeignKey("modifier_groups.id", ondelete="CASCADE"), nullable=False
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class CookingStep(Base):
+    __tablename__ = "cooking_steps"
+    __table_args__ = (UniqueConstraint("product_id", "sort_order", name="uq_cooking_steps_product_order"),)
+
+    id: Mapped[str] = mapped_column(String(24), primary_key=True, default=new_cuid)
+    product_id: Mapped[str] = mapped_column(
+        String(24), ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    instruction: Mapped[str] = mapped_column(String(500), nullable=False)

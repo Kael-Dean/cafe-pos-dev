@@ -1,4 +1,3 @@
-import pytest
 
 
 async def test_login_returns_token_pair(client, store_a, user_a):
@@ -72,7 +71,7 @@ async def test_refresh_rejects_access_token(client, store_a, user_a):
 
 
 async def test_login_rate_limited(client, store_a, user_a):
-    for i in range(5):
+    for _i in range(5):
         await client.post(
             "/api/v1/auth/login",
             json={"store_slug": store_a.slug, "pin": "0000"},

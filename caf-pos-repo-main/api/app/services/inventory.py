@@ -16,14 +16,13 @@ from app.schemas.inventory import (
     InventoryItemCreate,
     InventoryItemUpdate,
     MovementsPage,
-    ReceiveStockRequest,
     StockMovementRead,
+    SupplierHistoryItem,
     WasteRequest,
 )
 
 logger = logging.getLogger(__name__)
 
-_RECEIVE_PREFIX = "RECEIVE"
 _DEFAULT_PAGE = 50
 _MAX_PAGE = 200
 
@@ -48,9 +47,9 @@ async def create_item(
             name=payload.name,
             unit=payload.unit,
             par_level=payload.par_level,
-            cost_per_unit=payload.cost_per_unit,
+            cost_per_unit=Decimal("0"),
             is_active=payload.is_active,
-            expiry_date=payload.expiry_date,
+            unit_size=payload.unit_size,
         )
         db.add(item)
     return item
@@ -90,8 +89,8 @@ async def update_item(
             item.par_level = payload.par_level
         if payload.cost_per_unit is not None:
             item.cost_per_unit = payload.cost_per_unit
-        if payload.expiry_date is not None:
-            item.expiry_date = payload.expiry_date
+        await db.flush()
+        await db.refresh(item)
     return item
 
 
@@ -104,31 +103,6 @@ async def delete_item(
     async with db.begin():
         item = await _load_item(db, store_id=store_id, item_id=item_id)
         item.is_active = False
-
-
-async def receive_stock(
-    db: AsyncSession,
-    *,
-    store_id: str,
-    user_id: str,
-    req: ReceiveStockRequest,
-) -> InventoryItem:
-    async with db.begin():
-        item = await _load_item(db, store_id=store_id, item_id=req.item_id)
-        _require_active(item)
-        item.stock_on_hand = item.stock_on_hand + req.qty
-        item.cost_per_unit = req.cost_per_unit
-        db.add(
-            StockMovement(
-                store_id=store_id,
-                inventory_item_id=item.id,
-                type=MovementType.RECEIVE,
-                quantity=req.qty,
-                reason=_encode_receive_reason(req.supplier, req.note),
-                created_by_id=user_id,
-            )
-        )
-    return item
 
 
 async def record_waste(
@@ -259,6 +233,69 @@ async def low_stock(db: AsyncSession, *, store_id: str) -> list[InventoryItem]:
     return list(result.scalars())
 
 
+async def list_expired(db: AsyncSession, *, store_id: str) -> list:
+    from datetime import date as _date
+
+    from app.models.receipts import StockLot
+    from app.schemas.receipts import ExpiredLotRead
+
+    today = _date.today()
+    result = await db.execute(
+        select(StockLot, InventoryItem.name, InventoryItem.unit)
+        .join(InventoryItem, InventoryItem.id == StockLot.inventory_item_id)
+        .where(
+            StockLot.store_id == store_id,
+            StockLot.expiry_date.is_not(None),
+            StockLot.expiry_date < today,
+            StockLot.qty_remaining > 0,
+        )
+        .order_by(StockLot.expiry_date)
+    )
+    return [
+        ExpiredLotRead(
+            lot_id=lot.id,
+            inventory_item_id=lot.inventory_item_id,
+            inventory_item_name=item_name,
+            unit=item_unit,
+            qty_remaining=lot.qty_remaining,
+            expiry_date=lot.expiry_date,
+        )
+        for lot, item_name, item_unit in result.all()
+    ]
+
+
+async def get_supplier_history(
+    db: AsyncSession,
+    *,
+    store_id: str,
+    item_id: str,
+) -> list[SupplierHistoryItem]:
+    await _load_item(db, store_id=store_id, item_id=item_id)
+    result = await db.execute(
+        select(StockMovement)
+        .where(
+            StockMovement.store_id == store_id,
+            StockMovement.inventory_item_id == item_id,
+            StockMovement.type == MovementType.RECEIVE,
+        )
+        .order_by(StockMovement.created_at.desc())
+    )
+    rows = list(result.scalars())
+    history = []
+    for m in rows:
+        _, note, supplier, _ = _decode_movement_reason(m.type, m.reason)
+        history.append(
+            SupplierHistoryItem(
+                supplier=supplier,
+                unit_cost=m.unit_cost,
+                quantity=m.quantity,
+                received_at=m.created_at,
+                note=note,
+            )
+        )
+    return history
+
+
 # -- helpers ----------------------------------------------------------------
 
 
@@ -279,10 +316,6 @@ def _require_active(item: InventoryItem) -> None:
 
 def _encode_waste_reason(code: WastageReason, note: str | None) -> str:
     return f"{code.value}|{note or ''}"
-
-
-def _encode_receive_reason(supplier: str | None, note: str | None) -> str:
-    return f"{_RECEIVE_PREFIX}|supplier={supplier or ''};note={note or ''}"
 
 
 def _encode_adjust_reason(delta: Decimal, reason: str) -> str:
@@ -325,6 +358,7 @@ def _movement_to_read(movement: StockMovement, *, created_by_name: str) -> Stock
         type=movement.type,
         inventory_item_id=movement.inventory_item_id,
         quantity=movement.quantity,
+        unit_cost=movement.unit_cost,
         reason_code=code,
         note=note,
         supplier=supplier,
@@ -336,7 +370,7 @@ def _movement_to_read(movement: StockMovement, *, created_by_name: str) -> Stock
 
 
 def _encode_cursor(created_at: datetime, ident: str) -> str:
-    raw = f"{created_at.isoformat()}|{ident}".encode("utf-8")
+    raw = f"{created_at.isoformat()}|{ident}".encode()
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
 

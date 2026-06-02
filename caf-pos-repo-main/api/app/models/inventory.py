@@ -1,11 +1,9 @@
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
-    Date,
     DateTime,
-    Enum as SAEnum,
     ForeignKey,
     Index,
     Numeric,
@@ -13,6 +11,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+)
+from sqlalchemy import (
+    Enum as SAEnum,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -35,7 +36,8 @@ class InventoryItem(Base, TimestampMixin):
     stock_on_hand: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False, default=Decimal("0"))
     par_level: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False, default=Decimal("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    unit_size: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    unit_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
 
 class StockMovement(Base):
@@ -55,6 +57,7 @@ class StockMovement(Base):
     type: Mapped[MovementType] = mapped_column(SAEnum(MovementType, name="movement_type"), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
     ref_order_id: Mapped[str | None] = mapped_column(String(24), nullable=True)
     created_by_id: Mapped[str] = mapped_column(
         String(24), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False

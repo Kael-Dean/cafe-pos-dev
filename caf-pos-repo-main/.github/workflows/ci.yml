@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [dev]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run ruff
+        run: uv run ruff check .
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cafe_pos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/cafe_pos
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/cafe_pos_test
+      JWT_SECRET: ci-test-secret-do-not-use-in-prod
+      PUSHER_APP_ID: fake
+      PUSHER_KEY: fake
+      PUSHER_SECRET: fake
+      PUSHER_CLUSTER: ap1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create test database
+        run: psql postgresql://postgres:postgres@localhost:5432 -c 'CREATE DATABASE cafe_pos_test;'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run migrations
+        run: uv run alembic upgrade head
+
+      - name: Run tests
+        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=70

@@ -1,13 +1,12 @@
-"""Service-layer tests for the Catalog module (Tier 3).
+﻿"""Service-layer tests for the Catalog module (Tier 3).
 
 Run with: pytest tests/test_catalog_service.py -v
-All tests use the transactional `db` fixture — data is wiped between sessions.
+All tests use the transactional `db` fixture â€” data is wiped between sessions.
 """
 import secrets
 from decimal import Decimal
 
 import pytest
-import pytest_asyncio
 
 from app.models.catalog import ProductModifierGroup, RecipeItem
 from app.schemas.catalog import (
@@ -25,7 +24,6 @@ from app.schemas.catalog import (
 from app.services import catalog as svc
 from tests.conftest import make_category, make_item, make_modifier_group, make_product
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -40,7 +38,6 @@ def uid(prefix: str = "") -> str:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_list_categories_scoped_to_store(db, store_a, store_b):
     cat_a = await make_category(db, store_id=store_a.id, name=f"cat-{uid()}")
     await make_category(db, store_id=store_b.id, name=f"cat-{uid()}")
@@ -54,7 +51,6 @@ async def test_list_categories_scoped_to_store(db, store_a, store_b):
         assert c.id not in ids or c.store_id == store_b.id
 
 
-@pytest.mark.asyncio
 async def test_create_category(db, store_a):
     payload = CategoryCreate(name=f"Hot {uid()}", sort_order=2)
     cat = await svc.create_category(db, store_id=store_a.id, payload=payload)
@@ -65,7 +61,6 @@ async def test_create_category(db, store_a):
     assert cat.is_active is True
 
 
-@pytest.mark.asyncio
 async def test_update_category(db, store_a):
     cat = await make_category(db, store_id=store_a.id, name=f"Old {uid()}")
     updated = await svc.update_category(
@@ -78,7 +73,6 @@ async def test_update_category(db, store_a):
     assert updated.sort_order == 5
 
 
-@pytest.mark.asyncio
 async def test_delete_category_with_active_products_raises_conflict(db, store_a):
     from app.core.errors import Conflict
 
@@ -89,14 +83,12 @@ async def test_delete_category_with_active_products_raises_conflict(db, store_a)
         await svc.delete_category(db, store_id=store_a.id, category_id=cat.id)
 
 
-@pytest.mark.asyncio
 async def test_delete_category_without_products_soft_deletes(db, store_a):
     cat = await make_category(db, store_id=store_a.id, name=f"empty-{uid()}")
     await svc.delete_category(db, store_id=store_a.id, category_id=cat.id)
     assert cat.is_active is False
 
 
-@pytest.mark.asyncio
 async def test_delete_category_cross_store_returns_404(db, store_a, store_b):
     from app.core.errors import NotFound
 
@@ -110,7 +102,6 @@ async def test_delete_category_cross_store_returns_404(db, store_a, store_b):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_list_products_scoped_to_store(db, store_a, store_b):
     p_a = await make_product(db, store_id=store_a.id, name=f"prod-a-{uid()}")
     p_b = await make_product(db, store_id=store_b.id, name=f"prod-b-{uid()}")
@@ -121,7 +112,6 @@ async def test_list_products_scoped_to_store(db, store_a, store_b):
     assert p_b.id not in ids_a
 
 
-@pytest.mark.asyncio
 async def test_list_products_filter_by_category(db, store_a):
     cat = await make_category(db, store_id=store_a.id, name=f"filt-{uid()}")
     in_cat = await make_product(db, store_id=store_a.id, name=f"in-{uid()}", category_id=cat.id)
@@ -134,7 +124,6 @@ async def test_list_products_filter_by_category(db, store_a):
         assert p.category_id == cat.id
 
 
-@pytest.mark.asyncio
 async def test_list_products_filter_by_search(db, store_a):
     token = uid("search-")
     match = await make_product(db, store_id=store_a.id, name=f"Mocha {token}")
@@ -145,7 +134,6 @@ async def test_list_products_filter_by_search(db, store_a):
     assert match.id in ids
 
 
-@pytest.mark.asyncio
 async def test_create_product(db, store_a):
     cat = await make_category(db, store_id=store_a.id, name=f"cat-{uid()}")
     payload = ProductCreate(
@@ -162,7 +150,6 @@ async def test_create_product(db, store_a):
     assert product.category_id == cat.id
 
 
-@pytest.mark.asyncio
 async def test_update_product_fields(db, store_a):
     product = await make_product(db, store_id=store_a.id, name=f"old-{uid()}")
     updated = await svc.update_product(
@@ -175,14 +162,12 @@ async def test_update_product_fields(db, store_a):
     assert updated.price == Decimal("99.00")
 
 
-@pytest.mark.asyncio
 async def test_delete_product_soft_deletes(db, store_a):
     product = await make_product(db, store_id=store_a.id, name=f"del-{uid()}")
     await svc.delete_product(db, store_id=store_a.id, product_id=product.id)
     assert product.is_active is False
 
 
-@pytest.mark.asyncio
 async def test_get_product_detail_cross_store_returns_404(db, store_a, store_b):
     from app.core.errors import NotFound
 
@@ -196,7 +181,6 @@ async def test_get_product_detail_cross_store_returns_404(db, store_a, store_b):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_replace_recipe_bulk_replaces(db, store_a):
     from sqlalchemy import select
 
@@ -231,12 +215,10 @@ async def test_replace_recipe_bulk_replaces(db, store_a):
     assert result2[0].inventory_item_id == item2.id
 
     # Confirm only one RecipeItem row exists in DB for this product
-    from sqlalchemy.ext.asyncio import AsyncSession
     rows = (await db.execute(select(RecipeItem).where(RecipeItem.product_id == product.id))).scalars().all()
     assert len(rows) == 1
 
 
-@pytest.mark.asyncio
 async def test_get_product_detail_includes_recipe(db, store_a):
     product = await make_product(db, store_id=store_a.id, name=f"detail-{uid()}")
     item = await make_item(db, store_id=store_a.id, name=f"beans-{uid()}")
@@ -256,12 +238,31 @@ async def test_get_product_detail_includes_recipe(db, store_a):
     assert detail.recipe[0].quantity == Decimal("15")
 
 
+@pytest.mark.asyncio
+async def test_get_product_detail_recipe_includes_cost_per_unit(db, store_a):
+    product = await make_product(db, store_id=store_a.id, name=f"cost-product-{uid()}")
+    item = await make_item(
+        db, store_id=store_a.id, name=f"beans-{uid()}", cost_per_unit=Decimal("2.5000")
+    )
+    await svc.replace_recipe(
+        db,
+        store_id=store_a.id,
+        product_id=product.id,
+        payload=RecipeBulkReplace(
+            items=[RecipeItemInput(inventory_item_id=item.id, quantity=Decimal("10"))]
+        ),
+    )
+
+    detail = await svc.get_product_detail(db, store_id=store_a.id, product_id=product.id)
+    assert len(detail.recipe) == 1
+    assert detail.recipe[0].cost_per_unit == Decimal("2.5000")
+
+
 # ---------------------------------------------------------------------------
 # Modifier Groups
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_create_modifier_group_with_modifiers(db, store_a):
     payload = ModifierGroupCreate(
         name=f"Size {uid()}",
@@ -283,7 +284,6 @@ async def test_create_modifier_group_with_modifiers(db, store_a):
     assert "Large" in names
 
 
-@pytest.mark.asyncio
 async def test_update_modifier_group_replaces_modifiers(db, store_a):
     group = await make_modifier_group(
         db,
@@ -309,14 +309,12 @@ async def test_update_modifier_group_replaces_modifiers(db, store_a):
     assert "Hot" in names
 
 
-@pytest.mark.asyncio
 async def test_delete_modifier_group_soft_deletes(db, store_a):
     group_orm = await make_modifier_group(db, store_id=store_a.id, name=f"del-grp-{uid()}")
     await svc.delete_modifier_group(db, store_id=store_a.id, group_id=group_orm.id)
     assert group_orm.is_active is False
 
 
-@pytest.mark.asyncio
 async def test_list_modifier_groups_scoped_to_store(db, store_a, store_b):
     g_a = await make_modifier_group(db, store_id=store_a.id, name=f"grp-a-{uid()}")
     await make_modifier_group(db, store_id=store_b.id, name=f"grp-b-{uid()}")
@@ -329,11 +327,10 @@ async def test_list_modifier_groups_scoped_to_store(db, store_a, store_b):
 
 
 # ---------------------------------------------------------------------------
-# Product ↔ ModifierGroup links
+# Product â†” ModifierGroup links
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_replace_product_modifier_groups(db, store_a):
     from sqlalchemy import select
 
@@ -362,7 +359,6 @@ async def test_replace_product_modifier_groups(db, store_a):
     assert rows[1].sort_order == 1
 
 
-@pytest.mark.asyncio
 async def test_get_product_detail_includes_modifier_groups(db, store_a):
     product = await make_product(db, store_id=store_a.id, name=f"detail-mg-{uid()}")
     group = await make_modifier_group(
@@ -384,3 +380,104 @@ async def test_get_product_detail_includes_modifier_groups(db, store_a):
     assert detail.modifier_groups[0].id == group.id
     assert len(detail.modifier_groups[0].modifiers) == 1
     assert detail.modifier_groups[0].modifiers[0].name == "Oat Milk"
+
+
+# ---------------------------------------------------------------------------
+# Product type — PRODUCED creation
+# ---------------------------------------------------------------------------
+
+
+async def test_create_produced_product_auto_creates_inventory_item(db, store_a):
+    from sqlalchemy import select
+
+    from app.enums import ProductType
+    from app.models.inventory import InventoryItem
+
+    payload = ProductCreate(
+        name=f"Cookies-{uid()}",
+        price=Decimal("25.00"),
+        product_type=ProductType.PRODUCED,
+        servings_per_batch=24,
+    )
+    product = await svc.create_product(db, store_id=store_a.id, payload=payload)
+
+    assert product.product_type == ProductType.PRODUCED
+    assert product.servings_per_batch == 24
+    assert product.finished_goods_item_id is not None
+
+    result = await db.execute(
+        select(InventoryItem).where(InventoryItem.id == product.finished_goods_item_id)
+    )
+    inv_item = result.scalar_one_or_none()
+    assert inv_item is not None
+    assert inv_item.unit == "piece"
+    assert inv_item.store_id == store_a.id
+
+
+async def test_create_made_to_order_product_no_inventory_item(db, store_a):
+    from app.enums import ProductType
+
+    payload = ProductCreate(
+        name=f"Latte-{uid()}",
+        price=Decimal("85.00"),
+        product_type=ProductType.MADE_TO_ORDER,
+    )
+    product = await svc.create_product(db, store_id=store_a.id, payload=payload)
+
+    assert product.product_type == ProductType.MADE_TO_ORDER
+    assert product.finished_goods_item_id is None
+
+
+async def test_switch_made_to_order_to_produced_creates_inventory_item(db, store_a):
+    from sqlalchemy import select
+
+    from app.enums import ProductType
+    from app.models.inventory import InventoryItem
+    from app.schemas.catalog import ProductUpdate
+
+    product = await make_product(db, store_id=store_a.id, name=f"Brownie-{uid()}")
+    assert product.finished_goods_item_id is None
+
+    updated = await svc.update_product(
+        db,
+        store_id=store_a.id,
+        product_id=product.id,
+        payload=ProductUpdate(product_type=ProductType.PRODUCED, servings_per_batch=16),
+    )
+
+    assert updated.product_type == ProductType.PRODUCED
+    assert updated.finished_goods_item_id is not None
+
+    result = await db.execute(
+        select(InventoryItem).where(InventoryItem.id == updated.finished_goods_item_id)
+    )
+    assert result.scalar_one_or_none() is not None
+
+
+async def test_switch_produced_to_made_to_order_nulls_link_preserves_item(db, store_a):
+    from sqlalchemy import select
+
+    from app.enums import ProductType
+    from app.models.inventory import InventoryItem
+    from app.schemas.catalog import ProductUpdate
+    from tests.factories import make_produced_product
+
+    product = await make_produced_product(db, store_id=store_a.id, name=f"Muffin-{uid()}")
+    original_inv_id = product.finished_goods_item_id
+    assert original_inv_id is not None
+
+    updated = await svc.update_product(
+        db,
+        store_id=store_a.id,
+        product_id=product.id,
+        payload=ProductUpdate(product_type=ProductType.MADE_TO_ORDER),
+    )
+
+    assert updated.product_type == ProductType.MADE_TO_ORDER
+    assert updated.finished_goods_item_id is None
+
+    # InventoryItem still exists
+    result = await db.execute(
+        select(InventoryItem).where(InventoryItem.id == original_inv_id)
+    )
+    assert result.scalar_one_or_none() is not None

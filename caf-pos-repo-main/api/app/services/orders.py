@@ -1,16 +1,20 @@
 import logging
+from datetime import date as _date
 from datetime import datetime
 from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import Conflict, NotFound
-from app.enums import MovementType, OrderStatus
+from app.enums import MovementType, OrderStatus, ProductType, ReceiptStatus
 from app.models.catalog import Modifier, Product, RecipeItem
 from app.models.inventory import InventoryItem, StockMovement
 from app.models.orders import Order, OrderItem, OrderVoidLog
+from app.models.promotions import PromotionRedemption
+from app.models.receipts import StockLot, StockReceipt
 from app.realtime.pusher import PusherClient
 from app.schemas.orders import (
     CreateOrderRequest,
@@ -61,13 +65,36 @@ async def create_order(
 
                 line_data.append({
                     "product_id": product.id,
+                    "category_id": product.category_id,
                     "product_name": product.name,
                     "quantity": item_in.quantity,
                     "unit_price": unit_price,
                     "line_total": unit_price * item_in.quantity,
                     "modifiers_json": _snapshot_modifiers(modifiers) if modifiers else None,
                     "mod_inv": mod_inv,
+                    "product_type": product.product_type,
+                    "finished_goods_item_id": product.finished_goods_item_id,
                 })
+
+            promotion_discount = Decimal("0")
+            applied_promotions: list[tuple[str, Decimal]] = []
+            if req.promotion_ids:
+                from app.services.promotions import apply_promotions
+                promo_cart_lines = [
+                    {
+                        "product_id": ld["product_id"],
+                        "category_id": ld["category_id"],
+                        "quantity": ld["quantity"],
+                        "line_total": ld["line_total"],
+                    }
+                    for ld in line_data
+                ]
+                promotion_discount, applied_promotions = await apply_promotions(
+                    db,
+                    store_id=store_id,
+                    promotion_ids=req.promotion_ids,
+                    cart_lines=promo_cart_lines,
+                )
 
             order = Order(
                 store_id=store_id,
@@ -77,7 +104,8 @@ async def create_order(
                 customer_id=req.customer_id,
                 customer_note=req.customer_note,
                 subtotal=grand_total,
-                total=grand_total,
+                discount=promotion_discount,
+                total=grand_total - promotion_discount,
                 created_by_id=user_id,
             )
             db.add(order)
@@ -96,30 +124,88 @@ async def create_order(
                     modifiers_json=ld["modifiers_json"],
                 ))
 
-                for ri in await _load_recipe(db, product_id=ld["product_id"]):
-                    qty = ri.quantity * ld["quantity"]
-                    inv_deductions[ri.inventory_item_id] = inv_deductions.get(ri.inventory_item_id, Decimal("0")) + qty
+                if ld["product_type"] == ProductType.PRODUCED:
+                    if not ld["finished_goods_item_id"]:
+                        raise HTTPException(
+                            status_code=500,
+                            detail="PRODUCT_MISCONFIGURED: PRODUCED product has no finished_goods_item_id",
+                        )
+                    qty = Decimal(str(ld["quantity"]))
+                    inv_deductions[ld["finished_goods_item_id"]] = (
+                        inv_deductions.get(ld["finished_goods_item_id"], Decimal("0")) + qty
+                    )
+                else:
+                    for ri in await _load_recipe(db, product_id=ld["product_id"]):
+                        qty = ri.quantity * ld["quantity"]
+                        inv_deductions[ri.inventory_item_id] = (
+                            inv_deductions.get(ri.inventory_item_id, Decimal("0")) + qty
+                        )
 
                 for inv_item_id, qty_per_unit in ld["mod_inv"]:
                     qty = qty_per_unit * ld["quantity"]
                     inv_deductions[inv_item_id] = inv_deductions.get(inv_item_id, Decimal("0")) + qty
 
             for inv_item_id, total_qty in inv_deductions.items():
-                inv_item = await db.get(InventoryItem, inv_item_id)
-                if inv_item:
-                    inv_item.stock_on_hand = inv_item.stock_on_hand - total_qty
-                    db.add(StockMovement(
-                        store_id=store_id,
-                        inventory_item_id=inv_item_id,
-                        type=MovementType.SALE,
-                        quantity=total_qty,
-                        reason=f"Order #{order.order_number}",
-                        ref_order_id=order.id,
-                        created_by_id=user_id,
+                await _deduct_fifo(
+                    db,
+                    store_id=store_id,
+                    user_id=user_id,
+                    inventory_item_id=inv_item_id,
+                    total_qty=total_qty,
+                    ref_order_id=order.id,
+                    order_number=order.order_number,
+                )
+
+            # Write promotion redemption rows
+            if applied_promotions:
+                for promo_id, disc_amount in applied_promotions:
+                    db.add(PromotionRedemption(
+                        promotion_id=promo_id,
+                        order_id=order.id,
+                        discount_amount=disc_amount,
                     ))
 
-    except IntegrityError:
-        raise Conflict("Duplicate idempotency_key — order already exists")
+            # Membership: earn or redeem (mutually exclusive)
+            if req.member_id:
+                from app.services.membership import (
+                    _earn_points,
+                    _get_active_program,
+                    _load_account_for_update,
+                    _redeem_reward,
+                )
+                await db.flush()  # ensure OrderItems are persisted for FREE_ITEM scope check
+                account = await _load_account_for_update(
+                    db, account_id=req.member_id, store_id=store_id
+                )
+                program = await _get_active_program(db, store_id=store_id)
+                if program:
+                    if req.redeem_reward:
+                        await _redeem_reward(
+                            db,
+                            store_id=store_id,
+                            account=account,
+                            program=program,
+                            order=order,
+                            reward_product_id=req.reward_product_id,
+                            user_id=user_id,
+                        )
+                        order.points_earned = 0
+                    else:
+                        total_items = sum(ld["quantity"] for ld in line_data)
+                        earned = await _earn_points(
+                            db,
+                            store_id=store_id,
+                            account=account,
+                            program=program,
+                            order=order,
+                            total_items=total_items,
+                            user_id=user_id,
+                        )
+                        order.points_earned = earned
+                    order.member_id = account.id
+
+    except IntegrityError as e:
+        raise Conflict("Duplicate idempotency_key — order already exists") from e
 
     await _publish_order_created(pusher, order, line_data)
     return order
@@ -219,10 +305,29 @@ async def void_order(
             )
         )).scalars())
 
+        cancel_receipt = StockReceipt(
+            store_id=store_id,
+            status=ReceiptStatus.CONFIRMED,
+            receipt_ref="ORDER_CANCEL",
+            note=f"Voided order #{order.order_number}",
+            received_at=_date.today(),
+            created_by_id=user_id,
+        )
+        db.add(cancel_receipt)
+        await db.flush()
+
         for mv in sale_movements:
             inv_item = await db.get(InventoryItem, mv.inventory_item_id)
             if inv_item:
                 inv_item.stock_on_hand = inv_item.stock_on_hand + mv.quantity
+                db.add(StockLot(
+                    store_id=store_id,
+                    receipt_id=cancel_receipt.id,
+                    inventory_item_id=mv.inventory_item_id,
+                    qty_received=mv.quantity,
+                    qty_remaining=mv.quantity,
+                    cost_per_unit=inv_item.cost_per_unit,
+                ))
             db.add(StockMovement(
                 store_id=store_id,
                 inventory_item_id=mv.inventory_item_id,
@@ -236,11 +341,71 @@ async def void_order(
         order.status = OrderStatus.VOID
         db.add(OrderVoidLog(order_id=order.id, voided_by_id=user_id, reason=req.reason))
 
+        # Reverse membership points if applicable
+        from app.services.membership import _reverse_points
+        await _reverse_points(db, order=order, user_id=user_id)
+
     await _publish_order_voided(pusher, order, user_id=user_id, reason=req.reason)
     return order
 
 
 # -- helpers ----------------------------------------------------------------
+
+
+async def _deduct_fifo(
+    db: AsyncSession,
+    *,
+    store_id: str,
+    user_id: str,
+    inventory_item_id: str,
+    total_qty: Decimal,
+    ref_order_id: str | None = None,
+    order_number: int = 0,
+    reason: str | None = None,
+) -> None:
+    inv_item = await db.get(InventoryItem, inventory_item_id)
+    if not inv_item:
+        return
+
+    remaining = total_qty
+    lots = list((await db.execute(
+        select(StockLot)
+        .where(
+            StockLot.inventory_item_id == inventory_item_id,
+            StockLot.store_id == store_id,
+            StockLot.qty_remaining > 0,
+        )
+        .order_by(StockLot.created_at.asc())
+    )).scalars())
+
+    for lot in lots:
+        if remaining <= 0:
+            break
+        consume = min(lot.qty_remaining, remaining)
+        lot.qty_remaining = lot.qty_remaining - consume
+        remaining -= consume
+
+    inv_item.stock_on_hand = inv_item.stock_on_hand - total_qty
+    if inv_item.stock_on_hand < 0:
+        logger.warning(
+            "inventory.fifo.negative_stock",
+            extra={
+                "inventory_item_id": inventory_item_id,
+                "store_id": store_id,
+                "total_qty": float(total_qty),
+                "stock_on_hand": float(inv_item.stock_on_hand),
+            },
+        )
+
+    db.add(StockMovement(
+        store_id=store_id,
+        inventory_item_id=inventory_item_id,
+        type=MovementType.SALE,
+        quantity=total_qty,
+        reason=reason or f"Order #{order_number}",
+        ref_order_id=ref_order_id,
+        created_by_id=user_id,
+    ))
 
 
 async def _load_order(db: AsyncSession, *, store_id: str, order_id: str) -> Order:

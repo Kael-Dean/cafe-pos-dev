@@ -8,10 +8,12 @@ from app.schemas.inventory import (
     InventoryItemRead,
     InventoryItemUpdate,
     MovementsPage,
-    ReceiveStockRequest,
+    SupplierHistoryItem,
     WasteRequest,
 )
+from app.schemas.receipts import ExpiredLotRead, StockLotRead
 from app.services import inventory as inv
+from app.services import receipts as receipt_svc
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -82,6 +84,33 @@ async def movements(
 
 
 @router.get(
+    "/expired",
+    response_model=list[ExpiredLotRead],
+    summary="List lots whose expiry_date has passed and still have stock remaining",
+    operation_id="inventory_expired",
+)
+async def list_expired(user: StoreUser, db: DbSession) -> list[ExpiredLotRead]:
+    return await inv.list_expired(db, store_id=user.store_id)
+
+
+@router.get(
+    "/{item_id}/lots",
+    response_model=list[StockLotRead],
+    summary="List stock lots for one ingredient, oldest-first",
+    operation_id="inventory_lots",
+)
+async def get_item_lots(
+    item_id: str,
+    user: StoreUser,
+    db: DbSession,
+    status: str | None = Query(None, pattern="^(active|all)$"),
+) -> list[StockLotRead]:
+    return await receipt_svc.list_item_lots(
+        db, store_id=user.store_id, item_id=item_id, active_only=(status != "all")
+    )
+
+
+@router.get(
     "/{item_id}",
     response_model=InventoryItemRead,
     summary="Get one inventory item with computed status",
@@ -120,20 +149,15 @@ async def update_one(
     return InventoryItemRead.model_validate(item)
 
 
-@router.post(
-    "/receive",
-    response_model=InventoryItemRead,
-    summary="Receive stock — increments stock_on_hand and overwrites cost_per_unit",
-    operation_id="inventory_receive",
-    dependencies=[Depends(_BARISTA_PLUS)],
+@router.get(
+    "/{item_id}/supplier-history",
+    response_model=list[SupplierHistoryItem],
+    summary="Purchase history per item — supplier, price, and quantity over time",
+    operation_id="inventory_supplier_history",
+    dependencies=[Depends(_MANAGER_PLUS)],
 )
-async def receive(
-    payload: ReceiveStockRequest,
-    user: StoreUser,
-    db: DbSession,
-) -> InventoryItemRead:
-    item = await inv.receive_stock(db, store_id=user.store_id, user_id=user.id, req=payload)
-    return InventoryItemRead.model_validate(item)
+async def supplier_history(item_id: str, user: StoreUser, db: DbSession) -> list[SupplierHistoryItem]:
+    return await inv.get_supplier_history(db, store_id=user.store_id, item_id=item_id)
 
 
 @router.post(

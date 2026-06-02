@@ -193,15 +193,25 @@ async def get_cogs_report(
     store_id: str,
     from_: datetime,
     to: datetime,
+    sort_by: str = "pieces",
 ) -> CogsReportRead:
+    qty_sold = func.sum(func.abs(StockMovement.quantity))
+    pieces_expr = (qty_sold / func.nullif(InventoryItem.unit_size, 0)).label("pieces_consumed")
+    order_expr = (
+        func.sum(func.abs(StockMovement.quantity) * InventoryItem.cost_per_unit).desc()
+        if sort_by == "cost"
+        else (qty_sold / func.nullif(InventoryItem.unit_size, 0)).desc().nulls_last()
+    )
     rows = await db.execute(
         select(
             InventoryItem.id.label("item_id"),
             InventoryItem.name.label("item_name"),
             InventoryItem.unit.label("unit"),
-            func.sum(func.abs(StockMovement.quantity)).label("quantity_sold"),
+            qty_sold.label("quantity_sold"),
             InventoryItem.cost_per_unit.label("cost_per_unit"),
             func.sum(func.abs(StockMovement.quantity) * InventoryItem.cost_per_unit).label("total_cogs"),
+            InventoryItem.unit_size.label("unit_size"),
+            pieces_expr,
         )
         .join(InventoryItem, InventoryItem.id == StockMovement.inventory_item_id)
         .where(
@@ -212,8 +222,14 @@ async def get_cogs_report(
                 StockMovement.created_at <= to,
             )
         )
-        .group_by(InventoryItem.id, InventoryItem.name, InventoryItem.unit, InventoryItem.cost_per_unit)
-        .order_by(func.sum(func.abs(StockMovement.quantity) * InventoryItem.cost_per_unit).desc())
+        .group_by(
+            InventoryItem.id,
+            InventoryItem.name,
+            InventoryItem.unit,
+            InventoryItem.cost_per_unit,
+            InventoryItem.unit_size,
+        )
+        .order_by(order_expr)
     )
     items = [
         CogsItem(
@@ -223,6 +239,8 @@ async def get_cogs_report(
             quantity_sold=r.quantity_sold or Decimal("0"),
             cost_per_unit=r.cost_per_unit,
             total_cogs=r.total_cogs or Decimal("0"),
+            unit_size=r.unit_size,
+            pieces_consumed=r.pieces_consumed,
         )
         for r in rows
     ]

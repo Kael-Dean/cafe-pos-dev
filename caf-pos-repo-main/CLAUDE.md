@@ -1,73 +1,162 @@
-# Agent Instructions
+# CLAUDE.md
 
-You're working inside the **WAT framework** (Workflows, Agents, Tools). This architecture separates concerns so that probabilistic AI handles reasoning while deterministic code handles execution. That separation is what makes this system reliable.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## The WAT Architecture
+---
 
-**Layer 1: Workflows (The Instructions)**
-- Markdown SOPs stored in `workflows/`
-- Each workflow defines the objective, required inputs, which tools to use, expected outputs, and how to handle edge cases
-- Written in plain language, the same way you'd brief someone on your team
+## WAT Framework
 
-**Layer 2: Agents (The Decision-Maker)**
-- This is your role. You're responsible for intelligent coordination.
-- Read the relevant workflow, run tools in the correct sequence, handle failures gracefully, and ask clarifying questions when needed
-- You connect intent to execution without trying to do everything yourself
-- Example: If you need to pull data from a website, don't attempt it directly. Read `workflows/scrape_website.md`, figure out the required inputs, then execute `tools/scrape_single_site.py`
+This repo uses the **WAT framework** (Workflows, Agents, Tools):
 
-**Layer 3: Tools (The Execution)**
-- Python scripts in `tools/` that do the actual work
-- API calls, data transformations, file operations, database queries
-- Credentials and API keys are stored in `.env`
-- These scripts are consistent, testable, and fast
+- **`workflows/`** — Markdown SOPs: objective, required inputs, which tools to call, expected outputs, edge cases. Read the relevant workflow before starting any non-trivial task.
+- **`tools/`** — Python scripts for deterministic execution (API calls, data transforms, file ops). Check here before writing anything new.
+- **`api/`** — The FastAPI backend (see below).
+- **`.env`** — All credentials. Never store secrets elsewhere.
+- **`.tmp/`** — Disposable intermediates. Deliverables go to cloud services.
 
-**Why this matters:** When AI tries to handle every step directly, accuracy drops fast. If each step is 90% accurate, you're down to 59% success after just five steps. By offloading execution to deterministic scripts, you stay focused on orchestration and decision-making where you excel.
+When you hit an error in a tool script: read the trace, fix it, retest, then update the relevant workflow so it doesn't recur. Don't create or overwrite workflows without asking unless explicitly told to.
 
-## How to Operate
+---
 
-**1. Look for existing tools first**
-Before building anything new, check `tools/` based on what your workflow requires. Only create new scripts when nothing exists for that task.
+## Backend: Cafe POS API (`api/`)
 
-**2. Learn and adapt when things fail**
-When you hit an error:
-- Read the full error message and trace
-- Fix the script and retest (if it uses paid API calls or credits, check with me before running again)
-- Document what you learned in the workflow (rate limits, timing quirks, unexpected behavior)
-- Example: You get rate-limited on an API, so you dig into the docs, discover a batch endpoint, refactor the tool to use it, verify it works, then update the workflow so this never happens again
+FastAPI + SQLAlchemy 2.x async + PostgreSQL. Deployed on Railway; migrations run via `preDeployCommand` in `railway.toml` (not in `Procfile`).
 
-**3. Keep workflows current**
-Workflows should evolve as you learn. When you find better methods, discover constraints, or encounter recurring issues, update the workflow. That said, don't create or overwrite workflows without asking unless I explicitly tell you to. These are your instructions and need to be preserved and refined, not tossed after one use.
+### Setup & Dev Commands
 
-## The Self-Improvement Loop
+All commands run from the `api/` directory with `uv`:
 
-Every failure is a chance to make the system stronger:
-1. Identify what broke
-2. Fix the tool
-3. Verify the fix works
-4. Update the workflow with the new approach
-5. Move on with a more robust system
+```bash
+# Start Postgres (first time)
+docker run -d --name cafe-pos-pg -e POSTGRES_PASSWORD=pos -p 5432:5432 postgres:16
 
-This loop is how the framework improves over time.
+# Install deps
+uv sync
 
-## File Structure
+# Copy and fill env (only JWT_SECRET needs changing; Postgres defaults work locally)
+cp .env.example .env
 
-**What goes where:**
-- **Deliverables**: Final outputs go to cloud services (Google Sheets, Slides, etc.) where I can access them directly
-- **Intermediates**: Temporary processing files that can be regenerated
+# Run migrations + seed
+uv run alembic upgrade head
+uv run python scripts/seed.py
 
-**Directory layout:**
-```
-.tmp/           # Temporary files (scraped data, intermediate exports). Regenerated as needed.
-tools/          # Python scripts for deterministic execution
-workflows/      # Markdown SOPs defining what to do and how
-.env            # API keys and environment variables (NEVER store secrets anywhere else)
-credentials.json, token.json  # Google OAuth (gitignored)
+# Start dev server
+uv run uvicorn app.main:app --reload --port 8000
+# OpenAPI docs: http://localhost:8000/docs
 ```
 
-**Core principle:** Local files are just for processing. Anything I need to see or use lives in cloud services. Everything in `.tmp/` is disposable.
+### Running Tests
 
-## Bottom Line
+Tests require a real Postgres instance — no SQLite (enums and `Numeric` semantics don't survive the swap). The suite derives `TEST_DATABASE_URL` from `DATABASE_URL` by appending `_test`; override with the `TEST_DATABASE_URL` env var.
 
-You sit between what I want (workflows) and what actually gets done (tools). Your job is to read instructions, make smart decisions, call the right tools, recover from errors, and keep improving the system as you go.
+```bash
+# Run all tests
+uv run pytest
 
-Stay pragmatic. Stay reliable. Keep learning.
+# Run a single file
+uv run pytest tests/test_orders.py
+
+# Run a single test by name
+uv run pytest tests/test_orders.py::test_create_order_reduces_stock
+
+# With coverage
+uv run pytest --cov=app --cov-report=term-missing
+```
+
+### Alembic Migrations
+
+```bash
+# Apply all pending
+uv run alembic upgrade head
+
+# Generate a new migration (always review before committing)
+uv run alembic revision --autogenerate -m "short_description"
+
+# Roll back one step
+uv run alembic downgrade -1
+```
+
+---
+
+## Architecture
+
+### Request Flow
+
+```
+Router (api/v1/*.py)  →  Service (services/*.py)  →  SQLAlchemy models (models/*.py)
+```
+
+Routers are thin: parse request, call one service function, return response. Business logic lives exclusively in services — no FastAPI imports there.
+
+### Multi-Tenancy
+
+Every resource belongs to a `Store`, which belongs to a `Tenant`. `store_id` is **always read from JWT claims**, never from the request body or path params. This is enforced in `app/deps.py`.
+
+### Key Conventions
+
+- **Atomic mutations:** wrap writes in `async with db.begin():` — autocommits on exit, rolls back on exception.
+- **Decimal precision:** money → `Numeric(12, 2)`, inventory quantities → `Numeric(10, 3)`, cost per unit → `Numeric(12, 4)`.
+- **Stock movements:** `StockMovement` is append-only. Corrections use a compensating `ADJUST` entry, never edits.
+- **Negative stock:** allowed with a warning — never blocked at the service layer.
+- **IDs:** CUID strings (`String(24)`), generated by `app/db/types.py:new_cuid`.
+
+### Auth
+
+PIN-based: users authenticate with a numeric PIN hashed with bcrypt (`app/core/security.py:hash_pin`). Login returns an `access` JWT (8h) and a `refresh` JWT (30d). Both tokens carry `sub` (user_id), `store_id`, `role`, and `type` claims.
+
+### Realtime
+
+Pusher is initialised in `lifespan()` and stored on `app.state.pusher`. Access it in endpoints via `request.app.state.pusher` — do not import the client module directly.
+
+### Models (SQLAlchemy 2.x `Mapped[...]`)
+
+| Module | Tables |
+|---|---|
+| `models/tenancy.py` | `tenants`, `stores` |
+| `models/identity.py` | `users` |
+| `models/catalog.py` | `categories`, `products`, `recipe_items`, `modifier_groups`, `modifiers`, `product_modifier_groups` |
+| `models/inventory.py` | `inventory_items`, `stock_movements` |
+| `models/receipts.py` | `stock_receipts`, `stock_lots` |
+| `models/orders.py` | `orders`, `order_items`, `order_item_modifiers`, `order_void_logs` |
+| `models/pre_orders.py` | `pre_orders`, `pre_order_items`, `shopping_list_items` |
+| `models/customers.py` | `customers` |
+| `models/hr.py` | `leaves`, `shift_assignments`, `cash_sessions`, `staff_tasks` |
+| `models/production.py` | `production_orders` |
+
+All new models must be imported in `models/__init__.py` (required for Alembic autogenerate) and their router registered in `app/api/v1/router.py`.
+
+### API Modules (`api/v1/`)
+
+`auth`, `inventory`, `receipts`, `categories`, `products`, `modifier_groups`, `orders`, `pre_orders`, `shopping_list`, `production`, `realtime`, `reports`, `customers`, `hr`, `stock_takes`
+
+### Domain Enums
+
+All enums live in `app/enums.py`: `Role`, `MovementType`, `WastageReason`, `OrderStatus`, `Channel`, `PaymentMethod`, `LeaveType`, `LeaveStatus`, `TaskStatus`, `ReceiptStatus`, `PreOrderStatus`, `ProductType`.
+
+### Error Response Envelope
+
+```json
+{"error": {"code": "SNAKE_CASE_CODE", "message": "..."}}
+```
+
+The status-code → code mapping lives in `app/main.py:_code_for`.
+
+### Dependency Injection Types (`app/deps.py`)
+
+Use these annotated types in router signatures — never call `get_db` or `get_current_user` directly:
+
+| Type | Yields |
+|---|---|
+| `DbSession` | `AsyncSession` |
+| `CurrentUser` | `User` (any authenticated user) |
+| `StoreUser` | `User` with `store_id` set (raises 403 otherwise) |
+| `PusherDep` | `PusherClient` from `app.state.pusher` |
+
+For role-gating use `Depends(require_role(Role.MANAGER, Role.OWNER))` as an additional dependency.
+
+### Testing Patterns
+
+- Shared fixtures in `tests/conftest.py`: `db` (AsyncSession), `client` (AsyncClient), `tenant`, `store_a`, `store_b`, `user_a`, `manager_a`, `user_b`.
+- Factory helpers — import from `tests/factories.py` (re-exports conftest helpers plus `make_customer`, `make_order_direct`, `make_order_item`): `make_user`, `make_item`, `make_category`, `make_product`, `make_modifier_group`, `make_customer`, `make_order_direct`.
+- Isolation: `TRUNCATE … RESTART IDENTITY CASCADE` runs after each test. No nested savepoints (conflicts with top-level `async with db.begin()` in services).
+- On Windows: `WindowsSelectorEventLoopPolicy` is set in conftest to avoid asyncpg teardown errors — don't remove it.

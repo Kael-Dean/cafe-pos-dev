@@ -20,7 +20,6 @@ import sys
 from collections.abc import AsyncIterator
 from decimal import Decimal
 
-import pytest
 import pytest_asyncio
 
 # On Windows the default ProactorEventLoop + asyncpg SSL teardown leaks "Event loop is
@@ -35,17 +34,27 @@ from sqlalchemy.pool import NullPool
 # Set required env vars BEFORE importing app modules so Settings validates.
 os.environ.setdefault("JWT_SECRET", secrets.token_hex(32))
 os.environ.setdefault(
-    "DATABASE_URL", "postgresql+asyncpg://postgres:pos@localhost:5432/cafe_pos_test"
+    "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/cafe_pos"
 )
+
 os.environ.setdefault("ENVIRONMENT", "test")
 
 from app.core.ratelimit import limiter  # noqa: E402
 from app.core.security import hash_pin  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.deps import get_db  # noqa: E402
-from app.enums import Role  # noqa: E402
+from app.enums import Role, StaffPosition  # noqa: E402
 from app.main import create_app  # noqa: E402
-from app.models import Category, InventoryItem, ModifierGroup, Modifier, Product, Store, Tenant, User  # noqa: E402
+from app.models import (  # noqa: E402
+    Category,
+    InventoryItem,
+    Modifier,
+    ModifierGroup,
+    Product,
+    Store,
+    Tenant,
+    User,
+)
 
 
 def _resolve_test_url() -> str:
@@ -76,7 +85,7 @@ async def _create_schema():
     yield
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def test_engine(_create_schema):
     """Per-test engine with NullPool: every operation opens a fresh asyncpg connection
     on the *current* event loop, sidestepping pytest-asyncio's per-test loop changes."""
@@ -85,12 +94,12 @@ async def test_engine(_create_schema):
     await engine.dispose()
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def session_maker(test_engine):
     return async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def db(test_engine, session_maker) -> AsyncIterator[AsyncSession]:
     async with session_maker() as session:
         yield session
@@ -103,19 +112,27 @@ async def db(test_engine, session_maker) -> AsyncIterator[AsyncSession]:
         pass
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def app(db, session_maker):
+    from app.config import get_settings
+    from app.deps import get_pusher
+    from app.realtime.pusher import PusherClient
+
     application = create_app()
 
     async def _override_db():
         async with session_maker() as session:
             yield session
 
+    def _override_pusher() -> PusherClient:
+        return PusherClient(get_settings())
+
     application.dependency_overrides[get_db] = _override_db
+    application.dependency_overrides[get_pusher] = _override_pusher
     return application
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def client(app) -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -125,7 +142,7 @@ async def client(app) -> AsyncIterator[AsyncClient]:
 # ---------- factories ----------
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def tenant(db) -> Tenant:
     t = Tenant(name="Acme Cafe", slug=f"acme-{secrets.token_hex(3)}")
     db.add(t)
@@ -133,7 +150,7 @@ async def tenant(db) -> Tenant:
     return t
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def store_a(db, tenant) -> Store:
     s = Store(tenant_id=tenant.id, name="Store A", slug="store-a", vat_enabled=False)
     db.add(s)
@@ -141,7 +158,7 @@ async def store_a(db, tenant) -> Store:
     return s
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def store_b(db, tenant) -> Store:
     s = Store(tenant_id=tenant.id, name="Store B", slug="store-b", vat_enabled=False)
     db.add(s)
@@ -157,6 +174,10 @@ async def make_user(
     name: str = "User",
     pin: str = "1234",
     role: Role = Role.BARISTA,
+    position: StaffPosition = StaffPosition.JUNIOR,
+    phone: str | None = None,
+    email: str | None = None,
+    address: str | None = None,
     is_active: bool = True,
 ) -> User:
     u = User(
@@ -165,6 +186,10 @@ async def make_user(
         name=name,
         pin_hash=hash_pin(pin),
         role=role,
+        position=position,
+        phone=phone,
+        email=email,
+        address=address,
         is_active=is_active,
     )
     db.add(u)
@@ -172,21 +197,23 @@ async def make_user(
     return u
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def user_a(db, tenant, store_a) -> User:
     return await make_user(
-        db, tenant_id=tenant.id, store_id=store_a.id, name="Alice", pin="1111", role=Role.BARISTA
+        db, tenant_id=tenant.id, store_id=store_a.id,
+        name="Alice", pin="1111", role=Role.BARISTA, phone="0811111111"
     )
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def manager_a(db, tenant, store_a) -> User:
     return await make_user(
-        db, tenant_id=tenant.id, store_id=store_a.id, name="Mary", pin="2222", role=Role.MANAGER
+        db, tenant_id=tenant.id, store_id=store_a.id,
+        name="Mary", pin="2222", role=Role.MANAGER, phone="0822222222"
     )
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def user_b(db, tenant, store_b) -> User:
     return await make_user(
         db, tenant_id=tenant.id, store_id=store_b.id, name="Bob", pin="9999", role=Role.BARISTA
@@ -199,16 +226,18 @@ async def make_item(
     store_id: str,
     name: str = "Beans",
     unit: str = "g",
-    cost: Decimal = Decimal("0.0030"),
+    unit_size: Decimal = Decimal("1"),
     stock: Decimal = Decimal("100"),
     par: Decimal = Decimal("80"),
+    cost_per_unit: Decimal = Decimal("0"),
     is_active: bool = True,
 ) -> InventoryItem:
     item = InventoryItem(
         store_id=store_id,
         name=name,
         unit=unit,
-        cost_per_unit=cost,
+        unit_size=unit_size,
+        cost_per_unit=cost_per_unit,
         stock_on_hand=stock,
         par_level=par,
         is_active=is_active,
@@ -240,6 +269,9 @@ async def make_product(
     price: Decimal = Decimal("85.00"),
     category_id: str | None = None,
     is_active: bool = True,
+    product_type: str = "MADE_TO_ORDER",
+    servings_per_batch: int = 1,
+    finished_goods_item_id: str | None = None,
 ) -> Product:
     product = Product(
         store_id=store_id,
@@ -247,6 +279,9 @@ async def make_product(
         price=price,
         category_id=category_id,
         is_active=is_active,
+        product_type=product_type,
+        servings_per_batch=servings_per_batch,
+        finished_goods_item_id=finished_goods_item_id,
     )
     db.add(product)
     await db.commit()

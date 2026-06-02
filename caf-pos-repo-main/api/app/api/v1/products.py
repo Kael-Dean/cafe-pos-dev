@@ -3,6 +3,10 @@ from fastapi import APIRouter, Depends, Query
 from app.deps import DbSession, StoreUser, require_role
 from app.enums import Role
 from app.schemas.catalog import (
+    CookingStepCreate,
+    CookingStepRead,
+    CookingStepsBulkReplace,
+    CookingStepUpdate,
     ProductCreate,
     ProductDetail,
     ProductModifierGroupsReplace,
@@ -120,5 +124,81 @@ async def replace_product_modifier_groups(
     db: DbSession,
 ) -> None:
     await svc.replace_product_modifier_groups(
+        db, store_id=user.store_id, product_id=product_id, payload=payload
+    )
+
+
+# ---------------------------------------------------------------------------
+# Cooking Steps
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{product_id}/steps",
+    response_model=list[CookingStepRead],
+    summary="List cooking steps for a product (kitchen on-demand reference)",
+    operation_id="products_list_steps",
+)
+async def list_steps(product_id: str, user: StoreUser, db: DbSession) -> list[CookingStepRead]:
+    return await svc.list_steps(db, store_id=user.store_id, product_id=product_id)
+
+
+@router.post(
+    "/{product_id}/steps",
+    response_model=CookingStepRead,
+    status_code=201,
+    summary="Add a cooking step to a product",
+    operation_id="products_add_step",
+    dependencies=[Depends(_MANAGER_PLUS)],
+)
+async def add_step(
+    product_id: str, payload: CookingStepCreate, user: StoreUser, db: DbSession
+) -> CookingStepRead:
+    return await svc.add_step(db, store_id=user.store_id, product_id=product_id, payload=payload)
+
+
+@router.patch(
+    "/{product_id}/steps/{step_id}",
+    response_model=CookingStepRead,
+    summary="Update a cooking step's instruction or sort order",
+    operation_id="products_update_step",
+    dependencies=[Depends(_MANAGER_PLUS)],
+)
+async def update_step(
+    product_id: str,
+    step_id: str,
+    payload: CookingStepUpdate,
+    user: StoreUser,
+    db: DbSession,
+) -> CookingStepRead:
+    return await svc.update_step(
+        db, store_id=user.store_id, product_id=product_id, step_id=step_id, payload=payload
+    )
+
+
+@router.delete(
+    "/{product_id}/steps/{step_id}",
+    status_code=204,
+    summary="Remove a cooking step",
+    operation_id="products_delete_step",
+    dependencies=[Depends(_MANAGER_PLUS)],
+)
+async def delete_step(
+    product_id: str, step_id: str, user: StoreUser, db: DbSession
+) -> None:
+    await svc.delete_step(db, store_id=user.store_id, product_id=product_id, step_id=step_id)
+
+
+@router.put(
+    "/{product_id}/steps",
+    response_model=list[CookingStepRead],
+    summary="Bulk replace all cooking steps (use for drag-to-reorder)",
+    operation_id="products_replace_steps",
+    dependencies=[Depends(_MANAGER_PLUS)],
+)
+async def replace_steps(
+    product_id: str, payload: CookingStepsBulkReplace, user: StoreUser, db: DbSession
+) -> list[CookingStepRead]:
+    return await svc.replace_steps(
         db, store_id=user.store_id, product_id=product_id, payload=payload
     )

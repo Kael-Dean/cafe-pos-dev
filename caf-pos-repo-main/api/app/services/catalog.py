@@ -1,9 +1,11 @@
 import logging
+from decimal import Decimal
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import Conflict, NotFound
+from app.enums import ProductType
 from app.models.catalog import (
     Category,
     CookingStep,
@@ -13,6 +15,7 @@ from app.models.catalog import (
     ProductModifierGroup,
     RecipeItem,
 )
+from app.models.inventory import InventoryItem
 from app.schemas.catalog import (
     CategoryCreate,
     CategoryUpdate,
@@ -29,7 +32,6 @@ from app.schemas.catalog import (
     ProductCreate,
     ProductDetail,
     ProductModifierGroupsReplace,
-    ProductRead,
     ProductUpdate,
     RecipeBulkReplace,
     RecipeItemRead,
@@ -46,7 +48,7 @@ logger = logging.getLogger(__name__)
 async def list_categories(db: AsyncSession, *, store_id: str) -> list[Category]:
     result = await db.execute(
         select(Category)
-        .where(Category.store_id == store_id, Category.is_active.is_(True))
+        .where(Category.store_id == store_id)
         .order_by(Category.sort_order, Category.name)
     )
     return list(result.scalars())
@@ -116,6 +118,12 @@ async def get_product_detail(
     r = await db.execute(select(RecipeItem).where(RecipeItem.product_id == product.id))
     recipe_items = list(r.scalars())
 
+    inv_ids = [ri.inventory_item_id for ri in recipe_items]
+    inv_map: dict[str, InventoryItem] = {}
+    if inv_ids:
+        r = await db.execute(select(InventoryItem).where(InventoryItem.id.in_(inv_ids)))
+        inv_map = {item.id: item for item in r.scalars()}
+
     r = await db.execute(
         select(ModifierGroup)
         .join(ProductModifierGroup, ProductModifierGroup.modifier_group_id == ModifierGroup.id)
@@ -143,9 +151,22 @@ async def get_product_detail(
         description=product.description,
         price=product.price,
         is_active=product.is_active,
+        product_type=product.product_type,
+        servings_per_batch=product.servings_per_batch,
+        finished_goods_item_id=product.finished_goods_item_id,
         created_at=product.created_at,
         updated_at=product.updated_at,
-        recipe=[RecipeItemRead.model_validate(ri) for ri in recipe_items],
+        recipe=[
+            RecipeItemRead(
+                id=ri.id,
+                inventory_item_id=ri.inventory_item_id,
+                quantity=ri.quantity,
+                cost_per_unit=inv_map[ri.inventory_item_id].cost_per_unit
+                if ri.inventory_item_id in inv_map
+                else Decimal("0"),
+            )
+            for ri in recipe_items
+        ],
         modifier_groups=[
             _build_group_read(g, mods_by_group.get(g.id, []))
             for g in groups
@@ -166,8 +187,26 @@ async def create_product(
             description=payload.description,
             price=payload.price,
             is_active=payload.is_active,
+            product_type=payload.product_type,
+            servings_per_batch=payload.servings_per_batch,
         )
         db.add(product)
+
+        if payload.product_type == ProductType.PRODUCED:
+            await db.flush()
+            inv_item = InventoryItem(
+                store_id=store_id,
+                name=payload.name,
+                unit="piece",
+                cost_per_unit=Decimal("0"),
+                stock_on_hand=Decimal("0"),
+                par_level=Decimal("0"),
+            )
+            db.add(inv_item)
+            await db.flush()
+            product.finished_goods_item_id = inv_item.id
+
+    await db.refresh(product)
     return product
 
 
@@ -176,12 +215,35 @@ async def update_product(
 ) -> Product:
     async with db.begin():
         product = await _load_product(db, store_id=store_id, product_id=product_id)
+
         if "category_id" in payload.model_fields_set:
             if payload.category_id:
                 await _load_category(db, store_id=store_id, category_id=payload.category_id)
             product.category_id = payload.category_id
-        for field in payload.model_fields_set - {"category_id"}:
+
+        simple_fields = payload.model_fields_set - {"category_id", "product_type"}
+        for field in simple_fields:
             setattr(product, field, getattr(payload, field))
+
+        if "product_type" in payload.model_fields_set and payload.product_type is not None:
+            new_type = payload.product_type
+            if new_type == ProductType.PRODUCED and product.product_type != ProductType.PRODUCED:
+                inv_item = InventoryItem(
+                    store_id=store_id,
+                    name=product.name,
+                    unit="piece",
+                    cost_per_unit=Decimal("0"),
+                    stock_on_hand=Decimal("0"),
+                    par_level=Decimal("0"),
+                )
+                db.add(inv_item)
+                await db.flush()
+                product.finished_goods_item_id = inv_item.id
+            elif new_type == ProductType.MADE_TO_ORDER and product.product_type != ProductType.MADE_TO_ORDER:
+                product.finished_goods_item_id = None
+            product.product_type = new_type
+
+    await db.refresh(product)
     return product
 
 
@@ -214,7 +276,12 @@ async def replace_recipe(
         ]
         db.add_all(new_items)
     return [
-        RecipeItemRead(id=ri.id, inventory_item_id=ri.inventory_item_id, quantity=ri.quantity)
+        RecipeItemRead(
+            id=ri.id,
+            inventory_item_id=ri.inventory_item_id,
+            quantity=ri.quantity,
+            cost_per_unit=Decimal("0"),
+        )
         for ri in new_items
     ]
 

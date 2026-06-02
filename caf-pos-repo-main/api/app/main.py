@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.router import api_router
@@ -52,7 +53,7 @@ def create_app() -> FastAPI:
     async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         return JSONResponse(
             status_code=exc.status_code,
-            content={"error": {"code": _code_for(exc.status_code), "message": str(exc.detail)}},
+            content={"error": {"code": _semantic_code(exc), "message": str(exc.detail)}},
             headers=exc.headers,
         )
 
@@ -67,6 +68,13 @@ def create_app() -> FastAPI:
                     "details": exc.errors(),
                 }
             },
+        )
+
+    @app.exception_handler(IntegrityError)
+    async def integrity_error_handler(request: Request, exc: IntegrityError):
+        return JSONResponse(
+            status_code=409,
+            content={"error": {"code": "CONFLICT", "message": "Resource conflict"}},
         )
 
     @app.get("/health", tags=["meta"], summary="Liveness probe")
@@ -87,6 +95,18 @@ def _code_for(status_code: int) -> str:
         422: "UNPROCESSABLE_ENTITY",
         429: "RATE_LIMITED",
     }.get(status_code, "ERROR")
+
+
+def _semantic_code(exc: StarletteHTTPException) -> str:
+    """Use exc.detail as the error code when it looks like a SNAKE_CASE identifier.
+
+    Service layer raises e.g. Conflict("RECEIPT_ALREADY_CONFIRMED") — the detail
+    IS the semantic code. Fall back to the generic status-code mapping otherwise.
+    """
+    detail = str(exc.detail)
+    if detail and detail.replace("_", "").isupper() and " " not in detail:
+        return detail
+    return _code_for(exc.status_code)
 
 
 app = create_app()

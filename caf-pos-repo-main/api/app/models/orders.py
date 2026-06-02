@@ -2,18 +2,21 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
+    JSON,
     DateTime,
-    Enum as SAEnum,
     ForeignKey,
     Index,
     Integer,
-    JSON,
     Numeric,
     Sequence,
     String,
     Text,
     UniqueConstraint,
     func,
+)
+from sqlalchemy import (
+    Enum as SAEnum,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -59,6 +62,11 @@ class Order(Base, TimestampMixin):
     created_by_id: Mapped[str] = mapped_column(
         String(24), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
+    member_id: Mapped[str | None] = mapped_column(
+        String(24), ForeignKey("membership_accounts.id", ondelete="SET NULL"), nullable=True
+    )
+    points_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reward_redeemed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class OrderItem(Base):

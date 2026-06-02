@@ -16,3 +16,8 @@ bridge/cloudflared.exe
 bridge/dist-build/
 bridge/dist/
 bridge/installer/.cache/
+
+# logs & windows junk
+*.log
+dev-server.log
+nul

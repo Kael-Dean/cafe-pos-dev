@@ -9,9 +9,11 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.enums import Channel, OrderStatus
-from app.models import Customer
+from app.enums import Channel, OrderStatus, ProductType
+from app.models import Customer, Product
+from app.models.catalog import RecipeItem
 from app.models.orders import Order, OrderItem
+from app.models.production import ProductionOrder
 
 # Re-export conftest helpers so test modules can import from one place.
 from tests.conftest import (  # noqa: F401
@@ -98,3 +100,64 @@ async def make_order_item(
     db.add(item)
     await db.commit()
     return item
+
+
+async def make_produced_product(
+    db: AsyncSession,
+    *,
+    store_id: str,
+    name: str = "Cookies",
+    price: Decimal = Decimal("25.00"),
+    servings_per_batch: int = 12,
+) -> Product:
+    """Creates a PRODUCED product and auto-pairs its finished-goods InventoryItem."""
+    from app.schemas.catalog import ProductCreate
+    from app.services import catalog as svc
+
+    payload = ProductCreate(
+        name=name,
+        price=price,
+        product_type=ProductType.PRODUCED,
+        servings_per_batch=servings_per_batch,
+    )
+    return await svc.create_product(db, store_id=store_id, payload=payload)
+
+
+async def make_recipe_item(
+    db: AsyncSession,
+    *,
+    product_id: str,
+    inventory_item_id: str,
+    quantity: Decimal = Decimal("1.000"),
+) -> RecipeItem:
+    recipe_item = RecipeItem(
+        product_id=product_id,
+        inventory_item_id=inventory_item_id,
+        quantity=quantity,
+    )
+    db.add(recipe_item)
+    await db.commit()
+    return recipe_item
+
+
+async def make_production_order(
+    db: AsyncSession,
+    *,
+    store_id: str,
+    product_id: str,
+    produced_by: str,
+    batches_count: int = 1,
+    notes: str | None = None,
+) -> ProductionOrder:
+    """Records a production run, deducting ingredients and adding finished goods."""
+    from app.schemas.production import ProductionOrderCreate
+    from app.services import production as svc
+
+    payload = ProductionOrderCreate(
+        product_id=product_id,
+        batches_count=batches_count,
+        notes=notes,
+    )
+    return await svc.create_production_order(
+        db, store_id=store_id, user_id=produced_by, payload=payload
+    )

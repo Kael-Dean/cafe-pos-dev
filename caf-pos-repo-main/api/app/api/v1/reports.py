@@ -56,8 +56,9 @@ async def get_cogs_report(
     db: DbSession,
     from_: datetime = Query(alias="from"),
     to: datetime = Query(),
+    sort_by: Literal["pieces", "cost"] = Query(default="pieces"),
 ) -> CogsReportRead:
-    return await svc.get_cogs_report(db=db, store_id=user.store_id, from_=from_, to=to)
+    return await svc.get_cogs_report(db=db, store_id=user.store_id, from_=from_, to=to, sort_by=sort_by)
 
 
 @router.get(

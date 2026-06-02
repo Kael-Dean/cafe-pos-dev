@@ -131,7 +131,7 @@ async def _link_drinks(
     db: AsyncSession, store_id: str, group_ids: list[str]
 ) -> tuple[int, int]:
     result = await db.execute(
-        select(Product).where(Product.store_id == store_id, Product.is_active == True)
+        select(Product).where(Product.store_id == store_id, Product.is_active)
     )
     products = result.scalars().all()
 

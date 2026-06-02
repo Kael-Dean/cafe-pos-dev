@@ -1,4 +1,4 @@
-"""Service-layer tests for the customers module (Tier 7).
+﻿"""Service-layer tests for the customers module (Tier 7).
 
 Runs against real Postgres. Uses the shared conftest fixtures for db session,
 stores, and users.
@@ -25,7 +25,7 @@ def _email() -> str:
 # ---------- fixtures ----------
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def customer_a(db, store_a):
     return await make_customer(
         db,
@@ -39,14 +39,12 @@ async def customer_a(db, store_a):
 # ---------- tests ----------
 
 
-@pytest.mark.asyncio
 async def test_list_customers_returns_store_customers(db, store_a, customer_a):
     page = await svc.list_customers(db, store_id=store_a.id)
     ids = [c.id for c in page.items]
     assert customer_a.id in ids
 
 
-@pytest.mark.asyncio
 async def test_list_customers_phone_filter(db, store_a):
     phone = _phone()
     customer = await make_customer(db, store_id=store_a.id, name="PhoneFilter", phone=phone)
@@ -54,7 +52,6 @@ async def test_list_customers_phone_filter(db, store_a):
     assert any(c.id == customer.id for c in page.items)
 
 
-@pytest.mark.asyncio
 async def test_list_customers_name_filter(db, store_a):
     unique = secrets.token_hex(6)
     customer = await make_customer(db, store_id=store_a.id, name=f"UniqueFilter-{unique}")
@@ -63,7 +60,6 @@ async def test_list_customers_name_filter(db, store_a):
     assert page.items[0].id == customer.id
 
 
-@pytest.mark.asyncio
 async def test_get_customer_returns_detail(db, store_a, customer_a):
     detail = await svc.get_customer(db, store_id=store_a.id, customer_id=customer_a.id)
     assert detail.id == customer_a.id
@@ -71,13 +67,11 @@ async def test_get_customer_returns_detail(db, store_a, customer_a):
     assert isinstance(detail.recent_orders, list)
 
 
-@pytest.mark.asyncio
 async def test_get_customer_wrong_store_raises(db, store_b, customer_a):
     with pytest.raises(NotFound):
         await svc.get_customer(db, store_id=store_b.id, customer_id=customer_a.id)
 
 
-@pytest.mark.asyncio
 async def test_create_customer_ok(db, store_a):
     req = CreateCustomerRequest(name="New Customer", phone=_phone(), email=_email())
     result = await svc.create_customer(db, store_id=store_a.id, req=req)
@@ -85,7 +79,6 @@ async def test_create_customer_ok(db, store_a):
     assert result.id is not None
 
 
-@pytest.mark.asyncio
 async def test_create_customer_duplicate_phone_raises(db, store_a):
     phone = _phone()
     await make_customer(db, store_id=store_a.id, name="First", phone=phone)
@@ -94,7 +87,6 @@ async def test_create_customer_duplicate_phone_raises(db, store_a):
         await svc.create_customer(db, store_id=store_a.id, req=req)
 
 
-@pytest.mark.asyncio
 async def test_create_customer_duplicate_email_raises(db, store_a):
     email = _email()
     await make_customer(db, store_id=store_a.id, name="First", email=email)
@@ -103,7 +95,6 @@ async def test_create_customer_duplicate_email_raises(db, store_a):
         await svc.create_customer(db, store_id=store_a.id, req=req)
 
 
-@pytest.mark.asyncio
 async def test_update_customer_name(db, store_a, customer_a):
     req = UpdateCustomerRequest(name="Updated Name")
     result = await svc.update_customer(
@@ -112,7 +103,6 @@ async def test_update_customer_name(db, store_a, customer_a):
     assert result.name == "Updated Name"
 
 
-@pytest.mark.asyncio
 async def test_update_customer_wrong_store_raises(db, store_b, customer_a):
     req = UpdateCustomerRequest(name="Hacked")
     with pytest.raises(NotFound):
@@ -121,7 +111,6 @@ async def test_update_customer_wrong_store_raises(db, store_b, customer_a):
         )
 
 
-@pytest.mark.asyncio
 async def test_delete_customer_soft_deletes(db, store_a):
     customer = await make_customer(db, store_id=store_a.id, name="ToDelete")
     await svc.delete_customer(db, store_id=store_a.id, customer_id=customer.id)

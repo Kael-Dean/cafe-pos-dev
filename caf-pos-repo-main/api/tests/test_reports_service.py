@@ -1,12 +1,11 @@
-"""Service-layer tests for the dashboard/reports module (Tier 6).
+﻿"""Service-layer tests for the dashboard/reports module (Tier 6).
 
 Runs against real Postgres. Seeds data directly via factory helpers to avoid
 the pusher dependency in the orders service.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-import pytest
 import pytest_asyncio
 
 from app.enums import MovementType, OrderStatus
@@ -16,7 +15,7 @@ from tests.factories import make_item, make_order_direct, make_order_item
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _range() -> tuple[datetime, datetime]:
@@ -27,7 +26,7 @@ def _range() -> tuple[datetime, datetime]:
 # ---------- fixtures ----------
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def paid_order(db, store_a, user_a):
     order = await make_order_direct(
         db,
@@ -41,14 +40,13 @@ async def paid_order(db, store_a, user_a):
     return order
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def inv_item_rpt(db, store_a):
     return await make_item(
         db,
         store_id=store_a.id,
         name="Beans-rpt",
         unit="g",
-        cost=Decimal("0.05"),
         stock=Decimal("500"),
         par=Decimal("1000"),
     )
@@ -57,7 +55,6 @@ async def inv_item_rpt(db, store_a):
 # ---------- dashboard ----------
 
 
-@pytest.mark.asyncio
 async def test_dashboard_today_returns_zeros_for_empty_store(db, store_b):
     result = await svc.get_dashboard_today(db, store_id=store_b.id)
     assert result.revenue == Decimal("0")
@@ -66,7 +63,6 @@ async def test_dashboard_today_returns_zeros_for_empty_store(db, store_b):
     assert result.top_items == []
 
 
-@pytest.mark.asyncio
 async def test_dashboard_today_counts_paid_orders(db, store_a, paid_order):
     result = await svc.get_dashboard_today(db, store_id=store_a.id)
     assert result.order_count >= 1
@@ -74,7 +70,6 @@ async def test_dashboard_today_counts_paid_orders(db, store_a, paid_order):
     assert result.avg_ticket > Decimal("0")
 
 
-@pytest.mark.asyncio
 async def test_dashboard_today_top_items_populated(db, store_a, paid_order):
     result = await svc.get_dashboard_today(db, store_id=store_a.id)
     names = [item.product_name for item in result.top_items]
@@ -84,7 +79,6 @@ async def test_dashboard_today_top_items_populated(db, store_a, paid_order):
 # ---------- sales report ----------
 
 
-@pytest.mark.asyncio
 async def test_sales_report_day_granularity(db, store_a, paid_order):
     from_, to = _range()
     result = await svc.get_sales_report(db, store_id=store_a.id, from_=from_, to=to, granularity="day")
@@ -94,7 +88,6 @@ async def test_sales_report_day_granularity(db, store_a, paid_order):
     assert len(result.buckets) >= 1
 
 
-@pytest.mark.asyncio
 async def test_sales_report_product_granularity(db, store_a, paid_order):
     from_, to = _range()
     result = await svc.get_sales_report(db, store_id=store_a.id, from_=from_, to=to, granularity="product")
@@ -102,7 +95,6 @@ async def test_sales_report_product_granularity(db, store_a, paid_order):
     assert any("Latte-rpt" in n or "Croissant-rpt" in n for n in bucket_names)
 
 
-@pytest.mark.asyncio
 async def test_sales_report_empty_range_returns_zero(db, store_a):
     past = _now() - timedelta(days=365)
     far_past = past - timedelta(days=1)
@@ -114,14 +106,12 @@ async def test_sales_report_empty_range_returns_zero(db, store_a):
 # ---------- low-stock report ----------
 
 
-@pytest.mark.asyncio
 async def test_low_stock_report_includes_below_par(db, store_a, inv_item_rpt):
     result = await svc.get_low_stock_report(db, store_id=store_a.id)
     ids = [item.item_id for item in result.items]
     assert inv_item_rpt.id in ids
 
 
-@pytest.mark.asyncio
 async def test_low_stock_report_excludes_above_par(db, store_a):
     item = await make_item(
         db,
@@ -138,7 +128,6 @@ async def test_low_stock_report_excludes_above_par(db, store_a):
 # ---------- COGS report ----------
 
 
-@pytest.mark.asyncio
 async def test_cogs_report_empty_when_no_movements(db, store_b):
     from_, to = _range()
     result = await svc.get_cogs_report(db, store_id=store_b.id, from_=from_, to=to)
@@ -146,8 +135,8 @@ async def test_cogs_report_empty_when_no_movements(db, store_b):
     assert result.items == []
 
 
-@pytest.mark.asyncio
 async def test_cogs_report_includes_sale_movements(db, store_a, user_a, inv_item_rpt):
+    inv_item_rpt.cost_per_unit = Decimal("0.05")
     db.add(StockMovement(
         store_id=store_a.id,
         inventory_item_id=inv_item_rpt.id,
@@ -168,7 +157,6 @@ async def test_cogs_report_includes_sale_movements(db, store_a, user_a, inv_item
 # ---------- cashier shifts report ----------
 
 
-@pytest.mark.asyncio
 async def test_cashier_shifts_groups_by_user(db, store_a, user_a, paid_order):
     from_, to = _range()
     result = await svc.get_cashier_shifts_report(db, store_id=store_a.id, from_=from_, to=to)
@@ -176,7 +164,6 @@ async def test_cashier_shifts_groups_by_user(db, store_a, user_a, paid_order):
     assert user_a.id in user_ids
 
 
-@pytest.mark.asyncio
 async def test_cashier_shifts_empty_for_store_with_no_orders(db, store_b):
     from_, to = _range()
     result = await svc.get_cashier_shifts_report(db, store_id=store_b.id, from_=from_, to=to)

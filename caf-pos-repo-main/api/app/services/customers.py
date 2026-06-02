@@ -73,10 +73,9 @@ async def create_customer(
     store_id: str,
     req: CreateCustomerRequest,
 ) -> CustomerRead:
-    await _check_unique_phone(db, store_id=store_id, phone=req.phone, exclude_id=None)
-    await _check_unique_email(db, store_id=store_id, email=req.email, exclude_id=None)
-
     async with db.begin():
+        await _check_unique_phone(db, store_id=store_id, phone=req.phone, exclude_id=None)
+        await _check_unique_email(db, store_id=store_id, email=req.email, exclude_id=None)
         customer = Customer(
             store_id=store_id,
             name=req.name,
@@ -97,12 +96,11 @@ async def update_customer(
     customer_id: str,
     req: UpdateCustomerRequest,
 ) -> CustomerRead:
-    if req.phone is not None:
-        await _check_unique_phone(db, store_id=store_id, phone=req.phone, exclude_id=customer_id)
-    if req.email is not None:
-        await _check_unique_email(db, store_id=store_id, email=req.email, exclude_id=customer_id)
-
     async with db.begin():
+        if req.phone is not None:
+            await _check_unique_phone(db, store_id=store_id, phone=req.phone, exclude_id=customer_id)
+        if req.email is not None:
+            await _check_unique_email(db, store_id=store_id, email=req.email, exclude_id=customer_id)
         customer = await _load_customer(db, store_id=store_id, customer_id=customer_id)
         if req.name is not None:
             customer.name = req.name
@@ -125,7 +123,11 @@ async def delete_customer(db: AsyncSession, *, store_id: str, customer_id: str) 
 
 async def _load_customer(db: AsyncSession, *, store_id: str, customer_id: str) -> Customer:
     result = await db.execute(
-        select(Customer).where(Customer.id == customer_id, Customer.store_id == store_id)
+        select(Customer).where(
+            Customer.id == customer_id,
+            Customer.store_id == store_id,
+            Customer.is_active.is_(True),
+        )
     )
     customer = result.scalar_one_or_none()
     if not customer:

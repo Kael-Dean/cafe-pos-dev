@@ -3,6 +3,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.enums import ProductType
+
 
 class _ORM(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -84,6 +86,15 @@ class ModifierGroupUpdate(BaseModel):
     modifiers: list[ModifierCreate] | None = None
 
 
+class ModifierUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=80)
+    price_delta: Decimal | None = Field(None, ge=Decimal("-9999.99"), le=Decimal("9999.99"))
+    inventory_item_id: str | None = None
+    inventory_qty: Decimal | None = Field(None, gt=0)
+    sort_order: int | None = Field(None, ge=0)
+    is_active: bool | None = None
+
+
 # ---------------------------------------------------------------------------
 # Product
 # ---------------------------------------------------------------------------
@@ -93,6 +104,7 @@ class RecipeItemRead(_ORM):
     id: str
     inventory_item_id: str
     quantity: Decimal
+    cost_per_unit: Decimal
 
 
 class RecipeItemInput(BaseModel):
@@ -117,6 +129,9 @@ class ProductRead(_ORM):
     description: str | None
     price: Decimal
     is_active: bool
+    product_type: ProductType
+    servings_per_batch: int
+    finished_goods_item_id: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -132,6 +147,8 @@ class ProductCreate(BaseModel):
     description: str | None = Field(None, max_length=500)
     price: Decimal = Field(ge=Decimal("0"), le=Decimal("999999.99"))
     is_active: bool = True
+    product_type: ProductType = ProductType.MADE_TO_ORDER
+    servings_per_batch: int = Field(1, ge=1)
 
 
 class ProductUpdate(BaseModel):
@@ -140,3 +157,30 @@ class ProductUpdate(BaseModel):
     description: str | None = None
     price: Decimal | None = Field(None, ge=Decimal("0"), le=Decimal("999999.99"))
     is_active: bool | None = None
+    product_type: ProductType | None = None
+    servings_per_batch: int | None = Field(None, ge=1)
+
+
+# ---------------------------------------------------------------------------
+# Cooking Steps
+# ---------------------------------------------------------------------------
+
+
+class CookingStepRead(_ORM):
+    id: str
+    sort_order: int
+    instruction: str
+
+
+class CookingStepCreate(BaseModel):
+    instruction: str = Field(min_length=1, max_length=500)
+    sort_order: int | None = Field(None, ge=0)
+
+
+class CookingStepUpdate(BaseModel):
+    instruction: str | None = Field(None, min_length=1, max_length=500)
+    sort_order: int | None = Field(None, ge=0)
+
+
+class CookingStepsBulkReplace(BaseModel):
+    steps: list[CookingStepCreate]

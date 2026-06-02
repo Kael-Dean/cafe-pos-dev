@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -21,7 +21,8 @@ class InventoryItemBase(_DecimalConfig):
     stock_on_hand: Decimal
     par_level: Decimal
     is_active: bool
-    expiry_date: date | None = None
+    unit_size: Decimal | None = None
+    unit_price: Decimal | None = None
 
 
 class InventoryItemRead(InventoryItemBase):
@@ -43,24 +44,14 @@ class InventoryItemRead(InventoryItemBase):
 class InventoryItemCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     unit: str = Field(min_length=1, max_length=24)
+    unit_size: Decimal = Field(gt=0, le=Decimal("9999999.999"))
     par_level: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("9999999.999"))
-    cost_per_unit: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("99999.9999"))
     is_active: bool = True
-    expiry_date: date | None = None
 
 
 class InventoryItemUpdate(BaseModel):
     par_level: Decimal | None = Field(None, ge=0, le=Decimal("9999999.999"))
     cost_per_unit: Decimal | None = Field(None, ge=0, le=Decimal("99999.9999"))
-    expiry_date: date | None = None
-
-
-class ReceiveStockRequest(BaseModel):
-    item_id: str
-    qty: Decimal = Field(gt=0, le=Decimal("999999.999"))
-    cost_per_unit: Decimal = Field(ge=0, le=Decimal("99999.9999"))
-    supplier: str | None = Field(None, max_length=120)
-    note: str | None = Field(None, max_length=500)
 
 
 class WasteRequest(BaseModel):
@@ -86,6 +77,7 @@ class StockMovementRead(BaseModel):
     type: MovementType
     inventory_item_id: str
     quantity: Decimal
+    unit_cost: Decimal | None = None
     reason_code: WastageReason | None = None
     note: str | None = None
     supplier: str | None = None
@@ -98,3 +90,11 @@ class StockMovementRead(BaseModel):
 class MovementsPage(BaseModel):
     items: list[StockMovementRead]
     next_cursor: str | None = None
+
+
+class SupplierHistoryItem(BaseModel):
+    supplier: str | None
+    unit_cost: Decimal | None
+    quantity: Decimal
+    received_at: datetime
+    note: str | None

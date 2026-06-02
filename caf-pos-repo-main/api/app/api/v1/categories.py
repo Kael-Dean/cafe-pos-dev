@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.deps import StoreUser, DbSession, require_role
+from app.deps import DbSession, StoreUser, require_role
 from app.enums import Role
 from app.schemas.catalog import CategoryCreate, CategoryRead, CategoryUpdate
 from app.services import catalog as svc

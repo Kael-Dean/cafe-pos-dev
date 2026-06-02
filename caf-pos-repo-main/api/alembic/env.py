@@ -4,17 +4,18 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from alembic import context
+
 # Make `app.*` importable when alembic is invoked from the `api/` dir.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app import models  # noqa: F401, E402  -- imported for side effects (table registration)
 from app.config import get_settings  # noqa: E402
 from app.db.base import Base  # noqa: E402
-from app import models  # noqa: F401, E402  -- imported for side effects (table registration)
 
 config = context.config
 if config.config_file_name is not None:
@@ -57,6 +58,7 @@ async def run_migrations_online() -> None:
     connectable = async_engine_from_config(section, prefix="sqlalchemy.", poolclass=pool.NullPool)
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
+        await connection.commit()
     await connectable.dispose()
 
 

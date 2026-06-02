@@ -1,0 +1,656 @@
+================================================================================
+TERMS OF REFERENCE
+Cafe Point-of-Sale (POS) System — Proposal for Review
+================================================================================
+
+Prepared for:   Cafe Operators and Organizational Review Committee
+Prepared by:    Development Team
+Date:           May 2026
+Status:         DRAFT — Awaiting Stakeholder Feedback
+
+--------------------------------------------------------------------------------
+PURPOSE OF THIS DOCUMENT
+--------------------------------------------------------------------------------
+
+This document describes everything the Cafe POS system is currently built to do.
+It is written in plain language so that cafe owners, managers, and organizational
+reviewers can read it without any technical knowledge.
+
+The goal of this review is simple: read through each section and ask yourself
+whether the described functionality is enough to run your cafe day-to-day. If
+anything is missing, unclear, or should work differently, please mark it and
+share your feedback before the system is submitted for final evaluation.
+
+Nothing is final yet. This is your opportunity to request changes.
+
+--------------------------------------------------------------------------------
+WHAT THE SYSTEM IS
+--------------------------------------------------------------------------------
+
+The Cafe POS system is a back-end (server-side) application that manages all
+data and business logic for a cafe. It is designed to be connected to a
+front-end application (a screen, tablet, or phone app) that cafe staff will
+actually touch. The system handles everything that happens "behind the scenes":
+storing records, enforcing rules, calculating costs, and generating reports.
+
+The system supports multiple cafes or branches. Each store's data is completely
+separate from every other store, even if they share the same owner account.
+
+--------------------------------------------------------------------------------
+SECTION 1 — WHO CAN USE THE SYSTEM (ROLES AND ACCESS)
+--------------------------------------------------------------------------------
+
+Every person who uses the system must log in with a personal PIN number. The
+system has four types of users, each with a different level of access:
+
+  OWNER
+  The highest level of access. Can do everything in the system, including
+  viewing all reports and making financial adjustments.
+
+  MANAGER
+  Can do almost everything an Owner can: manage staff, approve leave, open and
+  close the cash drawer, void orders, manage inventory, and view all reports.
+
+  BARISTA
+  Can take orders, record wastage, add customers, and manage pre-orders. Cannot
+  access financial reports or make staff changes.
+
+  BAKER
+  Same level of access as Barista. Intended for kitchen or production staff who
+  take orders and record ingredients used.
+
+When a staff member logs in, the system automatically knows which store they
+belong to. They can only see data for their own store.
+
+Sessions stay active for 8 hours (a full shift) before requiring a new login.
+
+QUESTIONS FOR REVIEWERS:
+  - Are these four roles sufficient? Does your cafe have other types of staff
+    that need different levels of access?
+  - Should Bakers have the same access as Baristas, or do they need to be
+    more restricted?
+
+--------------------------------------------------------------------------------
+SECTION 2 — STAFF MANAGEMENT (TEAM PAGE)
+--------------------------------------------------------------------------------
+
+Managers and Owners can:
+
+  - View a list of all active staff members at the store
+  - View a single staff member's full profile
+  - Create new staff accounts with the following information:
+      Full name
+      PIN number (used for login)
+      Role (Owner, Manager, Barista, or Baker)
+      Job position (e.g. Head Barista, Cashier, etc.)
+      Phone number
+      Email address
+      Physical address
+  - Update any of the above details at any time
+  - Deactivate a staff member when they leave (their record is kept for history,
+    they just can no longer log in)
+
+The system prevents two staff members at the same store from having the same
+phone number or email address.
+
+QUESTIONS FOR REVIEWERS:
+  - Is there any other staff information the system should store? (e.g. date
+    hired, contract type, emergency contact, ID number)
+  - Should deactivated staff be fully deletable, or is keeping them for records
+    the right approach?
+
+--------------------------------------------------------------------------------
+SECTION 3 — LEAVE MANAGEMENT
+--------------------------------------------------------------------------------
+
+Any staff member can submit a leave request. They must provide:
+  - The type of leave (the system supports multiple leave types)
+  - The dates they wish to take off
+
+Staff can only see their own leave requests. Managers and Owners can see all
+leave requests for the store.
+
+Managers and Owners can approve or reject any leave request. The system records
+who approved or rejected it and when.
+
+QUESTIONS FOR REVIEWERS:
+  - What leave types do you need? (e.g. Annual Leave, Sick Leave, Personal
+    Leave, Unpaid Leave) — the system has leave types but they are configured
+    by the development team.
+  - Is there a maximum number of leave days the system should track per person
+    per year? Currently the system records requests but does not enforce limits.
+  - Should rejected leave requests be deletable, or kept permanently?
+
+--------------------------------------------------------------------------------
+SECTION 4 — SHIFT SCHEDULING
+--------------------------------------------------------------------------------
+
+Managers and Owners can assign work shifts to staff members. Each shift
+records:
+  - Which staff member is assigned
+  - The start date and time
+  - The end date and time
+
+Shifts can be filtered by week, so a manager can view the schedule for any
+given week.
+
+All staff can view the shift list (so they can see their own schedule).
+
+QUESTIONS FOR REVIEWERS:
+  - Is simple shift assignment enough, or do you need a full weekly scheduling
+    view with drag-and-drop-style planning?
+  - Should the system send reminders or notifications to staff about upcoming
+    shifts?
+  - Should the system track actual clock-in and clock-out times, separate from
+    the assigned shift?
+
+--------------------------------------------------------------------------------
+SECTION 5 — CASH DRAWER (CASH SESSIONS)
+--------------------------------------------------------------------------------
+
+The system supports opening and closing a cash session at the start and end of
+each day (or shift). This works as follows:
+
+  OPENING: A manager records how much cash was in the drawer at the start of
+  the session (the "opening float").
+
+  CLOSING: A manager records how much cash is in the drawer at the end of the
+  session (the "closing float").
+
+The system keeps a history of all past cash sessions. Only managers and owners
+can open, close, or review cash sessions.
+
+QUESTIONS FOR REVIEWERS:
+  - Does your cafe need the system to automatically calculate whether the
+    closing float matches expected sales? (It records the amounts but does not
+    currently flag discrepancies automatically.)
+  - Do you need to record mid-day cash withdrawals or deposits (e.g. dropping
+    cash at the safe)?
+
+--------------------------------------------------------------------------------
+SECTION 6 — STAFF TASKS
+--------------------------------------------------------------------------------
+
+Managers can create tasks and assign them to staff members. Tasks move through
+the following stages:
+
+  PENDING  →  IN PROGRESS  →  PENDING REVIEW  →  DONE
+
+Staff can move their assigned tasks from Pending to In Progress, and then to
+Pending Review when they believe the task is complete. A manager must then
+confirm the task as Done.
+
+Staff can only see tasks assigned to them. Managers can see all tasks and
+filter by status.
+
+QUESTIONS FOR REVIEWERS:
+  - Is this task workflow useful for your cafe? (e.g. cleaning tasks, setup
+    checklists, daily duties)
+  - Should tasks have deadlines or due dates?
+  - Should tasks have priority levels (urgent, normal, low)?
+
+--------------------------------------------------------------------------------
+SECTION 7 — MENU MANAGEMENT
+--------------------------------------------------------------------------------
+
+The menu is organized into Categories and Products.
+
+CATEGORIES
+  Simple labels used to group products (e.g. Hot Drinks, Cold Drinks,
+  Pastries, Food). Managers can create, rename, and delete categories.
+
+PRODUCTS
+  Each product on the menu has:
+    - Name and description
+    - Price
+    - Category
+    - Whether it is currently available or hidden
+    - A recipe (see below)
+
+RECIPES (INGREDIENTS PER PRODUCT)
+  Each product can have a list of ingredients with exact quantities. When an
+  order is placed for that product, the system automatically deducts those
+  quantities from the ingredient stock. This is how ingredient costs are
+  tracked automatically.
+
+  Example: A "Latte" recipe might use 18g of espresso beans, 200ml of milk,
+  and 1 cup.
+
+MODIFIERS (ADD-ONS AND OPTIONS)
+  Products can have customization options called Modifier Groups. Each group
+  contains individual Modifier choices.
+
+  Example:
+    Group: "Size"       → Choices: Small, Medium, Large
+    Group: "Sugar"      → Choices: No Sugar, Half Sugar, Full Sugar
+    Group: "Add-ons"    → Choices: Extra Shot, Oat Milk, Vanilla Syrup
+
+  Each modifier can have an additional price (e.g. Extra Shot costs +20 baht).
+  Groups can be set as required (customer must choose) or optional.
+
+QUESTIONS FOR REVIEWERS:
+  - Do you need to set availability by time of day? (e.g. breakfast items only
+    available before noon)
+  - Should modifiers affect the recipe/ingredients? (e.g. choosing "Oat Milk"
+    should deduct oat milk from stock instead of regular milk — currently the
+    recipe is fixed per product)
+  - Do you need a product image field?
+  - Should products have a cost price separate from the selling price, for
+    profit margin tracking?
+
+--------------------------------------------------------------------------------
+SECTION 8 — INVENTORY (INGREDIENTS AND STOCK)
+--------------------------------------------------------------------------------
+
+The inventory tracks all raw ingredients used in the cafe.
+
+Each ingredient record stores:
+  - Name and unit of measurement (e.g. grams, milliliters, pieces)
+  - Current stock on hand (calculated automatically from all movements)
+  - Par level — the minimum amount that should always be in stock
+  - Whether the ingredient is active or has been removed
+
+STOCK TRACKING
+  The system tracks every change to stock automatically:
+    - Stock goes UP when a purchase receipt is confirmed (see Section 9)
+    - Stock goes DOWN when an order is placed (based on the recipe)
+    - Stock can be manually adjusted by a manager with a required reason
+    - Wastage can be recorded by any barista/baker with a reason
+
+  Every single change is permanently recorded and cannot be deleted. This
+  gives a complete audit trail of all stock movements.
+
+LOW STOCK ALERTS
+  The system can instantly show a list of all ingredients that have fallen
+  below their par level (the minimum required amount).
+
+EXPIRY TRACKING
+  When stock is received, an expiry date can be recorded per batch. The system
+  can display a list of all batches that have already passed their expiry date
+  and still have remaining stock.
+
+SUPPLIER HISTORY
+  For each ingredient, managers can view a history of every time that
+  ingredient was purchased: which supplier, what price was paid, and how much
+  was bought. This helps track price changes over time.
+
+QUESTIONS FOR REVIEWERS:
+  - Do you need the system to block orders when stock runs out, rather than
+    allowing it to go into negative stock with a warning?
+  - Are there ingredients that come in packs (e.g. a box of 24 cups) where you
+    want to track both packs and individual units?
+  - Should the system automatically flag expiring stock before it actually
+    expires (e.g. items expiring within 3 days)?
+
+--------------------------------------------------------------------------------
+SECTION 9 — PURCHASE RECEIPTS (RESTOCKING)
+--------------------------------------------------------------------------------
+
+When new stock arrives at the cafe, a manager records it using a Purchase
+Receipt. This is the formal record of a delivery.
+
+HOW IT WORKS:
+  1. A manager creates a new Draft Receipt.
+  2. They add ingredient batches (called "lots") to the receipt. Each lot
+     records:
+       - Which ingredient was received
+       - How much was received (quantity)
+       - The price paid per unit
+       - The expiry date (optional)
+       - The supplier name (optional)
+  3. They can add or remove lots freely while the receipt is in Draft.
+  4. When they are satisfied, they Confirm the receipt. At that moment, the
+     system adds all the stock to inventory automatically in one go.
+  5. Once confirmed, the receipt is locked and cannot be changed.
+
+The receipt history shows total prices and all lot details for reference.
+
+QUESTIONS FOR REVIEWERS:
+  - Should the system support multiple suppliers on a single receipt, or one
+    receipt per supplier?
+  - Should there be a formal purchase order workflow (create order → receive
+    delivery → confirm) or is the current Draft → Confirm approach enough?
+  - Should the system track which staff member received each delivery?
+
+--------------------------------------------------------------------------------
+SECTION 10 — TAKING ORDERS
+--------------------------------------------------------------------------------
+
+Any barista or baker can create an order. Each order records:
+  - The channel: Dine-In or Take-Away
+  - The items ordered (from the menu)
+  - Any modifiers chosen for each item (e.g. size, sugar level)
+  - Whether the order is linked to a customer (optional)
+  - The payment method and amount
+
+ORDER STATUS FLOW:
+  PENDING → PAID → IN PROGRESS → READY → COMPLETED
+
+  When an order is created, it starts as Pending and immediately deducts
+  ingredients from stock.
+
+  Once payment is received, a staff member marks it as Paid.
+
+  Kitchen staff (via a kitchen display) move it through In Progress and Ready
+  until it is Completed.
+
+PAYMENT METHODS:
+  The system supports:
+    - Cash
+    - Credit/Debit Card
+    - PromptPay (QR code is generated automatically from the order total)
+
+VOIDING ORDERS:
+  Only managers can void (cancel) an order. When voided, all deducted stock is
+  returned automatically, and a reason must be provided. The void record is
+  kept permanently for auditing.
+
+KITCHEN DISPLAY:
+  The order status flow is designed for a kitchen display screen. When any
+  order status changes, the update is sent in real-time to the kitchen screen
+  without needing to refresh the page.
+
+QUESTIONS FOR REVIEWERS:
+  - Do you need a table number on orders?
+  - Should the system support split payments (e.g. half cash, half card)?
+  - Do you need order receipts to be printed? The system generates the order
+    data but printing depends on the front-end application.
+  - Should refunds (partial returns) be possible, separate from a full void?
+  - Do you need a queue number or ticket number printed for the customer?
+
+--------------------------------------------------------------------------------
+SECTION 11 — PRE-ORDERS (ADVANCE AND CATERING ORDERS)
+--------------------------------------------------------------------------------
+
+Pre-orders are for customers who place their order in advance, such as catering
+orders or custom cake orders. They are separate from regular counter orders.
+
+HOW IT WORKS:
+  1. A staff member creates a pre-order with a customer name and due date.
+  2. They add the items the customer wants.
+  3. The system can check whether there are enough ingredients to fulfill the
+     order, compared against current stock.
+  4. When production begins, the pre-order is Started — stock is deducted at
+     this point.
+  5. When the order is ready, it is marked as Completed.
+  6. Pre-orders can be Cancelled while still in the Pending stage.
+
+QUESTIONS FOR REVIEWERS:
+  - Should pre-orders require payment tracking? Currently they record items and
+    status only, not payment.
+  - Should pre-orders be linked to a customer record in the system?
+  - Is there a deposit or partial payment scenario that needs to be handled?
+
+--------------------------------------------------------------------------------
+SECTION 12 — SHOPPING LIST
+--------------------------------------------------------------------------------
+
+Staff can maintain a simple shopping list of ingredients that need to be
+purchased. Items can be added manually and removed once purchased.
+
+The shopping list can be printed as a plain text list, making it easy to hand
+to someone going to the market or send via a messaging app.
+
+QUESTIONS FOR REVIEWERS:
+  - Should low-stock items be automatically added to the shopping list?
+  - Should the shopping list include the current stock level and par level for
+    reference when printing?
+
+--------------------------------------------------------------------------------
+SECTION 13 — CUSTOMER RECORDS (CRM)
+--------------------------------------------------------------------------------
+
+The system keeps a simple customer database. Each customer record stores:
+  - Full name
+  - Phone number
+  - Email address
+
+Customers can be searched by name, phone, or email. When viewing a customer's
+profile, the system shows their recent order history.
+
+Any barista can create or update a customer record. Only managers can delete
+customer records (the record is kept for history, not permanently erased).
+
+Orders can optionally be linked to a customer so their purchase history is
+tracked.
+
+QUESTIONS FOR REVIEWERS:
+  - Do you need a loyalty points system? (e.g. earn 1 point per 10 baht,
+    redeem for discounts)
+  - Should customers be able to have a stored credit or running tab?
+  - Do you need birthday tracking for promotional purposes?
+  - Should customers receive any automated messages (e.g. a thank-you SMS)?
+
+--------------------------------------------------------------------------------
+SECTION 14 — REPORTS AND DASHBOARD
+--------------------------------------------------------------------------------
+
+TODAY'S DASHBOARD
+  At a glance, the dashboard shows a summary of today's performance:
+    - Number of orders
+    - Total revenue
+    - Any other key figures for the day
+
+SALES REPORT
+  Managers can generate a sales report for any date range. The report can be
+  broken down by:
+    - Day (see sales totals per day over a period)
+    - Hour (see which hours are busiest)
+    - Product (see which items sell the most)
+    - Category (see which menu categories earn the most)
+    - Payment method (see how customers prefer to pay)
+
+COST OF GOODS SOLD (COGS) REPORT
+  Shows how much ingredient stock was consumed over a date range, ranked either
+  by the number of units consumed or by the total cost of ingredients used.
+  This helps identify which ingredients cost the most to produce.
+
+WASTAGE REPORT
+  Shows all wastage recorded over a date range: which ingredients were wasted,
+  how much, why, and who recorded it.
+
+LOW STOCK REPORT
+  A snapshot of all ingredients currently below their par level.
+
+CASHIER SHIFTS REPORT
+  Shows cash session records over a date range: who opened and closed each
+  session, the opening and closing float amounts, and the duration.
+
+All reports are restricted to Managers and Owners only.
+
+QUESTIONS FOR REVIEWERS:
+  - Are there other reports you need to run your cafe? For example:
+      - Profit margin per product
+      - Staff performance (orders per barista)
+      - Peak hour analysis
+      - Monthly or year-to-date summaries
+  - Should reports be exportable to Excel or PDF?
+  - Should the dashboard show data from yesterday or the past week as well?
+
+--------------------------------------------------------------------------------
+SECTION 15 — WHAT THE SYSTEM DOES NOT CURRENTLY INCLUDE
+--------------------------------------------------------------------------------
+
+The following features are NOT part of the current system. They may or may not
+be needed based on your feedback:
+
+  - Front-end application (the actual screen staff interact with)
+    The system is a back-end only. A separate front-end must be developed.
+
+  - Loyalty / rewards program
+    No points accumulation or redemption is built in.
+
+  - Discount and promotion management
+    No coupon codes, percentage discounts, or promotional pricing rules.
+
+  - Table management
+    No floor plan, table numbering, or table assignment for dine-in orders.
+
+  - Multi-item printing or receipt printing
+    The system generates data but does not directly control a printer.
+
+  - Supplier management
+    Supplier names can be recorded on receipts, but there is no dedicated
+    supplier database with contacts, pricing agreements, or purchase orders.
+
+  - Payroll or salary calculation
+    The system tracks shifts and staff records but does not calculate pay.
+
+  - Reservation management
+    No booking or table reservation system.
+
+  - Online ordering integration
+    No connection to food delivery platforms (GrabFood, Foodpanda, etc.).
+
+  - Accounting software integration
+    No direct link to accounting tools such as QuickBooks or Xero.
+
+QUESTIONS FOR REVIEWERS:
+  - Are any of the above missing features required for your cafe to operate?
+  - If yes, please indicate which ones are highest priority.
+
+--------------------------------------------------------------------------------
+SECTION 16 — SYSTEM RELIABILITY AND TECHNICAL NOTES (PLAIN LANGUAGE)
+--------------------------------------------------------------------------------
+
+The following are assurances about how the system is built, translated into
+plain language:
+
+  DATA SAFETY
+  All money and quantity calculations use precise decimal arithmetic, not
+  rounded numbers, to avoid calculation errors.
+
+  AUDIT TRAIL
+  All stock changes are permanently recorded. Nothing is deleted — corrections
+  are added as new entries so the full history is always visible.
+
+  ACCESS CONTROL
+  Every action in the system checks who the user is and what role they have
+  before allowing it. A barista cannot access owner-level features.
+
+  STORE ISOLATION
+  If the system is used by multiple cafe locations, each location's data is
+  completely separate. A staff member at Store A cannot see Store B's orders
+  or stock.
+
+  LIVE UPDATES
+  The kitchen display and any connected screen receives order status updates
+  instantly without needing to refresh.
+
+  CLOUD DEPLOYMENT
+  The system is deployed on Railway (a cloud platform), meaning it is
+  accessible from any device with internet access. Database migrations
+  (structural updates) run automatically on deployment.
+
+--------------------------------------------------------------------------------
+NEXT STEPS
+--------------------------------------------------------------------------------
+
+1. Cafe operators read this document and note any gaps, questions, or
+   requested changes in the margin or in a separate feedback document.
+
+2. The development team receives feedback and assesses what changes are
+   feasible within the project scope and timeline.
+
+3. If all parties agree that the system is complete, the project is submitted
+   to the organizational committee for final evaluation.
+
+4. If changes are requested, they are scoped, prioritized, and implemented
+   before re-submission.
+
+--------------------------------------------------------------------------------
+SECTION 17 — PROJECT COST ESTIMATION
+--------------------------------------------------------------------------------
+
+This section provides a transparent breakdown of the estimated development cost
+for this system. It is intended to help the organizational review committee
+understand the scope of work and assess the financial value of the project.
+
+SCOPE SUMMARY
+  The system described in this document is a back-end application only. A
+  front-end (the screen that cafe staff interact with) is not included and
+  would require separate development. The back-end comprises 13 functional
+  modules, multi-branch data isolation, real-time order updates, a full
+  reporting suite, and cloud deployment on Railway.
+
+DEVELOPMENT EFFORT ESTIMATE
+
+  The table below shows the estimated number of working hours per module,
+  based on the features described in this document:
+
+  Module                                        Estimated Hours
+  -----------------------------------------------+-----------------
+  Authentication and multi-branch access         | ~25 hours
+  Staff management, leave, shifts, tasks,        |
+    and cash sessions (HR module)                | ~70 hours
+  Menu: categories, products, modifiers,         |
+    and recipes                                  | ~45 hours
+  Inventory: stock tracking, wastage,            |
+    expiry, and supplier history                 | ~55 hours
+  Purchase receipts and lot management           | ~35 hours
+  Orders: full lifecycle, voids, and             |
+    real-time kitchen display                    | ~55 hours
+  Pre-orders (advance and catering orders)       | ~25 hours
+  Shopping list                                  | ~10 hours
+  Customer records (CRM)                         | ~20 hours
+  Reports and dashboard (6 report types)         | ~55 hours
+  Infrastructure: testing, migrations,           |
+    deployment, and documentation                | ~40 hours
+  -----------------------------------------------+-----------------
+  TOTAL                                          | ~435 hours
+
+COST ESTIMATE BY RATE TIER
+
+  Developer Level          Rate (THB/hour)    Total Estimate
+  -------------------------+------------------+------------------
+  Junior freelancer        | 300 – 500        | 130,000 – 218,000
+  Mid-level developer      | 700 – 1,000      | 305,000 – 435,000
+  Senior / agency          | 1,500 – 2,500    | 653,000 – 1,088,000
+
+  Recommended benchmark for organizational evaluation:
+  Mid-level solo developer — approximately 300,000 Baht
+
+FULL PROJECT BUDGET (BACKEND + HOSTING)
+
+  Line Item                                   Estimate (THB)
+  -------------------------------------------+------------------
+  Development labor (mid-level, solo)         | 250,000 – 350,000
+  Cloud infrastructure — Railway (12 months)  |  ~12,000
+  Documentation and handoff                   |  20,000 –  30,000
+  -------------------------------------------+------------------
+  TOTAL PROJECT VALUE                         | ~280,000 – 400,000
+
+  A defensible figure for committee submission: 300,000 Baht
+  for the back-end system as currently delivered.
+
+IF LICENSED TO CAFES (SAAS MODEL)
+
+  Should the organization choose to license this system to cafe operators
+  rather than sell it outright, the following pricing tiers are appropriate
+  for the Thai market:
+
+  Tier                         Price
+  -----------------------------+--------------------------
+  Monthly subscription         | 1,500 – 3,000 THB/month
+  One-time setup and onboarding| 10,000 – 25,000 THB
+  Annual license               | 18,000 – 36,000 THB/year
+
+  Note: a front-end application is not included. Cafes adopting this system
+  would also need a front-end, which would add approximately 50–80% to the
+  total development cost.
+
+NOTES FOR REVIEWERS
+  - The pricing above covers the back-end system only (server, data, and
+    business logic). The front-end screen that staff interact with has not
+    been built and is not costed here.
+  - Missing features listed in Section 15 (loyalty, table management,
+    discounts, payroll, etc.) would each require additional scoping and cost
+    if requested.
+  - For comparison, entry-level Thai POS SaaS products (e.g. FoodStory,
+    Beepos) are priced at approximately 500 – 1,500 THB/month but offer
+    significantly less depth in inventory management, HR, and cost tracking
+    than this system.
+
+--------------------------------------------------------------------------------
+END OF DOCUMENT
+--------------------------------------------------------------------------------

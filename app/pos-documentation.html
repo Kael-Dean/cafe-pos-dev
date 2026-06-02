@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="th"><head><meta charset="utf-8"/><title>POS — Function Reference</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Tahoma,sans-serif;background:#fff;color:#1a1a1a}
+/* A4 landscape content area: 297mm wide × 210mm tall, minus 15mm top/bottom margins = 180mm */
+.cover{width:273mm;height:180mm;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#0f3460);color:#fff;page-break-after:always;break-after:page}
+.cover h1{font-size:2.4rem;letter-spacing:2px;margin-bottom:10px}.cover .sub{font-size:1.1rem;opacity:.7}.cover .date{margin-top:32px;font-size:.85rem;opacity:.5}
+.page{width:273mm;height:180mm;padding:6mm 8mm 6mm 8mm;background:#fff;page-break-after:always;break-after:page;display:flex;flex-direction:column;gap:3mm;overflow:hidden}
+.page-header{display:flex;align-items:baseline;gap:10px;border-bottom:2.5px solid #0f3460;padding-bottom:3mm;flex-shrink:0}
+.num{font-size:.75rem;color:#888;white-space:nowrap}.page-header h2{font-size:1.3rem;color:#0f3460}
+.desc-row{display:flex;gap:16px;flex-shrink:0}
+.desc-row p{flex:1;font-size:.78rem;line-height:1.5}
+.th{color:#333}.en{color:#666;border-left:2px solid #ddd;padding-left:10px}
+.img-wrap{flex:1;min-height:0;border:1px solid #e0e0e0;border-radius:5px;overflow:hidden;background:#fafafa}
+.img-wrap img{width:100%;height:100%;object-fit:contain;object-position:top left;display:block}
+@media print{.page,.cover{page-break-after:always;break-after:page}}
+</style></head><body>
+<div class="cover"><h1>POS System</h1><p class="sub">Function Reference — คู่มือฟังก์ชันทั้งหมด</p><p class="date">สร้างเมื่อ 21 พฤษภาคม 2569</p></div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">1 / 19</span>
+    <h2>Login</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">หน้าเข้าสู่ระบบ — กรอก Store ID และ PIN 4 หลักขึ้นไป เพื่อรับ Access Token และเข้าสู่ระบบ</p>
+    <p class="en">Authentication screen. Enter Store ID and PIN (≥4 digits) to receive an access token.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/login.png" alt="Login"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">2 / 19</span>
+    <h2>POS Terminal</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">หน้าขายหลัก — เลือกสินค้าจากเมนู เพิ่ม modifier (ขนาด นม ความหวาน) สร้างออเดอร์ และรับชำระเงินสด/QR/บัตร</p>
+    <p class="en">Main sales screen. Select items, add modifiers, build orders, and accept cash/QR/card.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/pos.png" alt="POS Terminal"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">3 / 19</span>
+    <h2>Kitchen Display (KDS)</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">จอครัว — แสดงออเดอร์ที่รอทำ real-time พร้อมสถานะ (รอ/กำลังทำ/เสร็จ) และเวลานับถอยหลัง</p>
+    <p class="en">Real-time kitchen display with order status (Waiting / In-progress / Done) and timers.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/kds.png" alt="Kitchen Display (KDS)"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">4 / 19</span>
+    <h2>Dashboard</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">แดชบอร์ดสรุปยอด — ยอดขายวันนี้ กราฟรายได้รายชั่วโมง สินค้าขายดี Top-10 และสรุปพนักงาน</p>
+    <p class="en">Sales overview: daily revenue, hourly chart, top-10 items, and staff performance.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/dashboard.png" alt="Dashboard"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">5 / 19</span>
+    <h2>BOM Builder</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">สร้าง Bill of Materials — กำหนดวัตถุดิบ ปริมาณต่อเสิร์ฟ และสูตรสำหรับแต่ละเมนู</p>
+    <p class="en">Define ingredients, quantities per serving, and recipes for each menu item.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/bom.png" alt="BOM Builder"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">6 / 19</span>
+    <h2>Inventory</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">คลังวัตถุดิบ — ดูระดับสต็อก แจ้งเตือนสต็อกต่ำ รับของเข้า และบันทึกของเสีย</p>
+    <p class="en">Stock management: view levels, low-stock alerts, receive stock, and log wastage.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/inventory.png" alt="Inventory"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">7 / 19</span>
+    <h2>Pre-Orders</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">ออเดอร์ล่วงหน้า — ดูและจัดการออเดอร์ที่ลูกค้าจองไว้ พร้อมวันเวลารับและสถานะ</p>
+    <p class="en">Advance orders: view and manage pre-booked orders with pickup time and status tracking.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/pre-orders.png" alt="Pre-Orders"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">8 / 19</span>
+    <h2>Shopping List</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">รายการสั่งซื้อ — รายการวัตถุดิบที่ต้องสั่งซื้อ คำนวณอัตโนมัติจากสต็อกขั้นต่ำ</p>
+    <p class="en">Auto-generated purchase list based on current stock vs minimum thresholds.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/shopping-list.png" alt="Shopping List"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">9 / 19</span>
+    <h2>Stock Take</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">นับสต็อก — กรอกจำนวนจริงที่นับได้ เปรียบเทียบกับระบบ และสรุปผลต่าง (variance)</p>
+    <p class="en">Physical count: enter actual quantities, compare with system, and record variance.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/stock-take.png" alt="Stock Take"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">10 / 19</span>
+    <h2>Cash Reconciliation</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">ปิดยอดเงินสด — กระทบยอดเงินสดในลิ้นชักกับยอดขาย บันทึก drop และปิดกะ</p>
+    <p class="en">End-of-shift cash reconciliation: match drawer vs sales, record drops, close shifts.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/cash.png" alt="Cash Reconciliation"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">11 / 19</span>
+    <h2>Promotions</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">โปรโมชัน — สร้างและจัดการส่วนลด (บาท/%) โค้ดส่วนลด และโปรแบบ Buy-X-Get-Y</p>
+    <p class="en">Create and manage discounts (flat/%), coupon codes, and buy-X-get-Y offers.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/promotions.png" alt="Promotions"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">12 / 19</span>
+    <h2>Protocols / SOP</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">โปรโตคอล — บันทึกขั้นตอนมาตรฐาน (SOP) สำหรับเปิด/ปิดร้าน คุณภาพ และความปลอดภัย</p>
+    <p class="en">Standard Operating Procedures for opening/closing, quality, and safety.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/protocols.png" alt="Protocols / SOP"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">13 / 19</span>
+    <h2>ตารางกะ (Shift Schedule)</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">ตารางกะ — วางแผนและดูตารางเวรพนักงานรายสัปดาห์/รายเดือน</p>
+    <p class="en">Shift scheduler: plan and view weekly/monthly staff rosters.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/shifts.png" alt="ตารางกะ (Shift Schedule)"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">14 / 19</span>
+    <h2>HR & Admin</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">HR — ข้อมูลพนักงาน บทบาท เวลาเข้า-ออกงาน ลา และ Tasks</p>
+    <p class="en">Staff profiles, roles, attendance, leave requests, and task tracking.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/hr.png" alt="HR & Admin"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">15 / 19</span>
+    <h2>Hardware</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">อุปกรณ์ — ตั้งค่าและทดสอบเครื่องพิมพ์ใบเสร็จ เครื่องสแกน และลิ้นชักเงินสด</p>
+    <p class="en">Configure and test receipt printers, barcode scanners, and cash drawers.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/hardware.png" alt="Hardware"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">16 / 19</span>
+    <h2>Catalog Admin</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">จัดการเมนู — เพิ่ม/แก้ไข/ลบสินค้า กำหนดราคา หมวดหมู่ modifier groups และตัวเลือก</p>
+    <p class="en">Menu admin: add/edit/delete items, prices, categories, and modifier groups.</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/catalog.png" alt="Catalog Admin"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">17 / 19</span>
+    <h2>Customers</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">ลูกค้า — ข้อมูลลูกค้าและประวัติออเดอร์ (ฟีเจอร์กำลังพัฒนา)</p>
+    <p class="en">Customer profiles and order history. (Feature in development)</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/customers.png" alt="Customers"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">18 / 19</span>
+    <h2>Reports</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">รายงาน — รายงานยอดขายรายวัน/รายเดือน ต้นทุน และกำไร (ฟีเจอร์กำลังพัฒนา)</p>
+    <p class="en">Daily/monthly sales, cost, and profit reports. (Feature in development)</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/reports.png" alt="Reports"/></div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <span class="num">19 / 19</span>
+    <h2>Settings</h2>
+  </div>
+  <div class="desc-row">
+    <p class="th">ตั้งค่า — ตั้งค่าระบบทั่วไป ภาษา สกุลเงิน และการแจ้งเตือน (ฟีเจอร์กำลังพัฒนา)</p>
+    <p class="en">General system settings: language, currency, notifications. (Feature in development)</p>
+  </div>
+  <div class="img-wrap"><img src="doc-screenshots/settings.png" alt="Settings"/></div>
+</div>
+</body></html>

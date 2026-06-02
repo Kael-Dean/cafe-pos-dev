@@ -9,44 +9,10 @@ from app.models import StockMovement
 from app.schemas.inventory import (
     AdjustRequest,
     InventoryItemUpdate,
-    ReceiveStockRequest,
     WasteRequest,
 )
 from app.services import inventory as inv
-
 from tests.conftest import make_item
-
-
-async def test_receive_increments_stock_and_creates_movement(db, store_a, user_a):
-    item = await make_item(db, store_id=store_a.id, stock=Decimal("100"), cost=Decimal("0.50"))
-
-    updated = await inv.receive_stock(
-        db,
-        store_id=store_a.id,
-        user_id=user_a.id,
-        req=ReceiveStockRequest(
-            item_id=item.id,
-            qty=Decimal("50"),
-            cost_per_unit=Decimal("0.55"),
-            supplier="Boncafe",
-            note="weekly delivery",
-        ),
-    )
-
-    assert updated.stock_on_hand == Decimal("150.000")
-    assert updated.cost_per_unit == Decimal("0.5500")
-
-    movements = (
-        await db.execute(
-            select(StockMovement).where(StockMovement.inventory_item_id == item.id)
-        )
-    ).scalars().all()
-    assert len(movements) == 1
-    m = movements[0]
-    assert m.type == MovementType.RECEIVE
-    assert m.quantity == Decimal("50.000")
-    assert "supplier=Boncafe" in (m.reason or "")
-    assert m.created_by_id == user_a.id
 
 
 async def test_record_waste_allows_negative_stock(db, store_a, user_a, caplog):
@@ -116,18 +82,15 @@ async def test_atomicity_rollback_on_movement_failure(db, store_a, user_a, monke
     monkeypatch.setattr(inv_models.StockMovement, "__init__", boom)
 
     with pytest.raises(RuntimeError):
-        await inv.receive_stock(
+        await inv.record_waste(
             db,
             store_id=store_a.id,
             user_id=user_a.id,
-            req=ReceiveStockRequest(
-                item_id=item.id, qty=Decimal("50"), cost_per_unit=Decimal("0.55")
-            ),
+            req=WasteRequest(item_id=item.id, qty=Decimal("10"), reason=WastageReason.SPILLED),
         )
 
-    db.expire_all()
-    refreshed = await inv.get_item(db, store_id=store_a.id, item_id=item.id)
-    assert refreshed.stock_on_hand == original_stock
+    await db.refresh(item)
+    assert item.stock_on_hand == original_stock
 
 
 async def test_adjust_positive_delta_increments(db, store_a, manager_a):
@@ -167,25 +130,9 @@ async def test_adjust_negative_delta_decrements(db, store_a, manager_a):
     assert movement.reason and movement.reason.startswith("ADJUST-|")
 
 
-async def test_inactive_item_rejects_receive(db, store_a, user_a):
-    item = await make_item(db, store_id=store_a.id, is_active=False)
-
-    from app.core.errors import Conflict
-
-    with pytest.raises(Conflict):
-        await inv.receive_stock(
-            db,
-            store_id=store_a.id,
-            user_id=user_a.id,
-            req=ReceiveStockRequest(
-                item_id=item.id, qty=Decimal("10"), cost_per_unit=Decimal("0.50")
-            ),
-        )
-
-
 async def test_update_item_changes_par_and_cost(db, store_a, manager_a):
     item = await make_item(
-        db, store_id=store_a.id, par=Decimal("100"), cost=Decimal("0.50")
+        db, store_id=store_a.id, par=Decimal("100")
     )
     updated = await inv.update_item(
         db,
@@ -197,16 +144,14 @@ async def test_update_item_changes_par_and_cost(db, store_a, manager_a):
     assert updated.cost_per_unit == Decimal("0.7500")
 
 
-async def test_movements_pagination(db, store_a, user_a):
+async def test_movements_pagination(db, store_a, manager_a):
     item = await make_item(db, store_id=store_a.id, stock=Decimal("1000"))
-    for _ in range(5):
-        await inv.receive_stock(
+    for i in range(5):
+        await inv.adjust_stock(
             db,
             store_id=store_a.id,
-            user_id=user_a.id,
-            req=ReceiveStockRequest(
-                item_id=item.id, qty=Decimal("1"), cost_per_unit=Decimal("0.1")
-            ),
+            user_id=manager_a.id,
+            req=AdjustRequest(item_id=item.id, delta=Decimal("1"), reason=f"count fix {i}"),
         )
 
     page = await inv.list_movements(db, store_id=store_a.id, limit=2)
