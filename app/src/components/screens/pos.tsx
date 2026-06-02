@@ -133,8 +133,7 @@ export default function POSTerminal() {
   const subtotal = cart.reduce((s, l) => s + l.unitPrice * l.qty, 0);
   const memberDiscount = estimateMemberDiscount(memberInfo, program, subtotal);
   const discount = Math.min(subtotal, memberDiscount + promoDiscount);
-  const vat = Math.round((subtotal - discount) * 0.07);
-  const total = subtotal - discount + vat;
+  const total = subtotal - discount;
 
   const onMenuClick = (item: MenuItem) => {
     // Always check product-level modifier groups; cached per-product so repeat taps are instant.
@@ -174,7 +173,6 @@ export default function POSTerminal() {
     const method = payment;
     const cartSnapshot = [...cart];
     const subtotalSnapshot = subtotal;
-    const vatSnapshot = vat;
     const totalSnapshot = total;
     const discountSnapshot = discount;
     const memberSnapshot = memberInfo;
@@ -210,7 +208,6 @@ export default function POSTerminal() {
         const serverDiscount = order.discount != null ? Number(order.discount) : discountSnapshot;
         const finalTotal = serverAuthoritative ? serverTotal : totalSnapshot;
         const finalDiscount = serverAuthoritative ? serverDiscount : 0;
-        const finalVat = serverAuthoritative ? Math.max(0, Math.round(finalTotal - (subtotalSnapshot - finalDiscount))) : vatSnapshot;
         const earned = order.points_earned ?? 0;
         toast({
           kind: 'success', title: 'ชำระเงินสำเร็จ',
@@ -221,7 +218,6 @@ export default function POSTerminal() {
           orderNumber: String(order.order_number),
           items: cartSnapshot.map(l => ({ name: l.name, qty: l.qty, unitPrice: l.unitPrice, mods: l.mods.length ? l.mods : undefined })),
           subtotal: subtotalSnapshot,
-          vat: finalVat,
           total: finalTotal,
           paymentMethod: method ?? 'cash',
           paymentLabel: PAY_LABEL[method ?? 'cash'] ?? method ?? 'cash',
@@ -413,8 +409,7 @@ export default function POSTerminal() {
           {/* Sticky checkout section on mobile */}
           <div style={{flexShrink: 0, borderTop: '1px solid var(--color-border)'}}>
             <div style={{padding: 20, background: 'var(--color-surface-2)'}}>
-              <Row label="Subtotal" value={baht(subtotal)} />
-              <Row label="VAT 7%"  value={baht(vat)} />
+              <Row label="ยอดรวม" value={baht(subtotal)} />
               {memberDiscount > 0 && <Row label="ส่วนลดสมาชิก (โดยประมาณ)" value={`-${baht(memberDiscount)}`} />}
               {promoDiscount > 0 && <Row label="ส่วนลดโปรโมชั่น" value={`-${baht(promoDiscount)}`} />}
               {discount === 0 && <Row label="ส่วนลด" value={baht(0)} muted />}
@@ -513,16 +508,14 @@ export default function POSTerminal() {
         <ReceiptModal
           data={receiptData}
           onClose={() => setReceiptData(null)}
-          onPrint={async ({ buyerInfo }) => {
+          onPrint={async () => {
             await printReceipt({
               orderNumber: receiptData.orderNumber,
-              invoiceNo: buyerInfo ? `IV${new Date().getFullYear() + 543}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${receiptData.orderNumber.padStart(4, '0')}` : undefined,
               items: receiptData.items,
               subtotal: receiptData.subtotal,
-              vat: receiptData.vat,
               total: receiptData.total,
               paymentMethod: receiptData.paymentMethod,
-              buyerInfo,
+              cashGiven: receiptData.cashGiven,
             });
           }}
         />

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Icon from '../icons';
 import { useToast } from '../app-common';
-import { ReceiptPaper, type ReceiptData, type BuyerInfo, type StoreInfo } from './receipt-modal';
+import { ReceiptPaper, type ReceiptData, type StoreInfo } from './receipt-modal';
 import { fetchStatus, fetchConfig, saveConfig, scanPrinters, sendPrintJob } from '@/lib/printer-bridge';
 
 type PrinterStatus = 'online' | 'offline' | 'checking';
@@ -15,20 +15,12 @@ const MOCK_ITEMS = [
   { name: 'คาปูชิโน่ร้อน',   qty: 1, unitPrice: 55 },
   { name: 'ชีสเค้ก',         qty: 1, unitPrice: 120 },
 ];
-const MOCK_BUYER: BuyerInfo = {
-  name: 'บริษัท ตัวอย่าง จำกัด',
-  address: '456 ถ.สุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพฯ 10110',
-  taxId: '0105500000001',
-  branch: 'สำนักงานใหญ่',
-};
-
 function makeMockReceipt(): ReceiptData {
   const subtotal = MOCK_ITEMS.reduce((s, i) => s + i.qty * i.unitPrice, 0);
-  const vat = Math.round(subtotal * 0.07);
   return {
     orderNumber: '0042', items: MOCK_ITEMS,
-    subtotal, vat, total: subtotal + vat,
-    paymentMethod: 'cash', paymentLabel: 'เงินสด', cashGiven: subtotal + vat + 5,
+    subtotal, total: subtotal,
+    paymentMethod: 'cash', paymentLabel: 'เงินสด', cashGiven: subtotal + 5,
   };
 }
 
@@ -56,7 +48,6 @@ export default function HardwareScreen() {
   const [savingStore, setSavingStore]   = useState(false);
 
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewBuyer, setPreviewBuyer] = useState(false);
   const previewNow = useState(() => new Date())[0];
 
   const liveStore: StoreInfo = {
@@ -303,21 +294,6 @@ export default function HardwareScreen() {
                   ข้อมูลสมมติ · อัปเดตตามข้อมูลร้านที่กรอกไว้
                 </div>
               </div>
-              <label style={{
-                display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-                padding: '5px 12px', borderRadius: 8, border: '1px solid',
-                borderColor: previewBuyer ? 'var(--color-accent)' : 'var(--color-border)',
-                background: previewBuyer ? 'var(--color-accent-50)' : 'transparent',
-                fontSize: 13, fontWeight: previewBuyer ? 600 : 400,
-                color: previewBuyer ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                userSelect: 'none',
-              }}>
-                <input
-                  type="checkbox" checked={previewBuyer} onChange={e => setPreviewBuyer(e.target.checked)}
-                  style={{ accentColor: 'var(--color-accent)' }}
-                />
-                ใบกำกับภาษี
-              </label>
               <button onClick={() => setPreviewOpen(false)} style={{
                 width: 30, height: 30, borderRadius: 6, display: 'grid', placeItems: 'center',
                 color: 'var(--color-text-secondary)',
@@ -330,7 +306,6 @@ export default function HardwareScreen() {
             <div style={{ padding: '20px', overflowY: 'auto', maxHeight: '72vh' }}>
               <ReceiptPaper
                 data={mockReceipt}
-                buyer={previewBuyer ? MOCK_BUYER : undefined}
                 invoiceNo={invoiceNo}
                 now={previewNow}
                 fmt={FMT}

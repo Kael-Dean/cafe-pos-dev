@@ -14,16 +14,17 @@ const bridgeHeaders = (extra: Record<string, string> = {}) => ({
 
 function loadConfig(): {
   ip: string; port: number;
-  storeName: string; storeAddress?: string; storeTaxId?: string; storeBranch?: string;
+  storeName: string; storeAddress?: string; storeTaxId?: string; storeBranch?: string; storePhone?: string;
 } {
   const base = (() => {
     try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch { return {}; }
   })();
   return {
-    storeName:    base.storeName    ?? 'ร้านของฉัน',
+    storeName:    base.storeName    ?? 'ร้านตะวันอ้อมข้าว',
     storeAddress: base.storeAddress,
     storeTaxId:   base.storeTaxId,
     storeBranch:  base.storeBranch,
+    storePhone:   base.storePhone,
     ip:   process.env.PRINTER_IP   ?? base.ip   ?? '192.168.1.129',
     port: Number(process.env.PRINTER_PORT ?? base.port ?? 9100),
   };
@@ -96,25 +97,17 @@ interface PrintBody {
   storeAddress?: string;
   storeTaxId?: string;
   storeBranch?: string;
+  storePhone?: string;
   invoiceNo?: string;
   orderNumber: string;
-  buyerName?: string;
-  buyerAddress?: string;
-  buyerTaxId?: string;
-  buyerBranch?: string;
   items: { name: string; qty: number; unitPrice: number; mods?: string[] }[];
   subtotal: number;
-  vat?: number;
   total: number;
   paymentLabel: string;
   cashGiven?: number;
 }
 
 function buildESCPOS(data: PrintBody): Buffer {
-  const hasTaxInfo = !!(data.buyerName || data.invoiceNo || data.storeTaxId);
-  const preVat  = data.subtotal;
-  const vatAmt  = data.vat ?? Math.round(data.subtotal * 0.07);
-
   const parts: Buffer[] = [
     cmd(ESC, 0x40),        // init
     cmd(ESC, 0x74, 0x15),  // TIS-620
@@ -122,7 +115,7 @@ function buildESCPOS(data: PrintBody): Buffer {
     cmd(GS,  0x21, 0x10),  // double-height
     line(data.storeName),
     cmd(GS,  0x21, 0x00),
-    line(hasTaxInfo ? 'ใบเสร็จรับเงิน/ใบกำกับภาษี' : 'ใบเสร็จรับเงิน'),
+    line('ใบเสร็จรับเงิน'),
     line(center('ต้นฉบับ')),
     line(dash),
     cmd(ESC, 0x61, 0x00),  // left
@@ -132,16 +125,7 @@ function buildESCPOS(data: PrintBody): Buffer {
   if (data.storeAddress) parts.push(line(data.storeAddress));
   if (data.storeTaxId)   parts.push(line(`ผู้เสียภาษี: ${data.storeTaxId}`));
   if (data.storeBranch)  parts.push(line(data.storeBranch));
-
-  // Buyer info
-  if (data.buyerName) {
-    parts.push(line(dash));
-    parts.push(line('ผู้ซื้อ:'));
-    parts.push(line(data.buyerName));
-    if (data.buyerAddress) parts.push(line(data.buyerAddress));
-    if (data.buyerTaxId)   parts.push(line(`ผู้เสียภาษี: ${data.buyerTaxId}`));
-    if (data.buyerBranch)  parts.push(line(data.buyerBranch));
-  }
+  if (data.storePhone)   parts.push(line(`โทร. ${data.storePhone}`));
 
   parts.push(line(dash));
   if (data.invoiceNo) parts.push(line(`เลขที่: ${data.invoiceNo}`));
@@ -161,9 +145,6 @@ function buildESCPOS(data: PrintBody): Buffer {
   }
 
   // Summary
-  parts.push(line(dash));
-  parts.push(line(leftRight('มูลค่าก่อนภาษี', fmt2(preVat))));
-  parts.push(line(leftRight('ภาษีมูลค่าเพิ่ม 7%', fmt2(vatAmt))));
   parts.push(line(dash));
   parts.push(cmd(ESC, 0x45, 0x01)); // bold on
   parts.push(line(leftRight('รวมทั้งสิ้น', `${fmt2(data.total)} B`)));
@@ -206,10 +187,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { ip, port, storeName, storeAddress, storeTaxId, storeBranch } = loadConfig();
+  const { ip, port, storeName, storeAddress, storeTaxId, storeBranch, storePhone } = loadConfig();
   try {
     const receipt = buildESCPOS({
-      storeName, storeAddress, storeTaxId, storeBranch,
+      storeName, storeAddress, storeTaxId, storeBranch, storePhone,
       ...body,
     });
 

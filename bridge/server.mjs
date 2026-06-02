@@ -36,10 +36,11 @@ function loadConfig() {
   let base = {};
   try { base = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch {}
   return {
-    storeName:    base.storeName    ?? 'ร้าน',
+    storeName:    base.storeName    ?? 'ร้านตะวันอ้อมข้าว',
     storeAddress: base.storeAddress,
     storeTaxId:   base.storeTaxId,
     storeBranch:  base.storeBranch,
+    storePhone:   base.storePhone,
     ip:   process.env.PRINTER_IP   ?? base.ip   ?? '192.168.192.168',
     port: Number(process.env.PRINTER_PORT ?? base.port ?? 9100),
   };
@@ -75,10 +76,6 @@ const center = (s) => {
 const fmt2 = (n) => Number(n).toFixed(2);
 
 function buildESCPOS(data) {
-  const hasTaxInfo = !!(data.buyerName || data.invoiceNo || data.storeTaxId);
-  const preVat = data.subtotal;
-  const vatAmt = data.vat ?? Math.round(data.subtotal * 0.07);
-
   const parts = [
     cmd(ESC, 0x40),
     cmd(ESC, 0x74, 0x15),
@@ -86,7 +83,7 @@ function buildESCPOS(data) {
     cmd(GS,  0x21, 0x10),
     line(data.storeName),
     cmd(GS,  0x21, 0x00),
-    line(hasTaxInfo ? 'ใบเสร็จรับเงิน/ใบกำกับภาษี' : 'ใบเสร็จรับเงิน'),
+    line('ใบเสร็จรับเงิน'),
     line(center('ต้นฉบับ')),
     line(dash),
     cmd(ESC, 0x61, 0x00),
@@ -95,15 +92,7 @@ function buildESCPOS(data) {
   if (data.storeAddress) parts.push(line(data.storeAddress));
   if (data.storeTaxId)   parts.push(line(`ผู้เสียภาษี: ${data.storeTaxId}`));
   if (data.storeBranch)  parts.push(line(data.storeBranch));
-
-  if (data.buyerName) {
-    parts.push(line(dash));
-    parts.push(line('ผู้ซื้อ:'));
-    parts.push(line(data.buyerName));
-    if (data.buyerAddress) parts.push(line(data.buyerAddress));
-    if (data.buyerTaxId)   parts.push(line(`ผู้เสียภาษี: ${data.buyerTaxId}`));
-    if (data.buyerBranch)  parts.push(line(data.buyerBranch));
-  }
+  if (data.storePhone)   parts.push(line(`โทร. ${data.storePhone}`));
 
   parts.push(line(dash));
   if (data.invoiceNo) parts.push(line(`เลขที่: ${data.invoiceNo}`));
@@ -120,9 +109,6 @@ function buildESCPOS(data) {
     for (const mod of item.mods ?? []) parts.push(line(`  + ${mod}`));
   }
 
-  parts.push(line(dash));
-  parts.push(line(leftRight('มูลค่าก่อนภาษี', fmt2(preVat))));
-  parts.push(line(leftRight('ภาษีมูลค่าเพิ่ม 7%', fmt2(vatAmt))));
   parts.push(line(dash));
   parts.push(cmd(ESC, 0x45, 0x01));
   parts.push(line(leftRight('รวมทั้งสิ้น', `${fmt2(data.total)} B`)));
@@ -201,6 +187,7 @@ function saveConfig(patch) {
     ...(patch.storeAddress !== undefined ? { storeAddress: patch.storeAddress ?? null }     : {}),
     ...(patch.storeTaxId   !== undefined ? { storeTaxId:   patch.storeTaxId   ?? null }     : {}),
     ...(patch.storeBranch  !== undefined ? { storeBranch:  patch.storeBranch  ?? null }     : {}),
+    ...(patch.storePhone   !== undefined ? { storePhone:   patch.storePhone   ?? null }     : {}),
   };
   if (!updated.ip || typeof updated.ip !== 'string') throw new Error('IP ไม่ถูกต้อง');
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2), 'utf8');
@@ -254,6 +241,7 @@ const server = http.createServer(async (req, res) => {
         storeAddress: cfg.storeAddress,
         storeTaxId:   cfg.storeTaxId,
         storeBranch:  cfg.storeBranch,
+        storePhone:   cfg.storePhone,
         ...body,
       });
       await sendToPrinter(cfg.ip, cfg.port, receipt);

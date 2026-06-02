@@ -14,7 +14,6 @@ export interface ReceiptData {
   orderNumber: string;
   items: ReceiptItem[];
   subtotal: number;
-  vat: number;
   total: number;
   paymentMethod: string;
   paymentLabel: string;
@@ -24,13 +23,6 @@ export interface ReceiptData {
   memberName?: string;
   pointsEarned?: number;
   rewardRedeemed?: boolean;
-}
-
-export interface BuyerInfo {
-  name: string;
-  address: string;
-  taxId: string;
-  branch: string;
 }
 
 export interface StoreInfo {
@@ -44,7 +36,7 @@ export interface StoreInfo {
 interface Props {
   data: ReceiptData;
   onClose: () => void;
-  onPrint: (args: { buyerInfo?: BuyerInfo }) => Promise<void>;
+  onPrint: () => Promise<void>;
 }
 
 export const DEFAULT_STORE: StoreInfo = {
@@ -56,9 +48,6 @@ export const DEFAULT_STORE: StoreInfo = {
 };
 
 export default function ReceiptModal({ data, onClose, onPrint }: Props) {
-  const [wantTax, setWantTax] = useState(false);
-  const [buyer, setBuyer] = useState<BuyerInfo>({ name: '', address: '', taxId: '', branch: 'สำนักงานใหญ่' });
-  const [step, setStep] = useState<'preview' | 'tax_form'>('preview');
   const [isPrinting, setIsPrinting] = useState(false);
 
   const now = new Date();
@@ -68,16 +57,14 @@ export default function ReceiptModal({ data, onClose, onPrint }: Props) {
   const formatTime = (d: Date) => d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const showBuyer = wantTax && buyer.name.trim().length > 0;
-
   const handlePrint = useCallback(async () => {
     setIsPrinting(true);
     try {
-      await onPrint({ buyerInfo: showBuyer ? buyer : undefined });
+      await onPrint();
     } finally {
       setIsPrinting(false);
     }
-  }, [onPrint, showBuyer, buyer]);
+  }, [onPrint]);
 
   const handleBrowserPrint = () => window.print();
 
@@ -130,32 +117,11 @@ export default function ReceiptModal({ data, onClose, onPrint }: Props) {
               <Icon name="printer" size={17} />
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>
-                {wantTax ? 'ใบเสร็จรับเงิน / ใบกำกับภาษี' : 'ใบเสร็จรับเงิน'}
-              </div>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>ใบเสร็จรับเงิน</div>
               <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
                 ออเดอร์ #{data.orderNumber} · {formatDate(now)} {formatTime(now)}
               </div>
             </div>
-            <label style={{
-              display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-              padding: '6px 12px', borderRadius: 8, border: '1px solid',
-              borderColor: wantTax ? 'var(--color-accent)' : 'var(--color-border)',
-              background: wantTax ? 'var(--color-accent-50)' : 'transparent',
-              fontSize: 13, fontWeight: wantTax ? 600 : 400,
-              color: wantTax ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-              transition: 'all 150ms', userSelect: 'none',
-            }}>
-              <input
-                type="checkbox" checked={wantTax}
-                onChange={e => {
-                  setWantTax(e.target.checked);
-                  setStep(e.target.checked ? 'tax_form' : 'preview');
-                }}
-                style={{ accentColor: 'var(--color-accent)', cursor: 'pointer' }}
-              />
-              ขอใบกำกับภาษี
-            </label>
             <button onClick={onClose} style={{
               width: 30, height: 30, borderRadius: 6, display: 'grid', placeItems: 'center',
               color: 'var(--color-text-secondary)',
@@ -164,56 +130,15 @@ export default function ReceiptModal({ data, onClose, onPrint }: Props) {
             </button>
           </div>
 
-          {/* ── Buyer info form ── */}
-          {step === 'tax_form' && (
-            <div className="receipt-no-print" style={{ padding: '20px', borderBottom: '1px solid var(--color-border)' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-primary)', marginBottom: 14 }}>
-                ข้อมูลผู้ซื้อ / ผู้รับใบกำกับภาษี
-              </div>
-              <div style={{ display: 'grid', gap: 10 }}>
-                <BuyerField label="ชื่อ / บริษัท *" value={buyer.name} onChange={v => setBuyer(p => ({ ...p, name: v }))} />
-                <BuyerField label="ที่อยู่" value={buyer.address} onChange={v => setBuyer(p => ({ ...p, address: v }))} />
-                <BuyerField label="เลขที่ผู้เสียภาษี 13 หลัก" value={buyer.taxId} onChange={v => setBuyer(p => ({ ...p, taxId: v }))} mono />
-                <div>
-                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>ประเภทสาขา</div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {['สำนักงานใหญ่', 'สาขา'].map(b => (
-                      <button key={b} onClick={() => setBuyer(p => ({ ...p, branch: b }))} style={{
-                        flex: 1, padding: '8px', borderRadius: 6, fontSize: 13, border: '1px solid',
-                        borderColor: buyer.branch === b ? 'var(--color-accent)' : 'var(--color-border)',
-                        background: buyer.branch === b ? 'var(--color-accent-50)' : 'transparent',
-                        fontWeight: buyer.branch === b ? 600 : 400,
-                        color: buyer.branch === b ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                      }}>{b}</button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                <button onClick={() => setStep('preview')} style={{
-                  flex: 1, padding: '10px', borderRadius: 8, fontSize: 13,
-                  border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)',
-                }}>ข้าม</button>
-                <button onClick={() => setStep('preview')} disabled={!buyer.name.trim()} style={{
-                  flex: 2, padding: '10px', borderRadius: 8, fontSize: 14, fontWeight: 700,
-                  background: buyer.name.trim() ? 'var(--color-primary)' : 'var(--color-border)',
-                  color: 'white',
-                }}>ดูตัวอย่างใบเสร็จ →</button>
-              </div>
-            </div>
-          )}
-
           {/* ── Receipt preview ── */}
-          {step === 'preview' && (
-            <div style={{ padding: '20px', overflowY: 'auto', maxHeight: '68vh' }}>
-              <ReceiptPaper
-                data={data} buyer={showBuyer ? buyer : undefined}
-                invoiceNo={invoiceNo} now={now}
-                fmt={fmt} formatDate={formatDate} formatTime={formatTime}
-                storeInfo={DEFAULT_STORE}
-              />
-            </div>
-          )}
+          <div style={{ padding: '20px', overflowY: 'auto', maxHeight: '68vh' }}>
+            <ReceiptPaper
+              data={data}
+              invoiceNo={invoiceNo} now={now}
+              fmt={fmt} formatDate={formatDate} formatTime={formatTime}
+              storeInfo={DEFAULT_STORE}
+            />
+          </div>
 
           {/* ── Footer actions ── */}
           <div className="receipt-no-print" style={{
@@ -251,29 +176,8 @@ export default function ReceiptModal({ data, onClose, onPrint }: Props) {
 
 /* ─── Sub-components ─────────────────────────────────────────────── */
 
-function BuyerField({ label, value, onChange, mono }: {
-  label: string; value: string; onChange: (v: string) => void; mono?: boolean;
-}) {
-  return (
-    <div>
-      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 4 }}>{label}</div>
-      <input
-        value={value} onChange={e => onChange(e.target.value)}
-        style={{
-          width: '100%', padding: '9px 12px', borderRadius: 6, fontSize: 13,
-          border: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
-          fontFamily: mono ? '"Courier New", monospace' : 'inherit',
-          outline: 'none', letterSpacing: mono ? '0.05em' : undefined,
-        }}
-        onFocus={e => (e.currentTarget.style.borderColor = 'var(--color-accent)')}
-        onBlur={e => (e.currentTarget.style.borderColor = 'var(--color-border)')}
-      />
-    </div>
-  );
-}
-
-export function ReceiptPaper({ data, buyer, invoiceNo, now, fmt, formatDate, formatTime, storeInfo }: {
-  data: ReceiptData; buyer?: BuyerInfo; invoiceNo: string; now: Date;
+export function ReceiptPaper({ data, invoiceNo, now, fmt, formatDate, formatTime, storeInfo }: {
+  data: ReceiptData; invoiceNo: string; now: Date;
   fmt: (n: number) => string;
   formatDate: (d: Date) => string; formatTime: (d: Date) => string;
   storeInfo?: StoreInfo;
@@ -325,7 +229,7 @@ export function ReceiptPaper({ data, buyer, invoiceNo, now, fmt, formatDate, for
           color: '#F0E4D4', fontSize: 11, fontWeight: 500,
           padding: '3px 12px', borderRadius: 4, letterSpacing: '0.04em',
         }}>
-          {buyer ? 'ใบเสร็จรับเงิน / ใบกำกับภาษี' : 'ใบเสร็จรับเงิน'}
+          ใบเสร็จรับเงิน
         </div>
       </div>
 
@@ -355,21 +259,7 @@ export function ReceiptPaper({ data, buyer, invoiceNo, now, fmt, formatDate, for
         {/* Buyer */}
         <div style={{ padding: '14px 16px' }}>
           <div className="receipt-section-label" style={{ fontSize: 10, fontWeight: 700, color: '#3D2817', letterSpacing: '0.1em', marginBottom: 8 }}>ผู้ซื้อ (BUYER)</div>
-          {buyer ? (
-            <>
-              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: '#1A1A1A' }}>{buyer.name}</div>
-              {buyer.address && <div style={{ fontSize: 11, color: '#5A5249', lineHeight: 1.65 }}>{buyer.address}</div>}
-              {buyer.taxId && (
-                <div style={{ fontSize: 11, color: '#5A5249', marginTop: 6 }}>
-                  <span style={{ color: '#8A7B6E' }}>เลขที่ผู้เสียภาษี:</span>{' '}
-                  <span style={{ ...mono, fontSize: 11 }}>{buyer.taxId}</span>
-                </div>
-              )}
-              <div style={{ fontSize: 11, color: '#5A5249' }}>{buyer.branch}</div>
-            </>
-          ) : (
-            <div style={{ fontSize: 12, color: '#B0A499', fontStyle: 'italic', marginTop: 4 }}>ลูกค้าทั่วไป</div>
-          )}
+          <div style={{ fontSize: 12, color: '#B0A499', fontStyle: 'italic', marginTop: 4 }}>ลูกค้าทั่วไป</div>
         </div>
       </div>
 
@@ -418,11 +308,12 @@ export function ReceiptPaper({ data, buyer, invoiceNo, now, fmt, formatDate, for
 
       {/* ─── Summary ─── */}
       <div style={{ margin: '0 16px', borderTop: '2px solid #3D2817', padding: '12px 0 10px' }}>
-        <SumRow label="มูลค่าก่อนภาษีมูลค่าเพิ่ม" value={fmt(data.subtotal)} fmt={fmt} />
         {data.discount != null && data.discount > 0 && (
-          <SumRow label="ส่วนลดสมาชิก" value={`-${fmt(data.discount)}`} fmt={fmt} accent />
+          <>
+            <SumRow label="รวมค่าสินค้า" value={fmt(data.subtotal)} fmt={fmt} />
+            <SumRow label="ส่วนลดสมาชิก" value={`-${fmt(data.discount)}`} fmt={fmt} accent />
+          </>
         )}
-        <SumRow label={`ภาษีมูลค่าเพิ่ม 7%`} value={fmt(data.vat)} fmt={fmt} />
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           borderTop: '1px solid #DDD5C8', marginTop: 6, paddingTop: 8,
