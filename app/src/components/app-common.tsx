@@ -57,7 +57,7 @@ export const NAV: NavItem[] = [
   { id: 'stock-take',    label: 'Stock Take',      icon: 'check' },
   { id: 'cash',      label: 'Cash',            icon: 'cash',     adminOnly: true },
   { id: 'div1',      label: '',                divider: true },
-  { id: 'promotions',label: 'Promotions',      icon: 'tag' },
+  { id: 'promotions',label: 'Promotion / สะสมแต้ม', icon: 'tag' },
   { id: 'members',   label: 'สมาชิก / Members', icon: 'customers', adminOnly: true },
   { id: 'protocols', label: 'Protocols / SOP', icon: 'check' },
   { id: 'shifts',    label: 'ตารางกะ',          icon: 'calendar' },
@@ -294,6 +294,118 @@ export const Tag = ({ children, tone = 'neutral' }: TagProps) => {
 
 export const baht = (n: number) => `฿${(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 
+// ---------- Select (styled dropdown) ----------
+// Shared dropdown for the whole app. ALWAYS use this instead of a native <select>
+// so every dropdown shows the same decorated, custom-styled menu (native <select>
+// popups are drawn by the OS and cannot be styled — they look inconsistent).
+export interface SelectOption { value: string; label: string; disabled?: boolean; }
+
+interface SelectProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: SelectOption[];
+  /** Shown (muted) when value matches no option. */
+  placeholder?: string;
+  disabled?: boolean;
+  ariaLabel?: string;
+  /** Merged into the wrapper div (e.g. width overrides). */
+  style?: React.CSSProperties;
+  /** Merged into the trigger button (e.g. compact padding / background). */
+  triggerStyle?: React.CSSProperties;
+  menuMaxHeight?: number;
+}
+
+export const Select = ({
+  value, onChange, options, placeholder, disabled = false,
+  ariaLabel, style, triggerStyle, menuMaxHeight = 280,
+}: SelectProps) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = options.find((o) => o.value === value);
+  const displayLabel = selected ? selected.label : (placeholder ?? options[0]?.label ?? '');
+  const isPlaceholder = !selected;
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onClick); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', width: '100%', ...style }}>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+        onClick={() => { if (!disabled) setOpen((v) => !v); }}
+        style={{
+          width: '100%', boxSizing: 'border-box', padding: '10px 12px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+          background: 'var(--color-surface)', borderRadius: 8,
+          border: `1px solid ${open ? 'var(--color-accent)' : 'var(--color-border)'}`,
+          boxShadow: open ? 'var(--shadow-focus)' : 'none',
+          fontSize: 14, fontFamily: 'inherit', textAlign: 'left',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.55 : 1,
+          color: isPlaceholder ? 'var(--color-text-muted)' : 'var(--color-text)',
+          transition: 'border-color 150ms, box-shadow 150ms',
+          ...triggerStyle,
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayLabel}</span>
+        <Icon name="chevronDown" size={14} style={{ color: 'var(--color-text-secondary)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }} />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+            background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+            borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 200,
+            overflowY: 'auto', maxHeight: menuMaxHeight, padding: 4,
+          }}
+        >
+          {options.map((opt) => {
+            const isSel = opt.value === value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="option"
+                aria-selected={isSel}
+                disabled={opt.disabled}
+                onClick={() => { if (opt.disabled) return; onChange(opt.value); setOpen(false); }}
+                style={{
+                  width: '100%', display: 'block', textAlign: 'left',
+                  padding: '9px 10px', borderRadius: 6, border: 'none',
+                  fontSize: 14, fontFamily: 'inherit',
+                  cursor: opt.disabled ? 'not-allowed' : 'pointer',
+                  background: isSel ? 'var(--color-accent-50)' : 'transparent',
+                  color: opt.disabled ? 'var(--color-text-muted)' : isSel ? 'var(--color-primary-700)' : 'var(--color-text)',
+                  fontWeight: isSel ? 600 : 400,
+                  opacity: opt.disabled ? 0.6 : 1,
+                  transition: 'background 100ms',
+                }}
+                onMouseEnter={(e) => { if (!isSel && !opt.disabled) e.currentTarget.style.background = 'var(--color-surface-2)'; }}
+                onMouseLeave={(e) => { if (!isSel && !opt.disabled) e.currentTarget.style.background = 'transparent'; }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ---------- Bottom Tab Bar (mobile only) ----------
 interface BottomTabBarProps {
   currentScreen: string;
@@ -312,7 +424,7 @@ const MORE_ITEMS = [
   { id: 'pre-orders',   label: 'Pre-Orders',         icon: 'calendar' },
   { id: 'catalog',      label: 'Catalog',            icon: 'tag' },
   { id: 'hr',           label: 'HR & Admin',         icon: 'staff' },
-  { id: 'promotions',   label: 'Promotions',         icon: 'tag' },
+  { id: 'promotions',   label: 'Promotion / สะสมแต้ม', icon: 'tag' },
   { id: 'protocols',    label: 'Protocols / SOP',    icon: 'check' },
   { id: 'shifts',       label: 'ตารางกะ',             icon: 'calendar' },
   { id: 'cash',         label: 'Cash',               icon: 'cash' },
