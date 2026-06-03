@@ -8,6 +8,7 @@ import { useStaffList, useWeeklySchedule, useAssignShift, type ShiftAssignment }
 import { usePreOrders, usePreOrder, type PreOrderStatus, type PreOrderListItem } from '@/hooks/use-pre-orders';
 
 const DAY_SHORT = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
+const DAY_FULL = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์'];
 
 const PREORDER_STATUS_LABELS: Record<PreOrderStatus, string> = {
   PENDING: 'รอเริ่ม',
@@ -130,8 +131,6 @@ export default function ShiftSchedule() {
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
-      {editingCell && <div style={{ position: 'fixed', inset: 0, zIndex: 50 }} onClick={() => setEditingCell(null)} />}
-
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
@@ -213,34 +212,17 @@ export default function ShiftSchedule() {
 
                   return (
                     <td key={ds} style={{ padding: 5, textAlign: 'center', position: 'relative', borderLeft: '1px solid var(--color-border)', background: isToday ? 'rgba(212,165,116,0.04)' : 'transparent' }}>
-                      {isEditing && admin ? (
-                        <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', zIndex: 60, top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, boxShadow: 'var(--shadow-lg)', minWidth: 180 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>กำหนดเวลา</div>
-                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                            <input type="time" value={editStart} onChange={e => setEditStart(e.target.value)} style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 13, fontFamily: 'inherit' }} />
-                            <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>ถึง</span>
-                            <input type="time" value={editEnd} onChange={e => setEditEnd(e.target.value)} style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 13, fontFamily: 'inherit' }} />
-                          </div>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button onClick={() => handleAssign(member.id, ds)} disabled={assignShift.isPending} style={{ flex: 1, padding: '6px 0', borderRadius: 6, background: 'var(--color-primary)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none' }}>
-                              บันทึก
-                            </button>
-                            <button onClick={() => setEditingCell(null)} style={{ padding: '6px 10px', borderRadius: 6, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', fontSize: 12, cursor: 'pointer' }}>ยกเลิก</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div
-                          onClick={() => admin && openEditor(member.id, ds)}
-                          title={shift ? `${fmtTime(shift.start_time)}–${fmtTime(shift.end_time)}` : 'คลิกเพื่อตั้งกะ'}
-                          style={{ padding: '6px 4px', borderRadius: 7, background: style.bg, color: style.fg, fontSize: 11, fontWeight: shift ? 700 : 400, cursor: admin ? 'pointer' : 'default', minHeight: 38, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, border: shift ? 'none' : '1px dashed var(--color-border)', transition: 'all 150ms' }}>
-                          {shift ? (
-                            <>
-                              <span>{fmtTime(shift.start_time)}</span>
-                              <span style={{ fontSize: 9, opacity: 0.75, fontWeight: 500 }}>{fmtTime(shift.end_time)}</span>
-                            </>
-                          ) : <Icon name="plus" size={12} color="var(--color-border)" />}
-                        </div>
-                      )}
+                      <div
+                        onClick={() => admin && openEditor(member.id, ds)}
+                        title={shift ? `${fmtTime(shift.start_time)}–${fmtTime(shift.end_time)}` : 'คลิกเพื่อตั้งกะ'}
+                        style={{ padding: '6px 4px', borderRadius: 7, background: style.bg, color: style.fg, fontSize: 11, fontWeight: shift ? 700 : 400, cursor: admin ? 'pointer' : 'default', minHeight: 38, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, border: isEditing ? '2px solid var(--color-primary)' : (shift ? 'none' : '1px dashed var(--color-border)'), transition: 'all 150ms' }}>
+                        {shift ? (
+                          <>
+                            <span>{fmtTime(shift.start_time)}</span>
+                            <span style={{ fontSize: 9, opacity: 0.75, fontWeight: 500 }}>{fmtTime(shift.end_time)}</span>
+                          </>
+                        ) : <Icon name="plus" size={12} color="var(--color-border)" />}
+                      </div>
                     </td>
                   );
                 })}
@@ -320,6 +302,55 @@ export default function ShiftSchedule() {
       </div>
 
       {admin && <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8 }}>คลิกที่ช่องเพื่อกำหนดเวลาเข้า-ออกงาน</div>}
+
+      {editingCell && admin && (() => {
+        const member = staffList.find(s => s.id === editingCell.userId);
+        const d = new Date(editingCell.date);
+        const dayIdx = (d.getDay() + 6) % 7;          // Monday = 0
+        return (
+          <div onClick={() => setEditingCell(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 16, width: 460, maxWidth: '92vw', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+              {/* Header — who & which day */}
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface-2)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 99, background: 'var(--color-accent-50)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>
+                    {member?.name.charAt(0) ?? '?'}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member?.name ?? 'พนักงาน'}</div>
+                    <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>วัน{DAY_FULL[dayIdx]}ที่ {fmtDateTh(editingCell.date)}</div>
+                  </div>
+                </div>
+                <button onClick={() => setEditingCell(null)} title="ปิด" style={{ padding: 4, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', flexShrink: 0 }}>
+                  <Icon name="x" size={20} />
+                </button>
+              </div>
+
+              {/* Body — time pickers */}
+              <div style={{ padding: 24 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 14 }}>กำหนดเวลาเข้า–ออกงาน</div>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 6 }}>เวลาเริ่ม</label>
+                    <input type="time" value={editStart} onChange={e => setEditStart(e.target.value)} style={{ width: '100%', padding: '11px 12px', borderRadius: 8, border: '1px solid var(--color-border)', fontSize: 17, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                  </div>
+                  <div style={{ paddingBottom: 12, fontSize: 13, color: 'var(--color-text-muted)' }}>ถึง</div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 6 }}>เวลาสิ้นสุด</label>
+                    <input type="time" value={editEnd} onChange={e => setEditEnd(e.target.value)} style={{ width: '100%', padding: '11px 12px', borderRadius: 8, border: '1px solid var(--color-border)', fontSize: 17, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 10, marginTop: 24 }}>
+                  <button onClick={() => handleAssign(editingCell.userId, editingCell.date)} disabled={assignShift.isPending} style={{ flex: 1, padding: '12px 0', borderRadius: 8, background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', border: 'none' }}>
+                    บันทึก
+                  </button>
+                  <button onClick={() => setEditingCell(null)} style={{ padding: '12px 22px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', fontSize: 14, cursor: 'pointer' }}>ยกเลิก</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {selectedPreOrderId && (
         <PreOrderDetailModal id={selectedPreOrderId} onClose={() => setSelectedPreOrderId(null)} />
