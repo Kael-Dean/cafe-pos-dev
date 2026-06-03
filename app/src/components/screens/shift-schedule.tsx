@@ -308,7 +308,7 @@ export default function ShiftSchedule() {
         const d = new Date(editingCell.date);
         const dayIdx = (d.getDay() + 6) % 7;          // Monday = 0
         return (
-          <div onClick={() => setEditingCell(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div onClick={() => setEditingCell(null)} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
             <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 16, width: 460, maxWidth: '92vw', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
               {/* Header — who & which day */}
               <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface-2)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
