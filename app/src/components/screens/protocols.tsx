@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Icon from '../icons';
-import { useToast, Tag } from '../app-common';
+import { useToast, Tag, Select } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { useProtocols, useCreateProtocol, useTodayProtocolLogs, useLogProtocol, type Protocol } from '@/hooks/use-protocols';
 
@@ -220,12 +220,12 @@ export default function ProtocolsScreen() {
                 </div>
                 <div style={{ flex: 1, minWidth: 150 }}>
                   <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ช่วงเวลา</label>
-                  <select value={form.frequency} onChange={e => setForm(f => ({ ...f, frequency: e.target.value }))} style={{ ...IS, width: '100%' }}>
-                    <option value="OPENING">เปิดร้าน</option>
-                    <option value="DAILY">ระหว่างวัน</option>
-                    <option value="CLOSING">ปิดร้าน</option>
-                    <option value="WEEKLY">รายสัปดาห์</option>
-                  </select>
+                  <Select value={form.frequency} onChange={v => setForm(f => ({ ...f, frequency: v }))} ariaLabel="ช่วงเวลา" options={[
+                    { value: 'OPENING', label: 'เปิดร้าน' },
+                    { value: 'DAILY', label: 'ระหว่างวัน' },
+                    { value: 'CLOSING', label: 'ปิดร้าน' },
+                    { value: 'WEEKLY', label: 'รายสัปดาห์' },
+                  ]} />
                 </div>
               </div>
 

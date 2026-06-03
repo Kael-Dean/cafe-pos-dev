@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Icon from '../icons';
-import { useToast, Tag } from '../app-common';
+import { useToast, Tag, Select } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import {
   useAllLeaves, useMyLeaves, useCreateLeave, useReviewLeave,
@@ -331,15 +331,11 @@ function StaffTab({ admin }: { admin: boolean }) {
               </div>
               <div>
                 <label style={labelSt}>Role *</label>
-                <select value={cForm.role} onChange={e => setCForm(f => ({ ...f, role: e.target.value as StaffRole }))} style={{ ...inputSt, appearance: 'auto' }}>
-                  {ALL_ROLES.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-                </select>
+                <Select value={cForm.role} onChange={v => setCForm(f => ({ ...f, role: v as StaffRole }))} ariaLabel="Role" options={ALL_ROLES.map(r => ({ value: r, label: ROLE_LABEL[r] }))} />
               </div>
               <div>
                 <label style={labelSt}>ตำแหน่ง *</label>
-                <select value={cForm.position} onChange={e => setCForm(f => ({ ...f, position: e.target.value as StaffPosition }))} style={{ ...inputSt, appearance: 'auto' }}>
-                  {ALL_POSITIONS.map(p => <option key={p} value={p}>{POS_LABEL[p]}</option>)}
-                </select>
+                <Select value={cForm.position} onChange={v => setCForm(f => ({ ...f, position: v as StaffPosition }))} ariaLabel="ตำแหน่ง" options={ALL_POSITIONS.map(p => ({ value: p, label: POS_LABEL[p] }))} />
               </div>
               <div>
                 <label style={labelSt}>เบอร์โทร *</label>
@@ -381,15 +377,11 @@ function StaffTab({ admin }: { admin: boolean }) {
               </div>
               <div>
                 <label style={labelSt}>Role</label>
-                <select value={eRole} onChange={e => setERole(e.target.value as StaffRole)} style={{ ...inputSt, appearance: 'auto' }}>
-                  {ALL_ROLES.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-                </select>
+                <Select value={eRole} onChange={v => setERole(v as StaffRole)} ariaLabel="Role" options={ALL_ROLES.map(r => ({ value: r, label: ROLE_LABEL[r] }))} />
               </div>
               <div>
                 <label style={labelSt}>ตำแหน่ง</label>
-                <select value={ePosition} onChange={e => setEPosition(e.target.value as StaffPosition)} style={{ ...inputSt, appearance: 'auto' }}>
-                  {ALL_POSITIONS.map(p => <option key={p} value={p}>{POS_LABEL[p]}</option>)}
-                </select>
+                <Select value={ePosition} onChange={v => setEPosition(v as StaffPosition)} ariaLabel="ตำแหน่ง" options={ALL_POSITIONS.map(p => ({ value: p, label: POS_LABEL[p] }))} />
               </div>
               <div>
                 <label style={labelSt}>เบอร์โทร</label>
@@ -522,10 +514,10 @@ function TasksTab({ admin, myId }: { admin: boolean; myId?: string }) {
                 </div>
                 <div>
                   <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>มอบหมายให้</label>
-                  <select value={form.assignee_id} onChange={e => setForm(f => ({ ...f, assignee_id: e.target.value }))} style={{ ...inputSt, appearance: 'auto' }}>
-                    <option value="">ไม่ระบุ</option>
-                    {(staff ?? []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
+                  <Select value={form.assignee_id} onChange={v => setForm(f => ({ ...f, assignee_id: v }))} ariaLabel="มอบหมายให้" options={[
+                    { value: '', label: 'ไม่ระบุ' },
+                    ...(staff ?? []).map(s => ({ value: s.id, label: s.name })),
+                  ]} />
                 </div>
                 <div>
                   <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ครบกำหนด</label>
@@ -738,9 +730,7 @@ export default function HRDashboard() {
                 </div>
                 <div>
                   <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ประเภท</label>
-                  <select value={leaveForm.leave_type} onChange={e => setLeaveForm(f => ({ ...f, leave_type: e.target.value }))} style={{ ...inputStyle, width: '100%' }}>
-                    {Object.entries(LEAVE_TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
+                  <Select value={leaveForm.leave_type} onChange={v => setLeaveForm(f => ({ ...f, leave_type: v }))} ariaLabel="ประเภท" options={Object.entries(LEAVE_TYPE_LABEL).map(([v, l]) => ({ value: v, label: l as string }))} />
                 </div>
                 <div>
                   <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>หมายเหตุ</label>

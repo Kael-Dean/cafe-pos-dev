@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Icon from '../icons';
-import { Tag, baht } from '../app-common';
+import { Tag, baht, Select } from '../app-common';
 import { useAllProducts } from '@/hooks/use-products';
 import { useProductDetail } from '@/hooks/use-bom';
 import { usePromotionBaseline } from '@/hooks/use-promotions';
@@ -93,10 +93,14 @@ export default function PromotionCalculator() {
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 14, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 18 }}>
         <div>
           <label style={labelStyle}>สินค้า</label>
-          <select value={productId} onChange={e => setProductId(e.target.value)} style={inputStyle} disabled={prodLoading}>
-            <option value="">{prodLoading ? 'กำลังโหลด...' : '— เลือกสินค้า —'}</option>
-            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          <Select
+            value={productId}
+            onChange={setProductId}
+            disabled={prodLoading}
+            placeholder={prodLoading ? 'กำลังโหลด...' : '— เลือกสินค้า —'}
+            ariaLabel="สินค้า"
+            options={products.map(p => ({ value: p.id, label: p.name }))}
+          />
         </div>
         <div>
           <label style={labelStyle}>ส่วนลด (%)</label>

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Icon from '../icons';
-import { useToast, Tag, baht } from '../app-common';
+import { useToast, Tag, baht, Select } from '../app-common';
 import {
   useInventory, useInventoryMovements, useWasteStock,
   useCreateInventoryItem, useDeleteInventoryItem, useSupplierHistory,
@@ -332,10 +332,13 @@ const ModalShell = ({ title, subtitle, onClose, children, maxWidth = 520 }: { ti
 );
 
 const ItemSelect = ({ items, value, onChange, placeholder }: { items: InventoryItem[]; value: string; onChange: (v: string) => void; placeholder: string }) => (
-  <select value={value} onChange={e => onChange(e.target.value)} style={{ ...inputStyle(), appearance: 'auto' }}>
-    <option value="" disabled>{placeholder}</option>
-    {items.map(it => <option key={it.id} value={it.id}>{it.name} · คงเหลือ {it.stock.toLocaleString()} {it.unit}</option>)}
-  </select>
+  <Select
+    value={value}
+    onChange={onChange}
+    placeholder={placeholder}
+    ariaLabel={placeholder}
+    options={items.map(it => ({ value: it.id, label: `${it.name} · คงเหลือ ${it.stock.toLocaleString()} ${it.unit}` }))}
+  />
 );
 
 // ── Items Tab ─────────────────────────────────────────────────────────────────

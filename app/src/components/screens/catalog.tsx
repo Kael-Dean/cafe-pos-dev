@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useToast } from '../app-common';
+import { useToast, Select } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import {
   useCategoriesAdmin,
@@ -230,16 +230,15 @@ function ProductsTab() {
                 </div>
                 <div>
                   <label style={labelCss}>หมวดหมู่</label>
-                  <select
+                  <Select
                     value={formCatId}
-                    onChange={e => setFormCatId(e.target.value)}
-                    style={{ ...inputCss, appearance: 'auto' }}
-                  >
-                    <option value="">ไม่มีหมวดหมู่</option>
-                    {(categories ?? []).map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                    onChange={setFormCatId}
+                    ariaLabel="หมวดหมู่"
+                    options={[
+                      { value: '', label: 'ไม่มีหมวดหมู่' },
+                      ...(categories ?? []).map(c => ({ value: c.id, label: c.name })),
+                    ]}
+                  />
                 </div>
               </div>
               <div>

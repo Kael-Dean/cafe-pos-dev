@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Icon from '../icons';
-import { useToast, Tag, baht } from '../app-common';
+import { useToast, Tag, baht, Select } from '../app-common';
 import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, useUpdateProduct, type MenuItem, type Category } from '@/hooks/use-products';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
 import { useProductDetail, useUpdateRecipe, useLinkModifierGroups, type RecipeItem } from '@/hooks/use-bom';
@@ -622,9 +622,7 @@ const BOMRow = ({ inv, qty, lineCost, stockOk, isLast, onQtyChange, onRemove }: 
         <div style={{ padding: '10px 20px 14px', background: 'var(--color-accent-50)', borderBottom: isLast ? 'none' : '1px solid var(--color-border)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>ซื้อ:</span>
           <input type="number" min={0} step={0.1} value={pkgQty} onChange={e => setPkgQty(e.target.value)} placeholder="ปริมาณ" style={{ width: 70, padding: '5px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
-          <select value={pkgUnit} onChange={e => setPkgUnit(e.target.value)} style={{ padding: '5px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }}>
-            {PKG_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-          </select>
+          <Select value={pkgUnit} onChange={setPkgUnit} ariaLabel="หน่วยซื้อ" style={{ width: 'auto' }} triggerStyle={{ padding: '5px 8px', fontSize: 13, borderRadius: 6, minWidth: 72 }} menuMaxHeight={220} options={PKG_UNITS.map(u => ({ value: u, label: u }))} />
           <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>ราคา</span>
           <input type="number" min={0} step={1} value={pkgPrice} onChange={e => setPkgPrice(e.target.value)} placeholder="฿" style={{ width: 80, padding: '5px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
           {derived !== null ? (
@@ -928,73 +926,6 @@ const bomInputStyle = (): React.CSSProperties => ({
   boxSizing: 'border-box', background: 'var(--color-surface)',
 });
 
-const BomSelect = ({ value, onChange, options }: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const selectedLabel = options.find(o => o.value === value)?.label ?? options[0]?.label;
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    if (open) document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        style={{
-          ...bomInputStyle(),
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          cursor: 'pointer', textAlign: 'left',
-          border: `1px solid ${open ? 'var(--color-accent)' : 'var(--color-border)'}`,
-          boxShadow: open ? 'var(--shadow-focus)' : 'none',
-          transition: 'border-color 150ms, box-shadow 150ms',
-          color: value ? 'var(--color-text)' : 'var(--color-text-muted)',
-        }}
-      >
-        <span>{selectedLabel}</span>
-        <Icon name="chevronDown" size={14} style={{ color: 'var(--color-text-secondary)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }} />
-      </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
-          background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-          borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 200,
-          overflow: 'hidden',
-        }}>
-          {options.map(opt => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => { onChange(opt.value); setOpen(false); }}
-              style={{
-                width: '100%', textAlign: 'left', padding: '10px 12px',
-                fontSize: 14, fontFamily: 'inherit', cursor: 'pointer', border: 'none',
-                background: opt.value === value ? 'var(--color-accent-50)' : 'transparent',
-                color: opt.value === value ? 'var(--color-primary-700)' : 'var(--color-text)',
-                fontWeight: opt.value === value ? 600 : 400,
-                transition: 'background 100ms',
-                display: 'block',
-              }}
-              onMouseEnter={e => { if (opt.value !== value) e.currentTarget.style.background = 'var(--color-surface-2)'; }}
-              onMouseLeave={e => { if (opt.value !== value) e.currentTarget.style.background = 'transparent'; }}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 const BomFormField = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div style={{ marginBottom: 14 }}>
@@ -1097,9 +1028,10 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
 
       {type === 'MENU' && (
         <BomFormField label="หมวดหมู่">
-          <BomSelect
+          <Select
             value={categoryId}
             onChange={setCategoryId}
+            ariaLabel="หมวดหมู่"
             options={[
               { value: '', label: '— ไม่ระบุหมวดหมู่ —' },
               ...categories.map(c => ({ value: c.id, label: c.label })),

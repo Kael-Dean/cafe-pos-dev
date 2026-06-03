@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Icon from '../icons';
-import { useToast, Tag } from '../app-common';
+import { useToast, Tag, Select } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import {
   usePromotions, useCreatePromotion, useUpdatePromotion, useDeletePromotion,
@@ -335,12 +335,12 @@ export default function PromotionsScreen() {
             </div>
             <div>
               <label style={LB}>ประเภท</label>
-              <select value={form.type} onChange={e => set('type', e.target.value as PromotionType)} style={IS}>
-                <option value="PERCENT_OFF">ส่วนลด % (Percent off)</option>
-                <option value="HAPPY_HOUR">Happy Hour (ตามเวลา)</option>
-                <option value="COMBO_QUANTITY">ซื้อครบจำนวน</option>
-                <option value="COMBO_BUNDLE">จัดเซ็ต (Bundle)</option>
-              </select>
+              <Select value={form.type} onChange={v => set('type', v as PromotionType)} ariaLabel="ประเภท" options={[
+                { value: 'PERCENT_OFF', label: 'ส่วนลด % (Percent off)' },
+                { value: 'HAPPY_HOUR', label: 'Happy Hour (ตามเวลา)' },
+                { value: 'COMBO_QUANTITY', label: 'ซื้อครบจำนวน' },
+                { value: 'COMBO_BUNDLE', label: 'จัดเซ็ต (Bundle)' },
+              ]} />
             </div>
             <div>
               <label style={LB}>ส่วนลด (%) *</label>
@@ -351,11 +351,11 @@ export default function PromotionsScreen() {
             {scopeful && (
               <div>
                 <label style={LB}>ขอบเขต</label>
-                <select value={form.scope} onChange={e => set('scope', e.target.value as PromotionScope)} style={IS}>
-                  <option value="ORDER">ทั้งบิล</option>
-                  <option value="CATEGORY">หมวดหมู่</option>
-                  <option value="PRODUCT">สินค้าที่เลือก</option>
-                </select>
+                <Select value={form.scope} onChange={v => set('scope', v as PromotionScope)} ariaLabel="ขอบเขต" options={[
+                  { value: 'ORDER', label: 'ทั้งบิล' },
+                  { value: 'CATEGORY', label: 'หมวดหมู่' },
+                  { value: 'PRODUCT', label: 'สินค้าที่เลือก' },
+                ]} />
               </div>
             )}
             {form.type === 'COMBO_QUANTITY' && (
@@ -369,10 +369,7 @@ export default function PromotionsScreen() {
             {scopeful && form.scope === 'CATEGORY' && (
               <div style={{ gridColumn: '1/-1' }}>
                 <label style={LB}>หมวดหมู่ *</label>
-                <select value={form.category_id} onChange={e => set('category_id', e.target.value)} style={IS}>
-                  <option value="">— เลือกหมวดหมู่ —</option>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-                </select>
+                <Select value={form.category_id} onChange={v => set('category_id', v)} ariaLabel="หมวดหมู่" placeholder="— เลือกหมวดหมู่ —" options={categories.map(c => ({ value: c.id, label: c.label }))} />
               </div>
             )}
 

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Icon from '../icons';
-import { useToast, baht } from '../app-common';
+import { useToast, baht, Select } from '../app-common';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { useCategories } from '@/hooks/use-products';
 import { useProductsAdmin } from '@/hooks/use-products';
@@ -202,9 +202,7 @@ export default function LoyaltyConfig() {
       <Section title="การได้รับแต้ม">
         <Grid>
           <Field label="วิธีคิดแต้ม">
-            <select value={form.earn_mode} disabled={dis} onChange={e => set('earn_mode', e.target.value as EarnMode)} style={IS}>
-              {EARN_MODES.map(m => <option key={m.v} value={m.v}>{m.label}</option>)}
-            </select>
+            <Select value={form.earn_mode} disabled={dis} onChange={v => set('earn_mode', v as EarnMode)} ariaLabel="วิธีคิดแต้ม" options={EARN_MODES.map(m => ({ value: m.v, label: m.label }))} />
           </Field>
           {form.earn_mode === 'PER_BAHT' && (
             <Field label="บาทต่อ 1 แต้ม *">
@@ -221,9 +219,7 @@ export default function LoyaltyConfig() {
             <input type="number" value={form.points_to_redeem} disabled={dis} onChange={e => set('points_to_redeem', e.target.value)} style={IS} placeholder="100" />
           </Field>
           <Field label="ประเภทรางวัล">
-            <select value={form.reward_type} disabled={dis} onChange={e => set('reward_type', e.target.value as RewardType)} style={IS}>
-              {REWARD_TYPES.map(m => <option key={m.v} value={m.v}>{m.label}</option>)}
-            </select>
+            <Select value={form.reward_type} disabled={dis} onChange={v => set('reward_type', v as RewardType)} ariaLabel="ประเภทรางวัล" options={REWARD_TYPES.map(m => ({ value: m.v, label: m.label }))} />
           </Field>
           {form.reward_type !== 'FREE_ITEM' && (
             <Field label={form.reward_type === 'DISCOUNT_PERCENT' ? 'ส่วนลด (%) *' : 'ส่วนลด (฿) *'}>
@@ -231,16 +227,11 @@ export default function LoyaltyConfig() {
             </Field>
           )}
           <Field label="ขอบเขตสินค้าที่ใช้สิทธิ์">
-            <select value={form.reward_scope} disabled={dis} onChange={e => set('reward_scope', e.target.value as RewardScope)} style={IS}>
-              {REWARD_SCOPES.map(m => <option key={m.v} value={m.v}>{m.label}</option>)}
-            </select>
+            <Select value={form.reward_scope} disabled={dis} onChange={v => set('reward_scope', v as RewardScope)} ariaLabel="ขอบเขตสินค้าที่ใช้สิทธิ์" options={REWARD_SCOPES.map(m => ({ value: m.v, label: m.label }))} />
           </Field>
           {form.reward_scope === 'CATEGORY' && (
             <Field label="หมวดหมู่ *">
-              <select value={form.reward_category_id} disabled={dis} onChange={e => set('reward_category_id', e.target.value)} style={IS}>
-                <option value="">— เลือกหมวดหมู่ —</option>
-                {(categories ?? []).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-              </select>
+              <Select value={form.reward_category_id} disabled={dis} onChange={v => set('reward_category_id', v)} ariaLabel="หมวดหมู่" placeholder="— เลือกหมวดหมู่ —" options={(categories ?? []).map(c => ({ value: c.id, label: c.label }))} />
             </Field>
           )}
         </Grid>
