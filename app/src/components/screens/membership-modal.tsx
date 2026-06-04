@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Icon from '../icons';
 import { useToast, Tag, baht } from '../app-common';
 import {
@@ -58,6 +58,8 @@ export default function MembershipModal({ onClose, onSelectMember }: Props) {
   const [result, setResult] = useState<LookupResponse | null>(null);
   const [redeem, setRedeem] = useState(false);
   const [rewardProduct, setRewardProduct] = useState<RewardProductRead | null>(null);
+  // Last phone we auto-looked-up — keeps the effect from re-firing for the same number.
+  const lastAutoPhone = useRef('');
 
   // Name search reuses the members endpoint (which already supports ?name=).
   const membersQuery = useMembers(
@@ -72,6 +74,7 @@ export default function MembershipModal({ onClose, onSelectMember }: Props) {
     setRedeem(false);
     setRewardProduct(null);
     setSubmittedName('');
+    lastAutoPhone.current = '';
   };
 
   const doNameSearch = () => {
@@ -128,6 +131,24 @@ export default function MembershipModal({ onClose, onSelectMember }: Props) {
       toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) });
     }
   };
+
+  // ── Auto-search (debounced) — results appear without pressing "ค้นหา" ───────
+  // Name mode: feed the trimmed input into the members query as the user types.
+  useEffect(() => {
+    if (phase !== 'lookup' || searchMode !== 'name') return;
+    const t = setTimeout(() => setSubmittedName(nameInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [nameInput, searchMode, phase]);
+
+  // Phone mode: run the lookup automatically once a full (10-digit) number is in.
+  useEffect(() => {
+    if (phase !== 'lookup' || searchMode !== 'phone') return;
+    const p = phone.trim();
+    if (p.length < 10 || p === lastAutoPhone.current) return;
+    const t = setTimeout(() => { lastAutoPhone.current = p; doLookup(); }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone, searchMode, phase]);
 
   const doRegister = async () => {
     if (!regName.trim()) { toast({ kind: 'warning', title: 'กรอกชื่อสมาชิก' }); return; }
@@ -206,7 +227,7 @@ export default function MembershipModal({ onClose, onSelectMember }: Props) {
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/[^\d]/g, ''))}
+                  onChange={(e) => { setPhone(e.target.value.replace(/[^\d]/g, '')); if (result) setResult(null); }}
                   inputMode="numeric"
                   placeholder="08XXXXXXXX"
                   style={IS}
@@ -229,7 +250,7 @@ export default function MembershipModal({ onClose, onSelectMember }: Props) {
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
                   value={nameInput}
-                  onChange={(e) => setNameInput(e.target.value)}
+                  onChange={(e) => { setNameInput(e.target.value); if (result) setResult(null); }}
                   placeholder="ชื่อ หรือบางส่วนของชื่อ"
                   style={IS}
                   onKeyDown={(e) => { if (e.key === 'Enter') doNameSearch(); }}
