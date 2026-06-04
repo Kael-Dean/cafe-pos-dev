@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ToastProvider, Sidebar, BottomTabBar } from '@/components/app-common';
 import { getToken, clearToken, subscribeAuth } from '@/lib/token-store';
 import LoginScreen from '@/components/screens/login';
@@ -34,6 +35,7 @@ export default function POS() {
   const [mounted, setMounted] = useState(false);
   const [screen, setScreen] = useState<Screen>('pos');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     setIsLoggedIn(!!getToken());
@@ -48,11 +50,17 @@ export default function POS() {
   if (!mounted) return null;
 
   if (!isLoggedIn) {
-    return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
+    return <LoginScreen onLogin={() => {
+      // Drop any cache left over from a previous session so /me (and all other
+      // user/store-scoped queries) refetch for whoever just logged in.
+      queryClient.clear();
+      setIsLoggedIn(true);
+    }} />;
   }
 
   const handleLogout = () => {
     clearToken();
+    queryClient.clear();
     setIsLoggedIn(false);
   };
 
