@@ -227,6 +227,12 @@ export function ReceiptPaper({ data, invoiceNo, now, fmt, storeInfo }: {
     }}>
       {/* ── Header (centered, like double-height storeName on the printer) ── */}
       <div style={{ textAlign: 'center' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/logo.svg"
+          alt=""
+          style={{ height: 64, width: 'auto', margin: '0 auto 8px', display: 'block' }}
+        />
         <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: '0.01em' }}>{S.name}</div>
         <div style={{ marginTop: 3 }}>ใบเสร็จรับเงิน</div>
         <div style={{ color: '#7A6E60' }}>ต้นฉบับ</div>

@@ -3,6 +3,7 @@ import net from 'net';
 import fs from 'fs';
 import path from 'path';
 import { bahtText } from '@/lib/baht-text';
+import { receiptLogoCommand } from '@/lib/receipt-logo';
 
 const CONFIG_PATH = path.join(process.cwd(), 'printer-config.json');
 
@@ -123,6 +124,8 @@ function buildESCPOS(data: PrintBody): Buffer {
     cmd(GS,  0x4c, 0x00, 0x00), // left margin = 0 → shift layout to far left
     cmd(ESC, 0x74, 0x15),  // TIS-620
     cmd(ESC, 0x61, 0x01),  // center
+    receiptLogoCommand(),  // shop logo (1-bit raster), centered
+    cmd(LF),
     cmd(GS,  0x21, 0x10),  // double-height
     line(data.storeName),
     cmd(GS,  0x21, 0x00),
