@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Icon from '../icons';
-import { useToast, Tag, baht, Select } from '../app-common';
+import { useToast, Tag, baht, Select, NumberInput } from '../app-common';
 import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, useUpdateProduct, type MenuItem, type Category } from '@/hooks/use-products';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
 import { useProductDetail, useUpdateRecipe, useLinkModifierGroups, type RecipeItem } from '@/hooks/use-bom';
@@ -399,8 +399,8 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
             <span style={{ fontSize: 18, color: 'var(--color-text-secondary)' }}>฿</span>
-            <input type="number" min={0} step={5} value={editedPrice}
-              onChange={e => onPriceChange(Number(e.target.value))}
+            <NumberInput min={0} step={5} value={editedPrice}
+              onChange={onPriceChange}
               className="num"
               style={{ width: 96, fontSize: 30, fontWeight: 700, textAlign: 'right', border: 'none', borderBottom: '2px solid var(--color-border)', outline: 'none', padding: '4px 0', background: 'transparent', fontFamily: 'inherit', letterSpacing: '-0.02em' }}
               onFocus={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
@@ -412,12 +412,12 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
           <div>
             <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>จำนวน/แบทช์</div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-              <input
-                type="number"
+              <NumberInput
                 min={1}
                 step={1}
+                integer
                 value={editedServingsPerBatch}
-                onChange={e => onServingsPerBatchChange(Math.max(1, Number(e.target.value) || 1))}
+                onChange={onServingsPerBatchChange}
                 className="num"
                 style={{ width: 72, fontSize: 30, fontWeight: 700, textAlign: 'right', border: 'none', borderBottom: '2px solid var(--color-accent)', outline: 'none', padding: '4px 0', background: 'transparent', fontFamily: 'inherit', letterSpacing: '-0.02em', color: 'var(--color-primary-700)' }}
                 onFocus={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
@@ -631,7 +631,7 @@ const BOMRow = ({ inv, qty, lineCost, stockOk, isLast, onQtyChange, onRemove }: 
           </div>
           <div style={{ fontSize: 11, color: stockOk ? 'var(--color-text-muted)' : 'var(--color-warning)', marginTop: 2 }}>คงเหลือ {inv.stock.toLocaleString()} {inv.unit}{!stockOk && ' · ใกล้หมด'}</div>
         </div>
-        <input type="number" step={1} min={0} value={qty} onChange={e => onQtyChange(Number(e.target.value))} className="num" style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, border: '1px solid var(--color-border)', borderRadius: 6, padding: '6px 10px', outline: 'none', fontFamily: 'inherit', background: 'var(--color-surface)' }} onFocus={e => e.target.style.borderColor = 'var(--color-accent)'} onBlur={e => e.target.style.borderColor = 'var(--color-border)'} />
+        <NumberInput step={1} min={0} value={qty} onChange={onQtyChange} className="num" style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, border: '1px solid var(--color-border)', borderRadius: 6, padding: '6px 10px', outline: 'none', fontFamily: 'inherit', background: 'var(--color-surface)' }} onFocus={e => e.target.style.borderColor = 'var(--color-accent)'} onBlur={e => e.target.style.borderColor = 'var(--color-border)'} />
         <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{inv.unit}</div>
         <div className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'right' }}>฿{inv.costPerUnit.toFixed(2)}</div>
         <div className="num" style={{ fontSize: 14, fontWeight: 700, textAlign: 'right' }}>฿{lineCost.toFixed(2)}</div>

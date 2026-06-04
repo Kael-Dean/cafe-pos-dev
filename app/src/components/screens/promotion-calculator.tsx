@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Icon from '../icons';
-import { Tag, baht, Select } from '../app-common';
+import { Tag, baht, Select, NumberInput } from '../app-common';
 import { useAllProducts } from '@/hooks/use-products';
 import { useProductDetail } from '@/hooks/use-bom';
 import { usePromotionBaseline } from '@/hooks/use-promotions';
@@ -104,14 +104,14 @@ export default function PromotionCalculator() {
         </div>
         <div>
           <label style={labelStyle}>ส่วนลด (%)</label>
-          <input type="number" min={0} max={99} value={discountPct}
-            onChange={e => setDiscountPct(Math.min(99, Math.max(0, Math.floor(Number(e.target.value) || 0))))}
+          <NumberInput min={0} max={99} integer value={discountPct}
+            onChange={setDiscountPct}
             style={inputStyle} />
         </div>
         <div>
           <label style={labelStyle}>ช่วงข้อมูล (วัน)</label>
-          <input type="number" min={1} max={365} value={days}
-            onChange={e => setDays(Math.min(365, Math.max(1, Math.floor(Number(e.target.value) || 1))))}
+          <NumberInput min={1} max={365} integer value={days}
+            onChange={setDays}
             style={inputStyle} />
         </div>
       </div>

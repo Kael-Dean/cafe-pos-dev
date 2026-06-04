@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import Icon from '../icons';
-import { useToast, Tag, baht } from '../app-common';
+import { useToast, Tag, baht, NumberInput } from '../app-common';
 import { useAllProducts, type MenuItem } from '@/hooks/use-products';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
 import { useProductDetail } from '@/hooks/use-bom';
@@ -203,12 +203,12 @@ const ProductionPanel = ({ product, stockItem, onSuccess, onError }: ProductionP
           <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 16, marginBottom: 16, alignItems: 'flex-end' }}>
             <div>
               <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>จำนวนแบทช์ *</div>
-              <input
-                type="number"
+              <NumberInput
                 min={1}
                 step={1}
+                integer
                 value={batches}
-                onChange={e => setBatches(Math.max(1, Number(e.target.value) || 1))}
+                onChange={setBatches}
                 className="num"
                 style={{ width: '100%', fontSize: 30, fontWeight: 700, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 8, padding: '8px 12px', outline: 'none', fontFamily: 'inherit', background: 'var(--color-surface)', letterSpacing: '-0.02em' }}
                 onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}

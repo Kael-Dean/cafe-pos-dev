@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useToast, Select } from '../app-common';
+import { useToast, Select, NumberInput } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import {
   useCategoriesAdmin,
@@ -673,10 +673,10 @@ function ModifierGroupsTab() {
                 </div>
                 <div>
                   <label style={labelCss}>เลือกขั้นต่ำ</label>
-                  <input
-                    type="number" min={0}
+                  <NumberInput
+                    min={0} integer
                     value={formMinSelect}
-                    onChange={e => { setFormMinSelect(Number(e.target.value)); setIsDirty(true); }}
+                    onChange={n => { setFormMinSelect(n); setIsDirty(true); }}
                     style={inputCss}
                   />
                 </div>
@@ -723,7 +723,7 @@ function ModifierGroupsTab() {
                           <input value={m.price_delta} onChange={e => updateModRow(i, 'price_delta', e.target.value)} placeholder="0" style={{ ...inputCss, padding: '4px 8px', fontSize: 13, fontFamily: 'var(--font-num)' }} />
                         </td>
                         <td style={{ padding: '6px 8px', width: 80 }}>
-                          <input type="number" value={m.sort_order} onChange={e => updateModRow(i, 'sort_order', Number(e.target.value))} style={{ ...inputCss, padding: '4px 8px', fontSize: 13, fontFamily: 'var(--font-num)', width: 60 }} />
+                          <NumberInput integer min={0} value={m.sort_order} onChange={n => updateModRow(i, 'sort_order', n)} style={{ ...inputCss, padding: '4px 8px', fontSize: 13, fontFamily: 'var(--font-num)', width: 60 }} />
                         </td>
                         <td style={{ padding: '6px 8px', width: 36, textAlign: 'center' }}>
                           <button onClick={() => removeModRow(i)} style={{ background: 'transparent', border: 'none', color: 'var(--color-danger)', cursor: 'pointer', fontSize: 18 }}>×</button>

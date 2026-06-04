@@ -3,6 +3,7 @@
 import { useState, useCallback, createContext, useContext, useRef, useEffect } from 'react';
 import Icon from './icons';
 import { useCurrentUser } from '@/hooks/use-current-user';
+import { displayNumber, parseNumberInput, clampNumber } from '@/lib/number-input';
 
 // ---------- Toast ----------
 type ToastKind = 'success' | 'warning' | 'danger' | 'info';
@@ -587,5 +588,75 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
       </nav>
 
     </>
+  );
+};
+
+// ---------- NumberInput ----------
+// Controlled numeric <input> that can actually be CLEARED.
+//
+// Use this instead of `<input type="number" value={n} onChange={e => set(Number(e.target.value))} />`.
+// That naive pattern turns an empty field into 0, so the box can never be emptied
+// and shows a stuck "0" that new digits append to ("0" + "100" => "0100"), which is
+// especially painful on iPads. NumberInput keeps an internal draft string so the box
+// stays empty while editing, but still reports a plain `number` to `onChange`.
+//
+// `min`/`max` are clamped on blur (not while typing), so a "must be >= 1" field can be
+// cleared during editing and snaps back to its minimum when focus leaves.
+type NumberInputProps = Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  'value' | 'onChange' | 'min' | 'max' | 'type'
+> & {
+  value: number;
+  onChange: (value: number) => void;
+  min?: number;
+  max?: number;
+  /** Round to an integer. */
+  integer?: boolean;
+  /** Number reported (and shown as an empty box) when the field is empty. Default 0. */
+  emptyValue?: number;
+};
+
+export const NumberInput = ({
+  value,
+  onChange,
+  min,
+  max,
+  integer = false,
+  emptyValue = 0,
+  onFocus,
+  onBlur,
+  inputMode,
+  ...rest
+}: NumberInputProps) => {
+  // `draft` is the raw text while the user is editing; `null` means "not editing",
+  // so the box mirrors the numeric prop. Deriving the displayed value this way (no
+  // effect) keeps an empty box empty while typing without cascading re-renders.
+  const [draft, setDraft] = useState<string | null>(null);
+  const display = draft ?? displayNumber(value, emptyValue);
+
+  return (
+    <input
+      {...rest}
+      type="number"
+      inputMode={inputMode ?? (integer ? 'numeric' : 'decimal')}
+      min={min}
+      max={max}
+      value={display}
+      onFocus={(e) => {
+        setDraft(displayNumber(value, emptyValue));
+        onFocus?.(e);
+      }}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setDraft(raw);
+        onChange(parseNumberInput(raw, { integer, emptyValue }));
+      }}
+      onBlur={(e) => {
+        const normalised = clampNumber(parseNumberInput(draft ?? '', { integer, emptyValue }), { min, max, integer });
+        setDraft(null);
+        onChange(normalised);
+        onBlur?.(e);
+      }}
+    />
   );
 };

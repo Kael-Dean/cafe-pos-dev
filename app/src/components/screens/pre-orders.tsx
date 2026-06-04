@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Icon from '../icons';
-import { useToast } from '../app-common';
+import { useToast, NumberInput } from '../app-common';
 import { useLookupMember, type AccountRead } from '@/hooks/use-membership';
 import {
   usePreOrders, usePreOrder, usePreOrderIngredients,
@@ -694,7 +694,7 @@ function DetailPanel({
                       </div>
                     )}
                   </div>
-                  <input type="number" min={1} placeholder="จำนวน" value={addItemQty} onChange={e => onAddItemQtyChange(Math.max(1, Number(e.target.value) || 1))}
+                  <NumberInput min={1} integer placeholder="จำนวน" value={addItemQty} onChange={onAddItemQtyChange}
                     style={{ width: 60, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 12 }}
                   />
                   <input type="number" min={0} placeholder="ราคา (ว่าง=ตามสินค้า)" value={addItemPrice} onChange={e => onAddItemPriceChange(e.target.value)}
@@ -1042,7 +1042,7 @@ function CreateModal({
                   </div>
                 )}
               </div>
-              <div style={{ width: 70 }}><label style={labelStyle}>จำนวน</label><input type="number" min={1} value={cItemQty} onChange={e => onItemQtyChange(Math.max(1, Number(e.target.value) || 1))} style={inputStyle} /></div>
+              <div style={{ width: 70 }}><label style={labelStyle}>จำนวน</label><NumberInput min={1} integer value={cItemQty} onChange={onItemQtyChange} style={inputStyle} /></div>
               <div style={{ width: 110 }}><label style={labelStyle}>ราคา (ว่าง=catalog)</label><input type="number" min={0} value={cItemPrice} onChange={e => onItemPriceChange(e.target.value)} placeholder="ปกติ" style={inputStyle} /></div>
               <button onClick={onAddItem} disabled={!cItemProductId}
                 style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: cItemProductId ? 'pointer' : 'not-allowed', opacity: cItemProductId ? 1 : 0.5, marginBottom: 1 }}>
