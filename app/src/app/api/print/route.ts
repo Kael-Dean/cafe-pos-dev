@@ -78,18 +78,26 @@ const LF  = 0x0a;
 const cmd  = (...b: number[]) => Buffer.from(b);
 const line = (s: string)      => Buffer.concat([toTIS620(s), Buffer.from([LF])]);
 
-const W = 42;
+const W = 48; // 80mm thermal @ Font A = 48 columns; fills the paper edge-to-edge
 const dash = '-'.repeat(W);
 
-const leftRight = (l: string, r: string) => {
-  const left = l.substring(0, W - r.length - 1);
-  return left + ' '.repeat(Math.max(1, W - left.length - r.length)) + r;
-};
-const center = (s: string) => {
-  const pad = Math.max(0, Math.floor((W - s.length) / 2));
-  return ' '.repeat(pad) + s;
+// Thai combining marks (above/below vowels + tone marks) stack on the base glyph
+// and advance the print head by zero, so they must not count toward column width.
+const isZeroWidthThai = (cp: number) =>
+  cp === 0x0e31 || (cp >= 0x0e34 && cp <= 0x0e3a) || (cp >= 0x0e47 && cp <= 0x0e4e);
+const visualWidth = (s: string) => {
+  let w = 0;
+  for (const ch of s) if (!isZeroWidthThai(ch.charCodeAt(0))) w++;
+  return w;
 };
 
+const leftRight = (l: string, r: string) => {
+  const rW = visualWidth(r);
+  let left = l;
+  while (visualWidth(left) > W - rW - 1) left = left.slice(0, -1);
+  const pad = Math.max(1, W - visualWidth(left) - rW);
+  return left + ' '.repeat(pad) + r;
+};
 const fmt2 = (n: number) => n.toFixed(2);
 
 interface PrintBody {
@@ -116,7 +124,7 @@ function buildESCPOS(data: PrintBody): Buffer {
     line(data.storeName),
     cmd(GS,  0x21, 0x00),
     line('ใบเสร็จรับเงิน'),
-    line(center('ต้นฉบับ')),
+    line('ต้นฉบับ'),
     line(dash),
     cmd(ESC, 0x61, 0x00),  // left
   ];
@@ -147,7 +155,7 @@ function buildESCPOS(data: PrintBody): Buffer {
   // Summary
   parts.push(line(dash));
   parts.push(cmd(ESC, 0x45, 0x01)); // bold on
-  parts.push(line(leftRight('รวมทั้งสิ้น', `${fmt2(data.total)} B`)));
+  parts.push(line(leftRight('รวมทั้งสิ้น (บาท)', fmt2(data.total))));
   parts.push(cmd(ESC, 0x45, 0x00)); // bold off
   parts.push(line(`ชำระ: ${data.paymentLabel}`));
 

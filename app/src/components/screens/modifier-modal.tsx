@@ -121,7 +121,9 @@ export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props)
         const o = g.options.find((x) => x.id === sel[g.id]);
         if (o) {
           const isHiddenDefault = (g.id === 'sweet' && o.id === 'std') || (g.id === 'milk' && o.id === 'fresh');
-          if (!isHiddenDefault) labels.push(o.label);
+          // Prefix the group name so the receipt reads "ความหวาน น้อย" instead of a
+          // bare "น้อย" that gives no context about which attribute it refers to.
+          if (!isHiddenDefault) labels.push(`${g.label} ${o.label}`);
           modKey += `${g.id}:${o.id};`;
           modIds.push(o.id);
         }
