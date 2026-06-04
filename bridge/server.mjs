@@ -106,6 +106,7 @@ function buildESCPOS(data) {
   if (data.invoiceNo) parts.push(line(`เลขที่: ${data.invoiceNo}`));
   parts.push(line(`ออเดอร์: #${data.orderNumber}`));
   parts.push(line(new Date().toLocaleString('th-TH')));
+  if (data.memberName) parts.push(line(`ลูกค้า: ${data.memberName}`));
   parts.push(line(dash));
 
   parts.push(line(leftRight('รายการ', 'จำนวนเงิน')));

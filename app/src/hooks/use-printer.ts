@@ -18,6 +18,7 @@ export interface PrintReceiptArgs {
   total: number;
   paymentMethod: string;
   cashGiven?: number;
+  memberName?: string;
 }
 
 // Receipt running number, mirrors the on-screen receipt modal.
@@ -45,6 +46,7 @@ export function usePrinter() {
     };
 
     if (args.cashGiven != null) body.cashGiven = args.cashGiven;
+    if (args.memberName) body.memberName = args.memberName;
 
     await sendPrintJob(body);
   }, []);

@@ -516,6 +516,7 @@ export default function POSTerminal() {
               total: receiptData.total,
               paymentMethod: receiptData.paymentMethod,
               cashGiven: receiptData.cashGiven,
+              memberName: receiptData.memberName,
             });
           }}
         />
