@@ -19,7 +19,7 @@ export default function BOMBuilder() {
   const [search, setSearch] = useState('');
   const [picker, setPicker] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<MenuItem | null>(null);
 
   const [editedRecipe, setEditedRecipe] = useState<RecipeItem[]>([]);
   const [editedPrice, setEditedPrice] = useState(0);
@@ -147,12 +147,13 @@ export default function BOMBuilder() {
   };
 
   const handleDelete = async () => {
-    if (!selectedId || !selectedProduct) return;
+    if (!deleteTarget) return;
     try {
-      await deleteProduct.mutateAsync(selectedId);
-      setDeleteConfirmOpen(false);
-      setSelectedId(null);
-      toast({ kind: 'success', title: 'ลบแล้ว', msg: `${selectedProduct.name} ถูกลบออกจากระบบ` });
+      await deleteProduct.mutateAsync(deleteTarget.id);
+      if (selectedId === deleteTarget.id) setSelectedId(null);
+      const deletedName = deleteTarget.name;
+      setDeleteTarget(null);
+      toast({ kind: 'success', title: 'ลบแล้ว', msg: `${deletedName} ถูกลบออกจากระบบ` });
     } catch (err) {
       toast({ kind: 'warning', title: 'ลบไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
     }
@@ -190,23 +191,42 @@ export default function BOMBuilder() {
           ) : filteredProducts.map(m => {
             const isActive = m.id === selectedId;
             return (
-              <button key={m.id} onClick={() => setSelectedId(m.id)} style={{
-                display: 'flex', gap: 12, alignItems: 'center', width: '100%', padding: 10, marginBottom: 2, borderRadius: 8,
+              <div key={m.id} className="bom-list-row" style={{
+                display: 'flex', gap: 4, alignItems: 'center', marginBottom: 2, borderRadius: 8,
                 background: isActive ? 'var(--color-accent-50)' : 'transparent',
                 border: isActive ? '1px solid var(--color-accent)' : '1px solid transparent',
-                cursor: 'pointer', textAlign: 'left', transition: 'all 150ms var(--ease-out)',
+                transition: 'all 150ms var(--ease-out)',
               }}
                 onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--color-surface-2)'; }}
                 onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
               >
-                <div style={{ width: 40, height: 40, borderRadius: 8, background: m.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{m.tag}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.name}</div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 3 }}>
-                    <span className="num" style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600 }}>{baht(m.price)}</span>
+                <button onClick={() => setSelectedId(m.id)} style={{
+                  display: 'flex', gap: 12, alignItems: 'center', flex: 1, minWidth: 0, padding: 10,
+                  background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 8, background: m.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{m.tag}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.name}</div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 3 }}>
+                      <span className="num" style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600 }}>{baht(m.price)}</span>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+                <button
+                  onClick={() => setDeleteTarget(m)}
+                  title="ลบเมนู"
+                  aria-label={`ลบ ${m.name}`}
+                  style={{
+                    flexShrink: 0, marginRight: 8, background: 'transparent', border: 'none', cursor: 'pointer',
+                    display: 'grid', placeItems: 'center', padding: 8, borderRadius: 6,
+                    color: 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+                >
+                  <Icon name="trash" size={14} />
+                </button>
+              </div>
             );
           })}
         </div>
@@ -245,7 +265,7 @@ export default function BOMBuilder() {
             onPickerOpen={() => setPicker(true)}
             onSave={saveRecipe}
             saving={updateRecipe.isPending || updateProduct.isPending}
-            onDeleteRequest={() => setDeleteConfirmOpen(true)}
+            onDeleteRequest={() => setDeleteTarget(selectedProduct)}
             linkedGroupIds={productDetail?.modifierGroupIds ?? []}
             allModifierGroups={modifierGroups ?? []}
             onModifierGroupPickerOpen={() => setModifierGroupPickerOpen(true)}
@@ -294,12 +314,12 @@ export default function BOMBuilder() {
           onSubmit={submitAddMenu}
         />
       )}
-      {deleteConfirmOpen && selectedProduct && (
+      {deleteTarget && (
         <DeleteConfirmModal
-          name={selectedProduct.name}
+          name={deleteTarget.name}
           deleting={deleteProduct.isPending}
           onConfirm={handleDelete}
-          onClose={() => setDeleteConfirmOpen(false)}
+          onClose={() => setDeleteTarget(null)}
         />
       )}
       {modifierGroupPickerOpen && selectedId && (
