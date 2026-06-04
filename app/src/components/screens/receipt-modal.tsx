@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import Icon from '../icons';
+import { bahtText } from '@/lib/baht-text';
 
 export interface ReceiptItem {
   name: string;
@@ -96,7 +97,7 @@ export default function ReceiptModal({ data, onClose, onPrint }: Props) {
           className="receipt-modal-shell"
           onClick={e => e.stopPropagation()}
           style={{
-            width: '100%', maxWidth: 660,
+            width: '100%', maxWidth: 460,
             background: 'var(--color-surface)',
             borderRadius: 20,
             boxShadow: '0 32px 80px rgba(61,40,23,0.28), 0 8px 24px rgba(61,40,23,0.14)',
@@ -131,7 +132,7 @@ export default function ReceiptModal({ data, onClose, onPrint }: Props) {
           </div>
 
           {/* ── Receipt preview ── */}
-          <div style={{ padding: '20px', overflowY: 'auto', maxHeight: '68vh' }}>
+          <div style={{ padding: '20px', overflowY: 'auto', maxHeight: '68vh', background: '#EFE9E0' }}>
             <ReceiptPaper
               data={data}
               invoiceNo={invoiceNo} now={now}
@@ -174,260 +175,113 @@ export default function ReceiptModal({ data, onClose, onPrint }: Props) {
   );
 }
 
-/* ─── Sub-components ─────────────────────────────────────────────── */
+/* ─── Faithful thermal-receipt preview ──────────────────────────────
+   Mirrors bridge/server.mjs buildESCPOS() line-for-line so the on-screen
+   preview matches the actual 80mm printout: centered header, dashed
+   dividers, left-aligned info, right-aligned amounts, Thai baht text. */
 
-export function ReceiptPaper({ data, invoiceNo, now, fmt, formatDate, formatTime, storeInfo }: {
+const MONO: React.CSSProperties = {
+  fontFamily: '"Courier New", ui-monospace, monospace',
+  fontVariantNumeric: 'tabular-nums',
+};
+
+function Dash() {
+  return <div aria-hidden style={{ borderTop: '1px dashed #B6A992', margin: '8px 0' }} />;
+}
+
+function TRow({ l, r, bold, muted, indent }: {
+  l: React.ReactNode; r?: React.ReactNode; bold?: boolean; muted?: boolean; indent?: boolean;
+}) {
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline',
+      padding: '1px 0',
+      paddingLeft: indent ? 16 : 0,
+      fontWeight: bold ? 700 : 400,
+      color: muted ? '#7A6E60' : '#1A1A1A',
+    }}>
+      <span style={{ wordBreak: 'break-word' }}>{l}</span>
+      {r != null && <span style={{ ...MONO, flexShrink: 0, fontWeight: bold ? 700 : 400 }}>{r}</span>}
+    </div>
+  );
+}
+
+export function ReceiptPaper({ data, invoiceNo, now, fmt, storeInfo }: {
   data: ReceiptData; invoiceNo: string; now: Date;
   fmt: (n: number) => string;
-  formatDate: (d: Date) => string; formatTime: (d: Date) => string;
+  formatDate?: (d: Date) => string; formatTime?: (d: Date) => string;
   storeInfo?: StoreInfo;
 }) {
   const S = { ...DEFAULT_STORE, ...storeInfo };
-  const mono: React.CSSProperties = { fontFamily: '"Courier New", monospace' };
-  const label: React.CSSProperties = { fontSize: 10, color: '#8A7B6E', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 };
-  const val: React.CSSProperties = { fontSize: 12, fontWeight: 500, color: '#1A1A1A' };
+  const dateStr = now.toLocaleString('th-TH'); // matches the bridge's Date.toLocaleString('th-TH')
 
   return (
     <div className="receipt-paper" style={{
       background: '#FFFFFF',
-      border: '1px solid #DDD5C8',
-      borderRadius: 10,
-      overflow: 'hidden',
-      fontFamily: '"IBM Plex Sans Thai", "Sarabun", sans-serif',
-      boxShadow: '0 4px 16px rgba(61,40,23,0.08)',
+      width: '100%', maxWidth: 340, margin: '0 auto',
+      border: '1px solid #E5E0D5', borderRadius: 4,
+      boxShadow: '0 6px 22px rgba(61,40,23,0.16)',
+      padding: '20px 18px 24px',
+      fontFamily: '"IBM Plex Sans Thai", "Sarabun", system-ui, sans-serif',
+      fontSize: 12.5, lineHeight: 1.5, color: '#1A1A1A',
     }}>
-      {/* B&W print override — thermal-friendly: removes dark backgrounds, keeps structure */}
-      <style>{`
-        @media print {
-          .receipt-header-band {
-            background: white !important;
-            border-bottom: 2px solid black !important;
-          }
-          .receipt-header-band .rh-label { color: #555 !important; }
-          .receipt-header-band .rh-name  { color: black !important; }
-          .receipt-header-band .rh-type  {
-            background: transparent !important;
-            color: black !important;
-            border: 1px solid black !important;
-          }
-          .receipt-meta-row { background: white !important; }
-          .receipt-section-label { color: black !important; }
-        }
-      `}</style>
-
-      {/* ─── Dark header band (screen: espresso; print: clean B&W) ─── */}
-      <div className="receipt-header-band" style={{
-        background: 'linear-gradient(135deg, #3D2817 0%, #5A3A22 100%)',
-        padding: '18px 20px 14px',
-        textAlign: 'center',
-      }}>
-        <div className="rh-label" style={{ color: '#D4A574', fontSize: 10, letterSpacing: '0.2em', marginBottom: 6 }}>ต้นฉบับ · ORIGINAL</div>
-        <div className="rh-name" style={{ color: '#FFFFFF', fontSize: 18, fontWeight: 800, letterSpacing: '0.01em' }}>{S.name}</div>
-        <div className="rh-type" style={{
-          display: 'inline-block', marginTop: 6,
-          background: 'rgba(255,255,255,0.12)',
-          color: '#F0E4D4', fontSize: 11, fontWeight: 500,
-          padding: '3px 12px', borderRadius: 4, letterSpacing: '0.04em',
-        }}>
-          ใบเสร็จรับเงิน
-        </div>
+      {/* ── Header (centered, like double-height storeName on the printer) ── */}
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: '0.01em' }}>{S.name}</div>
+        <div style={{ marginTop: 3 }}>ใบเสร็จรับเงิน</div>
+        <div style={{ color: '#7A6E60' }}>ต้นฉบับ</div>
       </div>
 
-      {/* ─── Parties: Seller | Buyer ─── */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: '1fr 1px 1fr',
-        borderBottom: '2px solid #3D2817',
-      }}>
-        {/* Seller */}
-        <div style={{ padding: '14px 16px' }}>
-          <div className="receipt-section-label" style={{ fontSize: 10, fontWeight: 700, color: '#3D2817', letterSpacing: '0.1em', marginBottom: 8 }}>ผู้ขาย (SELLER)</div>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: '#1A1A1A' }}>{S.name}</div>
-          {S.address && <div style={{ fontSize: 11, color: '#5A5249', lineHeight: 1.65 }}>{S.address}</div>}
-          {S.taxId && (
-            <div style={{ fontSize: 11, color: '#5A5249', marginTop: 6 }}>
-              <span style={{ color: '#8A7B6E' }}>เลขที่ผู้เสียภาษี:</span>{' '}
-              <span style={{ ...mono, fontSize: 11 }}>{S.taxId}</span>
-            </div>
-          )}
-          {S.branch && <div style={{ fontSize: 11, color: '#5A5249' }}>{S.branch}</div>}
-          {S.phone && <div style={{ fontSize: 11, color: '#5A5249' }}>โทร. {S.phone}</div>}
+      <Dash />
+
+      {/* ── Store info ── */}
+      {S.address && <div>{S.address}</div>}
+      {S.taxId && <div>ผู้เสียภาษี: <span style={MONO}>{S.taxId}</span></div>}
+      {S.branch && <div>{S.branch}</div>}
+      {S.phone && <div>โทร. {S.phone}</div>}
+
+      <Dash />
+
+      {/* ── Order meta ── */}
+      <div>เลขที่: <span style={MONO}>{invoiceNo}</span></div>
+      <div>ออเดอร์: <span style={MONO}>#{data.orderNumber}</span></div>
+      <div style={{ color: '#7A6E60' }}>{dateStr}</div>
+      {data.memberName && <div>ลูกค้า: {data.memberName}</div>}
+
+      <Dash />
+
+      {/* ── Items ── */}
+      <TRow l="รายการ" r="จำนวนเงิน" muted />
+      <Dash />
+      {data.items.map((item, i) => (
+        <div key={i} style={{ padding: '2px 0' }}>
+          <TRow l={item.name} r={fmt(item.qty * item.unitPrice)} />
+          <TRow indent muted l={`${item.qty} x ${fmt(item.unitPrice)}`} />
+          {item.mods?.map((mod, j) => (
+            <TRow key={j} indent muted l={`+ ${mod}`} />
+          ))}
         </div>
-
-        {/* Vertical divider */}
-        <div style={{ background: '#DDD5C8' }} />
-
-        {/* Buyer */}
-        <div style={{ padding: '14px 16px' }}>
-          <div className="receipt-section-label" style={{ fontSize: 10, fontWeight: 700, color: '#3D2817', letterSpacing: '0.1em', marginBottom: 8 }}>ผู้ซื้อ (BUYER)</div>
-          {data.memberName ? (
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: '#1A1A1A' }}>{data.memberName}</div>
-          ) : (
-            <div style={{ fontSize: 12, color: '#B0A499', fontStyle: 'italic', marginTop: 4 }}>ลูกค้าทั่วไป</div>
-          )}
-        </div>
-      </div>
-
-      {/* ─── Meta row ─── */}
-      <div className="receipt-meta-row" style={{
-        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-        background: '#FAF7F2', borderBottom: '1px solid #DDD5C8',
-        padding: '10px 16px', gap: 8,
-      }}>
-        <div>
-          <div style={label}>เลขที่ใบเสร็จ</div>
-          <div style={{ ...val, ...mono, fontSize: 11 }}>{invoiceNo}</div>
-        </div>
-        <div>
-          <div style={label}>วันที่ออกใบเสร็จ</div>
-          <div style={val}>{formatDate(now)}</div>
-        </div>
-        <div>
-          <div style={label}>เวลา / ออเดอร์</div>
-          <div style={val}>{formatTime(now)} · #{data.orderNumber}</div>
-        </div>
-      </div>
-
-      {/* ─── Items table ─── */}
-      <div style={{ padding: '0 16px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid #3D2817' }}>
-              {['รายการสินค้า', 'จำนวน', 'ราคา/หน่วย', 'จำนวนเงิน'].map((h, i) => (
-                <th key={h} style={{
-                  padding: '9px 0', fontSize: 10, fontWeight: 700,
-                  color: '#3D2817', letterSpacing: '0.05em',
-                  textAlign: i === 0 ? 'left' : 'right',
-                  width: i === 0 ? 'auto' : i === 1 ? 44 : 88,
-                }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data.items.map((item, i) => (
-              <ItemRows key={i} item={item} fmt={fmt} isLast={i === data.items.length - 1} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* ─── Summary ─── */}
-      <div style={{ margin: '0 16px', borderTop: '2px solid #3D2817', padding: '12px 0 10px' }}>
-        {data.discount != null && data.discount > 0 && (
-          <>
-            <SumRow label="รวมค่าสินค้า" value={fmt(data.subtotal)} fmt={fmt} />
-            <SumRow label="ส่วนลดสมาชิก" value={`-${fmt(data.discount)}`} fmt={fmt} accent />
-          </>
-        )}
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          borderTop: '1px solid #DDD5C8', marginTop: 6, paddingTop: 8,
-        }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#3D2817' }}>รวมเป็นเงิน (บาท)</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: '#3D2817', fontFamily: '"Courier New", monospace' }}>
-            ฿{fmt(data.total)}
-          </div>
-        </div>
-        <div style={{
-          marginTop: 8, fontSize: 12,
-          display: 'flex', justifyContent: 'space-between',
-        }}>
-          <span style={{ color: '#8A7B6E' }}>ชำระโดย</span>
-          <span style={{ fontWeight: 600, color: '#3D2817' }}>{data.paymentLabel}</span>
-        </div>
-        {data.paymentMethod === 'cash' && data.cashGiven != null && (
-          <>
-            <SumRow label="รับเงินสด" value={fmt(data.cashGiven)} fmt={fmt} small />
-            <SumRow label="เงินทอน" value={fmt(data.cashGiven - data.total)} fmt={fmt} small accent />
-          </>
-        )}
-        {(data.memberName || data.pointsEarned != null || data.rewardRedeemed) && (
-          <div style={{ marginTop: 10, padding: '8px 0 0', borderTop: '1px dashed #DDD5C8' }}>
-            {data.memberName && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}>
-                <span style={{ color: '#8A7B6E' }}>สมาชิก</span>
-                <span style={{ fontWeight: 600, color: '#3D2817' }}>{data.memberName}</span>
-              </div>
-            )}
-            {data.rewardRedeemed && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}>
-                <span style={{ color: '#8A7B6E' }}>ใช้สิทธิ์แลกรางวัล</span>
-                <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>✓</span>
-              </div>
-            )}
-            {data.pointsEarned != null && data.pointsEarned > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}>
-                <span style={{ color: '#8A7B6E' }}>แต้มที่ได้รับ</span>
-                <span style={{ fontWeight: 700, color: 'var(--color-success)', fontFamily: '"Courier New", monospace' }}>+{data.pointsEarned}</span>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ─── Signature footer ─── */}
-      <div style={{
-        background: '#FAF7F2', borderTop: '1px solid #DDD5C8',
-        display: 'grid', gridTemplateColumns: '1fr 1px 1fr', padding: '0 16px',
-      }}>
-        <SignBox label="ลงชื่อผู้รับเงิน" sublabel="(Cashier)" />
-        <div style={{ background: '#DDD5C8' }} />
-        <SignBox label="ลงชื่อผู้จ่ายเงิน" sublabel="(Customer)" />
-      </div>
-
-      <div style={{
-        padding: '10px 16px', textAlign: 'center',
-        fontSize: 11, color: '#B0A499', borderTop: '1px solid #DDD5C8',
-        background: '#FCFAF7',
-      }}>
-        ขอบคุณที่ใช้บริการ 🙏 &nbsp;·&nbsp; วันที่พิมพ์ {formatDate(now)} เวลา {formatTime(now)}
-      </div>
-    </div>
-  );
-}
-
-function ItemRows({ item, fmt, isLast }: {
-  item: ReceiptItem; fmt: (n: number) => string; isLast: boolean;
-}) {
-  const mono: React.CSSProperties = { fontFamily: '"Courier New", monospace' };
-  return (
-    <>
-      <tr style={{ borderBottom: isLast ? 'none' : '1px solid #F0EBE4' }}>
-        <td style={{ padding: '9px 0', fontSize: 13 }}>{item.name}</td>
-        <td style={{ padding: '9px 0', textAlign: 'right', ...mono }}>{item.qty}</td>
-        <td style={{ padding: '9px 0', textAlign: 'right', ...mono, color: '#5A5249' }}>{fmt(item.unitPrice)}</td>
-        <td style={{ padding: '9px 0', textAlign: 'right', ...mono, fontWeight: 600 }}>{fmt(item.qty * item.unitPrice)}</td>
-      </tr>
-      {item.mods?.map((mod, j) => (
-        <tr key={j}>
-          <td colSpan={4} style={{ padding: '2px 0 5px 12px', fontSize: 11, color: '#8A7B6E' }}>+ {mod}</td>
-        </tr>
       ))}
-    </>
-  );
-}
 
-function SumRow({ label, value, small, accent }: {
-  label: string; value: string; fmt: (n: number) => string; small?: boolean; accent?: boolean;
-}) {
-  return (
-    <div style={{
-      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      padding: `${small ? 2 : 4}px 0`,
-    }}>
-      <div style={{ fontSize: small ? 12 : 13, color: '#5A5249' }}>{label}</div>
-      <div style={{
-        fontSize: small ? 12 : 13, fontFamily: '"Courier New", monospace',
-        color: accent ? 'var(--color-success)' : '#1A1A1A', fontWeight: accent ? 600 : 400,
-      }}>{value}</div>
-    </div>
-  );
-}
+      <Dash />
 
-function SignBox({ label, sublabel }: { label: string; sublabel: string }) {
-  return (
-    <div style={{ padding: '14px 8px 12px' }}>
-      <div style={{ fontSize: 10, color: '#8A7B6E', marginBottom: 28 }}>{label}</div>
-      <div style={{ borderTop: '1px solid #CCC', paddingTop: 4, textAlign: 'center', fontSize: 10, color: '#B0A499' }}>{sublabel}</div>
+      {/* ── Summary ── */}
+      <TRow bold l="รวมทั้งสิ้น (บาท)" r={fmt(data.total)} />
+      <div style={{ color: '#4A3B2C' }}>({bahtText(data.total)})</div>
+      <div>ชำระ: {data.paymentLabel}</div>
+      {data.cashGiven != null && (
+        <>
+          <TRow l="รับเงิน" r={fmt(data.cashGiven)} />
+          <TRow l="เงินทอน" r={fmt(data.cashGiven - data.total)} />
+        </>
+      )}
+
+      <Dash />
+
+      {/* ── Footer (centered) ── */}
+      <div style={{ textAlign: 'center', marginTop: 4 }}>ลงชื่อผู้รับเงิน ......................</div>
+      <div style={{ height: 10 }} />
+      <div style={{ textAlign: 'center' }}>ขอบคุณที่ใช้บริการ</div>
     </div>
   );
 }
