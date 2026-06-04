@@ -83,9 +83,59 @@ const leftRight = (l, r) => {
 };
 const fmt2 = (n) => Number(n).toFixed(2);
 
+// Total amount → Thai baht text, e.g. 325 → "สามร้อยยี่สิบห้าบาทถ้วน",
+// 130.50 → "หนึ่งร้อยสามสิบบาทห้าสิบสตางค์".
+function bahtText(amount) {
+  const num = Math.round((Number(amount) + Number.EPSILON) * 100) / 100;
+  if (!isFinite(num)) return '';
+  const abs = Math.abs(num);
+  const intPart = Math.floor(abs);
+  const satang = Math.round((abs - intPart) * 100);
+
+  const D = ['ศูนย์', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า'];
+  const P = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน'];
+
+  const readSix = (s) => {
+    let out = '';
+    const L = s.length;
+    for (let i = 0; i < L; i++) {
+      const d = +s[i];
+      const pos = L - 1 - i;            // 0=units .. 5=hundred-thousands
+      if (d === 0) continue;
+      if (pos === 1) out += d === 1 ? 'สิบ' : d === 2 ? 'ยี่สิบ' : D[d] + 'สิบ';
+      else if (pos === 0 && d === 1 && L > 1) out += 'เอ็ด';
+      else out += D[d] + P[pos];
+    }
+    return out;
+  };
+  const readInt = (n) => {
+    if (n === 0) return D[0];
+    let out = '';
+    const groups = [];
+    let x = n;
+    while (x > 0) { groups.push(x % 1000000); x = Math.floor(x / 1000000); }
+    for (let g = groups.length - 1; g >= 0; g--) {
+      if (groups[g] === 0) continue;
+      out += readSix(String(groups[g])) + 'ล้าน'.repeat(g);
+    }
+    return out;
+  };
+
+  let txt;
+  if (intPart === 0 && satang === 0) txt = 'ศูนย์บาทถ้วน';
+  else {
+    txt = '';
+    if (intPart > 0) txt += readInt(intPart) + 'บาท';
+    if (satang > 0) txt += readInt(satang) + 'สตางค์';
+    else txt += 'ถ้วน';
+  }
+  return (num < 0 ? 'ลบ' : '') + txt;
+}
+
 function buildESCPOS(data) {
   const parts = [
     cmd(ESC, 0x40),
+    cmd(GS,  0x4c, 0x00, 0x00),  // left margin = 0 → shift layout to far left
     cmd(ESC, 0x74, 0x15),
     cmd(ESC, 0x61, 0x01),
     cmd(GS,  0x21, 0x10),
@@ -122,6 +172,7 @@ function buildESCPOS(data) {
   parts.push(cmd(ESC, 0x45, 0x01));
   parts.push(line(leftRight('รวมทั้งสิ้น (บาท)', fmt2(data.total))));
   parts.push(cmd(ESC, 0x45, 0x00));
+  parts.push(line(`(${bahtText(data.total)})`));
   parts.push(line(`ชำระ: ${data.paymentLabel}`));
 
   if (data.cashGiven != null) {
