@@ -259,7 +259,11 @@ export function ReceiptPaper({ data, invoiceNo, now, fmt, formatDate, formatTime
         {/* Buyer */}
         <div style={{ padding: '14px 16px' }}>
           <div className="receipt-section-label" style={{ fontSize: 10, fontWeight: 700, color: '#3D2817', letterSpacing: '0.1em', marginBottom: 8 }}>ผู้ซื้อ (BUYER)</div>
-          <div style={{ fontSize: 12, color: '#B0A499', fontStyle: 'italic', marginTop: 4 }}>ลูกค้าทั่วไป</div>
+          {data.memberName ? (
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: '#1A1A1A' }}>{data.memberName}</div>
+          ) : (
+            <div style={{ fontSize: 12, color: '#B0A499', fontStyle: 'italic', marginTop: 4 }}>ลูกค้าทั่วไป</div>
+          )}
         </div>
       </div>
 
