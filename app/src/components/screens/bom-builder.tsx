@@ -977,13 +977,13 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
 }) => {
   const [type, setType] = useState<ProductType>('MENU');
   const [apiProductType, setApiProductType] = useState<ApiProductType>('MADE_TO_ORDER');
-  const [servingsPerBatch, setServingsPerBatch] = useState(24);
+  const [servingsPerBatch, setServingsPerBatch] = useState('24');
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
-  const canSubmit = name.trim().length > 0 && price !== '' && Number(price) >= 0 && (type !== 'MENU' || apiProductType !== 'PRODUCED' || servingsPerBatch >= 1);
-  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), categoryId, price: Number(price), description: description.trim(), type, apiProductType, servingsPerBatch }); };
+  const canSubmit = name.trim().length > 0 && price !== '' && Number(price) >= 0 && (type !== 'MENU' || apiProductType !== 'PRODUCED' || (servingsPerBatch !== '' && Number(servingsPerBatch) >= 1));
+  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), categoryId, price: Number(price), description: description.trim(), type, apiProductType, servingsPerBatch: Math.max(1, Math.floor(Number(servingsPerBatch) || 1)) }); };
 
   return (
     <BomModalShell title="เพิ่มรายการใหม่" subtitle="สร้างรายการในระบบ BOM" onClose={onClose}>
@@ -1018,7 +1018,7 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
 
       {type === 'MENU' && apiProductType === 'PRODUCED' && (
         <BomFormField label="จำนวนหน่วย/แบทช์ *">
-          <input type="number" min={1} step={1} value={servingsPerBatch} onChange={e => setServingsPerBatch(Math.max(1, Number(e.target.value)))} placeholder="เช่น 24" style={bomInputStyle()} />
+          <input type="number" min={1} step={1} inputMode="numeric" value={servingsPerBatch} onChange={e => setServingsPerBatch(e.target.value)} placeholder="เช่น 24" style={bomInputStyle()} />
         </BomFormField>
       )}
 
