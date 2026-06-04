@@ -141,6 +141,9 @@ const ResultModal = ({
     {results.length === 0 ? (
       <div
         style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
           textAlign: 'center',
           padding: '40px 0',
           color: 'var(--color-text-secondary)',
@@ -278,7 +281,7 @@ function StockCheckTab() {
 
   if (isError) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-danger)' }}>
+      <div style={{ padding: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', color: 'var(--color-danger)' }}>
         <Icon name="warning" size={32} color="var(--color-danger)" />
         <div style={{ marginTop: 12, fontSize: 14 }}>โหลดข้อมูลไม่สำเร็จ</div>
       </div>
@@ -328,6 +331,9 @@ function StockCheckTab() {
             border: '1px solid var(--color-border)',
             borderRadius: 12,
             padding: '48px 20px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
             textAlign: 'center',
             color: 'var(--color-text-secondary)',
           }}
@@ -494,7 +500,7 @@ function HistoryTab() {
 
   if (isError) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-danger)' }}>
+      <div style={{ padding: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', color: 'var(--color-danger)' }}>
         <Icon name="warning" size={32} color="var(--color-danger)" />
         <div style={{ marginTop: 12, fontSize: 14 }}>โหลดประวัติไม่สำเร็จ</div>
       </div>
@@ -511,6 +517,9 @@ function HistoryTab() {
           border: '1px solid var(--color-border)',
           borderRadius: 12,
           padding: '48px 20px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
           textAlign: 'center',
           color: 'var(--color-text-secondary)',
         }}

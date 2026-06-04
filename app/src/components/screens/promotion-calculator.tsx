@@ -117,7 +117,7 @@ export default function PromotionCalculator() {
       </div>
 
       {!productId ? (
-        <div style={{ textAlign: 'center', padding: 50, color: 'var(--color-text-muted)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: 50, color: 'var(--color-text-muted)' }}>
           <Icon name="discount" size={36} color="var(--color-border)" />
           <div style={{ marginTop: 12, fontSize: 14 }}>เลือกสินค้าเพื่อเริ่มวิเคราะห์</div>
         </div>

@@ -82,7 +82,7 @@ export default function MembersScreen() {
       {isLoading ? (
         <div style={{ color: 'var(--color-text-secondary)', padding: 20 }}>กำลังโหลด...</div>
       ) : members.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 60, color: 'var(--color-text-muted)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: 60, color: 'var(--color-text-muted)' }}>
           <Icon name="customers" size={40} color="var(--color-border)" />
           <div style={{ marginTop: 12, fontSize: 15 }}>ไม่พบสมาชิก</div>
         </div>

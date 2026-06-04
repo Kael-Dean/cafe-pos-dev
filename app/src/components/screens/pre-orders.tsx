@@ -385,7 +385,7 @@ export default function PreOrders() {
       <div style={{ flex: 1, overflow: 'auto', background: 'var(--color-bg)' }}>
         {!selectedId ? (
           <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: 'var(--color-text-secondary)' }}>
-            <div style={{ textAlign: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
               <Icon name="calendar" size={40} color="var(--color-border-strong)" />
               <div style={{ marginTop: 12, fontSize: 14 }}>เลือก Pre-Order จากรายการ</div>
             </div>
