@@ -177,7 +177,7 @@ export interface MembersQuery {
   limit?: number;
 }
 
-export function useMembers(query: MembersQuery) {
+export function useMembers(query: MembersQuery, enabled = true) {
   return useQuery<MembersPage>({
     queryKey: [...MEMBERS_KEY, query],
     queryFn: () => {
@@ -188,6 +188,7 @@ export function useMembers(query: MembersQuery) {
       params.set('limit', String(query.limit ?? 50));
       return api.get<MembersPage>(`/api/v1/membership/members?${params}`);
     },
+    enabled,
   });
 }
 

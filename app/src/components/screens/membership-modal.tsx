@@ -6,6 +6,7 @@ import { useToast, Tag, baht } from '../app-common';
 import {
   useLookupMember,
   useRegisterMember,
+  useMembers,
   type AccountRead,
   type LookupResponse,
   type RewardProductRead,
@@ -50,10 +51,58 @@ export default function MembershipModal({ onClose, onSelectMember }: Props) {
   const register = useRegisterMember();
 
   const [phase, setPhase] = useState<'lookup' | 'register'>('lookup');
+  const [searchMode, setSearchMode] = useState<'phone' | 'name'>('phone');
   const [phone, setPhone] = useState('');
+  const [nameInput, setNameInput] = useState('');
+  const [submittedName, setSubmittedName] = useState('');
   const [result, setResult] = useState<LookupResponse | null>(null);
   const [redeem, setRedeem] = useState(false);
   const [rewardProduct, setRewardProduct] = useState<RewardProductRead | null>(null);
+
+  // Name search reuses the members endpoint (which already supports ?name=).
+  const membersQuery = useMembers(
+    { name: submittedName, limit: 20 },
+    searchMode === 'name' && submittedName.trim().length > 0,
+  );
+
+  const switchMode = (m: 'phone' | 'name') => {
+    if (m === searchMode) return;
+    setSearchMode(m);
+    setResult(null);
+    setRedeem(false);
+    setRewardProduct(null);
+    setSubmittedName('');
+  };
+
+  const doNameSearch = () => {
+    const n = nameInput.trim();
+    if (!n) { toast({ kind: 'warning', title: 'กรอกชื่อ' }); return; }
+    setResult(null);
+    setSubmittedName(n);
+  };
+
+  // Picking a name-search result: re-run the phone lookup to load the full
+  // points / redeem context, then fall through to the standard "found" card.
+  const selectFromNameResult = async (acc: AccountRead) => {
+    if (!acc.phone) {
+      // No phone on file → can't load redeem context; attach as-is.
+      onSelectMember({ account: acc, program: null, redeemReward: false, rewardProduct: null });
+      return;
+    }
+    try {
+      const res = await lookup.mutateAsync(acc.phone);
+      if (res.found && res.account) {
+        setPhone(acc.phone);
+        setResult(res);
+        setRedeem(false);
+        setRewardProduct(null);
+      } else {
+        onSelectMember({ account: acc, program: null, redeemReward: false, rewardProduct: null });
+      }
+    } catch (e: unknown) {
+      toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) });
+    }
+  };
 
   // register form
   const [regName, setRegName] = useState('');
@@ -124,7 +173,7 @@ export default function MembershipModal({ onClose, onSelectMember }: Props) {
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 17, fontWeight: 700 }}>{phase === 'register' ? 'สมัครสมาชิกใหม่' : 'สมาชิก / สะสมแต้ม'}</div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{phase === 'register' ? 'กรอกข้อมูลเพื่อสมัครสมาชิก' : 'ค้นหาด้วยเบอร์โทรศัพท์'}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{phase === 'register' ? 'กรอกข้อมูลเพื่อสมัครสมาชิก' : searchMode === 'name' ? 'ค้นหาด้วยชื่อสมาชิก' : 'ค้นหาด้วยเบอร์โทรศัพท์'}</div>
           </div>
           <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center', color: 'var(--color-text-secondary)' }}>
             <Icon name="x" size={18} />
@@ -133,24 +182,97 @@ export default function MembershipModal({ onClose, onSelectMember }: Props) {
 
         {/* Body */}
         <div className="scroll" style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
-          {/* Phone lookup field (always present) */}
-          <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>เบอร์โทรศัพท์</label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value.replace(/[^\d]/g, ''))}
-              inputMode="numeric"
-              placeholder="08XXXXXXXX"
-              style={IS}
-              onKeyDown={(e) => { if (e.key === 'Enter' && phase === 'lookup') doLookup(); }}
-            />
-            {phase === 'lookup' && (
-              <button onClick={doLookup} disabled={lookup.isPending}
-                style={{ padding: '10px 18px', borderRadius: 8, background: 'var(--color-primary)', color: 'white', fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', cursor: 'pointer' }}>
-                {lookup.isPending ? '...' : 'ค้นหา'}
-              </button>
-            )}
-          </div>
+          {/* Search-mode toggle (lookup only) */}
+          {phase === 'lookup' && (
+            <div style={{ display: 'flex', gap: 6, background: 'var(--color-surface-2)', padding: 4, borderRadius: 10, marginBottom: 14, width: 'fit-content' }}>
+              {([['phone', 'เบอร์โทร'], ['name', 'ชื่อ']] as const).map(([m, label]) => (
+                <button key={m} onClick={() => switchMode(m)}
+                  style={{
+                    padding: '6px 18px', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none',
+                    background: searchMode === m ? 'var(--color-surface)' : 'transparent',
+                    color: searchMode === m ? 'var(--color-text)' : 'var(--color-text-secondary)',
+                    boxShadow: searchMode === m ? 'var(--shadow-xs)' : 'none',
+                  }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Phone field — phone mode, or always while registering */}
+          {(searchMode === 'phone' || phase === 'register') && (
+            <>
+              <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>เบอร์โทรศัพท์</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value.replace(/[^\d]/g, ''))}
+                  inputMode="numeric"
+                  placeholder="08XXXXXXXX"
+                  style={IS}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && phase === 'lookup') doLookup(); }}
+                />
+                {phase === 'lookup' && (
+                  <button onClick={doLookup} disabled={lookup.isPending}
+                    style={{ padding: '10px 18px', borderRadius: 8, background: 'var(--color-primary)', color: 'white', fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                    {lookup.isPending ? '...' : 'ค้นหา'}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Name field + results — name mode (lookup) */}
+          {searchMode === 'name' && phase === 'lookup' && (
+            <>
+              <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ชื่อสมาชิก</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  placeholder="ชื่อ หรือบางส่วนของชื่อ"
+                  style={IS}
+                  onKeyDown={(e) => { if (e.key === 'Enter') doNameSearch(); }}
+                  autoFocus
+                />
+                <button onClick={doNameSearch} disabled={membersQuery.isFetching}
+                  style={{ padding: '10px 18px', borderRadius: 8, background: 'var(--color-primary)', color: 'white', fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                  {membersQuery.isFetching ? '...' : 'ค้นหา'}
+                </button>
+              </div>
+
+              {submittedName && !result?.found && (
+                <div style={{ marginTop: 14, display: 'grid', gap: 8 }}>
+                  {membersQuery.isFetching ? (
+                    <div style={{ fontSize: 13, color: 'var(--color-text-muted)', textAlign: 'center', padding: 8 }}>กำลังค้นหา…</div>
+                  ) : (membersQuery.data?.items.length ?? 0) === 0 ? (
+                    <div style={{ fontSize: 13, color: 'var(--color-text-muted)', textAlign: 'center', padding: 8 }}>ไม่พบสมาชิกชื่อนี้ — ลองค้นหาด้วยเบอร์โทร</div>
+                  ) : (
+                    (membersQuery.data?.items ?? []).map((acc) => (
+                      <button key={acc.id} onClick={() => selectFromNameResult(acc)} disabled={lookup.isPending}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+                          padding: '10px 12px', borderRadius: 8, textAlign: 'left', cursor: 'pointer',
+                          border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+                        }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{acc.customer_name}</div>
+                          <div className="num" style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{acc.phone ?? '—'}</div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                          <div style={{ textAlign: 'right' }}>
+                            <div className="num" style={{ fontSize: 15, fontWeight: 800, color: 'var(--color-accent-600)' }}>{acc.points_balance.toLocaleString()}</div>
+                            <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>แต้ม</div>
+                          </div>
+                          <Tag tone={TIER_TONE[acc.tier]}>{TIER_LABEL[acc.tier]}</Tag>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </>
+          )}
 
           {/* ── REGISTER PHASE ── */}
           {phase === 'register' && (
