@@ -12,6 +12,9 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
+  // Resize the layout when the soft keyboard opens (Chrome/Android tablets).
+  // iOS handles this via the VisualViewport hook (use-keyboard-inset).
+  interactiveWidget: 'resizes-content',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -2,8 +2,13 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useKeyboardInset } from '@/hooks/use-keyboard-inset';
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  // Keep centered modals / focused inputs above the on-screen keyboard on
+  // tablets & iPads (the keyboard otherwise covers fields, esp. in landscape).
+  useKeyboardInset();
+
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
       queries: {

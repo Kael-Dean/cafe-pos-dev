@@ -4,23 +4,28 @@ import { useState, useEffect, useCallback } from 'react';
 import Icon from '../icons';
 import { useToast } from '../app-common';
 import { ReceiptPaper, type ReceiptData, type StoreInfo } from './receipt-modal';
-import { fetchStatus, fetchConfig, saveConfig, scanPrinters, sendPrintJob } from '@/lib/printer-bridge';
+import { fetchStatus, fetchConfig, saveConfig, scanPrinters } from '@/lib/printer-bridge';
+import { usePrinter } from '@/hooks/use-printer';
 
 type PrinterStatus = 'online' | 'offline' | 'checking';
 
-/* ── Mock data ────────────────────────────────────────────────────── */
+/* ── Mock data (mirrors a real cafe receipt: sweetness mods + customer name) ── */
 
 const MOCK_ITEMS = [
-  { name: 'ลาเต้เย็น',       qty: 2, unitPrice: 65, mods: ['หวานน้อย', 'นมโอ๊ต'] },
-  { name: 'คาปูชิโน่ร้อน',   qty: 1, unitPrice: 55 },
-  { name: 'ชีสเค้ก',         qty: 1, unitPrice: 120 },
+  { name: 'ลาเต้เย็น',        qty: 2, unitPrice: 65, mods: ['หวานน้อย', 'นมโอ๊ต'] },
+  { name: 'อเมริกาโน่ร้อน',    qty: 1, unitPrice: 50, mods: ['ไม่หวาน'] },
+  { name: 'ชาไทยเย็น',        qty: 1, unitPrice: 55, mods: ['หวานปกติ', 'เพิ่มไข่มุก'] },
+  { name: 'คุกกี้ช็อกชิป',      qty: 2, unitPrice: 45 },
 ];
+const MOCK_CUSTOMER = 'คุณสมหญิง ใจดี';
 function makeMockReceipt(): ReceiptData {
   const subtotal = MOCK_ITEMS.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+  const cashGiven = Math.ceil((subtotal + 1) / 100) * 100; // round up to next ฿100 like a real cash sale
   return {
     orderNumber: '0042', items: MOCK_ITEMS,
     subtotal, total: subtotal,
-    paymentMethod: 'cash', paymentLabel: 'เงินสด', cashGiven: subtotal + 5,
+    paymentMethod: 'cash', paymentLabel: 'เงินสด', cashGiven,
+    memberName: MOCK_CUSTOMER,
   };
 }
 
@@ -32,6 +37,7 @@ const FMT_TIME = (d: Date)   => d.toLocaleTimeString('th-TH', { hour: '2-digit',
 
 export default function HardwareScreen() {
   const toast = useToast();
+  const { printReceipt } = usePrinter();
   const [printer, setPrinter]     = useState<PrinterStatus>('checking');
   const [printerIp, setPrinterIp] = useState('');
   const [ipInput, setIpInput]     = useState('');
@@ -129,9 +135,24 @@ export default function HardwareScreen() {
   const testPrint = async () => {
     setTesting(true);
     try {
-      await sendPrintJob({
-        orderNumber: 'TEST', items: [{ name: 'ทดสอบการพิมพ์', qty: 1, unitPrice: 0 }],
-        subtotal: 0, total: 0, paymentLabel: 'ทดสอบ',
+      // Use the same builder + body as a real POS receipt, with mock data that mirrors
+      // an actual sale (items with sweetness mods + a customer name) and the store info
+      // entered above. This keeps the test print identical in structure to the real one.
+      const mock = makeMockReceipt();
+      const storeOverride: Partial<StoreInfo> = {};
+      if (storeInput.trim())   storeOverride.name    = storeInput.trim();
+      if (addressInput.trim()) storeOverride.address = addressInput.trim();
+      if (taxIdInput.trim())   storeOverride.taxId   = taxIdInput.trim();
+      if (branchInput.trim())  storeOverride.branch  = branchInput.trim();
+      await printReceipt({
+        orderNumber:   mock.orderNumber,
+        items:         mock.items,
+        subtotal:      mock.subtotal,
+        total:         mock.total,
+        paymentMethod: mock.paymentMethod,
+        cashGiven:     mock.cashGiven,
+        memberName:    mock.memberName,
+        store:         storeOverride,
       });
       setLastPrint(new Date().toLocaleTimeString('th-TH'));
       toast({ kind: 'success', title: 'พิมพ์ทดสอบสำเร็จ', msg: 'ตรวจสอบใบเสร็จที่พิมพ์ออกมา' });

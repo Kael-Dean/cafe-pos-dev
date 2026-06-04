@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
-import { DEFAULT_STORE } from '@/components/screens/receipt-modal';
+import { DEFAULT_STORE, type StoreInfo } from '@/components/screens/receipt-modal';
 import { sendPrintJob } from '@/lib/printer-bridge';
 
 const PAY_LABEL: Record<string, string> = {
@@ -19,6 +19,8 @@ export interface PrintReceiptArgs {
   paymentMethod: string;
   cashGiven?: number;
   memberName?: string;
+  /** Optional store-header override (only defined fields win); defaults to DEFAULT_STORE. */
+  store?: Partial<StoreInfo>;
 }
 
 // Receipt running number, mirrors the on-screen receipt modal.
@@ -30,13 +32,23 @@ function makeInvoiceNo(orderNumber: string): string {
 
 export function usePrinter() {
   const printReceipt = useCallback(async (args: PrintReceiptArgs): Promise<void> => {
+    // Store info — single source of truth shared with the on-screen receipt.
+    // `args.store` may override individual fields (e.g. Hardware test print); empty/undefined
+    // fields fall back to DEFAULT_STORE so we never print a blank header.
+    const o = args.store;
+    const store: StoreInfo = {
+      name:    o?.name?.trim()    || DEFAULT_STORE.name,
+      address: o?.address?.trim() || DEFAULT_STORE.address,
+      taxId:   o?.taxId?.trim()   || DEFAULT_STORE.taxId,
+      branch:  o?.branch?.trim()  || DEFAULT_STORE.branch,
+      phone:   o?.phone?.trim()   || DEFAULT_STORE.phone,
+    };
     const body: Record<string, unknown> = {
-      // Store info — single source of truth shared with the on-screen receipt.
-      storeName:    DEFAULT_STORE.name,
-      storeAddress: DEFAULT_STORE.address,
-      storeTaxId:   DEFAULT_STORE.taxId,
-      storeBranch:  DEFAULT_STORE.branch,
-      storePhone:   DEFAULT_STORE.phone,
+      storeName:    store.name,
+      storeAddress: store.address,
+      storeTaxId:   store.taxId,
+      storeBranch:  store.branch,
+      storePhone:   store.phone,
       invoiceNo:    makeInvoiceNo(args.orderNumber),
       orderNumber:  args.orderNumber,
       items:        args.items,

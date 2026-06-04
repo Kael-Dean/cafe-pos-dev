@@ -141,6 +141,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
   backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center;
   animation: backdrop-in 180ms var(--ease-out);
+  /* Lifted above the on-screen keyboard by use-keyboard-inset (it sets the
+     inline padding-bottom); transition makes the shift smooth. */
+  transition: padding-bottom 180ms var(--ease-out);
 }
 @keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
 .modal-card {
@@ -148,6 +151,14 @@ input, textarea, select { font-family: inherit; color: inherit; }
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
   animation: modal-in 220ms var(--ease-out);
+}
+
+/* When the tablet/iPad keyboard is open, never let a centered card be taller
+   than the visible band above the keyboard — its internal scroll body keeps
+   every field reachable instead of hiding behind the keyboard. */
+:root { --kb-inset: 0px; }
+html[data-kb-open] .modal-card {
+  max-height: calc(100dvh - var(--kb-inset, 0px) - 16px) !important;
 }
 @keyframes modal-in { from { transform: translateY(8px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 
