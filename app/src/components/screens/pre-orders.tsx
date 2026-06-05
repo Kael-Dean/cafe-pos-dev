@@ -330,9 +330,9 @@ export default function PreOrders() {
             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Pre-Orders</h2>
             <button
               onClick={() => setCreateOpen(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', borderRadius: 9, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
             >
-              <Icon name="plus" size={15} color="#fff" />
+              <Icon name="plus" size={16} color="#fff" />
               สร้างใหม่
             </button>
           </div>
@@ -342,7 +342,7 @@ export default function PreOrders() {
                 key={String(pill.value)}
                 onClick={() => { setStatusFilter(pill.value); setSelectedId(null); }}
                 style={{
-                  padding: '4px 10px', borderRadius: 999, fontSize: 12, fontWeight: 500,
+                  padding: '8px 16px', borderRadius: 999, fontSize: 14, fontWeight: 600,
                   cursor: 'pointer', border: '1px solid',
                   borderColor: statusFilter === pill.value ? 'var(--color-primary)' : 'var(--color-border)',
                   background:  statusFilter === pill.value ? 'var(--color-accent-50)' : 'transparent',
@@ -570,7 +570,7 @@ function DetailPanel({
   const showAddDropdown = addSearchFocused && filteredProducts.length > 0;
 
   return (
-    <div style={{ padding: 24, maxWidth: 720 }}>
+    <div style={{ padding: '24px 32px', maxWidth: 1280, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
         <div>
@@ -631,13 +631,13 @@ function DetailPanel({
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}>รายการสินค้า</div>
               {isPending && (
-                <button onClick={onAddItemToggle} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--color-primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}>
-                  <Icon name="plus" size={13} />เพิ่มสินค้า
+                <button onClick={onAddItemToggle} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 14, color: 'var(--color-primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: '4px 6px' }}>
+                  <Icon name="plus" size={15} />เพิ่มสินค้า
                 </button>
               )}
             </div>
             <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px 32px', padding: '8px 12px', background: 'var(--color-surface-2)', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px 32px', padding: '10px 14px', background: 'var(--color-surface-2)', fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', gap: 8 }}>
                 <div>สินค้า</div><div style={{ textAlign: 'right' }}>จำนวน</div><div style={{ textAlign: 'right' }}>ราคา/ชิ้น</div><div style={{ textAlign: 'right' }}>รวม</div><div/>
               </div>
               {detail.items.map(it => {
@@ -648,15 +648,15 @@ function DetailPanel({
                   : undefined;
                 return (
                   <div key={it.id}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px 32px', padding: '10px 12px', borderTop: '1px solid var(--color-border)', fontSize: 13, gap: 8, alignItems: 'center' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px 32px', padding: '13px 14px', borderTop: '1px solid var(--color-border)', fontSize: 14, gap: 8, alignItems: 'center' }}>
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.productName}</div>
                       <div style={{ textAlign: 'right' }}>{it.quantity}</div>
                       <div style={{ textAlign: 'right' }}>฿{Number(it.unitPrice).toFixed(2)}</div>
                       <div style={{ textAlign: 'right', fontWeight: 500 }}>฿{Number(it.lineTotal).toFixed(2)}</div>
                       <div style={{ display: 'grid', placeItems: 'center' }}>
                         {isPending && (
-                          <button onClick={() => onRemoveItem(it.id)} style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
-                            <Icon name="x" size={12} />
+                          <button onClick={() => onRemoveItem(it.id)} style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                            <Icon name="x" size={14} />
                           </button>
                         )}
                       </div>
@@ -701,10 +701,10 @@ function DetailPanel({
                     style={{ width: 130, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 12 }}
                   />
                   <button onClick={onAddItem} disabled={!addItemProductId}
-                    style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: addItemProductId ? 'pointer' : 'not-allowed', opacity: addItemProductId ? 1 : 0.5 }}>
+                    style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: addItemProductId ? 'pointer' : 'not-allowed', opacity: addItemProductId ? 1 : 0.5 }}>
                     เพิ่ม
                   </button>
-                  <button onClick={onCancelAddItem} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', fontSize: 12, cursor: 'pointer' }}>ยกเลิก</button>
+                  <button onClick={onCancelAddItem} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
                 </div>
               )}
               {/* Total */}
@@ -717,23 +717,23 @@ function DetailPanel({
           </div>
 
           {/* Action buttons */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--color-border)' }}>
             {detail.status === 'PENDING' && (
               <>
-                <button onClick={onEdit} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>แก้ไข</button>
+                <button onClick={onEdit} style={{ padding: '13px 28px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>แก้ไข</button>
                 <button onClick={onStart} disabled={startPending}
-                  style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: startPending ? 0.7 : 1 }}>
+                  style={{ padding: '13px 32px', borderRadius: 10, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', opacity: startPending ? 0.7 : 1 }}>
                   {startPending ? 'กำลังเริ่ม...' : 'เริ่มผลิต'}
                 </button>
                 <button onClick={onCancel} disabled={cancelPending}
-                  style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--color-danger)', color: 'var(--color-danger)', background: 'transparent', fontSize: 13, fontWeight: 500, cursor: 'pointer', opacity: cancelPending ? 0.7 : 1 }}>
+                  style={{ padding: '13px 28px', borderRadius: 10, border: '1px solid var(--color-danger)', color: 'var(--color-danger)', background: 'transparent', fontSize: 15, fontWeight: 600, cursor: 'pointer', opacity: cancelPending ? 0.7 : 1 }}>
                   ยกเลิก
                 </button>
               </>
             )}
             {detail.status === 'IN_PROGRESS' && (
               <button onClick={onComplete} disabled={completePending}
-                style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: 'var(--color-success)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: completePending ? 0.7 : 1 }}>
+                style={{ padding: '13px 36px', borderRadius: 10, border: 'none', background: 'var(--color-success)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', opacity: completePending ? 0.7 : 1 }}>
                 {completePending ? 'กำลังบันทึก...' : '✓ ส่งมอบแล้ว'}
               </button>
             )}
@@ -783,7 +783,7 @@ function FulfillmentRow({ mode, quantity, fgStock, fgUnit, canEdit, saving, onCh
         onClick={() => !active && !saving && canEdit && onChange(value)}
         disabled={!canEdit || saving}
         style={{
-          padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 600,
+          padding: '7px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600,
           border: '1px solid', cursor: !canEdit || saving ? 'default' : 'pointer',
           borderColor: active ? 'var(--color-primary)' : 'var(--color-border)',
           background: active ? 'var(--color-primary)' : 'transparent',
@@ -799,9 +799,9 @@ function FulfillmentRow({ mode, quantity, fgStock, fgUnit, canEdit, saving, onCh
 
   return (
     <div style={{
-      padding: '6px 12px 10px 24px', borderTop: '1px dashed var(--color-border)',
+      padding: '10px 14px 12px 24px', borderTop: '1px dashed var(--color-border)',
       display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-      background: 'var(--color-surface-2)', fontSize: 12,
+      background: 'var(--color-surface-2)', fontSize: 13,
     }}>
       <span style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>วิธีจัดเตรียม:</span>
       <div style={{ display: 'flex', gap: 6 }}>
