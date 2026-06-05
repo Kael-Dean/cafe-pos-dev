@@ -39,6 +39,7 @@ export default function POSTerminal() {
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   const [activeTab, setActiveTab] = useState<'menu' | 'cart'>('menu');
   const [showMembership, setShowMembership] = useState(false);
+  const [membershipPhase, setMembershipPhase] = useState<'lookup' | 'register'>('lookup');
   const [memberInfo, setMemberInfo] = useState<MemberInfo | null>(null);
   const [eligiblePromos, setEligiblePromos] = useState<EligiblePromotion[]>([]);
   const [selectedPromoIds, setSelectedPromoIds] = useState<string[]>([]);
@@ -384,9 +385,14 @@ export default function POSTerminal() {
                   </button>
                 </div>
               ) : (
-                <button className="btn btn-ghost" style={{padding: '8px 12px', fontSize: 12}} onClick={() => setShowMembership(true)}>
-                  <Icon name="user" size={14}/> ลูกค้า
-                </button>
+                <>
+                  <button className="btn btn-ghost" style={{padding: '8px 12px', fontSize: 12}} onClick={() => { setMembershipPhase('lookup'); setShowMembership(true); }}>
+                    <Icon name="user" size={14}/> ลูกค้า
+                  </button>
+                  <button className="btn btn-ghost" style={{padding: '8px 12px', fontSize: 12, whiteSpace: 'nowrap'}} onClick={() => { setMembershipPhase('register'); setShowMembership(true); }}>
+                    <Icon name="plus" size={14}/> สมัครสมาชิก
+                  </button>
+                </>
               )}
               <button className="btn btn-ghost" style={{padding: 8}} title="Park bill">
                 <Icon name="park" size={16}/>
@@ -463,6 +469,7 @@ export default function POSTerminal() {
       )}
       {showMembership && (
         <MembershipModal
+          initialPhase={membershipPhase}
           onClose={() => setShowMembership(false)}
           onSelectMember={(info) => { setMemberInfo(info); setShowMembership(false); }}
         />
