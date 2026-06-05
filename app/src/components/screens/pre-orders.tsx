@@ -1045,15 +1045,15 @@ function CreateModal({
               <div style={{ width: 70 }}><label style={labelStyle}>จำนวน</label><NumberInput min={1} integer value={cItemQty} onChange={onItemQtyChange} style={inputStyle} /></div>
               <div style={{ width: 110 }}><label style={labelStyle}>ราคา (ว่าง=catalog)</label><input type="number" min={0} value={cItemPrice} onChange={e => onItemPriceChange(e.target.value)} placeholder="ปกติ" style={inputStyle} /></div>
               <button onClick={onAddItem} disabled={!cItemProductId}
-                style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: cItemProductId ? 'pointer' : 'not-allowed', opacity: cItemProductId ? 1 : 0.5, marginBottom: 1 }}>
+                style={{ padding: '10px 18px', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: cItemProductId ? 'pointer' : 'not-allowed', opacity: cItemProductId ? 1 : 0.5, marginBottom: 1 }}>
                 + เพิ่ม
               </button>
             </div>
           </section>
           {/* Footer */}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid var(--color-border)' }}>
-            <button onClick={onClose} disabled={isPending} style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
-            <button onClick={onConfirm} disabled={isPending} style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1 }}>
+            <button onClick={onClose} disabled={isPending} style={{ padding: '12px 24px', borderRadius: 9, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>ยกเลิก</button>
+            <button onClick={onConfirm} disabled={isPending} style={{ padding: '12px 26px', borderRadius: 9, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1 }}>
               {isPending ? 'กำลังสร้าง...' : 'สร้าง Pre-Order'}
             </button>
           </div>
@@ -1101,8 +1101,8 @@ function EditModal({
           </div>
           <div><label style={labelStyle}>หมายเหตุ</label><textarea value={eNotes} onChange={e => onNotesChange(e.target.value)} rows={2} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} /></div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid var(--color-border)' }}>
-            <button onClick={onClose} disabled={isPending} style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
-            <button onClick={onConfirm} disabled={isPending} style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1 }}>
+            <button onClick={onClose} disabled={isPending} style={{ padding: '12px 24px', borderRadius: 9, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>ยกเลิก</button>
+            <button onClick={onConfirm} disabled={isPending} style={{ padding: '12px 26px', borderRadius: 9, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1 }}>
               {isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
           </div>
@@ -1122,8 +1122,8 @@ function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel, dang
         <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 10 }}>{title}</div>
         <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: 24 }}>{message}</div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onCancel} style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
-          <button onClick={onConfirm} style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: dangerous ? 'var(--color-danger)' : 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          <button onClick={onCancel} style={{ padding: '12px 24px', borderRadius: 9, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>ยกเลิก</button>
+          <button onClick={onConfirm} style={{ padding: '12px 26px', borderRadius: 9, border: 'none', background: dangerous ? 'var(--color-danger)' : 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
             {confirmLabel}
           </button>
         </div>
