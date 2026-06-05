@@ -774,22 +774,29 @@ function FulfillmentRow({ mode, quantity, fgStock, fgUnit, canEdit, saving, onCh
   const effectiveMode: FulfillmentMode = mode ?? 'PRODUCE_FRESH';
   const stockCovers = fgStock !== null && fgStock >= quantity;
   const shortfall = fgStock !== null ? Math.max(0, quantity - fgStock) : null;
+  const [hovered, setHovered] = useState<FulfillmentMode | null>(null);
 
   const Pill = ({ value, label }: { value: FulfillmentMode; label: string }) => {
     const active = effectiveMode === value;
+    const interactive = canEdit && !saving && !active;
+    const isHover = hovered === value && interactive;
     return (
       <button
         type="button"
-        onClick={() => !active && !saving && canEdit && onChange(value)}
+        onClick={() => interactive && onChange(value)}
+        onMouseEnter={() => setHovered(value)}
+        onMouseLeave={() => setHovered(h => (h === value ? null : h))}
         disabled={!canEdit || saving}
         style={{
-          padding: '7px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600,
-          border: '1px solid', cursor: !canEdit || saving ? 'default' : 'pointer',
-          borderColor: active ? 'var(--color-primary)' : 'var(--color-border)',
-          background: active ? 'var(--color-primary)' : 'transparent',
-          color: active ? '#fff' : 'var(--color-text-secondary)',
-          transition: 'all 120ms',
-          opacity: !canEdit ? 0.7 : 1,
+          padding: '8px 16px', borderRadius: 999, fontSize: 13, fontWeight: 700,
+          border: 'none', cursor: interactive ? 'pointer' : 'default',
+          background: active
+            ? 'var(--color-primary)'
+            : isHover ? 'var(--color-accent-50)' : 'transparent',
+          color: active ? '#fff' : 'var(--color-text)',
+          boxShadow: active ? '0 1px 3px rgba(0,0,0,0.22)' : 'none',
+          transition: 'all 120ms', whiteSpace: 'nowrap',
+          opacity: !canEdit ? 0.75 : 1,
         }}
       >
         {label}
@@ -804,7 +811,11 @@ function FulfillmentRow({ mode, quantity, fgStock, fgUnit, canEdit, saving, onCh
       background: 'var(--color-surface-2)', fontSize: 13,
     }}>
       <span style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>วิธีจัดเตรียม:</span>
-      <div style={{ display: 'flex', gap: 6 }}>
+      <div style={{
+        display: 'inline-flex', gap: 4, padding: 4, borderRadius: 999,
+        background: 'var(--color-bg)', border: '1px solid var(--color-border)',
+        boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)',
+      }}>
         <Pill value="FROM_INVENTORY" label="ใช้สต็อกสำเร็จรูป" />
         <Pill value="PRODUCE_FRESH" label="ผลิตใหม่" />
       </div>
