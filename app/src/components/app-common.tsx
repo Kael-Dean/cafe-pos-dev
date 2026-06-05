@@ -51,7 +51,7 @@ export const NAV: NavItem[] = [
   { id: 'kds',       label: 'Kitchen (KDS)',   icon: 'kds' },
   { id: 'dashboard', label: 'Dashboard',       icon: 'chart' },
   { id: 'bom',       label: 'BOM Builder',     icon: 'inv' },
-  { id: 'bakery',    label: 'เบเกอรี่ / Production', icon: 'cake' },
+  { id: 'bakery',    label: 'เบเกอรี่/ส่วนผสมทำเมนู', icon: 'cake' },
   { id: 'inventory', label: 'Inventory',       icon: 'inv',      soft: true },
   { id: 'pre-orders',    label: 'Pre-Orders',    icon: 'calendar' },
   { id: 'shopping-list', label: 'Shopping List',  icon: 'cart' },
