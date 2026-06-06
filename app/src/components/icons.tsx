@@ -29,6 +29,7 @@ export default function Icon({ name, size = 20, color = 'currentColor', strokeWi
     x: <path d="M18 6L6 18M6 6l12 12"/>,
     check: <path d="M5 12l5 5 9-11"/>,
     trash: <><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></>,
+    copy: <><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>,
     user: <><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></>,
     discount: <><path d="M9 9h.01M15 15h.01"/><path d="M16 8L8 16"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></>,
     park: <><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M8 6V4M16 6V4"/></>,
