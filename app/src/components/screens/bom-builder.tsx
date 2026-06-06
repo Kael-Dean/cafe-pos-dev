@@ -9,6 +9,7 @@ import { useProductDetail, useUpdateRecipe, useLinkModifierGroups, type RecipeIt
 import { useModifierGroups, useCreateModifierGroup, useAddModifier, useDeleteModifier, DEFAULT_DRINK_MODIFIER_GROUPS, type ModifierGroup } from '@/hooks/use-modifier-groups';
 import { useCookingSteps, useReplaceCookingSteps, type CookingStepRead } from '@/hooks/use-cooking-steps';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
+import { api } from '@/lib/api-client';
 
 type ProductType = 'MENU' | 'INGREDIENT';
 type ApiProductType = 'MADE_TO_ORDER' | 'PRODUCED';
@@ -21,6 +22,7 @@ export default function BOMBuilder() {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<MenuItem | null>(null);
   const [duplicating, setDuplicating] = useState(false);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
   const [editedRecipe, setEditedRecipe] = useState<RecipeItem[]>([]);
   const [editedPrice, setEditedPrice] = useState(0);
@@ -160,37 +162,40 @@ export default function BOMBuilder() {
     }
   };
 
-  // Duplicate the currently selected product (saved server state) into a new "(สำเนา)"
-  // copy, carrying over recipe (BOM), linked modifier groups, and cooking steps.
-  const duplicateProduct = async () => {
-    if (!selectedProduct || !productDetail || duplicating) return;
+  // Copy any product (by id, not just the selected one) into a new "(สำเนา)" entry,
+  // carrying over recipe (BOM), linked modifier groups, and cooking steps. Detail and
+  // steps are fetched on demand so the sidebar copy icon works on any row.
+  const duplicateProductById = async (target: MenuItem) => {
+    if (duplicating) return;
     setDuplicating(true);
+    setDuplicatingId(target.id);
     try {
-      const apiType = selectedProduct.productType; // 'MADE_TO_ORDER' | 'PRODUCED'
+      const apiType = target.productType; // 'MADE_TO_ORDER' | 'PRODUCED'
+      const [detail, steps] = await Promise.all([
+        api.get<{ recipe: { inventory_item_id: string; quantity: string | number }[]; modifier_groups: { id: string }[] }>(`/api/v1/products/${target.id}`),
+        api.get<CookingStepRead[]>(`/api/v1/products/${target.id}/steps`).catch(() => [] as CookingStepRead[]),
+      ]);
       const newProduct = await createProduct.mutateAsync({
-        name: `${selectedProduct.name} (สำเนา)`,
-        category_id: selectedProduct.cat || undefined,
-        price: selectedProduct.price,
+        name: `${target.name} (สำเนา)`,
+        category_id: target.cat || undefined,
+        price: target.price,
         product_type: apiType,
-        servings_per_batch: apiType === 'PRODUCED' ? Math.max(1, selectedProduct.servingsPerBatch) : undefined,
+        servings_per_batch: apiType === 'PRODUCED' ? Math.max(1, target.servingsPerBatch) : undefined,
       });
+      const recipeItems = (detail.recipe ?? []).map(r => ({ invId: r.inventory_item_id, qty: Number(r.quantity) }));
+      const groupIds = (detail.modifier_groups ?? []).map(g => g.id);
       await Promise.all([
-        productDetail.recipe.length > 0
-          ? updateRecipe.mutateAsync({ productId: newProduct.id, items: productDetail.recipe.map(r => ({ invId: r.invId, qty: r.qty })) })
-          : Promise.resolve(),
-        productDetail.modifierGroupIds.length > 0
-          ? linkModifierGroups.mutateAsync({ productId: newProduct.id, groupIds: productDetail.modifierGroupIds })
-          : Promise.resolve(),
-        (stepsData?.length ?? 0) > 0
-          ? replaceSteps.mutateAsync({ productId: newProduct.id, steps: (stepsData ?? []).map((s, i) => ({ instruction: s.instruction, sort_order: i })) })
-          : Promise.resolve(),
+        recipeItems.length > 0 ? updateRecipe.mutateAsync({ productId: newProduct.id, items: recipeItems }) : Promise.resolve(),
+        groupIds.length > 0 ? linkModifierGroups.mutateAsync({ productId: newProduct.id, groupIds }) : Promise.resolve(),
+        steps.length > 0 ? replaceSteps.mutateAsync({ productId: newProduct.id, steps: steps.map((s, i) => ({ instruction: s.instruction, sort_order: i })) }) : Promise.resolve(),
       ]);
       setSelectedId(newProduct.id);
-      toast({ kind: 'success', title: 'ทำสำเนาเมนูแล้ว', msg: newProduct.name });
+      toast({ kind: 'success', title: 'คัดลอกเมนูแล้ว', msg: newProduct.name });
     } catch (err) {
-      toast({ kind: 'warning', title: 'ทำสำเนาไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+      toast({ kind: 'warning', title: 'คัดลอกไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
     } finally {
       setDuplicating(false);
+      setDuplicatingId(null);
     }
   };
 
@@ -248,6 +253,22 @@ export default function BOMBuilder() {
                   </div>
                 </button>
                 <button
+                  onClick={() => duplicateProductById(m)}
+                  disabled={duplicating}
+                  title="คัดลอกเมนู"
+                  aria-label={`คัดลอก ${m.name}`}
+                  style={{
+                    flexShrink: 0, background: 'transparent', border: 'none', cursor: duplicating ? 'not-allowed' : 'pointer',
+                    display: 'grid', placeItems: 'center', padding: 8, borderRadius: 6,
+                    color: 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)',
+                    opacity: duplicatingId === m.id ? 0.5 : 1,
+                  }}
+                  onMouseEnter={e => { if (!duplicating) { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-accent)'; } }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+                >
+                  <Icon name="copy" size={14} />
+                </button>
+                <button
                   onClick={() => setDeleteTarget(m)}
                   title="ลบเมนู"
                   aria-label={`ลบ ${m.name}`}
@@ -301,7 +322,7 @@ export default function BOMBuilder() {
             onSave={saveRecipe}
             saving={updateRecipe.isPending || updateProduct.isPending}
             onDeleteRequest={() => setDeleteTarget(selectedProduct)}
-            onDuplicate={duplicateProduct}
+            onDuplicate={() => duplicateProductById(selectedProduct)}
             duplicating={duplicating}
             linkedGroupIds={productDetail?.modifierGroupIds ?? []}
             allModifierGroups={modifierGroups ?? []}
@@ -534,8 +555,8 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
 
     <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'space-between', alignItems: 'center' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button onClick={onDuplicate} disabled={duplicating} title="สร้างสำเนาเมนูนี้ พร้อมสูตร ตัวเลือก และขั้นตอนทำ" style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: duplicating ? 'not-allowed' : 'pointer', opacity: duplicating ? 0.6 : 1, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { if (!duplicating) e.currentTarget.style.background = 'var(--color-surface-2)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
-          <Icon name="copy" size={14} /> {duplicating ? 'กำลังทำสำเนา...' : 'ทำสำเนา'}
+        <button onClick={onDuplicate} disabled={duplicating} title="คัดลอกเมนูนี้ พร้อมสูตร ตัวเลือก และขั้นตอนทำ" style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: duplicating ? 'not-allowed' : 'pointer', opacity: duplicating ? 0.6 : 1, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { if (!duplicating) e.currentTarget.style.background = 'var(--color-surface-2)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+          <Icon name="copy" size={14} /> {duplicating ? 'กำลังคัดลอก...' : 'คัดลอก'}
         </button>
         <button onClick={onDeleteRequest} style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-danger)', border: '1px solid var(--color-danger)', borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
           <Icon name="trash" size={14} /> ลบเมนูนี้
