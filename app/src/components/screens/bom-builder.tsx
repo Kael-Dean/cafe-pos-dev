@@ -162,6 +162,22 @@ export default function BOMBuilder() {
     }
   };
 
+  // Build a copy name that collides with neither an existing product NOR an
+  // inventory item. PRODUCED products mirror their name into a finished-goods
+  // inventory item (unique per store), so a fixed "(สำเนา)" suffix clashes on the
+  // 2nd copy → backend 409 "Resource conflict". Bump a counter until it's free.
+  const makeUniqueCopyName = (baseName: string) => {
+    const taken = new Set<string>([
+      ...(products ?? []).map(p => p.name),
+      ...(inventoryItems ?? []).map(i => i.name),
+    ]);
+    const first = `${baseName} (สำเนา)`;
+    if (!taken.has(first)) return first;
+    let n = 2;
+    while (taken.has(`${baseName} (สำเนา ${n})`)) n++;
+    return `${baseName} (สำเนา ${n})`;
+  };
+
   // Copy any product (by id, not just the selected one) into a new "(สำเนา)" entry,
   // carrying over recipe (BOM), linked modifier groups, and cooking steps. Detail and
   // steps are fetched on demand so the sidebar copy icon works on any row.
@@ -176,7 +192,7 @@ export default function BOMBuilder() {
         api.get<CookingStepRead[]>(`/api/v1/products/${target.id}/steps`).catch(() => [] as CookingStepRead[]),
       ]);
       const newProduct = await createProduct.mutateAsync({
-        name: `${target.name} (สำเนา)`,
+        name: makeUniqueCopyName(target.name),
         category_id: target.cat || undefined,
         price: target.price,
         product_type: apiType,
@@ -196,6 +212,18 @@ export default function BOMBuilder() {
     } finally {
       setDuplicating(false);
       setDuplicatingId(null);
+    }
+  };
+
+  const handleRename = async (newName: string) => {
+    if (!selectedId) return;
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === selectedProduct?.name) return;
+    try {
+      await updateProduct.mutateAsync({ productId: selectedId, name: trimmed });
+      toast({ kind: 'success', title: 'เปลี่ยนชื่อเมนูแล้ว', msg: trimmed });
+    } catch (err) {
+      toast({ kind: 'warning', title: 'เปลี่ยนชื่อไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
     }
   };
 
@@ -323,6 +351,7 @@ export default function BOMBuilder() {
             saving={updateRecipe.isPending || updateProduct.isPending}
             onDeleteRequest={() => setDeleteTarget(selectedProduct)}
             onDuplicate={() => duplicateProductById(selectedProduct)}
+            onRename={handleRename}
             duplicating={duplicating}
             linkedGroupIds={productDetail?.modifierGroupIds ?? []}
             allModifierGroups={modifierGroups ?? []}
@@ -428,6 +457,7 @@ interface RightPanelProps {
   saving: boolean;
   onDeleteRequest: () => void;
   onDuplicate: () => void;
+  onRename: (name: string) => void;
   duplicating: boolean;
   linkedGroupIds: string[];
   allModifierGroups: ModifierGroup[];
@@ -436,13 +466,52 @@ interface RightPanelProps {
   onDeleteModifier: (groupId: string, modifierId: string) => Promise<void>;
 }
 
-const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryId, categories, inventoryItems, totalCost, isProduced, batchSize, editedServingsPerBatch, onServingsPerBatchChange, costPerUnit, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onCategoryChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, onDuplicate, duplicating, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen, onAddModifier, onDeleteModifier }: RightPanelProps) => (
+// Click-to-edit menu name. Renders the title as an <h1> with a pencil affordance;
+// clicking turns it into an input. Commits on Enter/blur, cancels on Escape.
+const EditableMenuName = ({ name, onRename }: { name: string; onRename: (n: string) => void }) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  useEffect(() => { setDraft(name); setEditing(false); }, [name]);
+
+  if (editing) {
+    const commit = () => {
+      const t = draft.trim();
+      if (t && t !== name) onRename(t);
+      setEditing(false);
+    };
+    return (
+      <input
+        autoFocus
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); commit(); }
+          else if (e.key === 'Escape') { setDraft(name); setEditing(false); }
+        }}
+        style={{ margin: '2px 0 8px', fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em', fontFamily: 'inherit', border: '1px solid var(--color-accent)', borderRadius: 8, padding: '2px 8px', outline: 'none', width: '100%', boxSizing: 'border-box' }}
+      />
+    );
+  }
+  return (
+    <h1
+      onClick={() => setEditing(true)}
+      title="คลิกเพื่อเปลี่ยนชื่อ"
+      style={{ margin: '2px 0 8px', fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em', cursor: 'text', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+    >
+      {name}
+      <Icon name="pencil" size={15} color="var(--color-text-muted)" />
+    </h1>
+  );
+};
+
+const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryId, categories, inventoryItems, totalCost, isProduced, batchSize, editedServingsPerBatch, onServingsPerBatchChange, costPerUnit, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onCategoryChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, onDuplicate, onRename, duplicating, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen, onAddModifier, onDeleteModifier }: RightPanelProps) => (
   <>
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
       <div style={{ width: 80, height: 80, borderRadius: 12, background: product.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 800, flexShrink: 0 }}>{product.tag}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500 }}>{product.nameEn}</div>
-        <h1 style={{ margin: '2px 0 8px', fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>{product.name}</h1>
+        <EditableMenuName name={product.name} onRename={onRename} />
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <Tag tone={productType === 'MENU' ? 'info' : 'accent'}>{productType === 'MENU' ? 'เมนูขาย' : 'ส่วนผสม'}</Tag>
           {product.productType === 'PRODUCED' && <Tag tone="accent">ผลิตล่วงหน้า</Tag>}

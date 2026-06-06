@@ -70,6 +70,7 @@ export default function Icon({ name, size = 20, color = 'currentColor', strokeWi
     wifi: <><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></>,
     bluetooth: <path d="M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11"/>,
     usb: <><path d="M12 2v12"/><path d="M9 8l3-6 3 6"/><rect x="9" y="14" width="6" height="6" rx="1"/><path d="M7 20h10"/></>,
+    pencil: <><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></>,
   };
   return <svg {...props}>{paths[name] || null}</svg>;
 }
