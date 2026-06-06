@@ -466,8 +466,8 @@ interface RightPanelProps {
   onDeleteModifier: (groupId: string, modifierId: string) => Promise<void>;
 }
 
-// Click-to-edit menu name. Renders the title as an <h1> with a pencil affordance;
-// clicking turns it into an input. Commits on Enter/blur, cancels on Escape.
+// Menu title with an explicit "เปลี่ยนชื่อ" button. Clicking the button (or the
+// title) swaps in an input with clear save/cancel buttons. Enter saves, Esc cancels.
 const EditableMenuName = ({ name, onRename }: { name: string; onRename: (n: string) => void }) => {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
@@ -479,29 +479,50 @@ const EditableMenuName = ({ name, onRename }: { name: string; onRename: (n: stri
       if (t && t !== name) onRename(t);
       setEditing(false);
     };
+    const cancel = () => { setDraft(name); setEditing(false); };
     return (
-      <input
-        autoFocus
-        value={draft}
-        onChange={e => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => {
-          if (e.key === 'Enter') { e.preventDefault(); commit(); }
-          else if (e.key === 'Escape') { setDraft(name); setEditing(false); }
-        }}
-        style={{ margin: '2px 0 8px', fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em', fontFamily: 'inherit', border: '1px solid var(--color-accent)', borderRadius: 8, padding: '2px 8px', outline: 'none', width: '100%', boxSizing: 'border-box' }}
-      />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 8px' }}>
+        <input
+          autoFocus
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); commit(); }
+            else if (e.key === 'Escape') cancel();
+          }}
+          style={{ flex: 1, minWidth: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em', fontFamily: 'inherit', border: '1px solid var(--color-accent)', borderRadius: 8, padding: '4px 10px', outline: 'none' }}
+        />
+        <button onClick={commit} title="บันทึกชื่อ" aria-label="บันทึกชื่อ"
+          style={{ flexShrink: 0, display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', cursor: 'pointer' }}>
+          <Icon name="check" size={18} />
+        </button>
+        <button onClick={cancel} title="ยกเลิก" aria-label="ยกเลิก"
+          style={{ flexShrink: 0, display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer' }}>
+          <Icon name="x" size={18} />
+        </button>
+      </div>
     );
   }
   return (
-    <h1
-      onClick={() => setEditing(true)}
-      title="คลิกเพื่อเปลี่ยนชื่อ"
-      style={{ margin: '2px 0 8px', fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em', cursor: 'text', display: 'inline-flex', alignItems: 'center', gap: 8 }}
-    >
-      {name}
-      <Icon name="pencil" size={15} color="var(--color-text-muted)" />
-    </h1>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '2px 0 8px', minWidth: 0 }}>
+      <h1
+        onClick={() => setEditing(true)}
+        title="คลิกเพื่อเปลี่ยนชื่อ"
+        style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em', cursor: 'text', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}
+      >
+        {name}
+      </h1>
+      <button
+        onClick={() => setEditing(true)}
+        title="เปลี่ยนชื่อเมนู"
+        aria-label="เปลี่ยนชื่อเมนู"
+        style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, transition: 'all 150ms var(--ease-out)' }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-accent)'; e.currentTarget.style.borderColor = 'var(--color-accent)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-surface-2)'; e.currentTarget.style.color = 'var(--color-text-secondary)'; e.currentTarget.style.borderColor = 'var(--color-border)'; }}
+      >
+        <Icon name="pencil" size={14} /> เปลี่ยนชื่อ
+      </button>
+    </div>
   );
 };
 
