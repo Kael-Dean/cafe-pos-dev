@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import Icon from '../icons';
 import { useToast, Tag, baht, NumberInput } from '../app-common';
-import { useAllProducts, type MenuItem } from '@/hooks/use-products';
+import { useAllProducts, useUpdateProduct, type MenuItem } from '@/hooks/use-products';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
 import { useProductDetail } from '@/hooks/use-bom';
 import {
@@ -122,6 +122,66 @@ export default function Bakery() {
   );
 }
 
+// Menu title with an explicit "เปลี่ยนชื่อ" button. Clicking the button (or the
+// title) swaps in an input with clear save/cancel buttons. Enter saves, Esc cancels.
+const EditableMenuName = ({ name, onRename }: { name: string; onRename: (n: string) => void }) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  useEffect(() => { setDraft(name); setEditing(false); }, [name]);
+
+  if (editing) {
+    const commit = () => {
+      const t = draft.trim();
+      if (t && t !== name) onRename(t);
+      setEditing(false);
+    };
+    const cancel = () => { setDraft(name); setEditing(false); };
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 8px' }}>
+        <input
+          autoFocus
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); commit(); }
+            else if (e.key === 'Escape') cancel();
+          }}
+          style={{ flex: 1, minWidth: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em', fontFamily: 'inherit', border: '1px solid var(--color-accent)', borderRadius: 8, padding: '4px 10px', outline: 'none' }}
+        />
+        <button onClick={commit} title="บันทึกชื่อ" aria-label="บันทึกชื่อ"
+          style={{ flexShrink: 0, display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', cursor: 'pointer' }}>
+          <Icon name="check" size={18} />
+        </button>
+        <button onClick={cancel} title="ยกเลิก" aria-label="ยกเลิก"
+          style={{ flexShrink: 0, display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer' }}>
+          <Icon name="x" size={18} />
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '2px 0 8px', minWidth: 0 }}>
+      <h1
+        onClick={() => setEditing(true)}
+        title="คลิกเพื่อเปลี่ยนชื่อ"
+        style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em', cursor: 'text', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}
+      >
+        {name}
+      </h1>
+      <button
+        onClick={() => setEditing(true)}
+        title="เปลี่ยนชื่อเมนู"
+        aria-label="เปลี่ยนชื่อเมนู"
+        style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, transition: 'all 150ms var(--ease-out)' }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-accent)'; e.currentTarget.style.borderColor = 'var(--color-accent)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-surface-2)'; e.currentTarget.style.color = 'var(--color-text-secondary)'; e.currentTarget.style.borderColor = 'var(--color-border)'; }}
+      >
+        <Icon name="pencil" size={14} /> เปลี่ยนชื่อ
+      </button>
+    </div>
+  );
+};
+
 interface ProductionPanelProps {
   product: MenuItem;
   stockItem: InventoryItem | null;
@@ -130,9 +190,22 @@ interface ProductionPanelProps {
 }
 
 const ProductionPanel = ({ product, stockItem, onSuccess, onError }: ProductionPanelProps) => {
+  const toast = useToast();
   const { data: detail } = useProductDetail(product.id);
   const { data: history } = useProductionOrders({ productId: product.id });
   const createOrder = useCreateProductionOrder();
+  const updateProduct = useUpdateProduct();
+
+  const handleRename = async (newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === product.name) return;
+    try {
+      await updateProduct.mutateAsync({ productId: product.id, name: trimmed });
+      toast({ kind: 'success', title: 'เปลี่ยนชื่อเมนูแล้ว', msg: trimmed });
+    } catch (err) {
+      toast({ kind: 'warning', title: 'เปลี่ยนชื่อไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+    }
+  };
 
   const [batches, setBatches] = useState(1);
   const [notes, setNotes] = useState('');
@@ -163,7 +236,7 @@ const ProductionPanel = ({ product, stockItem, onSuccess, onError }: ProductionP
         <div style={{ width: 80, height: 80, borderRadius: 12, background: product.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 800, flexShrink: 0 }}>{product.tag}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500 }}>{product.nameEn}</div>
-          <h1 style={{ margin: '2px 0 8px', fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>{product.name}</h1>
+          <EditableMenuName name={product.name} onRename={handleRename} />
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             <Tag tone="accent">ผลิตล่วงหน้า</Tag>
             <Tag tone="info">{product.servingsPerBatch} ชิ้น/แบทช์</Tag>
