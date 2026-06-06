@@ -21,7 +21,7 @@ Normal `git add` / `git commit` fail on this Windows machine due to Windows Defe
 **Full commit + push (single block — do not split):**
 ```powershell
 $env:GIT_INDEX_FILE = ".git/index2"
-Set-Location d:\POS
+Set-Location d:\POS-dev                         # งานปกติ commit เข้า dev repo (cafe-pos-dev)
 git read-tree HEAD
 git add <files>
 $TREE = git write-tree                         # BEFORE removing index2
