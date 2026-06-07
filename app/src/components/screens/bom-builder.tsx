@@ -28,6 +28,7 @@ export default function BOMBuilder() {
   const [editedPrice, setEditedPrice] = useState(0);
   const [editedServingsPerBatch, setEditedServingsPerBatch] = useState(1);
   const [editedCategoryId, setEditedCategoryId] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
   const [productType, setProductType] = useState<ProductType>('MENU');
   const [modifierGroupPickerOpen, setModifierGroupPickerOpen] = useState(false);
 
@@ -55,6 +56,10 @@ export default function BOMBuilder() {
       setSelectedId(products[0].id);
     }
   }, [products, selectedId]);
+
+  // A freshly selected product starts clean; the load effects below only ever use
+  // the raw setters, so loading server data never flips the unsaved-changes flag.
+  useEffect(() => { setIsDirty(false); }, [selectedId]);
 
   useEffect(() => {
     if (productDetail) {
@@ -105,18 +110,38 @@ export default function BOMBuilder() {
   const margin = editedPrice - costPerUnit;
   const marginPct = editedPrice > 0 ? (margin / editedPrice) * 100 : 0;
 
-  const updateQty = (idx: number, qty: number) => setEditedRecipe(r => {
-    const next = [...r];
-    next[idx] = { ...next[idx], qty: Math.max(0, qty) };
-    return next;
-  });
+  // Edit handlers passed to the panel — each flags unsaved changes so switching
+  // menus warns before discarding (same guard as catalog.tsx).
+  const changePrice = (v: number) => { setEditedPrice(v); setIsDirty(true); };
+  const changeServingsPerBatch = (v: number) => { setEditedServingsPerBatch(v); setIsDirty(true); };
+  const changeCategory = (v: string) => { setEditedCategoryId(v); setIsDirty(true); };
 
-  const removeItem = (idx: number) => setEditedRecipe(r => r.filter((_, i) => i !== idx));
+  const updateQty = (idx: number, qty: number) => {
+    setEditedRecipe(r => {
+      const next = [...r];
+      next[idx] = { ...next[idx], qty: Math.max(0, qty) };
+      return next;
+    });
+    setIsDirty(true);
+  };
+
+  const removeItem = (idx: number) => {
+    setEditedRecipe(r => r.filter((_, i) => i !== idx));
+    setIsDirty(true);
+  };
 
   const addItems = (invIds: string[]) => {
     setEditedRecipe(r => [...r, ...invIds.map(id => ({ invId: id, qty: 1 }))]);
+    setIsDirty(true);
     setPicker(false);
     toast({ kind: 'info', title: `เพิ่ม ${invIds.length} วัตถุดิบแล้ว`, msg: 'ปรับปริมาณตามสูตรจริง' });
+  };
+
+  // Guard menu switching: warn if there are unsaved edits before loading another product.
+  const selectProduct = (id: string) => {
+    if (id === selectedId) return;
+    if (isDirty && !window.confirm('มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก — ทิ้งการเปลี่ยนแปลงหรือไม่?')) return;
+    setSelectedId(id);
   };
 
   const saveRecipe = async () => {
@@ -131,6 +156,7 @@ export default function BOMBuilder() {
           ...(isProduced ? { servings_per_batch: Math.max(1, editedServingsPerBatch) } : {}),
         }),
       ]);
+      setIsDirty(false);
       toast({ kind: 'success', title: 'บันทึกสูตรแล้ว', msg: `${selectedProduct?.name ?? ''} • ${editedRecipe.length} วัตถุดิบ • ต้นทุน${isProduced ? '/ชิ้น' : ''} ฿${costPerUnit.toFixed(2)} • Margin ${marginPct.toFixed(1)}%` });
     } catch (err) {
       toast({ kind: 'warning', title: 'บันทึกไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
@@ -268,7 +294,7 @@ export default function BOMBuilder() {
                 onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--color-surface-2)'; }}
                 onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
               >
-                <button onClick={() => setSelectedId(m.id)} style={{
+                <button onClick={() => selectProduct(m.id)} style={{
                   display: 'flex', gap: 12, alignItems: 'center', flex: 1, minWidth: 0, padding: 10,
                   background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                 }}>
@@ -336,14 +362,14 @@ export default function BOMBuilder() {
             isProduced={isProduced}
             batchSize={batchSize}
             editedServingsPerBatch={editedServingsPerBatch}
-            onServingsPerBatchChange={setEditedServingsPerBatch}
+            onServingsPerBatchChange={changeServingsPerBatch}
             costPerUnit={costPerUnit}
             margin={margin}
             marginPct={marginPct}
             marginToneOf={marginToneOf}
             marginColorOf={marginColorOf}
-            onPriceChange={setEditedPrice}
-            onCategoryChange={setEditedCategoryId}
+            onPriceChange={changePrice}
+            onCategoryChange={changeCategory}
             onQtyChange={updateQty}
             onRemove={removeItem}
             onPickerOpen={() => setPicker(true)}
