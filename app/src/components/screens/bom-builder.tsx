@@ -10,6 +10,7 @@ import { useModifierGroups, useCreateModifierGroup, useAddModifier, useDeleteMod
 import { useCookingSteps, useReplaceCookingSteps, type CookingStepRead } from '@/hooks/use-cooking-steps';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { api } from '@/lib/api-client';
+import { setNavGuard } from '@/lib/nav-guard';
 
 type ProductType = 'MENU' | 'INGREDIENT';
 type ApiProductType = 'MADE_TO_ORDER' | 'PRODUCED';
@@ -60,6 +61,16 @@ export default function BOMBuilder() {
   // A freshly selected product starts clean; the load effects below only ever use
   // the raw setters, so loading server data never flips the unsaved-changes flag.
   useEffect(() => { setIsDirty(false); }, [selectedId]);
+
+  // Keep the latest dirty state in a ref so the stable nav guard always sees it.
+  const isDirtyRef = useRef(false);
+  useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
+
+  // Warn before leaving the BOM screen for another page when there are unsaved edits.
+  useEffect(() => {
+    setNavGuard(() => !isDirtyRef.current || window.confirm('มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก — ทิ้งการเปลี่ยนแปลงหรือไม่?'));
+    return () => setNavGuard(null);
+  }, []);
 
   useEffect(() => {
     if (productDetail) {

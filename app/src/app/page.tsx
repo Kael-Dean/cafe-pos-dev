@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ToastProvider, Sidebar, BottomTabBar } from '@/components/app-common';
 import { getToken, clearToken, subscribeAuth } from '@/lib/token-store';
+import { canLeave } from '@/lib/nav-guard';
 import LoginScreen from '@/components/screens/login';
 import POSTerminal from '@/components/screens/pos';
 import KDS from '@/components/screens/kds';
@@ -58,7 +59,14 @@ export default function POS() {
     }} />;
   }
 
+  // Let the active screen veto leaving (e.g. BOM Builder with unsaved edits).
+  const navigate = (s: Screen) => {
+    if (s === screen) return;
+    if (canLeave()) setScreen(s);
+  };
+
   const handleLogout = () => {
+    if (!canLeave()) return;
     clearToken();
     queryClient.clear();
     setIsLoggedIn(false);
@@ -90,7 +98,7 @@ export default function POS() {
   return (
     <ToastProvider>
       <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
-        <Sidebar current={screen} onNavigate={(s) => setScreen(s as Screen)} onLogout={handleLogout} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
+        <Sidebar current={screen} onNavigate={(s) => navigate(s as Screen)} onLogout={handleLogout} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
         <main style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'auto' }}>
           {screens[screen]}
         </main>
