@@ -60,13 +60,14 @@ export default function POS() {
   }
 
   // Let the active screen veto leaving (e.g. BOM Builder with unsaved edits).
-  const navigate = (s: Screen) => {
+  // The check is async because it may show a themed confirm dialog.
+  const navigate = async (s: Screen) => {
     if (s === screen) return;
-    if (canLeave()) setScreen(s);
+    if (await canLeave()) setScreen(s);
   };
 
-  const handleLogout = () => {
-    if (!canLeave()) return;
+  const handleLogout = async () => {
+    if (!(await canLeave())) return;
     clearToken();
     queryClient.clear();
     setIsLoggedIn(false);
@@ -98,7 +99,7 @@ export default function POS() {
   return (
     <ToastProvider>
       <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
-        <Sidebar current={screen} onNavigate={(s) => navigate(s as Screen)} onLogout={handleLogout} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
+        <Sidebar current={screen} onNavigate={(s) => { void navigate(s as Screen); }} onLogout={() => { void handleLogout(); }} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
         <main style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'auto' }}>
           {screens[screen]}
         </main>

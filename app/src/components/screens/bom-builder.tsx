@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Icon from '../icons';
 import { useToast, Tag, baht, Select, NumberInput } from '../app-common';
 import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, useUpdateProduct, type MenuItem, type Category } from '@/hooks/use-products';
@@ -66,11 +66,23 @@ export default function BOMBuilder() {
   const isDirtyRef = useRef(false);
   useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
 
+  // Themed "discard unsaved changes?" dialog. confirmDiscard() shows it and resolves
+  // true (discard) / false (stay) when the user picks — replacing native window.confirm.
+  const [discardPrompt, setDiscardPrompt] = useState<{ resolve: (ok: boolean) => void } | null>(null);
+  const confirmDiscard = useCallback(
+    () => new Promise<boolean>(resolve => setDiscardPrompt({ resolve })),
+    [],
+  );
+  const settleDiscard = (ok: boolean) => {
+    discardPrompt?.resolve(ok);
+    setDiscardPrompt(null);
+  };
+
   // Warn before leaving the BOM screen for another page when there are unsaved edits.
   useEffect(() => {
-    setNavGuard(() => !isDirtyRef.current || window.confirm('มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก — ทิ้งการเปลี่ยนแปลงหรือไม่?'));
+    setNavGuard(() => !isDirtyRef.current || confirmDiscard());
     return () => setNavGuard(null);
-  }, []);
+  }, [confirmDiscard]);
 
   useEffect(() => {
     if (productDetail) {
@@ -149,9 +161,9 @@ export default function BOMBuilder() {
   };
 
   // Guard menu switching: warn if there are unsaved edits before loading another product.
-  const selectProduct = (id: string) => {
+  const selectProduct = async (id: string) => {
     if (id === selectedId) return;
-    if (isDirty && !window.confirm('มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก — ทิ้งการเปลี่ยนแปลงหรือไม่?')) return;
+    if (isDirty && !(await confirmDiscard())) return;
     setSelectedId(id);
   };
 
@@ -305,7 +317,7 @@ export default function BOMBuilder() {
                 onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--color-surface-2)'; }}
                 onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
               >
-                <button onClick={() => selectProduct(m.id)} style={{
+                <button onClick={() => { void selectProduct(m.id); }} style={{
                   display: 'flex', gap: 12, alignItems: 'center', flex: 1, minWidth: 0, padding: 10,
                   background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                 }}>
@@ -461,6 +473,12 @@ export default function BOMBuilder() {
             }
           }}
           saving={linkModifierGroups.isPending}
+        />
+      )}
+      {discardPrompt && (
+        <DiscardConfirmModal
+          onDiscard={() => settleDiscard(true)}
+          onCancel={() => settleDiscard(false)}
         />
       )}
     </div>
@@ -1191,6 +1209,22 @@ const BomModalShell = ({ title, subtitle, onClose, children }: { title: string; 
       <div className="scroll" style={{ overflow: 'auto', padding: 20, flex: 1 }}>{children}</div>
     </div>
   </div>
+);
+
+const DiscardConfirmModal = ({ onDiscard, onCancel }: {
+  onDiscard: () => void; onCancel: () => void;
+}) => (
+  <BomModalShell title="ยังไม่ได้บันทึก" subtitle="มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก" onClose={onCancel}>
+    <div style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: 20, lineHeight: 1.7 }}>
+      หากออกตอนนี้ การเปลี่ยนแปลงที่แก้ไว้จะหายไป ต้องการทิ้งการเปลี่ยนแปลงหรือไม่?
+    </div>
+    <BomModalActions>
+      <button onClick={onCancel} style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>อยู่ต่อ</button>
+      <button onClick={onDiscard} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'var(--color-danger)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }}>
+        <Icon name="trash" size={14} />ทิ้งการเปลี่ยนแปลง
+      </button>
+    </BomModalActions>
+  </BomModalShell>
 );
 
 const DeleteConfirmModal = ({ name, deleting, onConfirm, onClose }: {
