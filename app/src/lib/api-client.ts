@@ -62,12 +62,30 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// --- Double-submit guard ---------------------------------------------------
+// When the network is slow and a user taps a button several times before the
+// first request finishes, each tap fires an identical write and the backend
+// ends up creating duplicate orders/items. We collapse writes that are
+// identical (same method + path + body) AND still in-flight into a single
+// request: the second caller awaits the same promise instead of hitting the
+// network again. The key is freed as soon as the request settles, so genuine
+// sequential edits (fired after the first completes) are never blocked.
+const inFlightWrites = new Map<string, Promise<unknown>>();
+
+function dedupeWrite<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const existing = inFlightWrites.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+  const p = run().finally(() => { inFlightWrites.delete(key); });
+  inFlightWrites.set(key, p);
+  return p;
+}
+
 export const api = {
   get:    <T>(path: string)                        => apiFetch<T>(path),
-  post:   <T>(path: string, body: unknown)         => apiFetch<T>(path, { method: 'POST',   body: JSON.stringify(body) }),
-  patch:  <T>(path: string, body: unknown)         => apiFetch<T>(path, { method: 'PATCH',  body: JSON.stringify(body) }),
-  put:    <T>(path: string, body: unknown)         => apiFetch<T>(path, { method: 'PUT',    body: JSON.stringify(body) }),
-  delete: <T>(path: string)                        => apiFetch<T>(path, { method: 'DELETE' }),
+  post:   <T>(path: string, body: unknown)         => dedupeWrite<T>(`POST ${path} ${JSON.stringify(body)}`,  () => apiFetch<T>(path, { method: 'POST',   body: JSON.stringify(body) })),
+  patch:  <T>(path: string, body: unknown)         => dedupeWrite<T>(`PATCH ${path} ${JSON.stringify(body)}`, () => apiFetch<T>(path, { method: 'PATCH',  body: JSON.stringify(body) })),
+  put:    <T>(path: string, body: unknown)         => dedupeWrite<T>(`PUT ${path} ${JSON.stringify(body)}`,   () => apiFetch<T>(path, { method: 'PUT',    body: JSON.stringify(body) })),
+  delete: <T>(path: string)                        => dedupeWrite<T>(`DELETE ${path}`,                        () => apiFetch<T>(path, { method: 'DELETE' })),
 };
 
 export { ApiError, SessionExpiredError };

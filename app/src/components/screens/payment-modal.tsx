@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Icon from '../icons';
 
 interface Props { method: string; total: number; billNo: number; onClose: () => void; onPaid: () => void; }
@@ -21,7 +21,13 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
 
   const titleMap: Record<string, string> = { cash: 'รับเงินสด', card: 'รูดบัตร', qr: 'QR PromptPay', line: 'LINE Pay' };
 
+  // Re-entrancy guard: a fast double-tap can fire this twice in the same frame
+  // (before React re-renders and hides the button), which would create two
+  // orders. The ref blocks every call after the first.
+  const confirmed = useRef(false);
   const onConfirmPay = () => {
+    if (confirmed.current) return;
+    confirmed.current = true;
     setPhase('paid');
     setTimeout(() => onPaid(), 900);
   };

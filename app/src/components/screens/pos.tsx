@@ -171,6 +171,9 @@ export default function POSTerminal() {
   };
 
   const onPaid = () => {
+    // Re-entrancy guard: ignore the call if an order/payment is already being
+    // created, so a double-submit can't produce a duplicate (or empty) order.
+    if (createOrder.isPending || payOrder.isPending) return;
     const method = payment;
     const cartSnapshot = [...cart];
     const subtotalSnapshot = subtotal;
