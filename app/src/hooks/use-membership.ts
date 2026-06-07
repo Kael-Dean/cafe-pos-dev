@@ -105,6 +105,42 @@ export interface MembersPage {
   limit: number;
 }
 
+// ── Member purchase history (GET /members/{id}/orders) ───────────────────────────
+export type OrderStatus = 'PENDING' | 'PAID' | 'IN_PROGRESS' | 'READY' | 'COMPLETED' | 'VOID';
+export type Channel = 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY';
+export type PaymentMethod = 'CASH' | 'CARD' | 'QR_PROMPTPAY' | 'LINE_PAY' | 'TRUEMONEY' | 'OTHER';
+
+export interface MemberOrderItemRead {
+  product_name: string;
+  quantity: number;
+  unit_price: string; // Decimal as string
+  line_total: string;
+}
+
+export interface MemberOrderRead {
+  id: string;
+  order_number: number;
+  status: OrderStatus;
+  channel: Channel;
+  payment_method: PaymentMethod | null;
+  subtotal: string;
+  discount: string;
+  total: string;
+  points_earned: number | null; // null = order predates membership feature; display as 0
+  reward_redeemed: boolean;
+  created_at: string;
+  items: MemberOrderItemRead[];
+}
+
+export interface MemberOrdersPage {
+  items: MemberOrderRead[];   // current page of orders
+  total: number;              // total order count across ALL pages
+  total_spent: string;        // lifetime spend sum, Decimal as string
+  total_discount: string;     // lifetime discount sum, Decimal as string
+  page: number;
+  limit: number;
+}
+
 // ── Query keys ────────────────────────────────────────────────────────────────
 const PROGRAM_KEY = ['membership', 'program'] as const;
 const REWARD_PRODUCTS_KEY = ['membership', 'reward-products'] as const;
@@ -196,6 +232,17 @@ export function useMemberDetail(accountId: string | null) {
   return useQuery<MemberRead>({
     queryKey: [...MEMBERS_KEY, 'detail', accountId],
     queryFn: () => api.get<MemberRead>(`/api/v1/membership/members/${accountId}`),
+    enabled: !!accountId,
+  });
+}
+
+/** GET /members/{id}/orders — paginated purchase history; lifetime totals are
+ *  aggregated across ALL orders (not just the current page). */
+export function useMemberOrders(accountId: string | null, page = 1, limit = 20) {
+  return useQuery<MemberOrdersPage>({
+    queryKey: [...MEMBERS_KEY, 'orders', accountId, page, limit],
+    queryFn: () =>
+      api.get<MemberOrdersPage>(`/api/v1/membership/members/${accountId}/orders?page=${page}&limit=${limit}`),
     enabled: !!accountId,
   });
 }

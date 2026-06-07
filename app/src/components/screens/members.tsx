@@ -3,15 +3,17 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Icon from '../icons';
-import { useToast, Tag } from '../app-common';
+import { useToast, Tag, baht } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import {
   useMembers,
   useMemberDetail,
+  useMemberOrders,
   useAdjustPoints,
   useRegisterMember,
   type MembershipTier,
   type PointTxType,
+  type OrderStatus,
 } from '@/hooks/use-membership';
 
 const TIER_LABEL: Record<MembershipTier, string> = { NONE: 'สมาชิก', BRONZE: 'Bronze', SILVER: 'Silver', GOLD: 'Gold' };
@@ -19,6 +21,11 @@ const TIER_TONE: Record<MembershipTier, 'neutral' | 'success' | 'info' | 'accent
 
 const TX_LABEL: Record<PointTxType, string> = { EARN: 'ได้รับ', REDEEM: 'แลกรางวัล', ADJUST: 'ปรับแต้ม', EXPIRE: 'หมดอายุ' };
 const TX_TONE: Record<PointTxType, 'success' | 'info' | 'accent' | 'danger'> = { EARN: 'success', REDEEM: 'info', ADJUST: 'accent', EXPIRE: 'danger' };
+
+const ORDER_STATUS_LABEL: Record<OrderStatus, string> = { PENDING: 'รอชำระ', PAID: 'ชำระแล้ว', IN_PROGRESS: 'กำลังทำ', READY: 'พร้อมเสิร์ฟ', COMPLETED: 'เสร็จสิ้น', VOID: 'ยกเลิก' };
+const ORDER_STATUS_TONE: Record<OrderStatus, 'neutral' | 'success' | 'info' | 'accent' | 'warning' | 'danger'> = { PENDING: 'warning', PAID: 'success', IN_PROGRESS: 'info', READY: 'accent', COMPLETED: 'neutral', VOID: 'danger' };
+const CHANNEL_LABEL: Record<string, string> = { DINE_IN: 'ทานที่ร้าน', TAKEAWAY: 'กลับบ้าน', DELIVERY: 'เดลิเวอรี' };
+const PAYMENT_LABEL: Record<string, string> = { CASH: 'เงินสด', CARD: 'บัตร', QR_PROMPTPAY: 'QR', LINE_PAY: 'LINE Pay', TRUEMONEY: 'TrueMoney', OTHER: 'อื่นๆ' };
 
 const IS: React.CSSProperties = {
   width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
@@ -206,6 +213,7 @@ function MemberDetailModal({ accountId, onClose }: { accountId: string; onClose:
   const toast = useToast();
   const { data: member, isLoading } = useMemberDetail(accountId);
   const adjust = useAdjustPoints();
+  const [tab, setTab] = useState<'points' | 'orders'>('points');
   const [delta, setDelta] = useState('');
   const [note, setNote] = useState('');
 
@@ -234,8 +242,16 @@ function MemberDetailModal({ accountId, onClose }: { accountId: string; onClose:
           <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center', color: 'var(--color-text-secondary)' }}><Icon name="x" size={18} /></button>
         </div>
 
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: 4, padding: '0 24px', borderBottom: '1px solid var(--color-border)' }}>
+          <TabButton active={tab === 'points'} onClick={() => setTab('points')}>แต้ม &amp; การปรับ</TabButton>
+          <TabButton active={tab === 'orders'} onClick={() => setTab('orders')}>ประวัติการซื้อ</TabButton>
+        </div>
+
         <div className="scroll" style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
-          {isLoading || !member ? (
+          {tab === 'orders' ? (
+            <MemberOrdersTab accountId={accountId} />
+          ) : isLoading || !member ? (
             <div style={{ color: 'var(--color-text-secondary)' }}>กำลังโหลด...</div>
           ) : (
             <>
@@ -282,6 +298,107 @@ function MemberDetailModal({ accountId, onClose }: { accountId: string; onClose:
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick} style={{
+      padding: '12px 8px', fontSize: 14, fontWeight: 600, cursor: 'pointer', background: 'none', marginBottom: -1,
+      color: active ? 'var(--color-text)' : 'var(--color-text-secondary)',
+      borderBottom: active ? '2px solid var(--color-accent)' : '2px solid transparent',
+    }}>{children}</button>
+  );
+}
+
+function MemberOrdersTab({ accountId }: { accountId: string }) {
+  const [page, setPage] = useState(1);
+  const limit = 20;
+  const { data, isLoading } = useMemberOrders(accountId, page, limit);
+
+  if (isLoading) return <div style={{ color: 'var(--color-text-secondary)' }}>กำลังโหลด...</div>;
+
+  const orders = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  if (total === 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: 40, color: 'var(--color-text-muted)' }}>
+        <Icon name="cart" size={36} color="var(--color-border)" />
+        <div style={{ marginTop: 10, fontSize: 14 }}>ยังไม่มีประวัติการซื้อ</div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Lifetime summary — aggregated across ALL orders, not just this page */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 18 }}>
+        <Stat label="ออเดอร์ทั้งหมด" value={total.toLocaleString()} />
+        <Stat label="ยอดซื้อสะสม" value={baht(Number(data?.total_spent ?? 0))} accent />
+        <Stat label="ส่วนลดสะสม" value={baht(Number(data?.total_discount ?? 0))} />
+      </div>
+
+      <div style={{ display: 'grid', gap: 10 }}>
+        {orders.map(o => <OrderCard key={o.id} o={o} />)}
+      </div>
+
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'center', marginTop: 16 }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={pageBtn(page <= 1)}>ก่อนหน้า</button>
+          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>หน้า {page} / {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={pageBtn(page >= totalPages)}>ถัดไป</button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function OrderCard({ o }: { o: import('@/hooks/use-membership').MemberOrderRead }) {
+  const discount = Number(o.discount);
+  const earned = o.points_earned ?? 0; // null = predates membership → show as 0
+  return (
+    <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--color-surface-2)' }}>
+        <span className="num" style={{ fontWeight: 700, fontSize: 14 }}>#{o.order_number}</span>
+        <Tag tone={ORDER_STATUS_TONE[o.status]}>{ORDER_STATUS_LABEL[o.status]}</Tag>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{fmtDateTime(o.created_at)}</span>
+      </div>
+      <div style={{ padding: '10px 14px' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+          <Tag tone="neutral">{CHANNEL_LABEL[o.channel] ?? o.channel}</Tag>
+          {o.payment_method && <Tag tone="neutral">{PAYMENT_LABEL[o.payment_method] ?? o.payment_method}</Tag>}
+          {o.reward_redeemed && <Tag tone="info">ใช้รางวัล</Tag>}
+          {earned > 0 && <Tag tone="success">+{earned} แต้ม</Tag>}
+        </div>
+        <div style={{ display: 'grid', gap: 4, marginBottom: 8 }}>
+          {o.items.map((it, i) => (
+            <div key={i} style={{ display: 'flex', fontSize: 13, color: 'var(--color-text-secondary)' }}>
+              <span className="num" style={{ width: 28, color: 'var(--color-text-muted)' }}>{it.quantity}×</span>
+              <span style={{ flex: 1 }}>{it.product_name}</span>
+              <span className="num">{baht(Number(it.line_total))}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 8, display: 'grid', gap: 3, fontSize: 13 }}>
+          <Row label="ยอดรวม" value={baht(Number(o.subtotal))} muted />
+          {discount > 0 && <Row label="ส่วนลด" value={`-${baht(discount)}`} discount />}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 14 }}>
+            <span>สุทธิ</span><span className="num">{baht(Number(o.total))}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value, muted, discount }: { label: string; value: string; muted?: boolean; discount?: boolean }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', color: discount ? 'var(--color-danger)' : muted ? 'var(--color-text-secondary)' : 'var(--color-text)' }}>
+      <span>{label}</span><span className="num">{value}</span>
     </div>
   );
 }

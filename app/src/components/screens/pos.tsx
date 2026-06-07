@@ -6,6 +6,7 @@ import { useToast, baht } from '../app-common';
 import { useAllProducts, useCategories, type MenuItem } from '@/hooks/use-products';
 import { useProductDetail } from '@/hooks/use-bom';
 import { useCreateOrder, usePayOrder } from '@/hooks/use-orders';
+import { ApiError } from '@/lib/api-client';
 import { useEvaluatePromotions, type EligiblePromotion } from '@/hooks/use-promotions';
 import ModifierModal from './modifier-modal';
 import PaymentModal from './payment-modal';
@@ -230,15 +231,37 @@ export default function POSTerminal() {
           pointsEarned: hasMember ? earned : undefined,
           rewardRedeemed: order.reward_redeemed,
         });
+      }).catch((payErr: unknown) => {
+        // The order WAS created (it's already in the kitchen) but recording the
+        // payment failed. Do NOT restore the cart — re-submitting would create a
+        // duplicate order. Tell the cashier to settle the existing bill instead.
+        const pmsg = payErr instanceof Error ? payErr.message : 'กรุณาลองใหม่';
+        toast({
+          kind: 'warning',
+          title: 'สร้างบิลแล้ว แต่ชำระเงินไม่สำเร็จ',
+          msg: `บิล ${order.order_number} ถูกส่งครัวแล้ว — ${pmsg} กรุณาเก็บเงินบิลนี้จากระบบ (อย่าสร้างบิลใหม่)`,
+          duration: 6000,
+        });
       })
     ).catch((err: unknown) => {
+      // Reached only when createOrder itself failed — the order was NOT created,
+      // so it is safe to restore the cart and let the cashier retry. Restoring the
+      // cart also re-triggers POST /evaluate (the backend re-validates promotions/
+      // membership at checkout — e.g. a HAPPY_HOUR that just expired), refreshing
+      // eligibility so the cashier sees the current promos before trying again.
       const msg = err instanceof Error ? err.message : 'กรุณาแจ้งผู้จัดการ';
-      // Backend re-validates promotions at checkout — surface a specific message if a promo was rejected.
-      const promoIssue = promoSnapshot.length > 0 && /promo|โปร|exclusive|expir|หมดอายุ|active|window|เวลา/i.test(msg);
+      setCart(cartSnapshot);
+      setMemberInfo(memberSnapshot);
+      setSelectedPromoIds(promoSnapshot);
+      // 422 = checkout re-validation rejected the order (stale promo/membership state).
+      const isValidation = err instanceof ApiError && err.status === 422;
+      const promoIssue = isValidation && promoSnapshot.length > 0;
       toast({
         kind: 'warning',
         title: promoIssue ? 'โปรโมชั่นใช้ไม่ได้' : 'บิลบันทึกไม่สำเร็จ',
-        msg: promoIssue ? `${msg} — กรุณาตรวจสอบโปรโมชั่นแล้วลองใหม่` : msg,
+        msg: promoIssue
+          ? `${msg} — รีเฟรชโปรโมชั่นให้แล้ว กรุณาตรวจสอบแล้วลองใหม่`
+          : `${msg} — กู้คืนตะกร้าให้แล้ว ลองใหม่อีกครั้ง`,
         duration: 4500,
       });
     });
