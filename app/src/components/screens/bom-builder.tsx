@@ -526,6 +526,28 @@ const EditableMenuName = ({ name, onRename }: { name: string; onRename: (n: stri
   );
 };
 
+// Spaced +/- step buttons placed beside a NumberInput. The native number spinner
+// is hidden (via the `no-spin` class on the input) because its arrows sit right
+// against the digits and are a tiny tap target; these sit apart and are easy to press.
+const StepButtons = ({ value, step, min, max, onChange }: { value: number; step: number; min?: number; max?: number; onChange: (n: number) => void }) => {
+  const clamp = (n: number) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, n));
+  const btn: React.CSSProperties = {
+    width: 34, height: 28, display: 'grid', placeItems: 'center',
+    background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 8,
+    color: 'var(--color-text)', cursor: 'pointer', transition: 'all 120ms var(--ease-out)',
+  };
+  const hover = (e: React.MouseEvent<HTMLButtonElement>, on: boolean) => {
+    e.currentTarget.style.background = on ? 'var(--color-surface)' : 'var(--color-surface-2)';
+    e.currentTarget.style.borderColor = on ? 'var(--color-accent)' : 'var(--color-border)';
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <button type="button" aria-label="เพิ่ม" style={btn} onClick={() => onChange(clamp(value + step))} onMouseEnter={e => hover(e, true)} onMouseLeave={e => hover(e, false)}><Icon name="plus" size={15} /></button>
+      <button type="button" aria-label="ลด" style={btn} onClick={() => onChange(clamp(value - step))} onMouseEnter={e => hover(e, true)} onMouseLeave={e => hover(e, false)}><Icon name="minus" size={15} /></button>
+    </div>
+  );
+};
+
 const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryId, categories, inventoryItems, totalCost, isProduced, batchSize, editedServingsPerBatch, onServingsPerBatchChange, costPerUnit, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onCategoryChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, onDuplicate, onRename, duplicating, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen, onAddModifier, onDeleteModifier }: RightPanelProps) => (
   <>
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
@@ -547,33 +569,39 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>
             {productType === 'MENU' ? 'ราคาขาย' : 'ต้นทุนผลิต'}
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-            <span style={{ fontSize: 18, color: 'var(--color-text-secondary)' }}>฿</span>
-            <NumberInput min={0} step={5} value={editedPrice}
-              onChange={onPriceChange}
-              className="num"
-              style={{ width: 96, fontSize: 30, fontWeight: 700, textAlign: 'right', border: 'none', borderBottom: '2px solid var(--color-border)', outline: 'none', padding: '4px 0', background: 'transparent', fontFamily: 'inherit', letterSpacing: '-0.02em' }}
-              onFocus={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
-              onBlur={e => e.target.style.borderBottomColor = 'var(--color-border)'}
-            />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+              <span style={{ fontSize: 18, color: 'var(--color-text-secondary)' }}>฿</span>
+              <NumberInput min={0} step={5} value={editedPrice}
+                onChange={onPriceChange}
+                className="num no-spin"
+                style={{ width: 78, fontSize: 30, fontWeight: 700, textAlign: 'right', border: 'none', borderBottom: '2px solid var(--color-border)', outline: 'none', padding: '4px 0', background: 'transparent', fontFamily: 'inherit', letterSpacing: '-0.02em' }}
+                onFocus={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
+                onBlur={e => e.target.style.borderBottomColor = 'var(--color-border)'}
+              />
+            </div>
+            <StepButtons value={editedPrice} step={5} min={0} onChange={onPriceChange} />
           </div>
         </div>
         {isProduced && (
           <div>
             <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>จำนวน/แบทช์</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-              <NumberInput
-                min={1}
-                step={1}
-                integer
-                value={editedServingsPerBatch}
-                onChange={onServingsPerBatchChange}
-                className="num"
-                style={{ width: 72, fontSize: 30, fontWeight: 700, textAlign: 'right', border: 'none', borderBottom: '2px solid var(--color-accent)', outline: 'none', padding: '4px 0', background: 'transparent', fontFamily: 'inherit', letterSpacing: '-0.02em', color: 'var(--color-primary-700)' }}
-                onFocus={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
-                onBlur={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
-              />
-              <span style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>ชิ้น</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                <NumberInput
+                  min={1}
+                  step={1}
+                  integer
+                  value={editedServingsPerBatch}
+                  onChange={onServingsPerBatchChange}
+                  className="num no-spin"
+                  style={{ width: 56, fontSize: 30, fontWeight: 700, textAlign: 'right', border: 'none', borderBottom: '2px solid var(--color-accent)', outline: 'none', padding: '4px 0', background: 'transparent', fontFamily: 'inherit', letterSpacing: '-0.02em', color: 'var(--color-primary-700)' }}
+                  onFocus={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
+                  onBlur={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
+                />
+                <span style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>ชิ้น</span>
+              </div>
+              <StepButtons value={editedServingsPerBatch} step={1} min={1} onChange={onServingsPerBatchChange} />
             </div>
           </div>
         )}
