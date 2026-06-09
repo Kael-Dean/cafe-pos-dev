@@ -711,3 +711,77 @@ async def test_list_members_does_not_leak_across_stores(db: AsyncSession, store_
     result = await svc.list_members(db, store_id=store_a.id)
     assert result.total == 1
     assert result.items[0].customer_name == "Store-A Member"
+
+
+# ── backend-added customers (no loyalty account yet) ───────────────────────────
+
+
+async def _make_customer_only(db: AsyncSession, *, store_id: str, name: str, phone: str) -> Customer:
+    """A customer added directly in the backend — no MembershipAccount yet."""
+    customer = Customer(store_id=store_id, name=name, phone=phone)
+    db.add(customer)
+    await db.commit()
+    return customer
+
+
+@pytest.mark.asyncio
+async def test_list_members_includes_backend_customer_without_account(db: AsyncSession, store_a):
+    await make_member(db, store_id=store_a.id, name="With Account", phone="0811111111")
+    customer = await _make_customer_only(db, store_id=store_a.id, name="Backend Only", phone="0899999999")
+
+    result = await svc.list_members(db, store_id=store_a.id)
+    assert result.total == 2
+    assert {m.customer_name for m in result.items} == {"With Account", "Backend Only"}
+
+    backend = next(m for m in result.items if m.customer_name == "Backend Only")
+    assert backend.id == customer.id  # falls back to customer id
+    assert backend.points_balance == 0
+    assert backend.tier == MembershipTier.NONE
+
+
+@pytest.mark.asyncio
+async def test_list_members_search_finds_backend_customer(db: AsyncSession, store_a):
+    customer = await _make_customer_only(db, store_id=store_a.id, name="Somchai", phone="0861234567")
+
+    by_phone = await svc.list_members(db, store_id=store_a.id, phone="0861234")
+    assert by_phone.total == 1
+    assert by_phone.items[0].customer_name == "Somchai"
+
+    by_name = await svc.list_members(db, store_id=store_a.id, name="somc")
+    assert by_name.total == 1
+    assert by_name.items[0].id == customer.id
+
+
+@pytest.mark.asyncio
+async def test_get_member_synthesizes_for_account_less_customer(db: AsyncSession, store_a):
+    customer = await _make_customer_only(db, store_id=store_a.id, name="No Points", phone="0850000000")
+
+    result = await svc.get_member(db, store_id=store_a.id, account_id=customer.id)
+    assert result.id == customer.id
+    assert result.customer_name == "No Points"
+    assert result.points_balance == 0
+    assert result.tier == MembershipTier.NONE
+    assert result.recent_transactions == []
+
+
+@pytest.mark.asyncio
+async def test_adjust_points_provisions_account_for_backend_customer(db: AsyncSession, store_a, user_a):
+    from sqlalchemy import select
+
+    customer = await _make_customer_only(db, store_id=store_a.id, name="Upgrade Me", phone="0840000000")
+
+    result = await svc.adjust_points(
+        db, store_id=store_a.id, account_id=customer.id, user_id=user_a.id,
+        req=AdjustPointsRequest(delta=15, note="Welcome bonus"),
+    )
+    assert result.points_balance == 15
+    assert result.customer_name == "Upgrade Me"
+    assert len(result.recent_transactions) == 1
+    assert result.recent_transactions[0].delta == 15
+
+    # A real account now exists and the returned id points to it.
+    account = (await db.execute(
+        select(MembershipAccount).where(MembershipAccount.customer_id == customer.id)
+    )).scalar_one()
+    assert result.id == account.id
+    assert account.points_balance == 15

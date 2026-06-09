@@ -319,17 +319,46 @@ def _get_tier_multiplier(account: MembershipAccount, program: MembershipProgram)
     return Decimal("1.0")
 
 
-async def _load_account_for_update(
-    db: AsyncSession, *, account_id: str, store_id: str
+async def _resolve_account_for_update(
+    db: AsyncSession, *, member_id: str, store_id: str
 ) -> MembershipAccount:
-    """SELECT FOR UPDATE to prevent concurrent earn race conditions."""
+    """Lock the account for `member_id` (SELECT FOR UPDATE) to prevent concurrent
+    earn/adjust races.
+
+    `member_id` is normally a MembershipAccount id. It may instead be a Customer
+    id for a member added directly in the backend who has no loyalty account yet
+    — in that case the account is provisioned on the spot so points can be
+    tracked from now on. Must be called inside an active ``db.begin()``."""
     account = (await db.execute(
         select(MembershipAccount)
-        .where(MembershipAccount.id == account_id, MembershipAccount.store_id == store_id)
+        .where(MembershipAccount.id == member_id, MembershipAccount.store_id == store_id)
         .with_for_update()
     )).scalar_one_or_none()
-    if not account:
+    if account:
+        return account
+
+    customer = (await db.execute(
+        select(Customer).where(
+            Customer.id == member_id,
+            Customer.store_id == store_id,
+            Customer.is_active.is_(True),
+        )
+    )).scalar_one_or_none()
+    if customer is None:
         raise NotFound("Membership account not found")
+
+    # The customer may already own an account under a different id — reuse it.
+    account = (await db.execute(
+        select(MembershipAccount)
+        .where(MembershipAccount.customer_id == customer.id)
+        .with_for_update()
+    )).scalar_one_or_none()
+    if account:
+        return account
+
+    account = MembershipAccount(customer_id=customer.id, store_id=store_id)
+    db.add(account)
+    await db.flush()
     return account
 
 
@@ -483,6 +512,23 @@ async def _reverse_points(
 # Stubs — full implementations added in Task 9
 # ---------------------------------------------------------------------------
 
+def _synthetic_member_fields(customer: Customer) -> dict[str, object]:
+    """Field map for a backend-added Customer that has no loyalty account yet —
+    presented as a zero-point member. The id falls back to the customer id so the
+    row stays clickable; opening or adjusting it provisions a real account."""
+    return {
+        "id": customer.id,
+        "customer_id": customer.id,
+        "customer_name": customer.name,
+        "phone": customer.phone,
+        "points_balance": 0,
+        "lifetime_points_earned": 0,
+        "tier": MembershipTier.NONE,
+        "date_of_birth": None,
+        "joined_at": customer.created_at,
+    }
+
+
 async def list_members(
     db: AsyncSession,
     *,
@@ -495,11 +541,13 @@ async def list_members(
     limit = min(limit, _MAX_PAGE)
     offset = (max(page, 1) - 1) * limit
 
+    # LEFT JOIN from Customer so members registered directly in the backend
+    # (a Customer with no MembershipAccount yet) still appear in the list.
     stmt = (
-        select(MembershipAccount, Customer.name, Customer.phone)
-        .join(Customer, MembershipAccount.customer_id == Customer.id)
-        .where(MembershipAccount.store_id == store_id, Customer.is_active.is_(True))
-        .order_by(MembershipAccount.joined_at.desc())
+        select(Customer, MembershipAccount)
+        .outerjoin(MembershipAccount, MembershipAccount.customer_id == Customer.id)
+        .where(Customer.store_id == store_id, Customer.is_active.is_(True))
+        .order_by(func.coalesce(MembershipAccount.joined_at, Customer.created_at).desc())
     )
     if name:
         stmt = stmt.where(Customer.name.ilike(f"%{name}%"))
@@ -510,8 +558,12 @@ async def list_members(
     rows = list((await db.execute(stmt.offset(offset).limit(limit))).all())
 
     items = [
-        AccountRead.model_validate({**acc.__dict__, "customer_name": cname, "phone": cphone})
-        for acc, cname, cphone in rows
+        AccountRead.model_validate(
+            {**account.__dict__, "customer_name": customer.name, "phone": customer.phone}
+            if account is not None
+            else _synthetic_member_fields(customer)
+        )
+        for customer, account in rows
     ]
     return MembersPage(items=items, total=total, page=page, limit=limit)
 
@@ -529,7 +581,21 @@ async def get_member(
         )
     )).first()
     if not row:
-        raise NotFound("Member not found")
+        # account_id may actually be a customer id — a member added in the
+        # backend who has no loyalty account yet. Present a zero-point member.
+        customer = (await db.execute(
+            select(Customer).where(
+                Customer.id == account_id,
+                Customer.store_id == store_id,
+                Customer.is_active.is_(True),
+            )
+        )).scalar_one_or_none()
+        if customer is None:
+            raise NotFound("Member not found")
+        return MemberRead.model_validate({
+            **_synthetic_member_fields(customer),
+            "recent_transactions": [],
+        })
 
     account, customer_name, customer_phone = row
 
@@ -557,7 +623,7 @@ async def adjust_points(
     req: AdjustPointsRequest,
 ) -> MemberRead:
     async with db.begin():
-        account = await _load_account_for_update(db, account_id=account_id, store_id=store_id)
+        account = await _resolve_account_for_update(db, member_id=account_id, store_id=store_id)
         new_balance = account.points_balance + req.delta
         if new_balance < 0:
             raise Unprocessable(
@@ -576,5 +642,8 @@ async def adjust_points(
             note=req.note,
             created_by_id=user_id,
         ))
+        # `account.id` is the real account id even when `account_id` was a
+        # customer id that we just provisioned above.
+        resolved_id = account.id
 
-    return await get_member(db, store_id=store_id, account_id=account_id)
+    return await get_member(db, store_id=store_id, account_id=resolved_id)
