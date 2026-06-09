@@ -16,6 +16,7 @@ import net from 'node:net';
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -41,6 +42,10 @@ function loadConfig() {
     storeTaxId:   base.storeTaxId,
     storeBranch:  base.storeBranch,
     storePhone:   base.storePhone,
+    // Connection mode: 'lan' = Epson over TCP 9100 (default, unchanged for existing shops);
+    // 'usb' = a Windows-installed USB printer (e.g. AiYin AN581-C) addressed by name via the spooler.
+    mode:        (process.env.PRINTER_MODE ?? base.mode ?? 'lan'),
+    printerName:  base.printerName ?? null,
     ip:   process.env.PRINTER_IP   ?? base.ip   ?? '192.168.192.168',
     port: Number(process.env.PRINTER_PORT ?? base.port ?? 9100),
   };
@@ -245,11 +250,304 @@ async function scanSubnet(subnet, port) {
   return found;
 }
 
+/* ── Windows USB printer I/O (spooler RAW) ───────────────────────────
+   USB thermal printers (e.g. AiYin AN581-C on port USB001) have no IP, so
+   they can't be reached over TCP 9100. Instead we hand the raw ESC/POS bytes
+   to the Windows print spooler with datatype "RAW" — the spooler forwards them
+   to the printer untouched (no GDI rendering), so the printer's own ESC/POS
+   commands, including the auto-cut (GS V), are honoured. We drive the spooler
+   via a short PowerShell P/Invoke of winspool.drv (the classic RawPrinterHelper).
+   Only this file is deployed, so the helper script lives inline here. */
+
+const RAW_PRINT_PS1 = `
+$ErrorActionPreference = 'Stop'
+$printer = $env:RP_PRINTER
+$file    = $env:RP_FILE
+Add-Type @"
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+public class RawPrinter {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public class DOCINFOW { public string pDocName; public string pOutputFile; public string pDataType; }
+  [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)] public static extern bool OpenPrinter(string src, out IntPtr h, IntPtr pd);
+  [DllImport("winspool.drv", SetLastError = true)] public static extern bool ClosePrinter(IntPtr h);
+  [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)] public static extern bool StartDocPrinter(IntPtr h, int level, [In] DOCINFOW di);
+  [DllImport("winspool.drv", SetLastError = true)] public static extern bool EndDocPrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError = true)] public static extern bool StartPagePrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError = true)] public static extern bool EndPagePrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError = true)] public static extern bool WritePrinter(IntPtr h, byte[] buf, int count, out int written);
+  public static void Send(string printer, byte[] bytes) {
+    IntPtr h;
+    if (!OpenPrinter(printer, out h, IntPtr.Zero)) throw new Exception("OpenPrinter failed (" + Marshal.GetLastWin32Error() + ")");
+    try {
+      var di = new DOCINFOW(); di.pDocName = "POS Receipt"; di.pDataType = "RAW";
+      if (!StartDocPrinter(h, 1, di)) throw new Exception("StartDocPrinter failed (" + Marshal.GetLastWin32Error() + ")");
+      try {
+        if (!StartPagePrinter(h)) throw new Exception("StartPagePrinter failed (" + Marshal.GetLastWin32Error() + ")");
+        int written;
+        if (!WritePrinter(h, bytes, bytes.Length, out written)) throw new Exception("WritePrinter failed (" + Marshal.GetLastWin32Error() + ")");
+        EndPagePrinter(h);
+      } finally { EndDocPrinter(h); }
+    } finally { ClosePrinter(h); }
+  }
+}
+"@
+[RawPrinter]::Send($printer, [System.IO.File]::ReadAllBytes($file))
+`;
+
+// Run a PowerShell script via -EncodedCommand (base64 UTF-16LE) so multi-line
+// scripts pass without any quoting headaches. Resolves stdout, rejects on non-zero.
+function runPowerShell(script, extraEnv = {}) {
+  return new Promise((resolve, reject) => {
+    const b64 = Buffer.from(script, 'utf16le').toString('base64');
+    const ps = spawn('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', b64,
+    ], { env: { ...process.env, ...extraEnv } });
+    let out = '', err = '';
+    ps.stdout.on('data', (d) => { out += d; });
+    ps.stderr.on('data', (d) => { err += d; });
+    ps.on('error', (e) => reject(new Error(`powershell ไม่พร้อมใช้งาน: ${e.message}`)));
+    ps.on('close', (code) => {
+      if (code === 0) resolve(out);
+      else reject(new Error((err.trim() || out.trim() || `powershell exited ${code}`).split('\n')[0]));
+    });
+  });
+}
+
+function sendToWindowsPrinter(printerName, buf) {
+  const tmp = path.join(os.tmpdir(), `pos-receipt-${Date.now()}-${Math.random().toString(36).slice(2)}.bin`);
+  fs.writeFileSync(tmp, buf);
+  return runPowerShell(RAW_PRINT_PS1, { RP_PRINTER: printerName, RP_FILE: tmp })
+    .finally(() => { try { fs.unlinkSync(tmp); } catch {} });
+}
+
+// Names of all installed Windows printers (for the Hardware page dropdown).
+async function listWindowsPrinters() {
+  try {
+    const out = await runPowerShell('Get-Printer | Select-Object -ExpandProperty Name');
+    return out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  } catch { return []; }
+}
+
+// USB "online" = the named printer is installed and not in an error/offline state.
+async function checkWindowsPrinter(name) {
+  if (!name) return false;
+  try {
+    const out = await runPowerShell(
+      '$p = Get-Printer -Name $env:RP_PRINTER -ErrorAction Stop; if ($p.PrinterStatus -in @(\'Offline\',\'Error\')) { \'offline\' } else { \'ok\' }',
+      { RP_PRINTER: name },
+    );
+    return out.trim() === 'ok';
+  } catch { return false; }
+}
+
+/* ── USB receipt as a raster image (Windows font engine) ─────────────
+   Cheap USB clones like the AN581-C can't render stacked Thai vowels/tone marks from any ESC/POS
+   code page (the built-in font lacks the glyphs). So for USB we lay the receipt out as text lines,
+   render them to a 1-bit bitmap with Windows GDI+ (System.Drawing) using a Thai font — which places
+   every mark correctly — and ship that as an ESC/POS GS v 0 raster. Renderer reads a JSON line list
+   and prints the raster bytes as base64. RECEIPT_WIDTH = 384 dots = 58 mm @ 203 dpi (the AN581-C
+   is a 58 mm printer — its head only prints 384 dots wide; 576 ran off the right edge). */
+
+const RECEIPT_WIDTH = 384;
+
+const RENDER_PS1 = `
+$ErrorActionPreference='Stop'
+Add-Type -AssemblyName System.Drawing
+$doc = Get-Content -Raw -Encoding UTF8 -LiteralPath $env:RP_LINES | ConvertFrom-Json
+$W = [int]$doc.width
+$M = 10
+$fontName = 'Tahoma'
+function MkFont($px,$bold){
+  $st = [System.Drawing.FontStyle]::Regular
+  if($bold){ $st = [System.Drawing.FontStyle]::Bold }
+  New-Object System.Drawing.Font($fontName,[float]$px,$st,[System.Drawing.GraphicsUnit]::Pixel)
+}
+# Greedy word-wrap (breaks at spaces, falls back to mid-token) so long lines never overflow.
+function Wrap($g,$s,$f,$maxW,$fmt){
+  $res = New-Object System.Collections.Generic.List[string]
+  $cur = ''
+  foreach($ch in $s.ToCharArray()){
+    $cand = $cur + $ch
+    if(($g.MeasureString($cand,$f,100000,$fmt).Width) -gt $maxW -and $cur.Length -gt 0){
+      $sp = $cur.LastIndexOf(' ')
+      if($sp -gt 0){ $res.Add($cur.Substring(0,$sp)); $cur = $cur.Substring($sp+1) + $ch }
+      else { $res.Add($cur); $cur = [string]$ch }
+    } else { $cur = $cand }
+  }
+  if($cur.Length -gt 0 -or $res.Count -eq 0){ $res.Add($cur) }
+  ,$res
+}
+$mgBmp = New-Object System.Drawing.Bitmap 1,1
+$mg = [System.Drawing.Graphics]::FromImage($mgBmp)
+$mg.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::SingleBitPerPixelGridFit
+$fmt = [System.Drawing.StringFormat]::GenericTypographic
+
+# decode the embedded ESC/POS GS v 0 logo (1=black) straight into a 1-bit bitmap (no PNG to corrupt)
+$lb = [Convert]::FromBase64String($env:RP_LOGO_ESCPOS)
+$lwb = [int]$lb[4] + [int]$lb[5]*256
+$lW = $lwb*8
+$lH = [int]$lb[6] + [int]$lb[7]*256
+$logo = New-Object System.Drawing.Bitmap($lW,$lH,[System.Drawing.Imaging.PixelFormat]::Format1bppIndexed)
+$lrect = New-Object System.Drawing.Rectangle 0,0,$lW,$lH
+$lbd = $logo.LockBits($lrect,[System.Drawing.Imaging.ImageLockMode]::WriteOnly,[System.Drawing.Imaging.PixelFormat]::Format1bppIndexed)
+$lstride = $lbd.Stride
+$lrow = New-Object byte[] ($lstride*$lH)
+for($k=0; $k -lt $lrow.Length; $k++){ $lrow[$k] = 255 }          # white background (incl. row padding)
+for($ry=0; $ry -lt $lH; $ry++){ for($rb=0; $rb -lt $lwb; $rb++){ $lrow[$ry*$lstride+$rb] = [byte](255 - $lb[8+$ry*$lwb+$rb]) } }
+[System.Runtime.InteropServices.Marshal]::Copy($lrow,0,$lbd.Scan0,$lrow.Length)
+$logo.UnlockBits($lbd)
+$logoTop = 6; $logoGap = 8
+
+# Pass 1 — build a flat plan of physical rows + total height.
+$plan = New-Object System.Collections.Generic.List[object]
+$totalH = $logoTop + $logo.Height + $logoGap
+foreach($ln in $doc.lines){
+  if($ln.t -eq 'hr'){ $plan.Add(@{ k='hr' }); $totalH += 14 }
+  elseif($ln.t -eq 'sp'){ $plan.Add(@{ k='sp' }); $totalH += 14 }
+  elseif($ln.t -eq 'lr'){
+    $f = MkFont ([int]$ln.size) ([bool]$ln.bold)
+    $h = [int][math]::Ceiling($f.GetHeight($mg)) + 6
+    $plan.Add(@{ k='lr'; l=[string]$ln.l; r=[string]$ln.r; size=[int]$ln.size; bold=[bool]$ln.bold; h=$h })
+    $totalH += $h; $f.Dispose()
+  } else {
+    $f = MkFont ([int]$ln.size) ([bool]$ln.bold)
+    $h = [int][math]::Ceiling($f.GetHeight($mg)) + 6
+    $subs = Wrap $mg ([string]$ln.s) $f ($W - 2*$M) $fmt
+    foreach($sub in $subs){
+      $plan.Add(@{ k='t'; s=$sub; a=[string]$ln.a; size=[int]$ln.size; bold=[bool]$ln.bold; h=$h })
+      $totalH += $h
+    }
+    $f.Dispose()
+  }
+}
+$totalH += 12
+
+# Pass 2 — draw.
+$bmp = New-Object System.Drawing.Bitmap $W,$totalH
+$g = [System.Drawing.Graphics]::FromImage($bmp)
+$g.Clear([System.Drawing.Color]::White)
+$g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::SingleBitPerPixelGridFit
+$g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+$g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+$black = [System.Drawing.Brushes]::Black
+$lw = $logo.Width; $lh = $logo.Height
+$logoRect = New-Object System.Drawing.Rectangle ([int](($W - $lw)/2)), $logoTop, $lw, $lh
+$g.DrawImage($logo, $logoRect)  # explicit dest size → no DPI scaling; NearestNeighbor keeps dither crisp
+$y = $logoTop + $lh + $logoGap
+foreach($it in $plan){
+  if($it.k -eq 'hr'){ $g.FillRectangle($black, $M, $y + 5, $W - 2*$M, 2); $y += 14 }
+  elseif($it.k -eq 'sp'){ $y += 14 }
+  elseif($it.k -eq 'lr'){
+    $f = MkFont $it.size $it.bold
+    $g.DrawString($it.l, $f, $black, [float]$M, [float]$y, $fmt)
+    $rw = $g.MeasureString($it.r, $f, $W, $fmt).Width
+    $g.DrawString($it.r, $f, $black, [float]($W - $M - $rw), [float]$y, $fmt)
+    $f.Dispose(); $y += $it.h
+  } else {
+    $f = MkFont $it.size $it.bold
+    if($it.a -eq 'center'){
+      $sw = $g.MeasureString($it.s, $f, $W, $fmt).Width
+      $x = [float](($W - $sw)/2); if($x -lt $M){ $x = [float]$M }
+      $g.DrawString($it.s, $f, $black, $x, [float]$y, $fmt)
+    } else { $g.DrawString($it.s, $f, $black, [float]$M, [float]$y, $fmt) }
+    $f.Dispose(); $y += $it.h
+  }
+}
+
+# Pack to a 1-bit ESC/POS raster (GS v 0), banded for printer safety.
+$bpr = [int][math]::Ceiling($W/8.0)
+$rect = New-Object System.Drawing.Rectangle 0,0,$W,$totalH
+$b1 = $bmp.Clone($rect,[System.Drawing.Imaging.PixelFormat]::Format1bppIndexed)
+$bd = $b1.LockBits($rect,[System.Drawing.Imaging.ImageLockMode]::ReadOnly,[System.Drawing.Imaging.PixelFormat]::Format1bppIndexed)
+$stride = $bd.Stride
+$buf = New-Object byte[] ($stride*$totalH)
+[System.Runtime.InteropServices.Marshal]::Copy($bd.Scan0,$buf,0,$buf.Length)
+$b1.UnlockBits($bd)
+$out = New-Object System.Collections.Generic.List[byte]
+$band = 128; $row = 0
+while($row -lt $totalH){
+  $hh = [math]::Min($band, $totalH - $row)
+  $out.Add(0x1D); $out.Add(0x76); $out.Add(0x30); $out.Add(0x00)
+  $out.Add([byte]($bpr % 256)); $out.Add([byte]([math]::Floor($bpr/256)))
+  $out.Add([byte]($hh % 256));  $out.Add([byte]([math]::Floor($hh/256)))
+  for($yy=0; $yy -lt $hh; $yy++){
+    $o = ($row+$yy)*$stride
+    for($bx=0; $bx -lt $bpr; $bx++){ $out.Add([byte](255 - $buf[$o+$bx])) }
+  }
+  $row += $hh
+}
+[Console]::Out.Write([Convert]::ToBase64String($out.ToArray()))
+`;
+
+function buildReceiptLines(d) {
+  const N = 26, BIG = 36; // sized for a 58 mm (384-dot) head
+  const L = [];
+  L.push({ t: 'text', s: d.storeName, a: 'center', size: BIG, bold: true });
+  L.push({ t: 'text', s: 'ใบเสร็จรับเงิน', a: 'center', size: N });
+  L.push({ t: 'text', s: 'ต้นฉบับ', a: 'center', size: N });
+  L.push({ t: 'hr' });
+  if (d.storeAddress) L.push({ t: 'text', s: d.storeAddress, a: 'left', size: N });
+  if (d.storeTaxId)   L.push({ t: 'text', s: `ผู้เสียภาษี: ${d.storeTaxId}`, a: 'left', size: N });
+  if (d.storeBranch)  L.push({ t: 'text', s: d.storeBranch, a: 'left', size: N });
+  if (d.storePhone)   L.push({ t: 'text', s: `โทร. ${d.storePhone}`, a: 'left', size: N });
+  L.push({ t: 'hr' });
+  if (d.invoiceNo) L.push({ t: 'text', s: `เลขที่: ${d.invoiceNo}`, a: 'left', size: N });
+  L.push({ t: 'text', s: `ออเดอร์: #${d.orderNumber}`, a: 'left', size: N });
+  L.push({ t: 'text', s: new Date().toLocaleString('th-TH'), a: 'left', size: N });
+  if (d.memberName) L.push({ t: 'text', s: `ลูกค้า: ${d.memberName}`, a: 'left', size: N });
+  L.push({ t: 'hr' });
+  L.push({ t: 'lr', l: 'รายการ', r: 'จำนวนเงิน', size: N });
+  L.push({ t: 'hr' });
+  for (const it of d.items) {
+    L.push({ t: 'lr', l: it.name, r: fmt2(it.qty * it.unitPrice), size: N });
+    L.push({ t: 'text', s: `  ${it.qty} x ${fmt2(it.unitPrice)}`, a: 'left', size: N });
+    for (const m of it.mods ?? []) L.push({ t: 'text', s: `  + ${m}`, a: 'left', size: N });
+  }
+  L.push({ t: 'hr' });
+  L.push({ t: 'lr', l: 'รวมทั้งสิ้น (บาท)', r: fmt2(d.total), size: N, bold: true });
+  L.push({ t: 'text', s: `(${bahtText(d.total)})`, a: 'left', size: N });
+  L.push({ t: 'text', s: `ชำระ: ${d.paymentLabel}`, a: 'left', size: N });
+  if (d.cashGiven != null) {
+    L.push({ t: 'lr', l: 'รับเงิน', r: fmt2(d.cashGiven), size: N });
+    L.push({ t: 'lr', l: 'เงินทอน', r: fmt2(d.cashGiven - d.total), size: N });
+  }
+  L.push({ t: 'hr' });
+  L.push({ t: 'sp' });
+  L.push({ t: 'sp' });
+  L.push({ t: 'text', s: 'ลงชื่อผู้รับเงิน ......................', a: 'center', size: N });
+  L.push({ t: 'sp' });
+  L.push({ t: 'text', s: 'ขอบคุณที่ใช้บริการ', a: 'center', size: N });
+  return L;
+}
+
+function renderLinesToRasterB64(lines) {
+  const tmp = path.join(os.tmpdir(), `pos-lines-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+  fs.writeFileSync(tmp, JSON.stringify({ width: RECEIPT_WIDTH, lines }), 'utf8');
+  return runPowerShell(RENDER_PS1, { RP_LINES: tmp, RP_LOGO_ESCPOS: LOGO_ESCPOS_B64 })
+    .finally(() => { try { fs.unlinkSync(tmp); } catch {} });
+}
+
+// USB receipt: the whole thing (logo + text) is one raster image with perfect Thai, then ESC i cut.
+async function buildUsbReceipt(data) {
+  const b64 = (await renderLinesToRasterB64(buildReceiptLines(data))).trim();
+  const raster = Buffer.from(b64, 'base64');
+  return Buffer.concat([
+    cmd(ESC, 0x40),            // init
+    raster,                    // logo + receipt body, centered consistently
+    Buffer.from([LF, LF, LF]),
+    cmd(ESC, 0x69),            // ESC i — full cut (AN581-C)
+  ]);
+}
+
 function saveConfig(patch) {
   let current = {};
   try { current = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch {}
   const updated = {
     ...current,
+    ...(patch.mode         !== undefined ? { mode: patch.mode === 'usb' ? 'usb' : 'lan' }   : {}),
+    ...(patch.printerName  !== undefined ? { printerName: patch.printerName ? String(patch.printerName).trim() : null } : {}),
     ...(patch.ip           !== undefined ? { ip: String(patch.ip).trim() }                  : {}),
     ...(patch.port         !== undefined ? { port: Number(patch.port) }                     : {}),
     ...(patch.storeName    !== undefined ? { storeName: String(patch.storeName).trim() }    : {}),
@@ -258,7 +556,8 @@ function saveConfig(patch) {
     ...(patch.storeBranch  !== undefined ? { storeBranch:  patch.storeBranch  ?? null }     : {}),
     ...(patch.storePhone   !== undefined ? { storePhone:   patch.storePhone   ?? null }     : {}),
   };
-  if (!updated.ip || typeof updated.ip !== 'string') throw new Error('IP ไม่ถูกต้อง');
+  // LAN mode still requires a valid IP; USB mode is addressed by printerName instead.
+  if (updated.mode !== 'usb' && (!updated.ip || typeof updated.ip !== 'string')) throw new Error('IP ไม่ถูกต้อง');
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2), 'utf8');
   return updated;
 }
@@ -297,24 +596,45 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && url.pathname === '/status') {
       const cfg = loadConfig();
-      const online = await checkPrinter(cfg.ip, cfg.port);
-      return json(res, 200, { printer: online, ip: cfg.ip });
+      const online = cfg.mode === 'usb'
+        ? await checkWindowsPrinter(cfg.printerName)
+        : await checkPrinter(cfg.ip, cfg.port);
+      // `ip` stays populated (the Hardware page reads it); for USB it carries the printer name.
+      return json(res, 200, {
+        printer: online,
+        mode: cfg.mode,
+        printerName: cfg.printerName,
+        ip: cfg.mode === 'usb' ? (cfg.printerName ?? '') : cfg.ip,
+      });
+    }
+
+    if (req.method === 'GET' && url.pathname === '/printers') {
+      const printers = await listWindowsPrinters();
+      return json(res, 200, { printers });
     }
 
     if (req.method === 'POST' && url.pathname === '/print') {
       const raw = await readBody(req);
       const body = JSON.parse(raw);
       const cfg = loadConfig();
-      const receipt = buildESCPOS({
+      const data = {
         storeName:    cfg.storeName,
         storeAddress: cfg.storeAddress,
         storeTaxId:   cfg.storeTaxId,
         storeBranch:  cfg.storeBranch,
         storePhone:   cfg.storePhone,
         ...body,
-      });
-      await sendToPrinter(cfg.ip, cfg.port, receipt);
-      console.log(`[print] ok  order=${body.orderNumber}  items=${body.items?.length ?? 0}`);
+      };
+      if (cfg.mode === 'usb') {
+        if (!cfg.printerName) throw new Error('ยังไม่ได้เลือกเครื่องพิมพ์ USB');
+        const receipt = await buildUsbReceipt(data); // rendered as an image → perfect Thai + ESC i cut
+        await sendToWindowsPrinter(cfg.printerName, receipt);
+        console.log(`[print] ok (usb)  printer="${cfg.printerName}"  order=${body.orderNumber}  items=${body.items?.length ?? 0}`);
+      } else {
+        const receipt = buildESCPOS(data);
+        await sendToPrinter(cfg.ip, cfg.port, receipt);
+        console.log(`[print] ok (lan)  ip=${cfg.ip}  order=${body.orderNumber}  items=${body.items?.length ?? 0}`);
+      }
       return json(res, 200, { ok: true });
     }
 
@@ -375,6 +695,11 @@ async function autoDiscover(port) {
 
 async function startup() {
   const cfg = loadConfig();
+  if (cfg.mode === 'usb') {
+    const ok = await checkWindowsPrinter(cfg.printerName);
+    console.log(`[startup] usb printer "${cfg.printerName ?? '(none)'}" ${ok ? 'ready' : 'not ready'}`);
+    return; // USB printers have no IP — skip the TCP subnet scan
+  }
   const reachable = await checkPrinter(cfg.ip, cfg.port);
   if (!reachable) {
     console.log(`[startup] ${cfg.ip}:${cfg.port} unreachable — running auto-discovery`);
@@ -391,7 +716,9 @@ async function startup() {
 server.listen(PORT, '127.0.0.1', async () => {
   const cfg = loadConfig();
   console.log(`Print bridge listening on http://127.0.0.1:${PORT}`);
-  console.log(`Printer: ${cfg.ip}:${cfg.port}`);
+  console.log(cfg.mode === 'usb'
+    ? `Printer: USB "${cfg.printerName ?? '(none selected)'}"`
+    : `Printer: LAN ${cfg.ip}:${cfg.port}`);
   console.log(`Auth:    ${TOKEN ? 'token required' : 'OPEN (no token)'}`);
   console.log(`Config:  ${CONFIG_PATH}`);
   await startup();

@@ -12,11 +12,15 @@ export const BRIDGE_BASE = 'http://127.0.0.1:8080';
 
 export const bridgeUrl = (path: string) => `${BRIDGE_BASE}${path}`;
 
-export type BridgeStatus = { printer: boolean; ip: string };
+export type PrinterMode = 'lan' | 'usb';
+
+export type BridgeStatus = { printer: boolean; ip: string; mode?: PrinterMode; printerName?: string | null };
 
 export type BridgeConfig = {
   ip: string;
   port?: number;
+  mode?: PrinterMode;
+  printerName?: string | null;
   storeName?: string;
   storeAddress?: string | null;
   storeTaxId?: string | null;
@@ -60,6 +64,14 @@ export async function scanPrinters(signal?: AbortSignal): Promise<{ found: strin
   const res = await bridgeFetch('/scan', { signal });
   if (!res.ok) throw new Error('scan failed');
   return res.json();
+}
+
+// USB mode: list Windows-installed printers so the user can pick one by name.
+export async function listPrinters(signal?: AbortSignal): Promise<string[]> {
+  const res = await bridgeFetch('/printers', { signal });
+  if (!res.ok) throw new Error('printers list failed');
+  const data = await res.json();
+  return (data as { printers?: string[] }).printers ?? [];
 }
 
 export async function sendPrintJob(body: Record<string, unknown>): Promise<void> {
