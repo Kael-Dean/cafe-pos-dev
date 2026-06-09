@@ -330,16 +330,50 @@ async function listWindowsPrinters() {
   } catch { return []; }
 }
 
-// USB "online" = the named printer is installed and not in an error/offline state.
+// USB "online" = the named printer is INSTALLED. Cheap USB thermal printers like the
+// AiYin AN581-C report PrinterStatus "Offline" whenever they sit idle, even though they
+// still print fine via the spooler queue — so we deliberately do NOT gate on PrinterStatus
+// (that was the "ออฟไลน์จนกว่าจะกดรีเฟรช" bug). Driver installed + USB plugged = ready,
+// and since the printer object survives a reboot, status stays online across restarts too.
 async function checkWindowsPrinter(name) {
   if (!name) return false;
   try {
     const out = await runPowerShell(
-      '$p = Get-Printer -Name $env:RP_PRINTER -ErrorAction Stop; if ($p.PrinterStatus -in @(\'Offline\',\'Error\')) { \'offline\' } else { \'ok\' }',
+      "if (Get-Printer -Name $env:RP_PRINTER -ErrorAction SilentlyContinue) { 'ok' } else { 'no' }",
       { RP_PRINTER: name },
     );
     return out.trim() === 'ok';
   } catch { return false; }
+}
+
+// Pick the USB printer to use. Prefer the saved name if it's still installed; otherwise
+// auto-select the AN581 (or any obvious 58mm thermal / receipt printer) from what's
+// installed. This self-heals after a driver reinstall renames the printer, so the user
+// never has to re-pick it from a dropdown.
+function matchAn581(names) {
+  return names.find((n) => /an[\s_-]?581/i.test(n))
+      ?? names.find((n) => /(58mm|pos[\s_-]?58|thermal|receipt|gprinter|xprinter|rongta)/i.test(n))
+      ?? null;
+}
+async function resolveUsbPrinter(savedName) {
+  const installed = await listWindowsPrinters();
+  if (savedName && installed.some((n) => n.toLowerCase() === savedName.toLowerCase())) return savedName;
+  return matchAn581(installed) ?? savedName ?? null;
+}
+
+// Best-effort: clear Windows' sticky "Use Printer Offline" (WorkOffline) flag, which USB
+// printers sometimes latch on when idle and which would otherwise hold print jobs in the
+// queue forever. Never fatal — printing proceeds regardless of the result.
+async function ensureWindowsPrinterOnline(name) {
+  if (!name) return;
+  try {
+    await runPowerShell(
+      "$ErrorActionPreference='SilentlyContinue';" +
+      "$p = Get-WmiObject -Class Win32_Printer -Filter (\"Name='\" + $env:RP_PRINTER.Replace(\"'\",\"''\") + \"'\");" +
+      "if ($p -and $p.WorkOffline) { $p.WorkOffline = $false; [void]$p.Put() }",
+      { RP_PRINTER: name },
+    );
+  } catch {}
 }
 
 /* ── USB receipt as a raster image (Windows font engine) ─────────────
@@ -596,15 +630,21 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && url.pathname === '/status') {
       const cfg = loadConfig();
+      let usbName = cfg.printerName;
+      if (cfg.mode === 'usb') {
+        // Auto-resolve (and persist) the AN581 so the user never has to re-pick it.
+        const resolved = await resolveUsbPrinter(cfg.printerName);
+        if (resolved && resolved !== cfg.printerName) { saveConfig({ printerName: resolved }); usbName = resolved; }
+      }
       const online = cfg.mode === 'usb'
-        ? await checkWindowsPrinter(cfg.printerName)
+        ? await checkWindowsPrinter(usbName)
         : await checkPrinter(cfg.ip, cfg.port);
       // `ip` stays populated (the Hardware page reads it); for USB it carries the printer name.
       return json(res, 200, {
         printer: online,
         mode: cfg.mode,
-        printerName: cfg.printerName,
-        ip: cfg.mode === 'usb' ? (cfg.printerName ?? '') : cfg.ip,
+        printerName: usbName,
+        ip: cfg.mode === 'usb' ? (usbName ?? '') : cfg.ip,
       });
     }
 
@@ -626,10 +666,13 @@ const server = http.createServer(async (req, res) => {
         ...body,
       };
       if (cfg.mode === 'usb') {
-        if (!cfg.printerName) throw new Error('ยังไม่ได้เลือกเครื่องพิมพ์ USB');
+        const usbName = await resolveUsbPrinter(cfg.printerName);
+        if (!usbName) throw new Error('ไม่พบเครื่องพิมพ์ USB (AN581-C) — เสียบสาย USB และติดตั้งไดรเวอร์แล้วลองใหม่');
+        if (usbName !== cfg.printerName) saveConfig({ printerName: usbName });
+        await ensureWindowsPrinterOnline(usbName);          // clear any stuck "offline" flag first
         const receipt = await buildUsbReceipt(data); // rendered as an image → perfect Thai + ESC i cut
-        await sendToWindowsPrinter(cfg.printerName, receipt);
-        console.log(`[print] ok (usb)  printer="${cfg.printerName}"  order=${body.orderNumber}  items=${body.items?.length ?? 0}`);
+        await sendToWindowsPrinter(usbName, receipt);
+        console.log(`[print] ok (usb)  printer="${usbName}"  order=${body.orderNumber}  items=${body.items?.length ?? 0}`);
       } else {
         const receipt = buildESCPOS(data);
         await sendToPrinter(cfg.ip, cfg.port, receipt);
@@ -696,8 +739,10 @@ async function autoDiscover(port) {
 async function startup() {
   const cfg = loadConfig();
   if (cfg.mode === 'usb') {
-    const ok = await checkWindowsPrinter(cfg.printerName);
-    console.log(`[startup] usb printer "${cfg.printerName ?? '(none)'}" ${ok ? 'ready' : 'not ready'}`);
+    const usbName = await resolveUsbPrinter(cfg.printerName);
+    if (usbName && usbName !== cfg.printerName) saveConfig({ printerName: usbName });
+    const ok = await checkWindowsPrinter(usbName);
+    console.log(`[startup] usb printer "${usbName ?? '(none)'}" ${ok ? 'ready' : 'not ready'}`);
     return; // USB printers have no IP — skip the TCP subnet scan
   }
   const reachable = await checkPrinter(cfg.ip, cfg.port);
