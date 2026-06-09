@@ -57,6 +57,7 @@ export const NAV: NavItem[] = [
   { id: 'shopping-list', label: 'Shopping List',  icon: 'cart' },
   { id: 'stock-take',    label: 'Stock Take',      icon: 'check' },
   { id: 'cash',      label: 'Cash',            icon: 'cash',     adminOnly: true },
+  { id: 'receipt-copies', label: 'สำเนาใบเสร็จ', icon: 'reports', adminOnly: true },
   { id: 'div1',      label: '',                divider: true },
   { id: 'promotions',label: 'Promotion / สะสมแต้ม', icon: 'tag' },
   { id: 'members',   label: 'สมาชิก / Members', icon: 'customers', adminOnly: true },

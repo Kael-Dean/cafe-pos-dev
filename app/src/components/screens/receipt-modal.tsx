@@ -38,6 +38,10 @@ interface Props {
   data: ReceiptData;
   onClose: () => void;
   onPrint: () => Promise<void>;
+  /** Original order date/time for reprinted copies; defaults to now. */
+  issuedAt?: Date;
+  /** Render as a duplicate ("สำเนา") instead of the original. */
+  copy?: boolean;
 }
 
 export const DEFAULT_STORE: StoreInfo = {
@@ -48,10 +52,10 @@ export const DEFAULT_STORE: StoreInfo = {
   phone: '044-511-234',
 };
 
-export default function ReceiptModal({ data, onClose, onPrint }: Props) {
+export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }: Props) {
   const [isPrinting, setIsPrinting] = useState(false);
 
-  const now = new Date();
+  const now = issuedAt ?? new Date();
   const buddhistYear = now.getFullYear() + 543;
   const invoiceNo = `IV${buddhistYear}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(data.orderNumber).padStart(4, '0')}`;
   const formatDate = (d: Date) => d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -135,7 +139,7 @@ export default function ReceiptModal({ data, onClose, onPrint }: Props) {
           <div style={{ padding: '20px', overflowY: 'auto', maxHeight: '68vh', background: '#EFE9E0' }}>
             <ReceiptPaper
               data={data}
-              invoiceNo={invoiceNo} now={now}
+              invoiceNo={invoiceNo} now={now} copy={copy}
               fmt={fmt} formatDate={formatDate} formatTime={formatTime}
               storeInfo={DEFAULT_STORE}
             />
@@ -206,8 +210,8 @@ function TRow({ l, r, bold, muted, indent }: {
   );
 }
 
-export function ReceiptPaper({ data, invoiceNo, now, fmt, storeInfo }: {
-  data: ReceiptData; invoiceNo: string; now: Date;
+export function ReceiptPaper({ data, invoiceNo, now, copy, fmt, storeInfo }: {
+  data: ReceiptData; invoiceNo: string; now: Date; copy?: boolean;
   fmt: (n: number) => string;
   formatDate?: (d: Date) => string; formatTime?: (d: Date) => string;
   storeInfo?: StoreInfo;
@@ -235,7 +239,7 @@ export function ReceiptPaper({ data, invoiceNo, now, fmt, storeInfo }: {
         />
         <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: '0.01em' }}>{S.name}</div>
         <div style={{ marginTop: 3 }}>ใบเสร็จรับเงิน</div>
-        <div style={{ color: '#7A6E60' }}>ต้นฉบับ</div>
+        <div style={{ color: copy ? 'var(--color-danger)' : '#7A6E60', fontWeight: copy ? 700 : 400 }}>{copy ? 'สำเนา' : 'ต้นฉบับ'}</div>
       </div>
 
       <Dash />

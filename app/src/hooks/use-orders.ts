@@ -72,7 +72,7 @@ const STATUS_MAP: Record<string, KDSTicket['status']> = {
   READY: 'ready',
 };
 
-function parseModifiers(raw: unknown): string[] {
+export function parseModifiers(raw: unknown): string[] {
   if (!raw || typeof raw !== 'object') return [];
   const obj = raw as Record<string, unknown>;
   const mods = obj.modifiers;

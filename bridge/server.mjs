@@ -156,7 +156,7 @@ function buildESCPOS(data) {
     line(data.storeName),
     cmd(GS,  0x21, 0x00),
     line('ใบเสร็จรับเงิน'),
-    line('ต้นฉบับ'),
+    line(data.copy ? 'สำเนา' : 'ต้นฉบับ'),
     line(dash),
     cmd(ESC, 0x61, 0x00),
   ];
@@ -169,7 +169,7 @@ function buildESCPOS(data) {
   parts.push(line(dash));
   if (data.invoiceNo) parts.push(line(`เลขที่: ${data.invoiceNo}`));
   parts.push(line(`ออเดอร์: #${data.orderNumber}`));
-  parts.push(line(new Date().toLocaleString('th-TH')));
+  parts.push(line((data.issuedAt ? new Date(data.issuedAt) : new Date()).toLocaleString('th-TH')));
   if (data.memberName) parts.push(line(`ลูกค้า: ${data.memberName}`));
   parts.push(line(dash));
 

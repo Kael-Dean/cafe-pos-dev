@@ -19,15 +19,19 @@ export interface PrintReceiptArgs {
   paymentMethod: string;
   cashGiven?: number;
   memberName?: string;
+  /** Original order date/time — used on reprinted copies so they show when the
+   *  order actually happened (not "now"). Defaults to the current time. */
+  issuedAt?: Date;
+  /** Marks the printout as a duplicate ("สำเนา") instead of the original. */
+  copy?: boolean;
   /** Optional store-header override (only defined fields win); defaults to DEFAULT_STORE. */
   store?: Partial<StoreInfo>;
 }
 
 // Receipt running number, mirrors the on-screen receipt modal.
-function makeInvoiceNo(orderNumber: string): string {
-  const now = new Date();
-  const buddhistYear = now.getFullYear() + 543;
-  return `IV${buddhistYear}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${orderNumber.padStart(4, '0')}`;
+function makeInvoiceNo(orderNumber: string, when: Date = new Date()): string {
+  const buddhistYear = when.getFullYear() + 543;
+  return `IV${buddhistYear}${String(when.getMonth() + 1).padStart(2, '0')}${String(when.getDate()).padStart(2, '0')}-${orderNumber.padStart(4, '0')}`;
 }
 
 export function usePrinter() {
@@ -49,7 +53,7 @@ export function usePrinter() {
       storeTaxId:   store.taxId,
       storeBranch:  store.branch,
       storePhone:   store.phone,
-      invoiceNo:    makeInvoiceNo(args.orderNumber),
+      invoiceNo:    makeInvoiceNo(args.orderNumber, args.issuedAt),
       orderNumber:  args.orderNumber,
       items:        args.items,
       subtotal:     args.subtotal,
@@ -59,6 +63,8 @@ export function usePrinter() {
 
     if (args.cashGiven != null) body.cashGiven = args.cashGiven;
     if (args.memberName) body.memberName = args.memberName;
+    if (args.issuedAt) body.issuedAt = args.issuedAt.toISOString();
+    if (args.copy) body.copy = true;
 
     await sendPrintJob(body);
   }, []);
