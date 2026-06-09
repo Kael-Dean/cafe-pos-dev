@@ -71,6 +71,7 @@ export default function Icon({ name, size = 20, color = 'currentColor', strokeWi
     bluetooth: <path d="M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11"/>,
     usb: <><path d="M12 2v12"/><path d="M9 8l3-6 3 6"/><rect x="9" y="14" width="6" height="6" rx="1"/><path d="M7 20h10"/></>,
     pencil: <><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></>,
+    download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></>,
   };
   return <svg {...props}>{paths[name] || null}</svg>;
 }

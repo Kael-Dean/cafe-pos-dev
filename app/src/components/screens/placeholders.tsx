@@ -65,20 +65,6 @@ export function Customers() {
   );
 }
 
-export function Reports() {
-  return (
-    <PlaceholderScreen title="Reports" icon="reports"
-      subtitle="Sales • Products • Customers • Staff • Inventory • Finance"
-      sections={[
-        { title: 'Sales Report', desc: 'ยอดขายแบ่งตามช่วงเวลา เปรียบเทียบ period vs period' },
-        { title: 'Menu Engineering', desc: 'Scatter plot 4-quadrant: Stars / Plow Horses / Puzzles / Dogs' },
-        { title: 'Staff Performance', desc: 'KPI per staff: sales/hour, ATV, void count, sales rank' },
-        { title: 'Export', desc: 'PDF / Excel / CSV — schedule รายวัน รายสัปดาห์ส่งเข้า email' },
-      ]}
-    />
-  );
-}
-
 export function Settings() {
   return (
     <PlaceholderScreen title="Settings" icon="settings"
