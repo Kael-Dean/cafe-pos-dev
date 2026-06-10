@@ -18,7 +18,7 @@ export default function Dashboard() {
   const d = DASHBOARD;
   const { data: liveTickets } = useKDSOrders();
   const { data: inventoryItems } = useInventory();
-  const { data: todayData } = useDashboardToday();
+  const { data: todayData, isLoading: kpiLoading } = useDashboardToday();
   const hourly = useSalesHourly();
   const { data: staffShifts } = useCashierShiftsToday();
 
@@ -66,7 +66,9 @@ export default function Dashboard() {
       </div>
 
       <div style={{display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16}}>
-        {kpis.map((k) => <KPICard key={k.id} {...k} />)}
+        {kpiLoading
+          ? Array.from({ length: 4 }).map((_, i) => <KPICardSkeleton key={i} />)
+          : kpis.map((k) => <KPICard key={k.id} {...k} />)}
       </div>
 
       <div style={{display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16, marginBottom: 16}}>
@@ -124,6 +126,20 @@ export default function Dashboard() {
     </div>
   );
 }
+
+/* Mirrors KPICard's exact box metrics so swapping skeleton → data causes no layout shift */
+const KPICardSkeleton = () => (
+  <div aria-hidden style={{
+    background: 'var(--color-surface)',
+    border: '1px solid var(--color-border)',
+    borderRadius: 12, padding: 20,
+    display: 'flex', flexDirection: 'column', gap: 12,
+  }}>
+    <div className="skeleton" style={{ height: 13, width: '55%' }} />
+    <div className="skeleton" style={{ height: 32, width: '70%' }} />
+    <div className="skeleton" style={{ height: 17, width: '45%' }} />
+  </div>
+);
 
 const Card = ({ children }: { children: React.ReactNode }) => (
   <div style={{background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 16}}>

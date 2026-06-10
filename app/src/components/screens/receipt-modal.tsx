@@ -127,7 +127,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
                 ออเดอร์ #{data.orderNumber} · {formatDate(now)} {formatTime(now)}
               </div>
             </div>
-            <button onClick={onClose} style={{
+            <button onClick={onClose} aria-label="ปิด" className="icon-btn hit-44" style={{
               width: 30, height: 30, borderRadius: 6, display: 'grid', placeItems: 'center',
               color: 'var(--color-text-secondary)',
             }}>
@@ -150,8 +150,8 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
             padding: '12px 20px', borderTop: '1px solid var(--color-border)',
             display: 'flex', gap: 8, alignItems: 'center',
           }}>
-            <button onClick={handleBrowserPrint} style={{
-              padding: '8px 14px', borderRadius: 8, fontSize: 13,
+            <button onClick={handleBrowserPrint} className="icon-btn pressable" style={{
+              padding: '8px 14px', borderRadius: 8, fontSize: 13, minHeight: 44,
               border: '1px solid var(--color-border)',
               display: 'flex', alignItems: 'center', gap: 6,
               color: 'var(--color-text-secondary)',
@@ -159,17 +159,18 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
               <Icon name="print" size={14} /> บันทึก PDF
             </button>
             <div style={{ flex: 1 }} />
-            <button onClick={onClose} style={{
-              padding: '8px 16px', borderRadius: 8, fontSize: 13,
+            <button onClick={onClose} className="icon-btn" style={{
+              padding: '8px 16px', borderRadius: 8, fontSize: 13, minHeight: 44,
               color: 'var(--color-text-secondary)',
             }}>ปิด</button>
-            <button onClick={handlePrint} disabled={isPrinting} style={{
-              padding: '9px 22px', borderRadius: 8, fontSize: 14, fontWeight: 700,
+            <button onClick={handlePrint} disabled={isPrinting} aria-busy={isPrinting || undefined} className="pressable" style={{
+              padding: '9px 22px', borderRadius: 8, fontSize: 14, fontWeight: 700, minHeight: 44,
               background: isPrinting ? 'var(--color-border)' : 'var(--color-primary)',
               color: 'white', display: 'flex', alignItems: 'center', gap: 8,
               opacity: isPrinting ? 0.7 : 1,
+              cursor: isPrinting ? 'wait' : 'pointer',
             }}>
-              <Icon name="printer" size={16} />
+              {isPrinting ? <span className="spinner" aria-hidden /> : <Icon name="printer" size={16} />}
               {isPrinting ? 'กำลังพิมพ์...' : 'พิมพ์ใบเสร็จ'}
             </button>
           </div>

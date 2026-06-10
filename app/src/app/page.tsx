@@ -104,7 +104,11 @@ export default function POS() {
       <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
         <Sidebar current={screen} onNavigate={(s) => { void navigate(s as Screen); }} onLogout={() => { void handleLogout(); }} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
         <main style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'auto' }}>
-          {screens[screen]}
+          {/* key={screen} remounts the wrapper on navigation so .screen-enter
+              (fade + slide-up, transform/opacity only) plays once per switch. */}
+          <div key={screen} className="screen-enter" style={{ height: '100%' }}>
+            {screens[screen]}
+          </div>
         </main>
       </div>
     </ToastProvider>

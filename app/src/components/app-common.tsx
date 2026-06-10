@@ -25,7 +25,7 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
       {children}
       <div className="toast-stack">
         {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.kind || ''}`}>
+          <div key={t.id} className={`toast ${t.kind || ''}`} role="status" aria-live="polite">
             <Icon name={t.kind === 'success' ? 'success' : t.kind === 'warning' ? 'warning' : t.kind === 'danger' ? 'warning' : 'info'} size={20} className="t-icon" color={
               t.kind === 'success' ? 'var(--color-success)' :
               t.kind === 'warning' ? 'var(--color-warning)' :
@@ -102,7 +102,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
       color: 'rgba(255,255,255,0.92)',
       display: 'flex', flexDirection: 'column',
       borderRight: '1px solid rgba(0,0,0,0.15)',
-      transition: 'width 220ms cubic-bezier(0.4,0,0.2,1)',
+      transition: 'width var(--dur-slow) var(--ease-out)',
       overflow: 'hidden',
     }}>
       <div style={{
@@ -111,7 +111,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
         flexDirection: collapsed ? 'column' : 'row',
         alignItems: 'center',
         gap: collapsed ? 8 : 12,
-        transition: 'padding 220ms',
+        transition: 'padding var(--dur-slow) var(--ease-out)',
       }}>
         <div style={{
           width: 36, height: 36, borderRadius: 10, flexShrink: 0,
@@ -119,7 +119,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
           display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 18,
         }}>K</div>
         {!collapsed && (
-          <div style={{flex: 1, minWidth: 0}}>
+          <div className="sb-fade" style={{flex: 1, minWidth: 0}}>
             <div style={{fontWeight: 700, fontSize: 15, letterSpacing: '-0.01em', whiteSpace: 'nowrap'}}>Kafé OS</div>
             <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)', whiteSpace: 'nowrap'}}>{me?.store_name ?? branchName}</div>
           </div>
@@ -127,23 +127,25 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
         {onToggle && (
           <button
             onClick={onToggle}
+            className="icon-btn-soft hit-44"
             title={collapsed ? 'ขยาย sidebar' : 'ย่อ sidebar'}
+            aria-label={collapsed ? 'ขยาย sidebar' : 'ย่อ sidebar'}
+            aria-expanded={!collapsed}
             style={{
-              width: 24, height: 24, borderRadius: 6, flexShrink: 0,
-              background: 'rgba(255,255,255,0.08)', border: 'none',
-              color: 'rgba(255,255,255,0.6)', cursor: 'pointer',
+              width: 28, height: 28, borderRadius: 6, flexShrink: 0,
+              border: 'none', cursor: 'pointer',
               display: 'grid', placeItems: 'center',
-              transition: 'background 150ms, color 150ms',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.16)'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
           >
-            <Icon name={collapsed ? 'chevronRight' : 'chevronLeft'} size={14} />
+            <Icon name="chevronLeft" size={14} style={{
+              transform: collapsed ? 'rotate(180deg)' : 'none',
+              transition: 'transform var(--dur-slow) var(--ease-out)',
+            }} />
           </button>
         )}
       </div>
 
-      <nav style={{padding: collapsed ? '8px 8px' : '8px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', overflowX: 'hidden', transition: 'padding 220ms'}}>
+      <nav style={{padding: collapsed ? '8px 8px' : '8px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', overflowX: 'hidden', transition: 'padding var(--dur-slow) var(--ease-out)'}}>
         {visibleNav.map((n) => {
           if (n.divider) {
             return <div key={n.id} style={{height: 1, background: 'rgba(255,255,255,0.07)', margin: '6px 2px'}} />;
@@ -151,30 +153,27 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
           const active = current === n.id;
           return (
             <button key={n.id} onClick={() => onNavigate(n.id)}
+              className={`sb-item${active ? ' active' : ''}`}
               title={collapsed ? n.label : undefined}
+              aria-current={active ? 'page' : undefined}
               style={{
                 display: 'flex', alignItems: 'center', gap: 12,
                 padding: collapsed ? '10px 0' : '10px 12px', borderRadius: 8,
                 justifyContent: collapsed ? 'center' : 'flex-start',
-                background: active ? 'rgba(212,165,116,0.18)' : 'transparent',
-                color: active ? 'var(--color-accent)' : 'rgba(255,255,255,0.78)',
-                fontWeight: active ? 600 : 500, fontSize: 14,
+                fontSize: 14, minHeight: 44,
                 textAlign: 'left', width: '100%',
-                transition: 'all 150ms var(--ease-out)',
                 position: 'relative',
               }}
-              onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-              onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
             >
               {n.icon && <Icon name={n.icon} size={18} />}
-              {!collapsed && <span style={{flex: 1, whiteSpace: 'nowrap'}}>{n.label}</span>}
-              {!collapsed && n.soft && <span style={{fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 500}}>P1</span>}
+              {!collapsed && <span className="sb-fade" style={{flex: 1, whiteSpace: 'nowrap'}}>{n.label}</span>}
+              {!collapsed && n.soft && <span className="sb-fade" style={{fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 500}}>P1</span>}
             </button>
           );
         })}
       </nav>
 
-      <div style={{ padding: collapsed ? '8px 8px' : '8px 12px', marginBottom: 4, transition: 'padding 220ms' }}>
+      <div style={{ padding: collapsed ? '8px 8px' : '8px 12px', marginBottom: 4, transition: 'padding var(--dur-slow) var(--ease-out)' }}>
         <div style={{
           padding: collapsed ? '8px 0' : 12,
           background: 'rgba(255,255,255,0.05)',
@@ -182,7 +181,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
           display: 'flex', alignItems: 'center', gap: 10,
           justifyContent: collapsed ? 'center' : 'flex-start',
           marginBottom: 8,
-          transition: 'padding 220ms',
+          transition: 'padding var(--dur-slow) var(--ease-out)',
         }}>
           <div style={{
             width: 32, height: 32, borderRadius: 999,
@@ -191,7 +190,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
             flexShrink: 0,
           }}>{initial}</div>
           {!collapsed && (
-            <div style={{flex: 1, minWidth: 0}}>
+            <div className="sb-fade" style={{flex: 1, minWidth: 0}}>
               <div style={{fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{me?.name ?? '...'}</div>
               <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)'}}>{role ? ROLE_LABEL[role] ?? role : ''}</div>
             </div>
@@ -200,35 +199,29 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
         {onLogout && !collapsed && (
           <button
             onClick={onLogout}
+            className="sb-logout"
             style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-              padding: '9px 12px', borderRadius: 8,
-              background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
-              color: 'rgba(255,255,255,0.65)', fontSize: 13, fontWeight: 500,
+              padding: '9px 12px', borderRadius: 8, minHeight: 44,
+              fontSize: 13, fontWeight: 500,
               cursor: 'pointer', fontFamily: 'inherit',
-              transition: 'all 150ms var(--ease-out)',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.18)'; e.currentTarget.style.color = '#fca5a5'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.65)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; }}
           >
             <Icon name="x" size={15} />
-            ออกจากระบบ
+            <span className="sb-fade">ออกจากระบบ</span>
           </button>
         )}
         {onLogout && collapsed && (
           <button
             onClick={onLogout}
+            className="sb-logout"
             title="ออกจากระบบ"
+            aria-label="ออกจากระบบ"
             style={{
               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: '9px 0', borderRadius: 8,
-              background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
-              color: 'rgba(255,255,255,0.65)',
+              padding: '9px 0', borderRadius: 8, minHeight: 44,
               cursor: 'pointer', fontFamily: 'inherit',
-              transition: 'all 150ms var(--ease-out)',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.18)'; e.currentTarget.style.color = '#fca5a5'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.65)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; }}
           >
             <Icon name="x" size={15} />
           </button>
@@ -488,6 +481,7 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
               <button
                 onClick={() => setMoreOpen(false)}
                 aria-label="Close more options"
+                className="icon-btn hit-44"
                 style={{
                   width: 32, height: 32, borderRadius: 999,
                   background: 'var(--color-surface-2)',
@@ -509,12 +503,14 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
                   <button
                     key={item.id}
                     onClick={() => { onNavigate(item.id); setMoreOpen(false); }}
+                    className="pressable"
+                    aria-current={active ? 'page' : undefined}
                     style={{
                       display: 'flex', flexDirection: 'column', alignItems: 'center',
                       gap: 6, padding: '12px 4px', borderRadius: 10,
                       background: active ? 'rgba(212,165,116,0.15)' : 'transparent',
                       color: active ? 'var(--color-accent)' : 'var(--color-text-secondary)',
-                      border: 'none', cursor: 'pointer', transition: 'background 150ms',
+                      border: 'none', cursor: 'pointer',
                       minHeight: 72,
                     }}
                   >

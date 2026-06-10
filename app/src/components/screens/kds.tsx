@@ -89,10 +89,16 @@ export default function KDS() {
             <div style={{ fontSize: 16 }}>กำลังโหลดออเดอร์...</div>
           </div>
         ) : sorted.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 300, color: 'rgba(255,255,255,0.55)' }}>
-            <div style={{ marginBottom: 12, opacity: 0.4 }}><Icon name="check" size={56} /></div>
-            <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>เคลียร์หมดแล้ว 🎉</div>
-            <div>ไม่มีออเดอร์ค้างในคิว</div>
+          <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 300, color: 'rgba(255,255,255,0.55)', textAlign: 'center' }}>
+            <div style={{
+              width: 80, height: 80, borderRadius: 'var(--radius-pill)',
+              background: 'rgba(92,138,90,0.18)', color: 'var(--color-success)',
+              display: 'grid', placeItems: 'center', marginBottom: 'var(--space-4)',
+            }}>
+              <Icon name="check" size={40} />
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, color: 'rgba(255,255,255,0.85)' }}>เคลียร์หมดแล้ว</div>
+            <div>ไม่มีออเดอร์ค้างในคิว — ออเดอร์ใหม่จะเด้งขึ้นที่นี่อัตโนมัติ</div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -160,7 +166,8 @@ const OrderTicket = ({ ticket, mins, nameToId, onBump, onDone, onStepsClick }: {
   }[ticket.status] || { label: '', bg: '', color: '' };
 
   return (
-    <div className="min-h-[120px]" style={{ background: 'white', borderRadius: 12, borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: ticket.status === 'new' ? 'newCard 400ms var(--ease-out)' : 'none' }}>
+    /* .rise-in plays once per mount — new tickets slide/fade in as they arrive */
+    <div className="min-h-[120px] rise-in" style={{ background: 'white', borderRadius: 12, borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--color-border)' }}>
         <div className="num" style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.01em' }}>#{ticket.queue}</div>
         <div style={{ flex: 1 }}>
@@ -184,9 +191,9 @@ const OrderTicket = ({ ticket, mins, nameToId, onBump, onDone, onStepsClick }: {
                   <button
                     onClick={() => onStepsClick(nameToId.get(it.name)!, it.name)}
                     title="วิธีทำ"
-                    style={{ width: 20, height: 20, borderRadius: 999, border: '1px solid rgba(0,0,0,0.15)', background: 'rgba(0,0,0,0.06)', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', display: 'grid', placeItems: 'center', flexShrink: 0, transition: 'all 150ms var(--ease-out)' }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-primary)'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = 'var(--color-primary)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; e.currentTarget.style.color = 'var(--color-text-secondary)'; e.currentTarget.style.borderColor = 'rgba(0,0,0,0.15)'; }}
+                    aria-label={`วิธีทำ ${it.name}`}
+                    className="help-badge hit-44"
+                    style={{ width: 22, height: 22, borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}
                   >?</button>
                 )}
               </div>
@@ -225,7 +232,6 @@ const OrderTicket = ({ ticket, mins, nameToId, onBump, onDone, onStepsClick }: {
           </button>
         )}
       </div>
-      <style>{`@keyframes newCard { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }`}</style>
     </div>
   );
 };
@@ -239,19 +245,19 @@ const CookingStepsModal = ({ productId, productName, onClose }: {
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.7)', display: 'grid', placeItems: 'center', zIndex: 200, padding: 20 }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.7)', display: 'grid', placeItems: 'center', zIndex: 200, padding: 20, animation: 'backdrop-in var(--dur-base) var(--ease-out)' }}
       onClick={onClose}
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background: 'var(--color-primary-700)', borderRadius: 16, width: '100%', maxWidth: 420, maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', color: 'white' }}
+        style={{ background: 'var(--color-primary-700)', borderRadius: 16, width: '100%', maxWidth: 420, maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', color: 'white', animation: 'modal-in var(--dur-slow) var(--ease-out)' }}
       >
         <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>วิธีทำ</div>
             <div style={{ fontSize: 16, fontWeight: 700 }}>{productName}</div>
           </div>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', cursor: 'pointer', width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center', color: 'white', transition: 'background 150ms' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}>
+          <button onClick={onClose} aria-label="ปิด" className="icon-btn-soft hit-44" style={{ border: 'none', cursor: 'pointer', width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center' }}>
             <Icon name="x" size={16} />
           </button>
         </div>

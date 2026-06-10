@@ -48,11 +48,10 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
             <div style={{fontSize: 16, fontWeight: 700}}>{titleMap[method]}</div>
             <div style={{fontSize: 12, color: 'var(--color-text-secondary)'}}>บิล A0{billNo}</div>
           </div>
-          <button onClick={onClose} style={{
+          <button onClick={onClose} aria-label="ปิด" className="icon-btn hit-44" style={{
             width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center',
             color: 'var(--color-text-secondary)',
-          }} onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-surface-2)'}
-             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
+          }}>
             <Icon name="x" size={18}/>
           </button>
         </div>
@@ -73,8 +72,8 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
 
         {phase !== 'paid' && method === 'cash' && (
           <div style={{padding: '12px 24px 20px', display: 'flex', gap: 8}}>
-            <button onClick={onClose} className="btn btn-ghost" style={{flex: 1}}>ยกเลิก</button>
-            <button onClick={onConfirmPay} disabled={!cashEnough} className="btn btn-primary" style={{flex: 2, opacity: cashEnough ? 1 : 0.5}}>
+            <button onClick={onClose} className="btn btn-ghost btn-lg" style={{flex: 1}}>ยกเลิก</button>
+            <button onClick={onConfirmPay} disabled={!cashEnough} className="btn btn-primary btn-lg" style={{flex: 2, opacity: cashEnough ? 1 : 0.5}}>
               <Icon name="check" size={16}/> ยืนยันรับเงิน
             </button>
           </div>
@@ -107,7 +106,7 @@ const QRView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () => 
     <button onClick={onSimulatePay} className="btn btn-primary btn-block btn-lg" style={{marginTop: 20}}>
       <Icon name="check" size={16}/> จำลอง: ลูกค้าชำระแล้ว
     </button>
-    <button className="btn btn-ghost btn-block" style={{marginTop: 8}}>
+    <button className="btn btn-ghost btn-block" style={{marginTop: 8, minHeight: 44}}>
       <Icon name="print" size={14}/> พิมพ์ใบเสร็จ
     </button>
     <style>{`@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }`}</style>
@@ -163,19 +162,20 @@ const CashView = ({ total, cashGiven, setCashGiven, change }: { total: number; c
           borderRadius: 8, outline: 'none',
         }}
       />
-      <div style={{display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginTop: 8}}>
+      <div style={{display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 8}}>
         {presets.map((p) => (
           <button key={p} onClick={() => setCashGiven(String(p))}
-            className="num"
+            className="num pressable"
             style={{
-              padding: 10, borderRadius: 6, fontSize: 13, fontWeight: 600,
+              padding: 10, borderRadius: 6, fontSize: 13, fontWeight: 600, minHeight: 44,
               background: 'var(--color-surface-2)', border: '1px solid var(--color-border)',
             }}
           >฿{p}</button>
         ))}
         <button onClick={() => setCashGiven(String(total))}
+          className="pressable"
           style={{
-            padding: 10, borderRadius: 6, fontSize: 13, fontWeight: 600,
+            padding: 10, borderRadius: 6, fontSize: 13, fontWeight: 600, minHeight: 44,
             background: 'var(--color-accent-50)', border: '1px solid var(--color-accent)', color: 'var(--color-primary-700)',
             gridColumn: 'span 4',
           }}
@@ -249,7 +249,10 @@ const SuccessView = ({ total }: { total: number }) => (
     </div>
     <div style={{fontSize: 20, fontWeight: 700, marginBottom: 4}}>ชำระเงินสำเร็จ</div>
     <div className="num" style={{fontSize: 32, fontWeight: 700, color: 'var(--color-primary)', marginBottom: 8}}>฿{total.toLocaleString()}</div>
-    <div style={{fontSize: 13, color: 'var(--color-text-secondary)'}}>กำลังพิมพ์ใบเสร็จ และส่งไปยังครัว...</div>
+    <div role="status" style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 13, color: 'var(--color-text-secondary)'}}>
+      <span className="spinner" style={{width: 14, height: 14}} aria-hidden />
+      กำลังพิมพ์ใบเสร็จ และส่งไปยังครัว...
+    </div>
     <style>{`@keyframes pop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.1); } 100% { transform: scale(1); opacity: 1; } }`}</style>
   </div>
 );
