@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Icon from '../icons';
 import { useToast, Tag } from '../app-common';
 import { useKDSOrders, useUpdateOrderStatus, type KDSTicket } from '@/hooks/use-orders';
 import { useAllProducts } from '@/hooks/use-products';
 import { useCookingSteps } from '@/hooks/use-cooking-steps';
+
+const STATUS_RANK: Record<KDSTicket['status'], number> = { new: 0, progress: 1, ready: 2 };
+const ACTION_COOLDOWN_MS = 600;
 
 export default function KDS() {
   const toast = useToast();
@@ -21,9 +24,27 @@ export default function KDS() {
     return m;
   }, [allProducts]);
 
-  // Seed local state from server on each poll
+  // Recent local actions: stale poll results must not revert a status we already
+  // advanced (or resurrect a ticket we already delivered) while the PATCH is in flight
+  const recentActions = useRef(new Map<string, { status: 'progress' | 'ready' | 'done'; at: number }>());
+  const [leaving, setLeaving] = useState<Set<string>>(new Set());
+  const leaveTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => () => { leaveTimers.current.forEach(clearTimeout); }, []);
+
+  // Seed local state from server on each poll, merged with recent local actions
   useEffect(() => {
-    if (serverTickets) setLocalTickets(serverTickets);
+    if (!serverTickets) return;
+    const now = Date.now();
+    const recent = recentActions.current;
+    for (const [id, a] of recent) if (now - a.at > 30000) recent.delete(id);
+    setLocalTickets(serverTickets
+      .filter(t => recent.get(t.orderId)?.status !== 'done')
+      .map(t => {
+        const a = recent.get(t.orderId);
+        return a && a.status !== 'done' && STATUS_RANK[a.status] > STATUS_RANK[t.status]
+          ? { ...t, status: a.status }
+          : t;
+      }));
   }, [serverTickets]);
 
   // Re-render every 30s so elapsed times update
@@ -35,28 +56,57 @@ export default function KDS() {
 
   const elapsed = (placedAt: number) => Math.floor((Date.now() - placedAt) / 60000);
 
+  // Ignore repeat taps on the same ticket within the cooldown — prevents a double-tap
+  // from skipping a status (เริ่มทำ → เสร็จแล้ว in one go)
+  const tooSoon = (orderId: string) => {
+    const a = recentActions.current.get(orderId);
+    return !!a && Date.now() - a.at < ACTION_COOLDOWN_MS;
+  };
+
   const onBump = (ticket: KDSTicket) => {
+    if (tooSoon(ticket.orderId)) return;
+    recentActions.current.set(ticket.orderId, { status: 'progress', at: Date.now() });
     setLocalTickets(cur => cur.map(t => t.orderId === ticket.orderId ? { ...t, status: 'progress' as const } : t));
     updateStatus.mutateAsync({ orderId: ticket.orderId, status: 'IN_PROGRESS' })
-      .catch(() => toast({ kind: 'danger', title: 'อัปเดตสถานะไม่สำเร็จ' }));
+      .catch(() => {
+        recentActions.current.delete(ticket.orderId);
+        toast({ kind: 'danger', title: 'อัปเดตสถานะไม่สำเร็จ' });
+      });
     toast({ kind: 'info', title: `ออเดอร์ ${ticket.id} เริ่มทำ`, duration: 1600 });
   };
 
   const onDone = (ticket: KDSTicket) => {
+    if (tooSoon(ticket.orderId)) return;
     if (ticket.status === 'progress') {
+      recentActions.current.set(ticket.orderId, { status: 'ready', at: Date.now() });
       setLocalTickets(cur => cur.map(t => t.orderId === ticket.orderId ? { ...t, status: 'ready' as const } : t));
       updateStatus.mutateAsync({ orderId: ticket.orderId, status: 'READY' })
-        .catch(() => toast({ kind: 'danger', title: 'อัปเดตสถานะไม่สำเร็จ' }));
+        .catch(() => {
+          recentActions.current.delete(ticket.orderId);
+          toast({ kind: 'danger', title: 'อัปเดตสถานะไม่สำเร็จ' });
+        });
     } else {
-      setLocalTickets(cur => cur.filter(t => t.orderId !== ticket.orderId));
+      recentActions.current.set(ticket.orderId, { status: 'done', at: Date.now() });
+      // Card holds its grid slot (faded, unclickable) briefly before removal so a
+      // rapid second tap can't land on the card that slides into its place
+      setLeaving(cur => new Set(cur).add(ticket.orderId));
+      leaveTimers.current.push(setTimeout(() => {
+        setLocalTickets(cur => cur.filter(t => t.orderId !== ticket.orderId));
+        setLeaving(cur => { const n = new Set(cur); n.delete(ticket.orderId); return n; });
+      }, 220));
       updateStatus.mutateAsync({ orderId: ticket.orderId, status: 'COMPLETED' })
         .then(() => toast({ kind: 'success', title: `ออเดอร์ ${ticket.id} เสร็จแล้ว`, msg: 'ส่งมอบลูกค้า', duration: 1800 }))
-        .catch(() => toast({ kind: 'danger', title: 'อัปเดตสถานะไม่สำเร็จ' }));
+        .catch(() => {
+          recentActions.current.delete(ticket.orderId);
+          setLeaving(cur => { const n = new Set(cur); n.delete(ticket.orderId); return n; });
+          toast({ kind: 'danger', title: 'อัปเดตสถานะไม่สำเร็จ' });
+        });
     }
   };
 
-  const order: Record<string, number> = { progress: 0, new: 1, ready: 2 };
-  const sorted = [...localTickets].sort((a, b) => order[a.status] - order[b.status] || a.placedAt - b.placedAt);
+  // FIFO by order time — positions stay put when a status changes, so rapid taps
+  // never land on a different card that jumped into the slot
+  const sorted = [...localTickets].sort((a, b) => a.placedAt - b.placedAt);
 
   const counts = {
     new:      localTickets.filter(t => t.status === 'new').length,
@@ -106,6 +156,7 @@ export default function KDS() {
               <OrderTicket
                 key={t.orderId}
                 ticket={t}
+                leaving={leaving.has(t.orderId)}
                 mins={elapsed(t.placedAt)}
                 nameToId={nameToId}
                 onBump={() => onBump(t)}
@@ -148,8 +199,9 @@ const KDSStatChip = ({ label, count, color }: { label: string; count: number; co
   </div>
 );
 
-const OrderTicket = ({ ticket, mins, nameToId, onBump, onDone, onStepsClick }: {
+const OrderTicket = ({ ticket, leaving, mins, nameToId, onBump, onDone, onStepsClick }: {
   ticket: KDSTicket;
+  leaving: boolean;
   mins: number;
   nameToId: Map<string, string>;
   onBump: () => void;
@@ -166,8 +218,8 @@ const OrderTicket = ({ ticket, mins, nameToId, onBump, onDone, onStepsClick }: {
   }[ticket.status] || { label: '', bg: '', color: '' };
 
   return (
-    /* .rise-in plays once per mount — new tickets slide/fade in as they arrive */
-    <div className="min-h-[120px] rise-in" style={{ background: 'white', borderRadius: 12, borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    /* .rise-in plays once per mount; .card-out holds the slot (faded, unclickable) while delivering */
+    <div className={`min-h-[120px] rise-in${leaving ? ' card-out' : ''}`} style={{ background: 'white', borderRadius: 12, borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--color-border)' }}>
         <div className="num" style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.01em' }}>#{ticket.queue}</div>
         <div style={{ flex: 1 }}>
