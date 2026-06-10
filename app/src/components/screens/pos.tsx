@@ -568,6 +568,27 @@ export default function POSTerminal() {
       {payment && (
         <PaymentModal method={payment} total={total} billNo={billNo} onClose={() => setPayment(null)} onPaid={onPaid} />
       )}
+      {/* Gap between payment success and the receipt being ready (order + payment
+          round-trips). Without this the screen looks frozen — show the receipt
+          modal's backdrop with a spinner so the receipt feels like it's loading in. */}
+      {paying && !receiptData && !payment && (
+        <div className="fade-in" style={{
+          position: 'fixed', inset: 0, zIndex: 300,
+          background: 'rgba(20, 12, 6, 0.75)', backdropFilter: 'blur(6px)',
+          display: 'grid', placeItems: 'center', padding: 20,
+        }}>
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-4)',
+            color: 'white', textAlign: 'center',
+          }}>
+            <span className="spinner" style={{ width: 36, height: 36, borderWidth: 3 }} aria-hidden />
+            <div role="status" aria-live="polite">
+              <div style={{ fontSize: 16, fontWeight: 700 }}>กำลังเตรียมใบเสร็จ...</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', marginTop: 4 }}>บันทึกบิลและส่งไปยังครัว</div>
+            </div>
+          </div>
+        </div>
+      )}
       {receiptData && (
         <ReceiptModal
           data={receiptData}

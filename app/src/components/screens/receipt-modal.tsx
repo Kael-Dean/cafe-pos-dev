@@ -106,6 +106,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
             borderRadius: 20,
             boxShadow: '0 32px 80px rgba(61,40,23,0.28), 0 8px 24px rgba(61,40,23,0.14)',
             display: 'flex', flexDirection: 'column',
+            animation: 'modal-in var(--dur-slow) var(--ease-out)',
           }}
         >
           {/* ── Toolbar ── */}
