@@ -118,7 +118,7 @@ export default function KDS() {
 
   return (
     <>
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--color-primary-700)', color: 'white' }}>
+    <div className="surface-inverse" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 24, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em' }}>{t.kds.title}</div>
@@ -224,7 +224,7 @@ const OrderTicket = ({ ticket, leaving, mins, nameToId, onBump, onDone, onStepsC
 
   return (
     /* .rise-in plays once per mount; .card-out holds the slot (faded, unclickable) while delivering */
-    <div className={`min-h-[120px] rise-in${leaving ? ' card-out' : ''}`} style={{ background: 'white', borderRadius: 12, borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className={`surface-paper min-h-[120px] rise-in${leaving ? ' card-out' : ''}`} style={{ background: 'white', borderRadius: 12, borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--color-border)' }}>
         <div className="num" style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.01em' }}>#{ticket.queue}</div>
         <div style={{ flex: 1 }}>
@@ -308,7 +308,8 @@ const CookingStepsModal = ({ productId, productName, onClose }: {
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background: 'var(--color-primary-700)', borderRadius: 16, width: '100%', maxWidth: 420, maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', color: 'white', animation: 'modal-in var(--dur-slow) var(--ease-out)' }}
+        className="surface-inverse"
+        style={{ borderRadius: 16, width: '100%', maxWidth: 420, maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', animation: 'modal-in var(--dur-slow) var(--ease-out)' }}
       >
         <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>

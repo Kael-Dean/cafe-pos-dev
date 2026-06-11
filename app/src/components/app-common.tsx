@@ -93,11 +93,9 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
 
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
-    <aside style={{
+    <aside className="surface-inverse" style={{
       width: collapsed ? 64 : 240,
       height: '100dvh',
-      background: 'var(--color-primary)',
-      color: 'rgba(255,255,255,0.92)',
       display: 'flex', flexDirection: 'column',
       borderRight: '1px solid rgba(0,0,0,0.15)',
       transition: 'width var(--dur-slow) var(--ease-out)',

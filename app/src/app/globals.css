@@ -85,6 +85,114 @@
   --dur-slow: 280ms;
 }
 
+/* ════════════════════════════════════════════════════════════════
+   Dark theme — overrides COLOR + SHADOW tokens only.
+   Spacing, radii, type and motion are theme-agnostic and stay in :root.
+   Applied via [data-theme='dark'] on <html> (set pre-paint by the inline
+   script in layout.tsx, then by ThemeProvider). All text/surface pairs
+   verified ≥4.5:1 (body) / ≥3:1 (large) for WCAG AA — neutrals are tinted
+   toward the espresso hue, no pure #000/#fff.
+   ════════════════════════════════════════════════════════════════ */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Brand — note: in dark mode the *primary* ramp inverts (light caramel on
+     dark) so primary-as-text reads on dark surfaces. Surfaces that must stay
+     dark (sidebar, KDS) use .surface-inverse instead of these tokens. */
+  --color-primary: #E0C29A;
+  --color-primary-700: #F0DCC0;
+  --color-primary-50: #2E241A;
+
+  --color-accent: #D4A574;
+  --color-accent-600: #E2BC8E;
+  --color-accent-50: #2E241A;
+
+  --color-bg: #1A140E;
+  --color-surface: #241B13;
+  --color-surface-2: #2E241A;
+
+  --color-text: #F5EFE7;
+  --color-text-secondary: #B8AC9C;
+  --color-text-muted: #968A78;
+  --color-text-inverse: #1A140E;
+
+  --color-success: #7FB07D;
+  --color-success-50: #21301F;
+  --color-warning: #E8B86A;
+  --color-warning-50: #332817;
+  --color-danger: #E07A7A;
+  --color-danger-50: #3A2020;
+  --color-info: #7AA0D4;
+  --color-info-50: #1E2A3A;
+
+  --color-border: #3A2E22;
+  --color-border-strong: #4D3F30;
+
+  /* Shadows — deeper/darker so elevation reads against dark surfaces */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.50);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.60);
+  --shadow-focus: 0 0 0 3px rgba(212, 165, 116, 0.50);
+}
+
+/* ---------- Always-dark surfaces (sidebar, KDS) ----------
+   These are intentionally dark in BOTH themes. They previously leaned on
+   --color-primary / --color-primary-700 for their background, which inverts to
+   a light tone under [data-theme='dark'] and would flip them inside-out.
+   .surface-inverse pins the original espresso background + light text so they
+   look identical regardless of theme. */
+.surface-inverse {
+  background: #2A1A0F; /* original light-mode --color-primary-700 */
+  color: rgba(255, 255, 255, 0.92);
+}
+/* Descendants of an always-dark surface still reference --color-primary* /
+   --color-accent* for chips, badges and numerals. In dark mode those tokens
+   invert (primary-700 → light), which would drop e.g. the accent-chip text to
+   ~1.6:1. Pin the brand ramp back to its light-theme values inside the inverse
+   surface so every descendant reads identically in light AND dark. */
+.surface-inverse,
+:root[data-theme='dark'] .surface-inverse {
+  --color-primary: #3D2817;
+  --color-primary-700: #2A1A0F;
+  --color-primary-50: #F5EFE7;
+  --color-accent: #D4A574;
+  --color-accent-600: #B8895A;
+  --color-accent-50: #FBF3E8;
+}
+
+/* A "paper" island that stays light in both themes (e.g. KDS order tickets sit
+   as white cards on the dark KDS surface). It pins the full neutral + brand ramp
+   to light-theme values so its inner text / surface-2 footer / secondary text
+   never flip and lose contrast under [data-theme='dark']. */
+.surface-paper,
+:root[data-theme='dark'] .surface-paper {
+  --color-bg: #FAF7F2;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F5F1E9;
+  --color-text: #1A1A1A;
+  --color-text-secondary: #6B7280;
+  --color-text-muted: #9CA3AF;
+  --color-text-inverse: #FFFFFF;
+  --color-border: #E5E0D5;
+  --color-border-strong: #C9C2B2;
+  --color-primary: #3D2817;
+  --color-primary-700: #2A1A0F;
+  --color-primary-50: #F5EFE7;
+  --color-accent: #D4A574;
+  --color-accent-600: #B8895A;
+  --color-accent-50: #FBF3E8;
+  --color-success: #5C8A5A;
+  --color-success-50: #EBF2EA;
+  --color-warning: #E8A951;
+  --color-warning-50: #FBF1DF;
+  --color-danger: #C24545;
+  --color-danger-50: #F7E5E5;
+  --color-info: #4A6FA5;
+  --color-info-50: #E5ECF5;
+  color: var(--color-text);
+}
+
 /* ---------- Base ---------- */
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
@@ -357,6 +465,15 @@ label:focus-visible {
   animation: shimmer 1.6s var(--ease-out) infinite;
 }
 @keyframes shimmer { to { transform: translateX(100%); } }
+
+/* On dark surfaces a 60%-white sweep blows out; lift the base a touch and
+   soften the highlight so the shimmer reads as a gentle sheen, not a flash. */
+:root[data-theme='dark'] .skeleton {
+  background: rgba(255, 255, 255, 0.06);
+}
+:root[data-theme='dark'] .skeleton::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
+}
 
 /* ---------- Spinner (pending buttons) ---------- */
 @keyframes spin { to { transform: rotate(360deg); } }
