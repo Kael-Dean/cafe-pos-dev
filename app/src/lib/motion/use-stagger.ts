@@ -55,6 +55,9 @@ export function useStagger(
             duration,
             ease: 'power2.out',
             stagger: each,
+            // Strip the leftover inline transform once the entrance finishes so
+            // CSS :hover transforms (e.g. .menu-card lift) aren't overridden.
+            clearProps: 'transform',
           },
         );
       });
