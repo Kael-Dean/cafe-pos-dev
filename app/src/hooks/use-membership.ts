@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 
 // ── Enums (from api-handoff "Enums & Constants") ──────────────────────────────
@@ -241,6 +241,9 @@ export function useMembers(query: MembersQuery, enabled = true) {
       return api.get<MembersPage>(`/api/v1/membership/members?${params}`);
     },
     enabled,
+    // Keep the previous results visible while re-fetching for a new search term
+    // so typing each letter doesn't flash the skeleton (and resize the modal).
+    placeholderData: keepPreviousData,
   });
 }
 

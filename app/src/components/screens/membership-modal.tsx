@@ -253,7 +253,7 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
         aria-busy={busy || undefined}
         className="modal-card"
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 'min(480px, 92vw)', maxHeight: '90dvh', display: 'flex', flexDirection: 'column' }}
+        style={{ width: 'min(480px, 92vw)', maxHeight: '90dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       >
         {/* Header */}
         <div style={{ padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
@@ -333,10 +333,23 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
               </div>
 
               {submittedName && !result?.found && (
-                <div style={{ marginTop: 'var(--space-4)', display: 'grid', gap: 'var(--space-2)' }} aria-busy={membersQuery.isFetching || undefined}>
-                  {membersQuery.isFetching ? (
+                <div
+                  style={{
+                    marginTop: 'var(--space-4)', display: 'grid', gap: 'var(--space-2)', alignContent: 'start',
+                    // Reserve a stable height so the modal doesn't resize as the
+                    // result region toggles between skeleton / "ไม่พบ" / results.
+                    minHeight: 168,
+                    // Dim (not blank) while re-fetching a new term — keepPreviousData
+                    // keeps the old rows in place so nothing jumps.
+                    opacity: membersQuery.isFetching && !membersQuery.isLoading ? 0.55 : 1,
+                    transition: 'opacity 120ms var(--ease-out)',
+                  }}
+                  aria-busy={membersQuery.isFetching || undefined}
+                >
+                  {membersQuery.isLoading ? (
                     // Skeleton rows that mirror the real member-result layout (name +
-                    // phone on the left, points + tier chip on the right).
+                    // phone on the left, points + tier chip on the right). Shown only on
+                    // the first search — later keystrokes keep the previous results.
                     Array.from({ length: 3 }).map((_, i) => (
                       <div key={i} style={{
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)',
