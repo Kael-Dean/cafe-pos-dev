@@ -4,6 +4,8 @@ import { useState } from 'react';
 import Icon from '../icons';
 import { useToast, Tag, Select } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
+import { useCountUp } from '@/lib/motion';
+import { SkeletonTable } from '@/components/ui/skeleton';
 import {
   useAllLeaves, useMyLeaves, useCreateLeave, useReviewLeave,
   useTasks, useCreateTask, useUpdateTask, useConfirmTask, useDeleteTask,
@@ -12,6 +14,12 @@ import {
   type StaffRead, type StaffRole, type StaffPosition,
 } from '@/hooks/use-hr';
 import { ApiError } from '@/lib/api-client';
+
+/** Overview KPI figure: counts up on mount (whole number). */
+function OverviewStat({ value }: { value: number }) {
+  const ref = useCountUp(value);
+  return <span ref={ref} className="num" style={{ fontSize: 28, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{value}</span>;
+}
 
 const LEAVE_TYPE_LABEL: Record<string, string> = {
   VACATION: 'ลาพักร้อน',
@@ -54,13 +62,13 @@ function LeaveCard({ leave, admin, onReview }: { leave: LeaveRequest; admin: boo
         {leave.note && <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{leave.note}</div>}
       </div>
       {admin && leave.status === 'PENDING' && onReview && (
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-          <button onClick={() => onReview(leave.id, 'APPROVED')}
-            style={{ padding: '5px 12px', borderRadius: 7, background: 'var(--color-success-50)', color: 'var(--color-success)', fontWeight: 600, fontSize: 12, cursor: 'pointer', border: 'none' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0 }}>
+          <button onClick={() => onReview(leave.id, 'APPROVED')} className="pressable"
+            style={{ minHeight: 44, padding: '5px 14px', borderRadius: 'var(--radius-sm)', background: 'var(--color-success-50)', color: 'var(--color-success)', fontWeight: 600, fontSize: 12, cursor: 'pointer', border: 'none' }}>
             อนุมัติ
           </button>
-          <button onClick={() => onReview(leave.id, 'REJECTED')}
-            style={{ padding: '5px 12px', borderRadius: 7, background: 'var(--color-danger-50)', color: 'var(--color-danger)', fontWeight: 600, fontSize: 12, cursor: 'pointer', border: 'none' }}>
+          <button onClick={() => onReview(leave.id, 'REJECTED')} className="pressable"
+            style={{ minHeight: 44, padding: '5px 14px', borderRadius: 'var(--radius-sm)', background: 'var(--color-danger-50)', color: 'var(--color-danger)', fontWeight: 600, fontSize: 12, cursor: 'pointer', border: 'none' }}>
             ไม่อนุมัติ
           </button>
         </div>
@@ -99,22 +107,22 @@ function TaskCard({ task, admin, myId, onStatusChange, onConfirm, onDelete }: {
       </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {task.status === 'TODO' && (
-          <button onClick={() => onStatusChange(task.id, 'IN_PROGRESS')} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: '#dbeafe', color: '#1e40af', border: 'none', borderRadius: 5, cursor: 'pointer' }}>
+          <button onClick={() => onStatusChange(task.id, 'IN_PROGRESS')} className="pressable" style={{ minHeight: 32, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-info-50)', color: 'var(--color-info)', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
             เริ่มทำ
           </button>
         )}
         {task.status === 'IN_PROGRESS' && (
-          <button onClick={() => onStatusChange(task.id, 'PENDING_REVIEW')} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-warning-50)', color: '#9C6A1F', border: 'none', borderRadius: 5, cursor: 'pointer' }}>
+          <button onClick={() => onStatusChange(task.id, 'PENDING_REVIEW')} className="pressable" style={{ minHeight: 32, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-warning-50)', color: '#9C6A1F', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
             ส่งตรวจ
           </button>
         )}
         {task.status === 'PENDING_REVIEW' && admin && (
-          <button onClick={() => onConfirm(task.id)} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-success-50)', color: 'var(--color-success)', border: 'none', borderRadius: 5, cursor: 'pointer' }}>
+          <button onClick={() => onConfirm(task.id)} className="pressable" style={{ minHeight: 32, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-success-50)', color: 'var(--color-success)', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
             ยืนยันเสร็จ
           </button>
         )}
         {admin && task.status !== 'DONE' && (
-          <button onClick={() => onStatusChange(task.id, 'DONE')} style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 5, cursor: 'pointer' }}>
+          <button onClick={() => onStatusChange(task.id, 'DONE')} className="pressable" style={{ minHeight: 32, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
             ทำเสร็จ
           </button>
         )}
@@ -246,7 +254,12 @@ function StaffTab({ admin }: { admin: boolean }) {
   };
 
   if (isLoading) return (
-    <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-muted)' }}>กำลังโหลด…</div>
+    <div aria-busy="true">
+      <span className="sr-only">กำลังโหลดรายชื่อพนักงาน…</span>
+      <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)' }}>
+        <SkeletonTable rows={6} cols={6} />
+      </div>
+    </div>
   );
 
   return (
@@ -255,7 +268,7 @@ function StaffTab({ admin }: { admin: boolean }) {
         <div style={{ marginBottom: 16 }}>
           <button
             onClick={() => { setShowCreate(true); setCForm(EMPTY_CREATE); }}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 8, background: 'var(--color-primary)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}
+            className="pressable" style={{ display: 'flex', alignItems: 'center', gap: 7, minHeight: 44, padding: '8px 16px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}
           >
             <Icon name="plus" size={15} /> เพิ่มพนักงาน
           </button>
@@ -279,7 +292,7 @@ function StaffTab({ admin }: { admin: boolean }) {
               <tr key={s.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
                 <td style={{ padding: '10px 16px', fontWeight: 500 }}>{s.name}</td>
                 <td style={{ padding: '10px 16px' }}>
-                  <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: 'var(--color-accent-50)', color: 'var(--color-accent-700)' }}>
+                  <span style={{ padding: '2px 8px', borderRadius: 'var(--radius-md)', fontSize: 11, fontWeight: 600, background: 'var(--color-accent-50)', color: 'var(--color-accent-600)' }}>
                     {ROLE_LABEL[s.role] ?? s.role}
                   </span>
                 </td>
@@ -321,7 +334,7 @@ function StaffTab({ admin }: { admin: boolean }) {
 
       {/* Create modal */}
       {showCreate && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
           <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 500, maxWidth: '90vw', boxShadow: 'var(--shadow-lg)', maxHeight: '90vh', overflowY: 'auto' }}>
             <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700 }}>เพิ่มพนักงานใหม่</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
@@ -355,9 +368,9 @@ function StaffTab({ admin }: { admin: boolean }) {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowCreate(false)} style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
+              <button onClick={() => setShowCreate(false)} className="pressable" style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
               <button onClick={handleCreate} disabled={createStaff.isPending}
-                style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-primary)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
+                style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
                 {createStaff.isPending ? 'กำลังเพิ่ม…' : 'เพิ่ม'}
               </button>
             </div>
@@ -367,7 +380,7 @@ function StaffTab({ admin }: { admin: boolean }) {
 
       {/* Edit modal */}
       {editTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
           <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 500, maxWidth: '90vw', boxShadow: 'var(--shadow-lg)', maxHeight: '90vh', overflowY: 'auto' }}>
             <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700 }}>แก้ไขพนักงาน — {editTarget.name}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
@@ -401,9 +414,9 @@ function StaffTab({ admin }: { admin: boolean }) {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setEditTarget(null)} style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
+              <button onClick={() => setEditTarget(null)} className="pressable" style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
               <button onClick={handleUpdate} disabled={updateStaff.isPending}
-                style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-primary)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
+                style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
                 {updateStaff.isPending ? 'กำลังบันทึก…' : 'บันทึก'}
               </button>
             </div>
@@ -413,16 +426,16 @@ function StaffTab({ admin }: { admin: boolean }) {
 
       {/* Deactivate confirm */}
       {deactivateTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
           <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 360, boxShadow: 'var(--shadow-lg)' }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700 }}>ยืนยันการลาออก</h3>
             <p style={{ margin: '0 0 20px', fontSize: 14, color: 'var(--color-text-secondary)' }}>
               <strong>{deactivateTarget.name}</strong> จะถูกปิดการใช้งาน ไม่สามารถล็อกอินได้อีก แต่ประวัติการทำงานยังคงอยู่
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setDeactivateTarget(null)} style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
+              <button onClick={() => setDeactivateTarget(null)} className="pressable" style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
               <button onClick={handleDeactivate} disabled={deactivateStaff.isPending}
-                style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-danger)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
+                className="pressable" style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-danger)', color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
                 {deactivateStaff.isPending ? 'กำลังดำเนินการ…' : 'ยืนยัน'}
               </button>
             </div>
@@ -434,11 +447,13 @@ function StaffTab({ admin }: { admin: boolean }) {
 }
 
 const KANBAN_COLS: TaskStatus[] = ['TODO', 'IN_PROGRESS', 'PENDING_REVIEW', 'DONE'];
+// Token-based column tints (status -50 backgrounds + status borders) so the
+// board reads the same in light and dark.
 const COL_COLORS: Record<TaskStatus, { bg: string; border: string }> = {
-  TODO:           { bg: '#F8FAFC', border: '#E2E8F0' },
-  IN_PROGRESS:    { bg: '#EFF6FF', border: '#BFDBFE' },
-  PENDING_REVIEW: { bg: '#FFFBEB', border: '#FDE68A' },
-  DONE:           { bg: '#F0FDF4', border: '#BBF7D0' },
+  TODO:           { bg: 'var(--color-surface-2)',   border: 'var(--color-border)' },
+  IN_PROGRESS:    { bg: 'var(--color-info-50)',     border: 'var(--color-info)' },
+  PENDING_REVIEW: { bg: 'var(--color-warning-50)',  border: 'var(--color-warning)' },
+  DONE:           { bg: 'var(--color-success-50)',  border: 'var(--color-success)' },
 };
 
 function TasksTab({ admin, myId }: { admin: boolean; myId?: string }) {
@@ -496,7 +511,7 @@ function TasksTab({ admin, myId }: { admin: boolean; myId?: string }) {
       {admin && (
         <div style={{ marginBottom: 16 }}>
           <button onClick={() => setShowCreateForm(v => !v)}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 8, background: 'var(--color-primary)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
+            className="pressable" style={{ display: 'flex', alignItems: 'center', gap: 7, minHeight: 44, padding: '8px 16px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
             <Icon name="plus" size={15} /> สร้างงานใหม่
           </button>
 
@@ -526,7 +541,7 @@ function TasksTab({ admin, myId }: { admin: boolean; myId?: string }) {
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={handleCreate} disabled={createTask.isPending}
-                  style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-primary)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
+                  style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
                   {createTask.isPending ? '...' : 'สร้าง'}
                 </button>
                 <button onClick={() => setShowCreateForm(false)}
@@ -654,7 +669,7 @@ export default function HRDashboard() {
 
   return (
     <div style={{ padding: 32, maxWidth: 1100, margin: '0 auto' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8, color: 'var(--color-text)' }}>
+      <h1 className="text-balance" style={{ fontSize: 22, fontWeight: 700, marginBottom: 'var(--space-2)', color: 'var(--color-text)' }}>
         HR & Admin
       </h1>
 
@@ -670,14 +685,14 @@ export default function HRDashboard() {
       {/* Admin overview */}
       {tab === 'overview' && admin && (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14, marginBottom: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-4)', marginBottom: 'var(--space-6)' }}>
             {[
               { label: 'คำขอลารออนุมัติ', val: (allLeaves ?? []).filter(l => l.status === 'PENDING').length },
               { label: 'อนุมัติแล้วเดือนนี้', val: (allLeaves ?? []).filter(l => l.status === 'APPROVED').length },
             ].map(k => (
-              <div key={k.label} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 18 }}>
-                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{k.label}</div>
-                <div style={{ fontSize: 28, fontWeight: 700 }}>{k.val}</div>
+              <div key={k.label} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
+                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-2)' }}>{k.label}</div>
+                <OverviewStat value={k.val} />
               </div>
             ))}
           </div>
@@ -710,8 +725,8 @@ export default function HRDashboard() {
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div style={{ fontWeight: 600, fontSize: 15 }}>วันลาของฉัน</div>
-            <button onClick={() => setShowLeaveForm(v => !v)}
-              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            <button onClick={() => setShowLeaveForm(v => !v)} className="pressable"
+              style={{ display: 'flex', alignItems: 'center', gap: 7, minHeight: 44, padding: '8px 16px', borderRadius: 'var(--radius-md)', background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
               <Icon name="plus" size={15} /> ขอลา
             </button>
           </div>
@@ -738,11 +753,11 @@ export default function HRDashboard() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={handleCreateLeave} disabled={createLeave.isPending}
-                  style={{ padding: '9px 18px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
-                  {createLeave.isPending ? '...' : 'ส่งคำขอ'}
+                <button onClick={handleCreateLeave} disabled={createLeave.isPending} className="pressable"
+                  style={{ minHeight: 44, padding: '9px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 14, cursor: 'pointer', border: 'none' }}>
+                  {createLeave.isPending ? 'กำลังส่ง...' : 'ส่งคำขอ'}
                 </button>
-                <button onClick={() => setShowLeaveForm(false)} style={{ padding: '9px 18px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 14, cursor: 'pointer' }}>ยกเลิก</button>
+                <button onClick={() => setShowLeaveForm(false)} className="pressable" style={{ minHeight: 44, padding: '9px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 14, cursor: 'pointer' }}>ยกเลิก</button>
               </div>
             </div>
           )}
@@ -774,7 +789,7 @@ export default function HRDashboard() {
               const names = leaveByDate[dateStr] ?? [];
               const isToday = dateStr === new Date().toISOString().split('T')[0];
               return (
-                <div key={d} style={{ minHeight: 56, borderRadius: 8, border: `1px solid ${isToday ? 'var(--color-accent)' : 'var(--color-border)'}`, padding: '4px 6px', background: isToday ? 'rgba(212,165,116,0.08)' : 'var(--color-surface)' }}>
+                <div key={d} style={{ minHeight: 56, borderRadius: 'var(--radius-md)', border: `1px solid ${isToday ? 'var(--color-accent)' : 'var(--color-border)'}`, padding: '4px 6px', background: isToday ? 'var(--color-accent-50)' : 'var(--color-surface)' }}>
                   <div style={{ fontSize: 11, fontWeight: isToday ? 700 : 500, color: isToday ? 'var(--color-accent)' : 'var(--color-text)', marginBottom: 2 }}>{d}</div>
                   {names.map((n, ni) => (
                     <div key={ni} style={{ fontSize: 9, background: 'var(--color-danger-50)', color: 'var(--color-danger)', borderRadius: 3, padding: '1px 4px', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n}</div>

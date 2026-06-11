@@ -3,14 +3,16 @@
 import { useState, useMemo } from 'react';
 import Icon from '../icons';
 import { useToast, Tag, Select } from '../app-common';
+import { useFadeRise } from '@/lib/motion';
+import { Skeleton, SkeletonCard } from '@/components/ui/skeleton';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { useProtocols, useCreateProtocol, useTodayProtocolLogs, useLogProtocol, type Protocol } from '@/hooks/use-protocols';
 
 const FREQ_META: Record<string, { label: string; tone: 'success' | 'info' | 'warning' | 'accent'; color: string; bg: string; icon: string }> = {
-  OPENING: { label: 'เปิดร้าน',    tone: 'info',    color: '#3B82F6', bg: '#DBEAFE', icon: 'sun' },
+  OPENING: { label: 'เปิดร้าน',    tone: 'info',    color: 'var(--color-info)',    bg: 'var(--color-info-50)',    icon: 'sun' },
   DAILY:   { label: 'ระหว่างวัน',  tone: 'success', color: 'var(--color-success)', bg: 'var(--color-success-50)', icon: 'coffee' },
-  CLOSING: { label: 'ปิดร้าน',     tone: 'warning', color: '#9C6A1F', bg: 'var(--color-warning-50)', icon: 'moon' },
-  WEEKLY:  { label: 'รายสัปดาห์', tone: 'accent',  color: '#5B21B6', bg: '#EDE9FE', icon: 'calendar' },
+  CLOSING: { label: 'ปิดร้าน',     tone: 'warning', color: 'var(--color-warning)', bg: 'var(--color-warning-50)', icon: 'moon' },
+  WEEKLY:  { label: 'รายสัปดาห์', tone: 'accent',  color: 'var(--color-accent-600)', bg: 'var(--color-accent-50)', icon: 'calendar' },
 };
 
 const FREQ_ORDER = ['OPENING', 'DAILY', 'CLOSING', 'WEEKLY'];
@@ -48,6 +50,7 @@ export default function ProtocolsScreen() {
   const createProtocol = useCreateProtocol();
   const logProtocol = useLogProtocol();
 
+  const screenRef = useFadeRise();
   const [tab, setTab] = useState<'checklist' | 'library'>('checklist');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', frequency: 'OPENING' });
@@ -102,7 +105,7 @@ export default function ProtocolsScreen() {
   };
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
+    <div ref={screenRef} style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
@@ -132,7 +135,17 @@ export default function ProtocolsScreen() {
 
       {tab === 'checklist' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {isLoading && <div style={{ color: 'var(--color-text-secondary)', padding: 20 }}>กำลังโหลด...</div>}
+          {isLoading && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }} aria-busy="true">
+              <span className="sr-only">กำลังโหลดเช็คลิสต์</span>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i}>
+                  <Skeleton height={44} radius="var(--radius-lg)" style={{ marginBottom: 'var(--space-3)' }} />
+                  <SkeletonCard lines={3} style={{ borderRadius: 12, padding: 18 }} />
+                </div>
+              ))}
+            </div>
+          )}
           {!isLoading && (protocols ?? []).length === 0 && (
             <div style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 40 }}>ยังไม่มี Protocol กดแท็บ &quot;คลัง&quot; เพื่อสร้าง</div>
           )}
@@ -148,7 +161,8 @@ export default function ProtocolsScreen() {
               <div key={freq} style={{ marginBottom: 8 }}>
                 <button
                   onClick={() => setExpandedGroups(e => ({ ...e, [freq]: !open }))}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, background: meta.bg, border: `1px solid ${meta.color}22`, cursor: 'pointer', marginBottom: open ? 10 : 0, transition: 'all 150ms' }}>
+                  className="hover-raise hit-44"
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', minHeight: 44, boxSizing: 'border-box', borderRadius: 10, background: meta.bg, border: '1px solid var(--color-border)', cursor: 'pointer', marginBottom: open ? 10 : 0, transition: 'all 150ms' }}>
                   <Icon name={meta.icon} size={16} color={meta.color} />
                   <span style={{ fontWeight: 700, fontSize: 14, color: meta.color, flex: 1, textAlign: 'left' }}>{meta.label}</span>
                   <span style={{ fontSize: 12, color: meta.color, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{groupDone}/{groupTotal}</span>
@@ -177,11 +191,10 @@ export default function ProtocolsScreen() {
                             {protocol.tasks.map(task => {
                               const checked = completed.includes(task.id);
                               return (
-                                <label key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '7px 10px', borderRadius: 7, background: checked ? 'var(--color-success-50)' : 'transparent', transition: 'background 150ms', userSelect: 'none' }}>
+                                <label key={task.id} onClick={() => handleCheck(protocol, task.id, !checked)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '9px 10px', minHeight: 44, boxSizing: 'border-box', borderRadius: 7, background: checked ? 'var(--color-success-50)' : 'transparent', transition: 'background 150ms', userSelect: 'none' }}>
                                   <div
-                                    onClick={() => handleCheck(protocol, task.id, !checked)}
                                     style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${checked ? 'var(--color-success)' : 'var(--color-border-strong)'}`, background: checked ? 'var(--color-success)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 150ms', cursor: 'pointer' }}>
-                                    {checked && <Icon name="check" size={11} color="white" strokeWidth={3} />}
+                                    {checked && <Icon name="check" size={11} color="var(--color-text-inverse)" strokeWidth={3} />}
                                   </div>
                                   <span style={{ fontSize: 14, color: checked ? 'var(--color-success)' : 'var(--color-text)', textDecoration: checked ? 'line-through' : 'none', transition: 'all 150ms' }}>{task.title}</span>
                                 </label>

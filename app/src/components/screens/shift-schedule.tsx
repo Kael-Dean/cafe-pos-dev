@@ -4,8 +4,18 @@ import { useState } from 'react';
 import Icon from '../icons';
 import { useToast } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
+import { useCountUp } from '@/lib/motion';
+import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { useStaffList, useWeeklySchedule, useAssignShift, type ShiftAssignment } from '@/hooks/use-hr';
 import { usePreOrders, usePreOrder, type PreOrderStatus, type PreOrderListItem } from '@/hooks/use-pre-orders';
+
+/** Small whole-number stat that counts up on mount (header KPI chips). */
+function StatNum({ value, color }: { value: number; color: string }) {
+  const ref = useCountUp(value);
+  return (
+    <span ref={ref} style={{ fontSize: 22, fontWeight: 700, color, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+  );
+}
 
 const DAY_SHORT = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
 const DAY_FULL = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์'];
@@ -18,9 +28,9 @@ const PREORDER_STATUS_LABELS: Record<PreOrderStatus, string> = {
 };
 
 const PREORDER_STATUS_COLORS: Record<PreOrderStatus, { fg: string; bg: string }> = {
-  PENDING:     { fg: '#9C6A1F',                    bg: 'var(--color-warning-50)' },
-  IN_PROGRESS: { fg: 'var(--color-info)',          bg: '#EFF6FF' },
-  COMPLETED:   { fg: 'var(--color-success)',       bg: '#F0FDF4' },
+  PENDING:     { fg: '#9C6A1F',                     bg: 'var(--color-warning-50)' },
+  IN_PROGRESS: { fg: 'var(--color-info)',           bg: 'var(--color-info-50)' },
+  COMPLETED:   { fg: 'var(--color-success)',        bg: 'var(--color-success-50)' },
   CANCELLED:   { fg: 'var(--color-text-secondary)', bg: 'var(--color-surface-2)' },
 };
 
@@ -55,13 +65,15 @@ function fmtTime(t: string): string {
   return t.slice(0, 5);
 }
 
-// Derive a background colour from start hour so cells remain visually distinct
+// Derive a background colour from start hour so cells remain visually distinct.
+// Tinted token backgrounds (-50 roles) + matching foregrounds so the grid stays
+// readable and adapts in dark mode.
 function shiftCellStyle(shift: ShiftAssignment | undefined): { bg: string; fg: string } {
   if (!shift) return { bg: 'transparent', fg: 'var(--color-text-muted)' };
   const h = parseInt(shift.start_time.slice(0, 2), 10);
-  if (h < 10) return { bg: '#fef9c3', fg: '#854d0e' };  // early morning
-  if (h < 14) return { bg: '#dbeafe', fg: '#1e40af' };  // midday
-  return { bg: '#ede9fe', fg: '#5b21b6' };              // afternoon/evening
+  if (h < 10) return { bg: 'var(--color-warning-50)', fg: '#9C6A1F' };          // early morning
+  if (h < 14) return { bg: 'var(--color-info-50)',    fg: 'var(--color-info)' };    // midday
+  return { bg: 'var(--color-accent-50)', fg: 'var(--color-accent-600)' };          // afternoon/evening
 }
 
 export default function ShiftSchedule() {
@@ -76,8 +88,8 @@ export default function ShiftSchedule() {
   const [selectedPreOrderId, setSelectedPreOrderId] = useState<string | null>(null);
   const [showCancelled, setShowCancelled] = useState(false);
 
-  const { data: staff } = useStaffList();
-  const { data: shifts } = useWeeklySchedule(weekStart);
+  const { data: staff, isLoading: staffLoading } = useStaffList();
+  const { data: shifts, isLoading: shiftsLoading } = useWeeklySchedule(weekStart);
   const assignShift = useAssignShift();
   // Pre-orders: fetch all statuses (first 200, due_date asc) and filter to the
   // visible week client-side — no backend date-range param needed.
@@ -129,22 +141,43 @@ export default function ShiftSchedule() {
     } catch (e: unknown) { toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) }); }
   };
 
-  return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>ตารางกะ / Shift Schedule</h1>
-          <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>จัดการกะพนักงานรายสัปดาห์ — ระบุเวลาเริ่ม/สิ้นสุด</div>
+  if (staffLoading || shiftsLoading) {
+    return (
+      <div style={{ height: '100%', overflowY: 'auto', padding: 'var(--space-8)' }} aria-busy="true">
+        <span className="sr-only">กำลังโหลดตารางกะ…</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-6)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            <Skeleton height={26} width={260} radius="var(--radius-md)" />
+            <Skeleton height={14} width={320} />
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={56} width={88} radius="var(--radius-lg)" />)}
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <Skeleton height={56} radius="var(--radius-lg)" style={{ marginBottom: 'var(--space-5)' }} />
+        <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)' }}>
+          <SkeletonTable rows={6} cols={8} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ height: '100%', overflowY: 'auto', padding: 'var(--space-8)' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-6)' }}>
+        <div>
+          <h1 className="text-balance" style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 'var(--space-1)' }}>ตารางกะ / Shift Schedule</h1>
+          <div className="text-pretty" style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>จัดการกะพนักงานรายสัปดาห์ ระบุเวลาเริ่ม/สิ้นสุด</div>
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
           {[
-            { label: 'มีกะวันนี้',    val: shiftsToday,  color: '#065f46', bg: '#d1fae5' },
-            { label: 'ไม่มีกะวันนี้', val: noShiftToday, color: 'var(--color-text-muted)', bg: 'var(--color-surface-2)' },
-            { label: 'พรีออเดอร์',    val: weekPreOrderCount, color: '#9C6A1F', bg: 'var(--color-warning-50)' },
+            { label: 'มีกะวันนี้',    val: shiftsToday,       color: 'var(--color-success)',        bg: 'var(--color-success-50)' },
+            { label: 'ไม่มีกะวันนี้', val: noShiftToday,      color: 'var(--color-text-muted)',     bg: 'var(--color-surface-2)' },
+            { label: 'พรีออเดอร์',    val: weekPreOrderCount, color: '#9C6A1F',                     bg: 'var(--color-warning-50)' },
           ].map(st => (
-            <div key={st.label} style={{ background: st.bg, borderRadius: 10, padding: '10px 16px', textAlign: 'center', minWidth: 80 }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: st.color, fontVariantNumeric: 'tabular-nums' }}>{st.val}</div>
+            <div key={st.label} style={{ background: st.bg, borderRadius: 'var(--radius-lg)', padding: '10px 16px', textAlign: 'center', minWidth: 80 }}>
+              <StatNum value={st.val} color={st.color} />
               <div style={{ fontSize: 11, color: st.color, fontWeight: 500 }}>{st.label}</div>
             </div>
           ))}
@@ -153,16 +186,16 @@ export default function ShiftSchedule() {
 
       {/* Week navigation */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 10, padding: '10px 14px', boxShadow: 'var(--shadow-xs)' }}>
-        <button onClick={prevWeek} style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+        <button onClick={prevWeek} aria-label="สัปดาห์ก่อนหน้า" className="hit-44 pressable" style={{ minHeight: 38, padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
           <Icon name="chevronRight" size={15} style={{ transform: 'rotate(180deg)' }} />
         </button>
         <div style={{ flex: 1, textAlign: 'center', fontWeight: 600, fontSize: 15 }}>
           {new Date(weekStart).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} – {addDays(new Date(weekStart), 6).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
         </div>
-        <button onClick={nextWeek} style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+        <button onClick={nextWeek} aria-label="สัปดาห์ถัดไป" className="hit-44 pressable" style={{ minHeight: 38, padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
           <Icon name="chevronRight" size={15} />
         </button>
-        <button onClick={goToday} style={{ padding: '6px 14px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: 13, color: 'var(--color-text-secondary)', fontWeight: 500, cursor: 'pointer' }}>สัปดาห์นี้</button>
+        <button onClick={goToday} className="pressable" style={{ minHeight: 38, padding: '6px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: 13, color: 'var(--color-text-secondary)', fontWeight: 500, cursor: 'pointer' }}>สัปดาห์นี้</button>
         <button onClick={() => setShowCancelled(v => !v)} title="แสดง/ซ่อนพรีออเดอร์ที่ยกเลิก" style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--color-border)', background: showCancelled ? 'var(--color-surface-2)' : 'transparent', fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 12, height: 12, borderRadius: 3, border: '1px solid var(--color-border-strong)', background: showCancelled ? 'var(--color-accent)' : 'transparent', display: 'inline-block', flexShrink: 0 }} />
           แสดงที่ยกเลิก
@@ -211,7 +244,7 @@ export default function ShiftSchedule() {
                   const isEditing = editingCell?.userId === member.id && editingCell?.date === ds;
 
                   return (
-                    <td key={ds} style={{ padding: 5, textAlign: 'center', position: 'relative', borderLeft: '1px solid var(--color-border)', background: isToday ? 'rgba(212,165,116,0.04)' : 'transparent' }}>
+                    <td key={ds} style={{ padding: 'var(--space-1)', textAlign: 'center', position: 'relative', borderLeft: '1px solid var(--color-border)', background: isToday ? 'var(--color-accent-50)' : 'transparent' }}>
                       <div
                         onClick={() => admin && openEditor(member.id, ds)}
                         title={shift ? `${fmtTime(shift.start_time)}–${fmtTime(shift.end_time)}` : 'คลิกเพื่อตั้งกะ'}
@@ -249,7 +282,7 @@ export default function ShiftSchedule() {
                 const visible = list.slice(0, 3);
                 const extra = list.length - visible.length;
                 return (
-                  <td key={ds} style={{ padding: 5, verticalAlign: 'top', borderLeft: '1px solid var(--color-border)', background: isToday ? 'rgba(212,165,116,0.04)' : 'transparent' }}>
+                  <td key={ds} style={{ padding: 'var(--space-1)', verticalAlign: 'top', borderLeft: '1px solid var(--color-border)', background: isToday ? 'var(--color-accent-50)' : 'transparent' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 38 }}>
                       {visible.map(po => {
                         const c = PREORDER_STATUS_COLORS[po.status];
@@ -288,10 +321,10 @@ export default function ShiftSchedule() {
             const unassigned = weekDates.filter(d => !shiftMap[`${s.id}:${dateStr(d)}`]);
             if (unassigned.length === 0) return null;
             return (
-              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 12px', background: '#F1F5F9', borderRadius: 99 }}>
-                <div style={{ width: 22, height: 22, borderRadius: 99, background: 'var(--color-accent-50)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 10 }}>{s.name.charAt(0)}</div>
+              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 12px', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-pill)' }}>
+                <div style={{ width: 22, height: 22, borderRadius: 'var(--radius-pill)', background: 'var(--color-accent-50)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 10 }}>{s.name.charAt(0)}</div>
                 <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)' }}>{s.name.split(' ')[0]}</span>
-                <span style={{ fontSize: 11, color: '#94A3B8' }}>ไม่มีกะ {unassigned.map(d => { const day = d.getDay(); return DAY_SHORT[day === 0 ? 6 : day - 1]; }).join(', ')}</span>
+                <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>ไม่มีกะ {unassigned.map(d => { const day = d.getDay(); return DAY_SHORT[day === 0 ? 6 : day - 1]; }).join(', ')}</span>
               </div>
             );
           })}
@@ -308,8 +341,8 @@ export default function ShiftSchedule() {
         const d = new Date(editingCell.date);
         const dayIdx = (d.getDay() + 6) % 7;          // Monday = 0
         return (
-          <div onClick={() => setEditingCell(null)} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-            <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 16, width: 460, maxWidth: '92vw', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+          <div onClick={() => setEditingCell(null)} style={{ position: 'absolute', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-xl)', width: 460, maxWidth: '92vw', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
               {/* Header — who & which day */}
               <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface-2)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
@@ -332,19 +365,19 @@ export default function ShiftSchedule() {
                 <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
                   <div style={{ flex: 1 }}>
                     <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 6 }}>เวลาเริ่ม</label>
-                    <input type="time" value={editStart} onChange={e => setEditStart(e.target.value)} style={{ width: '100%', padding: '11px 12px', borderRadius: 8, border: '1px solid var(--color-border)', fontSize: 17, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    <input type="time" value={editStart} onChange={e => setEditStart(e.target.value)} style={{ width: '100%', minHeight: 44, padding: '11px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text)', fontSize: 17, fontFamily: 'inherit', boxSizing: 'border-box' }} />
                   </div>
                   <div style={{ paddingBottom: 12, fontSize: 13, color: 'var(--color-text-muted)' }}>ถึง</div>
                   <div style={{ flex: 1 }}>
                     <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 6 }}>เวลาสิ้นสุด</label>
-                    <input type="time" value={editEnd} onChange={e => setEditEnd(e.target.value)} style={{ width: '100%', padding: '11px 12px', borderRadius: 8, border: '1px solid var(--color-border)', fontSize: 17, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    <input type="time" value={editEnd} onChange={e => setEditEnd(e.target.value)} style={{ width: '100%', minHeight: 44, padding: '11px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text)', fontSize: 17, fontFamily: 'inherit', boxSizing: 'border-box' }} />
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 10, marginTop: 24 }}>
-                  <button onClick={() => handleAssign(editingCell.userId, editingCell.date)} disabled={assignShift.isPending} style={{ flex: 1, padding: '12px 0', borderRadius: 8, background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', border: 'none' }}>
+                  <button onClick={() => handleAssign(editingCell.userId, editingCell.date)} disabled={assignShift.isPending} className="pressable" style={{ flex: 1, minHeight: 44, padding: '12px 0', borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontSize: 14, fontWeight: 600, cursor: 'pointer', border: 'none' }}>
                     บันทึก
                   </button>
-                  <button onClick={() => setEditingCell(null)} style={{ padding: '12px 22px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', fontSize: 14, cursor: 'pointer' }}>ยกเลิก</button>
+                  <button onClick={() => setEditingCell(null)} className="pressable" style={{ minHeight: 44, padding: '12px 22px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', color: 'var(--color-text)', border: '1px solid var(--color-border)', fontSize: 14, cursor: 'pointer' }}>ยกเลิก</button>
                 </div>
               </div>
             </div>
@@ -366,10 +399,18 @@ function PreOrderDetailModal({ id, onClose }: { id: string; onClose: () => void 
     v == null ? '—' : `฿${Number(v).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 12, width: 560, maxWidth: '90vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: 'var(--shadow-lg)' }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', width: 560, maxWidth: '90vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: 'var(--shadow-lg)' }}>
         {isLoading || !po ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>กำลังโหลด…</div>
+          <div style={{ padding: 'var(--space-10)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }} aria-busy="true">
+            <span className="sr-only">กำลังโหลดรายละเอียดพรีออเดอร์…</span>
+            <Skeleton height={20} width="50%" radius="var(--radius-md)" />
+            <Skeleton height={14} width="35%" />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={32} radius="var(--radius-sm)" />)}
+            </div>
+            <SkeletonTable rows={3} cols={4} />
+          </div>
         ) : (
           <div style={{ padding: 24 }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 18 }}>

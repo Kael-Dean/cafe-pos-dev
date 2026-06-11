@@ -2,12 +2,14 @@
 
 import Icon from '../icons';
 import { Tag } from '../app-common';
+import { useFadeRise } from '@/lib/motion';
 import { useI18n, type Lang } from '@/lib/i18n';
 import { useTheme, type Theme } from '@/lib/theme';
 
 export default function Settings() {
   const { t, lang, setLang } = useI18n();
   const { theme, setTheme } = useTheme();
+  const rootRef = useFadeRise({ y: 8, duration: 0.22 });
 
   const langOptions: { value: Lang; label: string; sub: string }[] = [
     { value: 'th', label: t.settings.thai, sub: 'ภาษาไทย' },
@@ -27,11 +29,11 @@ export default function Settings() {
   ];
 
   return (
-    <div className="scroll" style={{ height: '100%', overflow: 'auto', padding: 24, background: 'var(--color-bg)' }}>
+    <div ref={rootRef} className="scroll" style={{ height: '100%', overflow: 'auto', padding: 'var(--space-6)', background: 'var(--color-bg)' }}>
       {/* Header */}
-      <div style={{ marginBottom: 20 }}>
+      <div style={{ marginBottom: 'var(--space-5)' }}>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>{t.settings.title}</h1>
-        <div style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginTop: 4 }}>{t.settings.subtitle}</div>
+        <div style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)' }}>{t.settings.subtitle}</div>
       </div>
 
       {/* Language — the one functional section */}
@@ -54,8 +56,10 @@ export default function Settings() {
                 key={opt.value}
                 onClick={() => setLang(opt.value)}
                 aria-pressed={active}
+                className="pressable"
                 style={{
                   flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                  minHeight: 44,
                   padding: '14px 16px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
                   border: `1.5px solid ${active ? 'var(--color-primary)' : 'var(--color-border)'}`,
                   background: active ? 'var(--color-accent-50)' : 'var(--color-surface)',
@@ -100,8 +104,10 @@ export default function Settings() {
                 key={opt.value}
                 onClick={() => setTheme(opt.value)}
                 aria-pressed={active}
+                className="pressable"
                 style={{
                   flex: 1, display: 'flex', alignItems: 'center', gap: 12,
+                  minHeight: 44,
                   padding: '14px 16px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
                   border: `1.5px solid ${active ? 'var(--color-primary)' : 'var(--color-border)'}`,
                   background: active ? 'var(--color-accent-50)' : 'var(--color-surface)',

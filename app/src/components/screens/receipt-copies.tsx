@@ -1,7 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../icons';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useFadeRise } from '@/lib/motion';
 import { useToast, baht } from '../app-common';
 import { usePrinter } from '@/hooks/use-printer';
 import ReceiptModal from './receipt-modal';
@@ -32,6 +34,7 @@ export default function ReceiptCopies() {
   const [printingAll, setPrintingAll] = useState(false);
 
   const { data: orders, isLoading, isError, error } = useReceiptCopies(date);
+  const rootRef = useFadeRise({ y: 8, duration: 0.22 });
 
   const summary = useMemo(() => {
     const list = orders ?? [];
@@ -61,36 +64,39 @@ export default function ReceiptCopies() {
     }
   };
 
+  const disabledPrint = !orders || orders.length === 0 || printingAll;
+
   return (
-    <div style={{ padding: 32, maxWidth: 960, margin: '0 auto' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4, color: 'var(--color-text)' }}>
+    <div ref={rootRef} style={{ padding: 'var(--space-8)', maxWidth: 960, margin: '0 auto' }}>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 'var(--space-1)', color: 'var(--color-text)' }}>
         สำเนาใบเสร็จ
       </h1>
-      <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 24 }}>
+      <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-6)' }}>
         เรียกดูและพิมพ์สำเนาใบเสร็จย้อนหลังของทั้งวัน เพื่อนำไปตรวจสอบข้อมูล
       </p>
 
       {/* ── Controls ── */}
       <div style={{
-        display: 'flex', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap',
-        marginBottom: 20,
+        display: 'flex', alignItems: 'flex-end', gap: 'var(--space-4)', flexWrap: 'wrap',
+        marginBottom: 'var(--space-5)',
       }}>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>วันที่</span>
           <input
             type="date"
             value={date}
             max={todayISO()}
             onChange={e => setDate(e.target.value)}
+            className="input-std"
             style={{
-              padding: '9px 12px', borderRadius: 10, fontSize: 14,
+              padding: '9px var(--space-3)', minHeight: 40, borderRadius: 'var(--radius-md)', fontSize: 14,
               border: '1px solid var(--color-border)',
               background: 'var(--color-surface)', color: 'var(--color-text)',
             }}
           />
         </label>
 
-        <div style={{ display: 'flex', gap: 24, padding: '6px 0' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-6)', padding: 'var(--space-2) 0' }}>
           <Stat label="จำนวนใบเสร็จ" value={String(summary.count)} />
           <Stat label="ยอดรวม" value={baht(summary.revenue)} />
         </div>
@@ -99,33 +105,43 @@ export default function ReceiptCopies() {
 
         <button
           onClick={() => setConfirmAll(true)}
-          disabled={!orders || orders.length === 0 || printingAll}
+          disabled={disabledPrint}
+          className="pressable"
           style={{
-            padding: '10px 18px', borderRadius: 10, fontSize: 14, fontWeight: 700,
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: (!orders || orders.length === 0 || printingAll) ? 'var(--color-border)' : 'var(--color-primary)',
-            color: 'white',
-            opacity: (!orders || orders.length === 0 || printingAll) ? 0.6 : 1,
-            cursor: (!orders || orders.length === 0 || printingAll) ? 'default' : 'pointer',
+            padding: '10px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 700,
+            display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+            background: disabledPrint ? 'var(--color-border)' : 'var(--color-primary)',
+            color: disabledPrint ? 'var(--color-text-muted)' : 'var(--color-text-inverse)',
+            opacity: disabledPrint ? 0.6 : 1,
+            cursor: disabledPrint ? 'default' : 'pointer',
           }}
         >
-          <Icon name="printer" size={16} />
+          {printingAll
+            ? <span className="spinner" aria-hidden style={{ width: 16, height: 16 }} />
+            : <Icon name="printer" size={16} />}
           {printingAll ? 'กำลังพิมพ์...' : 'พิมพ์ทั้งหมด'}
         </button>
       </div>
 
       {/* ── List ── */}
       {isLoading ? (
-        <div style={{ padding: 40, color: 'var(--color-text-secondary)' }}>กำลังโหลด...</div>
+        <ReceiptListSkeleton />
       ) : isError ? (
-        <div style={{ padding: 40, color: 'var(--color-danger)' }}>
+        <div role="alert" style={{
+          padding: 'var(--space-5)', borderRadius: 'var(--radius-lg)', color: 'var(--color-danger)',
+          background: 'var(--color-danger-50)', border: '1px solid var(--color-danger)', fontSize: 13,
+        }}>
           โหลดข้อมูลไม่สำเร็จ: {String(error instanceof Error ? error.message : error)}
         </div>
       ) : !orders || orders.length === 0 ? (
         <div style={{
-          padding: 48, textAlign: 'center', color: 'var(--color-text-secondary)',
-          border: '1px dashed var(--color-border)', borderRadius: 12,
+          padding: 'var(--space-12)', textAlign: 'center', color: 'var(--color-text-secondary)',
+          border: '1px dashed var(--color-border)', borderRadius: 'var(--radius-lg)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-3)',
         }}>
+          <div style={{ width: 48, height: 48, borderRadius: 'var(--radius-lg)', background: 'var(--color-surface-2)', color: 'var(--color-text-muted)', display: 'grid', placeItems: 'center' }}>
+            <Icon name="printer" size={22} />
+          </div>
           ไม่มีใบเสร็จในวันที่เลือก
         </div>
       ) : (
@@ -196,49 +212,114 @@ export default function ReceiptCopies() {
 
       {/* ── Print-all confirm ── */}
       {confirmAll && (
-        <div
-          onClick={() => setConfirmAll(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 320,
-            background: 'rgba(20, 12, 6, 0.55)', backdropFilter: 'blur(4px)',
-            display: 'grid', placeItems: 'center', padding: 16,
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
+        <ConfirmPrintAll
+          count={summary.count}
+          onCancel={() => setConfirmAll(false)}
+          onConfirm={() => void printAll()}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Skeleton mirroring the order table (header row + several order rows). */
+function ReceiptListSkeleton() {
+  const cols = '90px 80px 1fr 130px 120px';
+  return (
+    <div
+      aria-busy="true"
+      style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', background: 'var(--color-surface)' }}
+    >
+      <span className="sr-only">กำลังโหลดสำเนาใบเสร็จ</span>
+      <div style={{
+        display: 'grid', gridTemplateColumns: cols, gap: 'var(--space-3)', padding: '12px var(--space-4)',
+        borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
+      }}>
+        {Array.from({ length: 5 }).map((_, c) => <Skeleton key={c} width="60%" height="var(--space-3)" />)}
+      </div>
+      {Array.from({ length: 7 }).map((_, r) => (
+        <div key={r} style={{
+          display: 'grid', gridTemplateColumns: cols, gap: 'var(--space-3)', padding: '14px var(--space-4)',
+          alignItems: 'center', borderBottom: '1px solid var(--color-border)',
+        }}>
+          <Skeleton width="70%" height="var(--space-3)" />
+          <Skeleton width="60%" height="var(--space-3)" />
+          <Skeleton width="85%" height="var(--space-3)" />
+          <Skeleton width="50%" height="var(--space-3)" style={{ justifySelf: 'end' }} />
+          <Skeleton width="55%" height="var(--space-3)" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Confirm "print all" — a centered dialog reusing the app's .modal-backdrop /
+ * .modal-card surface, with Esc-to-close, focus trap and focus restore so it
+ * matches the keyboard behaviour of the other modals.
+ */
+function ConfirmPrintAll({ count, onCancel, onConfirm }: { count: number; onCancel: () => void; onConfirm: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    const node = ref.current;
+    const focusables = () =>
+      Array.from(node?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? [])
+        .filter(el => el.offsetParent !== null);
+    focusables()[0]?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onCancel(); return; }
+      if (e.key !== 'Tab') return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0]; const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('keydown', onKey); opener?.focus?.(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="modal-backdrop" style={{ zIndex: 320 }} onClick={onCancel}>
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-label="ยืนยันพิมพ์สำเนาทั้งหมด"
+        className="modal-card"
+        onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 380, padding: 'var(--space-6)' }}
+      >
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 'var(--space-2)', color: 'var(--color-text)' }}>
+          พิมพ์สำเนาทั้งหมด?
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-5)', lineHeight: 1.6 }}>
+          จะพิมพ์สำเนาใบเสร็จ {count} ใบเรียงต่อกัน ใช้กระดาษพอสมควร แน่ใจหรือไม่?
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            className="pressable"
+            style={{ padding: '9px var(--space-4)', minHeight: 44, borderRadius: 'var(--radius-md)', fontSize: 13, color: 'var(--color-text-secondary)' }}
+          >
+            ยกเลิก
+          </button>
+          <button
+            onClick={onConfirm}
+            className="pressable"
             style={{
-              width: '100%', maxWidth: 380, background: 'var(--color-surface)',
-              borderRadius: 16, padding: 24, boxShadow: 'var(--shadow-lg)',
+              padding: '9px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 700,
+              background: 'var(--color-primary)', color: 'var(--color-text-inverse)',
+              display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
             }}
           >
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: 'var(--color-text)' }}>
-              พิมพ์สำเนาทั้งหมด?
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 20, lineHeight: 1.6 }}>
-              จะพิมพ์สำเนาใบเสร็จ {summary.count} ใบเรียงต่อกัน ใช้กระดาษพอสมควร —
-              แน่ใจหรือไม่?
-            </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setConfirmAll(false)}
-                style={{ padding: '9px 16px', borderRadius: 9, fontSize: 13, color: 'var(--color-text-secondary)' }}
-              >
-                ยกเลิก
-              </button>
-              <button
-                onClick={() => void printAll()}
-                style={{
-                  padding: '9px 18px', borderRadius: 9, fontSize: 13, fontWeight: 700,
-                  background: 'var(--color-primary)', color: 'white',
-                  display: 'flex', alignItems: 'center', gap: 6,
-                }}
-              >
-                <Icon name="printer" size={14} /> พิมพ์ทั้งหมด
-              </button>
-            </div>
-          </div>
+            <Icon name="printer" size={14} /> พิมพ์ทั้งหมด
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }

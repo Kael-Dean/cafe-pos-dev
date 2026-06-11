@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Icon from '../icons';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useFadeRise } from '@/lib/motion';
 import { useToast } from '../app-common';
 import { ReceiptPaper, type ReceiptData, type StoreInfo } from './receipt-modal';
 import { fetchStatus, fetchConfig, saveConfig, listPrinters } from '@/lib/printer-bridge';
@@ -55,9 +57,11 @@ export default function HardwareScreen() {
   const [taxIdInput, setTaxIdInput]     = useState('');
   const [branchInput, setBranchInput]   = useState('');
   const [savingStore, setSavingStore]   = useState(false);
+  const [configLoading, setConfigLoading] = useState(true); // initial fetchConfig in flight
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const previewNow = useState(() => new Date())[0];
+  const rootRef = useFadeRise({ y: 8, duration: 0.22 });
 
   const liveStore: StoreInfo = {
     name:    storeInput    || 'ชื่อร้านของคุณ',
@@ -109,7 +113,7 @@ export default function HardwareScreen() {
       setBranchInput(cfg.storeBranch   ?? '');
       // Lock this install to USB (AN581) — older configs may still be on LAN.
       if (cfg.mode !== 'usb') saveConfig({ mode: 'usb' }).catch(() => {});
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setConfigLoading(false));
     checkStatus();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -162,11 +166,11 @@ export default function HardwareScreen() {
   /* ── Render ── */
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: '28px 32px' }}>
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    <div ref={rootRef} style={{ height: '100%', overflowY: 'auto', padding: '28px var(--space-8)' }}>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
 
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 3 }}>Hardware / เครื่องพิมพ์</h1>
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 'var(--space-1)' }}>Hardware / เครื่องพิมพ์</h1>
         <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>จัดการเครื่องพิมพ์ใบเสร็จ</div>
       </div>
 
@@ -193,21 +197,21 @@ export default function HardwareScreen() {
                 </div>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={checkStatus} style={btnGhost}>
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <button onClick={checkStatus} className="pressable" style={{ ...btnGhost, minHeight: 44 }}>
                 <Icon name="refresh" size={13} style={{ animation: printer === 'checking' ? 'spin 1s linear infinite' : 'none' }} />
                 ตรวจสอบ
               </button>
-              <button onClick={testPrint} disabled={testing || printer === 'offline'} style={{
-                ...btnGhost, opacity: (testing || printer === 'offline') ? 0.5 : 1,
+              <button onClick={testPrint} disabled={testing || printer === 'offline'} className="pressable" style={{
+                ...btnGhost, minHeight: 44, opacity: (testing || printer === 'offline') ? 0.5 : 1,
                 cursor: (testing || printer === 'offline') ? 'not-allowed' : 'pointer',
               }}>
-                <Icon name={testing ? 'check' : 'print'} size={13} />
+                {testing ? <span className="spinner" aria-hidden style={{ width: 13, height: 13 }} /> : <Icon name="print" size={13} />}
                 {testing ? 'กำลังพิมพ์...' : 'ทดสอบพิมพ์'}
               </button>
             </div>
             {printer === 'offline' && (
-              <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--color-danger-50)', borderRadius: 6, fontSize: 12, color: 'var(--color-danger)' }}>
+              <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-danger-50)', borderRadius: 'var(--radius-sm)', fontSize: 12, color: 'var(--color-danger)' }}>
                 ออฟไลน์ — เสียบสาย USB เครื่องพิมพ์ AN581-C และติดตั้งไดรเวอร์แล้วกด “ค้นหาใหม่”
               </div>
             )}
@@ -229,7 +233,7 @@ export default function HardwareScreen() {
                    : 'ยังไม่พบเครื่องพิมพ์'}
                 </div>
               </div>
-              <button onClick={detectPrinter} disabled={detecting} style={{ ...btnGhost, opacity: detecting ? 0.6 : 1 }}>
+              <button onClick={detectPrinter} disabled={detecting} className="pressable" style={{ ...btnGhost, minHeight: 44, opacity: detecting ? 0.6 : 1 }}>
                 <Icon name="refresh" size={13} style={{ animation: detecting ? 'spin 1s linear infinite' : 'none' }} />
                 {detecting ? 'กำลังค้นหา...' : 'ค้นหาใหม่'}
               </button>
@@ -243,26 +247,42 @@ export default function HardwareScreen() {
         {/* Right column: store info */}
         <div>
           <Section title="ข้อมูลร้าน" desc="แสดงบนส่วนหัวใบเสร็จ">
-            <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
-              <Field label="ชื่อร้าน *" value={storeInput} onChange={setStoreInput} placeholder="ร้านตะวันอ้อมข้าว" />
-              <Field label="ที่อยู่" value={addressInput} onChange={setAddressInput} placeholder="123 ถ.ราชดำเนิน ต.ในเมือง..." />
-              <Field label="เลขที่ผู้เสียภาษี" value={taxIdInput} onChange={setTaxIdInput} placeholder="0105544000001" mono />
-              <Field label="สาขา" value={branchInput} onChange={setBranchInput} placeholder="สาขาที่ 00001" />
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            {configLoading ? (
+              <div aria-busy="true" style={{ display: 'grid', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+                <span className="sr-only">กำลังโหลดข้อมูลร้าน</span>
+                {[0, 1, 2, 3].map(i => (
+                  <div key={i} style={{ display: 'grid', gap: 'var(--space-2)' }}>
+                    <Skeleton width="30%" height={10} />
+                    <Skeleton height={38} radius="var(--radius-md)" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+                <Field label="ชื่อร้าน *" value={storeInput} onChange={setStoreInput} placeholder="ร้านตะวันอ้อมข้าว" />
+                <Field label="ที่อยู่" value={addressInput} onChange={setAddressInput} placeholder="123 ถ.ราชดำเนิน ต.ในเมือง..." />
+                <Field label="เลขที่ผู้เสียภาษี" value={taxIdInput} onChange={setTaxIdInput} placeholder="0105544000001" mono />
+                <Field label="สาขา" value={branchInput} onChange={setBranchInput} placeholder="สาขาที่ 00001" />
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
               <button
                 onClick={saveStoreInfo}
-                disabled={savingStore || !storeInput.trim()}
+                disabled={savingStore || !storeInput.trim() || configLoading}
+                className="pressable"
                 style={{
-                  flex: 1, padding: '10px', borderRadius: 8,
+                  flex: 1, padding: '10px', minHeight: 44, borderRadius: 'var(--radius-md)',
                   background: (savingStore || !storeInput.trim()) ? 'var(--color-border)' : 'var(--color-primary)',
-                  color: 'white', fontSize: 14, fontWeight: 700,
+                  color: (savingStore || !storeInput.trim()) ? 'var(--color-text-muted)' : 'var(--color-text-inverse)',
+                  fontSize: 14, fontWeight: 700,
                   opacity: !storeInput.trim() ? 0.5 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
                 }}
               >
+                {savingStore && <span className="spinner" aria-hidden style={{ width: 14, height: 14 }} />}
                 {savingStore ? 'กำลังบันทึก...' : 'บันทึกข้อมูลร้าน'}
               </button>
-              <button onClick={() => setPreviewOpen(true)} style={{ ...btnGhost, whiteSpace: 'nowrap' }}>
+              <button onClick={() => setPreviewOpen(true)} className="pressable" style={{ ...btnGhost, minHeight: 44, whiteSpace: 'nowrap' }}>
                 <Icon name="eye" size={14} /> ดูตัวอย่างใบเสร็จ
               </button>
             </div>
@@ -272,81 +292,24 @@ export default function HardwareScreen() {
 
       {/* Preview modal */}
       {previewOpen && (
-        <div
-          onClick={e => { if (e.target === e.currentTarget) setPreviewOpen(false); }}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 200,
-            background: 'rgba(20,12,6,0.72)', backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-            padding: '20px 16px 40px', overflowY: 'auto',
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              width: '100%', maxWidth: 660,
-              background: 'var(--color-surface)', borderRadius: 18,
-              boxShadow: '0 28px 72px rgba(61,40,23,0.25)',
-              display: 'flex', flexDirection: 'column',
-            }}
-          >
-            {/* Modal header */}
-            <div style={{
-              padding: '14px 20px', borderBottom: '1px solid var(--color-border)',
-              display: 'flex', alignItems: 'center', gap: 10,
-            }}>
-              <div style={{
-                width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                background: 'var(--color-primary-50)', color: 'var(--color-primary)',
-                display: 'grid', placeItems: 'center',
-              }}>
-                <Icon name="eye" size={16} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 700 }}>ตัวอย่างใบเสร็จ (เรียลไทม์)</div>
-                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
-                  ข้อมูลสมมติ · อัปเดตตามข้อมูลร้านที่กรอกไว้
-                </div>
-              </div>
-              <button onClick={() => setPreviewOpen(false)} style={{
-                width: 30, height: 30, borderRadius: 6, display: 'grid', placeItems: 'center',
-                color: 'var(--color-text-secondary)',
-              }}>
-                <Icon name="x" size={15} />
-              </button>
-            </div>
-
-            {/* Receipt paper */}
-            <div style={{ padding: '20px', overflowY: 'auto', maxHeight: '72vh' }}>
-              <ReceiptPaper
-                data={mockReceipt}
-                invoiceNo={invoiceNo}
-                now={previewNow}
-                fmt={FMT}
-                formatDate={FMT_DATE}
-                formatTime={FMT_TIME}
-                storeInfo={liveStore}
-              />
-              <div style={{
-                marginTop: 10, padding: '8px 12px',
-                background: 'var(--color-surface-2)', borderRadius: 6,
-                fontSize: 11, color: 'var(--color-text-secondary)', textAlign: 'center',
-              }}>
-                ข้อมูลสมมติ — ใบเสร็จจริงเปิดหลังชำระเงินในหน้า POS
-              </div>
-            </div>
-
-            <div style={{
-              padding: '12px 20px', borderTop: '1px solid var(--color-border)',
-              display: 'flex', justifyContent: 'flex-end',
-            }}>
-              <button onClick={() => setPreviewOpen(false)} style={{
-                padding: '8px 20px', borderRadius: 8, fontSize: 13,
-                border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)',
-              }}>ปิด</button>
-            </div>
+        <PreviewModal onClose={() => setPreviewOpen(false)}>
+          <ReceiptPaper
+            data={mockReceipt}
+            invoiceNo={invoiceNo}
+            now={previewNow}
+            fmt={FMT}
+            formatDate={FMT_DATE}
+            formatTime={FMT_TIME}
+            storeInfo={liveStore}
+          />
+          <div style={{
+            marginTop: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)',
+            background: 'var(--color-surface-2)', borderRadius: 'var(--radius-sm)',
+            fontSize: 11, color: 'var(--color-text-secondary)', textAlign: 'center',
+          }}>
+            ข้อมูลสมมติ ใบเสร็จจริงเปิดหลังชำระเงินในหน้า POS
           </div>
-        </div>
+        </PreviewModal>
       )}
     </div>
   );
@@ -354,14 +317,103 @@ export default function HardwareScreen() {
 
 /* ─── Helpers ─────────────────────────────────────────────────────── */
 
+/**
+ * Receipt preview dialog — reuses the app .modal-backdrop surface with Esc to
+ * close, focus trap and focus restore so keyboard behaviour matches the other
+ * modals. Scrolls internally for the (potentially tall) receipt paper.
+ */
+function PreviewModal({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    const node = ref.current;
+    const focusables = () =>
+      Array.from(node?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? [])
+        .filter(el => el.offsetParent !== null);
+    focusables()[0]?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+      if (e.key !== 'Tab') return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0]; const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('keydown', onKey); opener?.focus?.(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div
+      className="modal-backdrop"
+      style={{ zIndex: 200, alignItems: 'flex-start', padding: 'var(--space-5) var(--space-4) var(--space-10)', overflowY: 'auto' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-label="ตัวอย่างใบเสร็จ"
+        className="modal-card"
+        onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 660, display: 'flex', flexDirection: 'column' }}
+      >
+        {/* Modal header */}
+        <div style={{
+          padding: 'var(--space-3) var(--space-5)', borderBottom: '1px solid var(--color-border)',
+          display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+        }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 'var(--radius-md)', flexShrink: 0,
+            background: 'var(--color-primary-50)', color: 'var(--color-primary)',
+            display: 'grid', placeItems: 'center',
+          }}>
+            <Icon name="eye" size={16} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>ตัวอย่างใบเสร็จ (เรียลไทม์)</div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
+              ข้อมูลสมมติ · อัปเดตตามข้อมูลร้านที่กรอกไว้
+            </div>
+          </div>
+          <button onClick={onClose} aria-label="ปิด" className="icon-btn hit-44" style={{
+            width: 30, height: 30, borderRadius: 'var(--radius-sm)', display: 'grid', placeItems: 'center',
+            color: 'var(--color-text-secondary)',
+          }}>
+            <Icon name="x" size={15} />
+          </button>
+        </div>
+
+        {/* Receipt paper */}
+        <div style={{ padding: 'var(--space-5)', overflowY: 'auto', maxHeight: '72vh' }}>
+          {children}
+        </div>
+
+        <div style={{
+          padding: 'var(--space-3) var(--space-5)', borderTop: '1px solid var(--color-border)',
+          display: 'flex', justifyContent: 'flex-end',
+        }}>
+          <button onClick={onClose} className="pressable" style={{
+            padding: 'var(--space-2) var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', fontSize: 13,
+            border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)',
+          }}>ปิด</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
   return (
     <div style={{
       background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-      borderRadius: 12, padding: 18, marginBottom: 14, boxShadow: 'var(--shadow-xs)',
+      borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)', marginBottom: 'var(--space-4)', boxShadow: 'var(--shadow-xs)',
     }}>
-      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: desc ? 3 : 12 }}>{title}</div>
-      {desc && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 12 }}>{desc}</div>}
+      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: desc ? 'var(--space-1)' : 'var(--space-3)' }}>{title}</div>
+      {desc && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-3)' }}>{desc}</div>}
       {children}
     </div>
   );
@@ -372,12 +424,11 @@ function Field({ label, value, onChange, placeholder, mono }: {
 }) {
   return (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>{label}</div>
       <input
         value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        style={{ ...inputStyle, fontFamily: mono ? '"Courier New", monospace' : 'inherit' }}
-        onFocus={e => (e.currentTarget.style.borderColor = 'var(--color-accent)')}
-        onBlur={e => (e.currentTarget.style.borderColor = 'var(--color-border)')}
+        className="input-std"
+        style={{ ...inputStyle, fontFamily: mono ? 'var(--font-num), "Courier New", monospace' : 'inherit' }}
       />
     </div>
   );
@@ -396,13 +447,13 @@ function StatusDot({ s }: { s: PrinterStatus }) {
 }
 
 const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '9px 12px', borderRadius: 8,
+  width: '100%', padding: '9px var(--space-3)', borderRadius: 'var(--radius-md)',
   border: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
-  fontSize: 13, outline: 'none', boxSizing: 'border-box',
+  color: 'var(--color-text)', fontSize: 13, outline: 'none', boxSizing: 'border-box',
 };
 const btnGhost: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 6,
-  padding: '8px 12px', borderRadius: 8,
+  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
+  padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)',
   border: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
-  fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap',
+  color: 'var(--color-text)', fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap',
 };

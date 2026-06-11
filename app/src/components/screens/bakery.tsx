@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import Icon from '../icons';
 import { useToast, Tag, baht, NumberInput } from '../app-common';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useAllProducts, useUpdateProduct, type MenuItem } from '@/hooks/use-products';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
 import { useProductDetail } from '@/hooks/use-bom';
@@ -17,6 +18,13 @@ const fmtDateTh = (str: string) =>
     day: 'numeric', month: 'short', year: '2-digit',
     hour: '2-digit', minute: '2-digit',
   });
+
+// Foreground for the product colour swatches: the swatch background is a dynamic,
+// saturated brand colour from product data (always dark), so a fixed light value
+// keeps the tag legible in BOTH themes — a theme-flipping token would invert and
+// fail contrast on the dark swatch. Pure #fff softened toward the brand hue per
+// the "no raw white" rule.
+const SWATCH_FG = 'oklch(0.99 0.004 70)';
 
 export default function Bakery() {
   const toast = useToast();
@@ -50,7 +58,7 @@ export default function Bakery() {
         <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--color-border)', background: 'linear-gradient(180deg, var(--color-accent-50) 0%, var(--color-surface) 100%)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--color-accent)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-              <Icon name="cake" size={20} color="#fff" />
+              <Icon name="cake" size={20} color="var(--color-text-inverse)" />
             </div>
             <div>
               <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Bakery / Production</div>
@@ -69,7 +77,18 @@ export default function Bakery() {
         </div>
         <div className="scroll" style={{ overflow: 'auto', flex: 1, padding: 8 }}>
           {productsLoading ? (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>กำลังโหลด...</div>
+            <div aria-busy="true" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+              <span className="sr-only">กำลังโหลดรายการผลิต</span>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: 10 }}>
+                  <Skeleton width={40} height={40} radius="var(--radius-md)" />
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                    <Skeleton width="75%" height="var(--space-3)" />
+                    <Skeleton width="45%" height="var(--space-2)" />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : filtered.length === 0 ? (
             <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>
               <div style={{ marginBottom: 6 }}>ยังไม่มีเมนูประเภท "ผลิตล่วงหน้า"</div>
@@ -88,7 +107,7 @@ export default function Bakery() {
                 onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--color-surface-2)'; }}
                 onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
               >
-                <div style={{ width: 40, height: 40, borderRadius: 8, background: p.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{p.tag}</div>
+                <div style={{ width: 40, height: 40, borderRadius: 8, background: p.color, color: SWATCH_FG, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{p.tag}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 3 }}>
@@ -149,11 +168,11 @@ const EditableMenuName = ({ name, onRename }: { name: string; onRename: (n: stri
           style={{ flex: 1, minWidth: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em', fontFamily: 'inherit', border: '1px solid var(--color-accent)', borderRadius: 8, padding: '4px 10px', outline: 'none' }}
         />
         <button onClick={commit} title="บันทึกชื่อ" aria-label="บันทึกชื่อ"
-          style={{ flexShrink: 0, display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', cursor: 'pointer' }}>
+          style={{ flexShrink: 0, display: 'grid', placeItems: 'center', width: 44, height: 44, borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', cursor: 'pointer' }}>
           <Icon name="check" size={18} />
         </button>
         <button onClick={cancel} title="ยกเลิก" aria-label="ยกเลิก"
-          style={{ flexShrink: 0, display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer' }}>
+          style={{ flexShrink: 0, display: 'grid', placeItems: 'center', width: 44, height: 44, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer' }}>
           <Icon name="x" size={18} />
         </button>
       </div>
@@ -233,7 +252,7 @@ const ProductionPanel = ({ product, stockItem, onSuccess, onError }: ProductionP
     <>
       {/* Header */}
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
-        <div style={{ width: 80, height: 80, borderRadius: 12, background: product.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 800, flexShrink: 0 }}>{product.tag}</div>
+        <div style={{ width: 80, height: 80, borderRadius: 12, background: product.color, color: SWATCH_FG, display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 800, flexShrink: 0 }}>{product.tag}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500 }}>{product.nameEn}</div>
           <EditableMenuName name={product.name} onRename={handleRename} />
@@ -265,7 +284,7 @@ const ProductionPanel = ({ product, stockItem, onSuccess, onError }: ProductionP
             <div style={{ padding: 12, marginBottom: 16, background: 'var(--color-warning-50)', border: '1px solid var(--color-warning)', borderRadius: 8, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <Icon name="info" size={18} color="var(--color-warning)" />
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#9C6A1F', marginBottom: 2 }}>เมนูนี้ยังไม่มีสูตร</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-warning)', marginBottom: 2 }}>เมนูนี้ยังไม่มีสูตร</div>
                 <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
                   สามารถบันทึกการผลิตได้ แต่จะไม่หักวัตถุดิบ เพิ่มเฉพาะสต็อกสำเร็จรูป — แนะนำเพิ่มสูตรที่ BOM Builder ก่อน
                 </div>
@@ -314,7 +333,7 @@ const ProductionPanel = ({ product, stockItem, onSuccess, onError }: ProductionP
             <button
               onClick={submit}
               disabled={createOrder.isPending || batches < 1}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '12px 24px', fontSize: 14, fontWeight: 600, background: createOrder.isPending ? 'var(--color-surface-2)' : 'var(--color-primary)', color: createOrder.isPending ? 'var(--color-text-muted)' : '#fff', border: 'none', borderRadius: 8, cursor: createOrder.isPending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '12px 24px', minHeight: 44, boxSizing: 'border-box', fontSize: 14, fontWeight: 600, background: createOrder.isPending ? 'var(--color-surface-2)' : 'var(--color-primary)', color: createOrder.isPending ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 8, cursor: createOrder.isPending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }}
               onMouseEnter={e => { if (!createOrder.isPending) e.currentTarget.style.background = 'var(--color-primary-700)'; }}
               onMouseLeave={e => { if (!createOrder.isPending) e.currentTarget.style.background = 'var(--color-primary)'; }}
             >

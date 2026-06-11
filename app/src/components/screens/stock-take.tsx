@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import Icon from '../icons';
 import { useToast } from '../app-common';
+import { useStagger } from '@/lib/motion';
+import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import {
   useStockTakePreview,
   useSubmitStockTake,
@@ -46,34 +48,24 @@ const ModalShell = ({
   children: React.ReactNode;
   maxWidth?: number;
 }) => (
-  <div
-    style={{
-      position: 'fixed',
-      inset: 0,
-      background: 'rgba(26,16,8,0.55)',
-      display: 'grid',
-      placeItems: 'center',
-      zIndex: 100,
-      padding: 20,
-    }}
-    onClick={onClose}
-  >
+  <div className="modal-backdrop" style={{ alignItems: 'center', padding: 'var(--space-5)' }} onClick={onClose}>
     <div
+      className="modal-card"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
       onClick={(e) => e.stopPropagation()}
       style={{
-        background: 'var(--color-surface)',
-        borderRadius: 16,
         width: '100%',
         maxWidth,
         maxHeight: '90vh',
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
       }}
     >
       <div
         style={{
-          padding: 20,
+          padding: 'var(--space-5)',
           borderBottom: '1px solid var(--color-border)',
           display: 'flex',
           alignItems: 'center',
@@ -91,20 +83,24 @@ const ModalShell = ({
         </div>
         <button
           onClick={onClose}
+          aria-label="ปิด"
+          className="icon-btn hit-44"
           style={{
             background: 'transparent',
             border: 'none',
             cursor: 'pointer',
-            padding: 6,
+            width: 36,
+            height: 36,
             borderRadius: 8,
             display: 'grid',
             placeItems: 'center',
+            color: 'var(--color-text-secondary)',
           }}
         >
           <Icon name="x" size={18} />
         </button>
       </div>
-      <div className="scroll" style={{ overflow: 'auto', padding: 20, flex: 1 }}>
+      <div className="scroll" style={{ overflow: 'auto', padding: 'var(--space-5)', flex: 1 }}>
         {children}
       </div>
     </div>
@@ -225,6 +221,9 @@ function StockCheckTab() {
   const items: StockTakePreviewItem[] = preview?.items ?? [];
   const totalConsumed = items.reduce((s, i) => s + i.consumedInPeriod, 0);
 
+  // KPI cards stagger in once data resolves; one-shot, honors reduced-motion.
+  const kpiRef = useStagger({ each: 0.05 });
+
   const getActual = (item: StockTakePreviewItem) =>
     actuals[item.inventoryItemId] ?? String(item.systemQuantity);
 
@@ -273,17 +272,34 @@ function StockCheckTab() {
 
   if (isLoading) {
     return (
-      <div style={{ padding: 60, textAlign: 'center', color: 'var(--color-text-secondary)' }}>
-        <div style={{ fontSize: 14 }}>กำลังโหลดข้อมูล...</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: '16px 20px', flex: 1, minWidth: 140 }} aria-busy="true">
+              <Skeleton width="60%" height="var(--space-3)" />
+              <Skeleton width="45%" height="var(--space-6)" style={{ marginTop: 'var(--space-3)' }} />
+            </div>
+          ))}
+        </div>
+        <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 'var(--space-4)' }}>
+          <SkeletonTable rows={6} cols={4} label="กำลังโหลดข้อมูล" />
+        </div>
       </div>
     );
   }
 
   if (isError) {
     return (
-      <div style={{ padding: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', color: 'var(--color-danger)' }}>
+      <div style={{ padding: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', color: 'var(--color-danger)', gap: 12 }}>
         <Icon name="warning" size={32} color="var(--color-danger)" />
-        <div style={{ marginTop: 12, fontSize: 14 }}>โหลดข้อมูลไม่สำเร็จ</div>
+        <div style={{ fontSize: 14 }}>โหลดข้อมูลไม่สำเร็จ</div>
+        <button
+          onClick={() => refetch()}
+          className="pressable"
+          style={{ marginTop: 4, padding: '9px 18px', minHeight: 44, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+        >
+          ลองอีกครั้ง
+        </button>
       </div>
     );
   }
@@ -291,7 +307,7 @@ function StockCheckTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* KPI row */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <div ref={kpiRef} style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <KpiCard
           label="ช่วงเวลา"
           value={preview ? fmtDateTh(preview.periodStart) : '—'}
@@ -305,17 +321,20 @@ function StockCheckTab() {
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
         <button
           onClick={handleRefresh}
+          className="pressable"
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: 8,
             padding: '10px 18px',
+            minHeight: 44,
             background: 'var(--color-surface)',
             border: '1px solid var(--color-border)',
             borderRadius: 10,
             cursor: 'pointer',
             fontSize: 14,
             fontWeight: 600,
+            color: 'var(--color-text)',
           }}
         >
           <Icon name="search" size={16} />
@@ -457,13 +476,15 @@ function StockCheckTab() {
           <button
             onClick={handleSubmit}
             disabled={submitMutation.isPending}
+            className="pressable"
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 8,
               padding: '12px 24px',
-              background: submitMutation.isPending ? 'var(--color-text-muted)' : 'var(--color-primary)',
-              color: '#fff',
+              minHeight: 44,
+              background: submitMutation.isPending ? 'var(--color-surface-2)' : 'var(--color-primary)',
+              color: submitMutation.isPending ? 'var(--color-text-muted)' : 'var(--color-text-inverse)',
               border: 'none',
               borderRadius: 10,
               cursor: submitMutation.isPending ? 'not-allowed' : 'pointer',
@@ -471,7 +492,7 @@ function StockCheckTab() {
               fontWeight: 700,
             }}
           >
-            <Icon name="check" size={18} color="#fff" />
+            <Icon name="check" size={18} />
             {submitMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกการตรวจนับ'}
           </button>
         </div>
@@ -490,10 +511,22 @@ function HistoryTab() {
   const { data: history, isLoading, isError } = useStockTakeHistory();
   const [expanded, setExpanded] = useState<number | null>(null);
 
+  // History cards stagger in once loaded; one-shot, honors reduced-motion.
+  const listRef = useStagger({ selector: ':scope > *', each: 0.04 });
+
   if (isLoading) {
     return (
-      <div style={{ padding: 60, textAlign: 'center', color: 'var(--color-text-secondary)' }}>
-        <div style={{ fontSize: 14 }}>กำลังโหลดประวัติ...</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }} aria-busy="true">
+        <span className="sr-only">กำลังโหลดประวัติ</span>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Skeleton width={36} height={36} radius="var(--radius-pill)" />
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              <Skeleton width="40%" height="var(--space-3)" />
+              <Skeleton width="55%" height="var(--space-3)" />
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -531,7 +564,7 @@ function HistoryTab() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div ref={listRef} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {events.map((event, idx) => {
         const isOpen = expanded === idx;
         return (
@@ -547,12 +580,14 @@ function HistoryTab() {
             {/* Event header */}
             <button
               onClick={() => setExpanded(isOpen ? null : idx)}
+              aria-expanded={isOpen}
               style={{
                 width: '100%',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: '14px 16px',
+                minHeight: 44,
                 background: 'transparent',
                 border: 'none',
                 cursor: 'pointer',

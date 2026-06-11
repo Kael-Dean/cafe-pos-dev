@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import Icon from '../icons';
 import { useToast } from '../app-common';
 import { useI18n } from '@/lib/i18n';
+import { useStagger } from '@/lib/motion';
+import { SkeletonTable } from '@/components/ui/skeleton';
 import {
   useShoppingList, useAddToShoppingList, useRemoveFromShoppingList, usePatchShoppingListItem,
   type ShoppingListItem,
@@ -30,6 +32,10 @@ export default function ShoppingListScreen() {
   const removeMut = useRemoveFromShoppingList();
 
   const selectedInvUnit = invItems.find(it => it.id === addItemId)?.unit ?? '';
+
+  // List rows fade+rise in once the data arrives. Re-keyed on count so adding /
+  // removing an item replays the entrance. Honors reduced-motion via the hook.
+  const listRef = useStagger({ selector: ':scope > *', each: 0.03 });
 
   const resetAddForm = () => {
     setAddOpen(false);
@@ -81,16 +87,18 @@ export default function ShoppingListScreen() {
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={() => window.open('/api/v1/shopping-list/print', '_blank')}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}
+            className="pressable"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', minHeight: 44, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}
           >
             <Icon name="print" size={16} />
             {t.shoppingList.printList}
           </button>
           <button
             onClick={() => setAddOpen(v => !v)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+            className="pressable"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', minHeight: 44, borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
           >
-            <Icon name="plus" size={16} color="#fff" />
+            <Icon name="plus" size={16} />
             {t.shoppingList.addItem}
           </button>
         </div>
@@ -119,7 +127,7 @@ export default function ShoppingListScreen() {
                 style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--color-border)', fontSize: 13, background: 'var(--color-bg)', boxSizing: 'border-box' }}
               />
               {invFocused && invItems.length > 0 && (
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 7, background: 'var(--color-surface)', zIndex: 20, maxHeight: 180, overflowY: 'auto', marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 7, background: 'var(--color-surface)', zIndex: 20, maxHeight: 180, overflowY: 'auto', marginTop: 2, boxShadow: 'var(--shadow-md)' }}>
                   {invItems.slice(0, 8).map(it => (
                     <div
                       key={it.id}
@@ -169,14 +177,16 @@ export default function ShoppingListScreen() {
               <button
                 onClick={handleAdd}
                 disabled={!addItemId || addMut.isPending}
-                style={{ padding: '8px 16px', borderRadius: 7, border: 'none', background: 'var(--color-primary)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: (!addItemId || addMut.isPending) ? 'not-allowed' : 'pointer', opacity: (!addItemId || addMut.isPending) ? 0.5 : 1 }}
+                className="pressable"
+                style={{ padding: '8px 16px', minHeight: 44, borderRadius: 7, border: 'none', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 13, cursor: (!addItemId || addMut.isPending) ? 'not-allowed' : 'pointer', opacity: (!addItemId || addMut.isPending) ? 0.5 : 1 }}
               >
                 {addMut.isPending ? t.shoppingList.adding : t.common.add}
               </button>
               <button
                 onClick={resetAddForm}
                 disabled={addMut.isPending}
-                style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 13, cursor: 'pointer' }}
+                className="pressable"
+                style={{ padding: '8px 12px', minHeight: 44, borderRadius: 7, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 13, cursor: 'pointer' }}
               >
                 {t.common.cancel}
               </button>
@@ -187,7 +197,9 @@ export default function ShoppingListScreen() {
 
       {/* List */}
       {isLoading ? (
-        <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-secondary)', fontSize: 14 }}>{t.common.loading}</div>
+        <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 'var(--space-4)' }}>
+          <SkeletonTable rows={6} cols={3} header={false} label={t.common.loading} />
+        </div>
       ) : items.length === 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: 'var(--color-text-secondary)' }}>
           <Icon name="cart" size={40} color="var(--color-border-strong)" />
@@ -195,7 +207,7 @@ export default function ShoppingListScreen() {
           <div style={{ fontSize: 12, marginTop: 4 }}>{t.shoppingList.emptyHint}</div>
         </div>
       ) : (
-        <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div key={items.length} ref={listRef} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
           {items.map((item, idx) => (
             <ShoppingRow
               key={item.id}
@@ -271,7 +283,7 @@ function ShoppingRow({ item, isLast, removing, onRemove }: {
         <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span>{item.inventoryItemName}</span>
           {isOverride ? (
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-primary)', background: 'var(--color-primary-50, rgba(120,90,60,0.1))', padding: '1px 7px', borderRadius: 999 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-primary)', background: 'var(--color-primary-50)', padding: '1px 7px', borderRadius: 999 }}>
               {t.shoppingList.overrideTag}
             </span>
           ) : (
@@ -316,8 +328,10 @@ function ShoppingRow({ item, isLast, removing, onRemove }: {
           onClick={resetToSuggested}
           disabled={!isOverride || patch.isPending}
           title={t.shoppingList.resetTitle}
+          aria-label={t.shoppingList.resetTitle}
+          className="icon-btn hit-44"
           style={{
-            width: 28, height: 28, borderRadius: 6, border: '1px solid var(--color-border)',
+            width: 32, height: 32, borderRadius: 6, border: '1px solid var(--color-border)',
             background: 'transparent', display: 'grid', placeItems: 'center',
             cursor: isOverride ? 'pointer' : 'default', color: 'var(--color-text-secondary)',
             opacity: isOverride ? 1 : 0.3,
@@ -331,7 +345,9 @@ function ShoppingRow({ item, isLast, removing, onRemove }: {
       <button
         onClick={onRemove}
         disabled={removing}
-        style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--color-text-secondary)', flexShrink: 0 }}
+        aria-label={`${t.common.remove} ${item.inventoryItemName}`}
+        className="icon-btn hit-44"
+        style={{ width: 32, height: 32, borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--color-text-secondary)', flexShrink: 0 }}
       >
         <Icon name="x" size={14} />
       </button>

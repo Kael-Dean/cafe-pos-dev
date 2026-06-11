@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Icon from '../icons';
 import { useToast, NumberInput } from '../app-common';
+import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { useLookupMember, type AccountRead } from '@/hooks/use-membership';
 import {
   usePreOrders, usePreOrder, usePreOrderIngredients,
@@ -28,9 +29,9 @@ const STATUS_LABELS: Record<PreOrderStatus, string> = {
 };
 
 const STATUS_COLORS: Record<PreOrderStatus, { color: string; bg: string }> = {
-  PENDING:     { color: '#9C6A1F',                    bg: 'var(--color-warning-50)' },
-  IN_PROGRESS: { color: 'var(--color-info)',           bg: '#EFF6FF' },
-  COMPLETED:   { color: 'var(--color-success)',        bg: '#F0FDF4' },
+  PENDING:     { color: '#9C6A1F',                     bg: 'var(--color-warning-50)' },
+  IN_PROGRESS: { color: 'var(--color-info)',           bg: 'var(--color-info-50)' },
+  COMPLETED:   { color: 'var(--color-success)',        bg: 'var(--color-success-50)' },
   CANCELLED:   { color: 'var(--color-text-secondary)', bg: 'var(--color-surface-2)' },
 };
 
@@ -330,34 +331,50 @@ export default function PreOrders() {
             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Pre-Orders</h2>
             <button
               onClick={() => setCreateOpen(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', borderRadius: 9, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+              className="pressable" style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 44, padding: '10px 18px', borderRadius: 'var(--radius-md)', border: 'none', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
             >
-              <Icon name="plus" size={16} color="#fff" />
+              <Icon name="plus" size={16} color="var(--color-text-inverse)" />
               สร้างใหม่
             </button>
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {filterPills.map(pill => (
-              <button
-                key={String(pill.value)}
-                onClick={() => { setStatusFilter(pill.value); setSelectedId(null); }}
-                style={{
-                  padding: '8px 16px', borderRadius: 999, fontSize: 14, fontWeight: 600,
-                  cursor: 'pointer', border: '1px solid',
-                  borderColor: statusFilter === pill.value ? 'var(--color-primary)' : 'var(--color-border)',
-                  background:  statusFilter === pill.value ? 'var(--color-accent-50)' : 'transparent',
-                  color:       statusFilter === pill.value ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                }}
-              >
-                {pill.label}
-              </button>
-            ))}
+          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+            {filterPills.map(pill => {
+              const active = statusFilter === pill.value;
+              return (
+                <button
+                  key={String(pill.value)}
+                  onClick={() => { setStatusFilter(pill.value); setSelectedId(null); }}
+                  aria-pressed={active}
+                  className="pressable"
+                  style={{
+                    minHeight: 40, padding: '8px 16px', borderRadius: 'var(--radius-pill)', fontSize: 14, fontWeight: 600,
+                    cursor: 'pointer', border: '1px solid',
+                    borderColor: active ? 'var(--color-primary)' : 'var(--color-border)',
+                    background:  active ? 'var(--color-accent-50)' : 'transparent',
+                    color:       active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                  }}
+                >
+                  {pill.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {listLoading ? (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--color-text-secondary)', fontSize: 13 }}>กำลังโหลด...</div>
+            <div aria-busy="true" style={{ display: 'flex', flexDirection: 'column' }}>
+              <span className="sr-only">กำลังโหลดรายการ Pre-Order…</span>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+                    <Skeleton height={14} width="45%" />
+                    <Skeleton height={16} width={70} radius="var(--radius-pill)" />
+                  </div>
+                  <Skeleton height={12} width="60%" />
+                </div>
+              ))}
+            </div>
           ) : listItems.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-secondary)', fontSize: 13 }}>ไม่มี Pre-Order</div>
           ) : (
@@ -391,7 +408,23 @@ export default function PreOrders() {
             </div>
           </div>
         ) : detailLoading ? (
-          <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: 'var(--color-text-secondary)', fontSize: 13 }}>กำลังโหลด...</div>
+          <div aria-busy="true" style={{ padding: '24px 32px', maxWidth: 1280, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+            <span className="sr-only">กำลังโหลดรายละเอียด Pre-Order…</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                <Skeleton height={22} width={180} radius="var(--radius-md)" />
+                <Skeleton height={14} width={120} />
+              </div>
+              <Skeleton height={20} width={90} radius="var(--radius-pill)" />
+            </div>
+            <Skeleton height={36} radius="var(--radius-md)" style={{ marginBottom: 'var(--space-5)' }} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginBottom: 'var(--space-5)' }}>
+              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={32} radius="var(--radius-sm)" />)}
+            </div>
+            <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-4)' }}>
+              <SkeletonTable rows={4} cols={4} />
+            </div>
+          </div>
         ) : detail ? (
           <DetailPanel
             detail={detail}
@@ -490,12 +523,17 @@ function PreOrderListRow({ item, selected, onClick }: {
   item: PreOrderListItem; selected: boolean; onClick: () => void;
 }) {
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
+      aria-pressed={selected}
       style={{
-        padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid var(--color-border)',
+        display: 'block', width: '100%', textAlign: 'left', font: 'inherit', color: 'inherit',
+        padding: '12px 16px', cursor: 'pointer', border: 'none',
+        borderBottom: '1px solid var(--color-border)',
         background: selected ? 'var(--color-accent-50)' : 'transparent',
-        borderLeft: selected ? '3px solid var(--color-primary)' : '3px solid transparent',
+        boxShadow: selected ? 'inset 0 0 0 1px var(--color-accent)' : 'none',
+        transition: 'background var(--dur-fast) var(--ease-out)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
@@ -515,7 +553,7 @@ function PreOrderListRow({ item, selected, onClick }: {
         </div>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{item.itemCount} รายการ</div>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -685,7 +723,7 @@ function DetailPanel({
                       style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 12, background: 'var(--color-bg)', boxSizing: 'border-box' }}
                     />
                     {showAddDropdown && (
-                      <div onMouseDown={e => e.preventDefault()} style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 6, background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+                      <div onMouseDown={e => e.preventDefault()} style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: 'var(--shadow-md)' }}>
                         {filteredProducts.slice(0, 6).map(p => (
                           <div key={p.id} onMouseDown={() => { onAddItemProductSelect(p.id, p.name); setAddSearchFocused(false); }} style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
                             <span>{p.name}</span><span style={{ color: 'var(--color-text-secondary)' }}>฿{p.price.toFixed(2)}</span>
@@ -700,8 +738,8 @@ function DetailPanel({
                   <input type="number" min={0} placeholder="ราคา (ว่าง=ตามสินค้า)" value={addItemPrice} onChange={e => onAddItemPriceChange(e.target.value)}
                     style={{ width: 130, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 12 }}
                   />
-                  <button onClick={onAddItem} disabled={!addItemProductId}
-                    style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: addItemProductId ? 'pointer' : 'not-allowed', opacity: addItemProductId ? 1 : 0.5 }}>
+                  <button onClick={onAddItem} disabled={!addItemProductId} className="pressable"
+                    style={{ minHeight: 44, padding: '9px 16px', borderRadius: 'var(--radius-md)', border: 'none', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontSize: 13, fontWeight: 600, cursor: addItemProductId ? 'pointer' : 'not-allowed', opacity: addItemProductId ? 1 : 0.5 }}>
                     เพิ่ม
                   </button>
                   <button onClick={onCancelAddItem} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
@@ -710,7 +748,7 @@ function DetailPanel({
               {/* Total */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px 32px', padding: '10px 12px', borderTop: '1px solid var(--color-border)', background: 'var(--color-surface-2)', gap: 8 }}>
                 <div style={{ gridColumn: '1/4', fontSize: 13, fontWeight: 600, textAlign: 'right', color: 'var(--color-text-secondary)' }}>ยอดรวม</div>
-                <div style={{ textAlign: 'right', fontWeight: 700, fontSize: 14 }}>฿{totalStr}</div>
+                <div className="num" style={{ textAlign: 'right', fontWeight: 700, fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>฿{totalStr}</div>
                 <div/>
               </div>
             </div>
@@ -721,8 +759,8 @@ function DetailPanel({
             {detail.status === 'PENDING' && (
               <>
                 <button onClick={onEdit} style={{ padding: '13px 28px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>แก้ไข</button>
-                <button onClick={onStart} disabled={startPending}
-                  style={{ padding: '13px 32px', borderRadius: 10, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', opacity: startPending ? 0.7 : 1 }}>
+                <button onClick={onStart} disabled={startPending} className="pressable"
+                  style={{ minHeight: 44, padding: '13px 32px', borderRadius: 'var(--radius-lg)', border: 'none', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontSize: 15, fontWeight: 700, cursor: 'pointer', opacity: startPending ? 0.7 : 1 }}>
                   {startPending ? 'กำลังเริ่ม...' : 'เริ่มผลิต'}
                 </button>
                 <button onClick={onCancel} disabled={cancelPending}
@@ -732,8 +770,8 @@ function DetailPanel({
               </>
             )}
             {detail.status === 'IN_PROGRESS' && (
-              <button onClick={onComplete} disabled={completePending}
-                style={{ padding: '13px 36px', borderRadius: 10, border: 'none', background: 'var(--color-success)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', opacity: completePending ? 0.7 : 1 }}>
+              <button onClick={onComplete} disabled={completePending} className="pressable"
+                style={{ minHeight: 44, padding: '13px 36px', borderRadius: 'var(--radius-lg)', border: 'none', background: 'var(--color-success)', color: 'white', fontSize: 15, fontWeight: 700, cursor: 'pointer', opacity: completePending ? 0.7 : 1 }}>
                 {completePending ? 'กำลังบันทึก...' : '✓ ส่งมอบแล้ว'}
               </button>
             )}
@@ -793,9 +831,9 @@ function FulfillmentRow({ mode, quantity, fgStock, fgUnit, canEdit, saving, onCh
           background: active
             ? 'var(--color-primary)'
             : isHover ? 'var(--color-accent-50)' : 'transparent',
-          color: active ? '#fff' : 'var(--color-text)',
-          boxShadow: active ? '0 1px 3px rgba(0,0,0,0.22)' : 'none',
-          transition: 'all 120ms', whiteSpace: 'nowrap',
+          color: active ? 'var(--color-text-inverse)' : 'var(--color-text)',
+          boxShadow: active ? 'var(--shadow-xs)' : 'none',
+          transition: 'background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)', whiteSpace: 'nowrap',
           opacity: !canEdit ? 0.75 : 1,
         }}
       >
@@ -812,9 +850,8 @@ function FulfillmentRow({ mode, quantity, fgStock, fgUnit, canEdit, saving, onCh
     }}>
       <span style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>วิธีจัดเตรียม:</span>
       <div style={{
-        display: 'inline-flex', gap: 4, padding: 4, borderRadius: 999,
+        display: 'inline-flex', gap: 'var(--space-1)', padding: 'var(--space-1)', borderRadius: 'var(--radius-pill)',
         background: 'var(--color-bg)', border: '1px solid var(--color-border)',
-        boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)',
       }}>
         <Pill value="FROM_INVENTORY" label="ใช้สต็อกสำเร็จรูป" />
         <Pill value="PRODUCE_FRESH" label="ผลิตใหม่" />
@@ -845,7 +882,15 @@ function IngredientsTab({ ingredients, threshold, onThresholdChange, onAddToShop
   onAddToShoppingList: (inventoryItemId: string, name: string) => void;
 }) {
   if (!ingredients) {
-    return <div style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>กำลังโหลดข้อมูลวัตถุดิบ...</div>;
+    return (
+      <div aria-busy="true">
+        <span className="sr-only">กำลังโหลดข้อมูลวัตถุดิบ…</span>
+        <Skeleton height={40} radius="var(--radius-md)" style={{ marginBottom: 'var(--space-4)' }} />
+        <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)' }}>
+          <SkeletonTable rows={5} cols={5} />
+        </div>
+      </div>
+    );
   }
   return (
     <div>
@@ -864,7 +909,7 @@ function IngredientsTab({ ingredients, threshold, onThresholdChange, onAddToShop
             <div key={line.inventoryItemId} style={{
               display: 'grid', gridTemplateColumns: '1fr 90px 90px 70px 100px',
               padding: '10px 12px', borderTop: '1px solid var(--color-border)', gap: 8, alignItems: 'center',
-              background: line.exceedsThreshold ? '#FFF5F5' : 'transparent',
+              background: line.exceedsThreshold ? 'var(--color-danger-50)' : 'transparent',
             }}>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 500 }}>{line.name}</div>
@@ -955,8 +1000,8 @@ function CreateModal({
   }, [cPhone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ background: 'var(--color-bg)', borderRadius: 16, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
+      <div style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-xl)', width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div style={{ fontSize: 18, fontWeight: 700 }}>สร้าง Pre-Order ใหม่</div>
           <button onClick={onClose} disabled={isPending} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
@@ -984,7 +1029,7 @@ function CreateModal({
                     style={{
                       display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, width: '100%',
                       padding: '6px 10px', borderRadius: 7, cursor: 'pointer', textAlign: 'left',
-                      border: '1px solid var(--color-success)', background: 'var(--color-success-50, #F0FDF4)',
+                      border: '1px solid var(--color-success)', background: 'var(--color-success-50)',
                       color: 'var(--color-success)', fontSize: 12, fontWeight: 600,
                     }}
                   >
@@ -1044,7 +1089,7 @@ function CreateModal({
                   onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
                   style={inputStyle} />
                 {showDropdown && (
-                  <div onMouseDown={e => e.preventDefault()} style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 6, background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+                  <div onMouseDown={e => e.preventDefault()} style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: 'var(--shadow-md)' }}>
                     {filtered.slice(0, 6).map(p => (
                       <div key={p.id} onMouseDown={() => { onItemProductSelect(p.id, p.name); setSearchFocused(false); }} style={{ padding: '7px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
                         <span>{p.name}</span><span style={{ color: 'var(--color-text-secondary)' }}>฿{p.price.toFixed(2)}</span>
@@ -1055,8 +1100,8 @@ function CreateModal({
               </div>
               <div style={{ width: 70 }}><label style={labelStyle}>จำนวน</label><NumberInput min={1} integer value={cItemQty} onChange={onItemQtyChange} style={inputStyle} /></div>
               <div style={{ width: 110 }}><label style={labelStyle}>ราคา (ว่าง=catalog)</label><input type="number" min={0} value={cItemPrice} onChange={e => onItemPriceChange(e.target.value)} placeholder="ปกติ" style={inputStyle} /></div>
-              <button onClick={onAddItem} disabled={!cItemProductId}
-                style={{ padding: '10px 18px', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: cItemProductId ? 'pointer' : 'not-allowed', opacity: cItemProductId ? 1 : 0.5, marginBottom: 1 }}>
+              <button onClick={onAddItem} disabled={!cItemProductId} className="pressable"
+                style={{ minHeight: 44, padding: '10px 18px', borderRadius: 'var(--radius-md)', border: 'none', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontSize: 14, fontWeight: 600, cursor: cItemProductId ? 'pointer' : 'not-allowed', opacity: cItemProductId ? 1 : 0.5, marginBottom: 1 }}>
                 + เพิ่ม
               </button>
             </div>
@@ -1064,7 +1109,7 @@ function CreateModal({
           {/* Footer */}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid var(--color-border)' }}>
             <button onClick={onClose} disabled={isPending} style={{ padding: '12px 24px', borderRadius: 9, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>ยกเลิก</button>
-            <button onClick={onConfirm} disabled={isPending} style={{ padding: '12px 26px', borderRadius: 9, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1 }}>
+            <button onClick={onConfirm} disabled={isPending} className="pressable" style={{ minHeight: 44, padding: '12px 26px', borderRadius: 'var(--radius-md)', border: 'none', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontSize: 14, fontWeight: 600, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1 }}>
               {isPending ? 'กำลังสร้าง...' : 'สร้าง Pre-Order'}
             </button>
           </div>
@@ -1090,8 +1135,8 @@ function EditModal({
   onConfirm: () => void; onClose: () => void; isPending: boolean;
 }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ background: 'var(--color-bg)', borderRadius: 16, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' as const, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
+      <div style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-xl)', width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' as const, boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div style={{ fontSize: 18, fontWeight: 700 }}>แก้ไข Pre-Order</div>
           <button onClick={onClose} disabled={isPending} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
@@ -1113,7 +1158,7 @@ function EditModal({
           <div><label style={labelStyle}>หมายเหตุ</label><textarea value={eNotes} onChange={e => onNotesChange(e.target.value)} rows={2} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} /></div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid var(--color-border)' }}>
             <button onClick={onClose} disabled={isPending} style={{ padding: '12px 24px', borderRadius: 9, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>ยกเลิก</button>
-            <button onClick={onConfirm} disabled={isPending} style={{ padding: '12px 26px', borderRadius: 9, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1 }}>
+            <button onClick={onConfirm} disabled={isPending} className="pressable" style={{ minHeight: 44, padding: '12px 26px', borderRadius: 'var(--radius-md)', border: 'none', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontSize: 14, fontWeight: 600, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1 }}>
               {isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
           </div>
@@ -1128,13 +1173,13 @@ function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel, dang
   onConfirm: () => void; onCancel: () => void; dangerous?: boolean;
 }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ background: 'var(--color-bg)', borderRadius: 16, width: '100%', maxWidth: 400, padding: 28, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
+      <div style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-xl)', width: '100%', maxWidth: 400, padding: 28, boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 10 }}>{title}</div>
         <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: 24 }}>{message}</div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button onClick={onCancel} style={{ padding: '12px 24px', borderRadius: 9, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>ยกเลิก</button>
-          <button onClick={onConfirm} style={{ padding: '12px 26px', borderRadius: 9, border: 'none', background: dangerous ? 'var(--color-danger)' : 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+          <button onClick={onConfirm} className="pressable" style={{ minHeight: 44, padding: '12px 26px', borderRadius: 'var(--radius-md)', border: 'none', background: dangerous ? 'var(--color-danger)' : 'var(--color-primary)', color: dangerous ? 'white' : 'var(--color-text-inverse)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
             {confirmLabel}
           </button>
         </div>

@@ -2,7 +2,52 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import Icon from '../icons';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useModifierGroups, type ModifierGroup } from '@/hooks/use-modifier-groups';
+
+/**
+ * Modal a11y: trap focus inside the dialog, close on Esc, restore focus to the
+ * element that opened it. Mirrors the role="dialog"/aria-modal convention used
+ * in payment-modal / receipt-modal. Visual open/close stays on the CSS
+ * .modal-in / .backdrop-in classes — this only wires keyboard + focus.
+ */
+function useModalA11y(onClose: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    const node = ref.current;
+
+    const focusables = () =>
+      Array.from(
+        node?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter((el) => el.offsetParent !== null);
+
+    focusables()[0]?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+      if (e.key !== 'Tab') return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      opener?.focus?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return ref;
+}
 
 // Fallback shown when the backend has no modifier groups configured
 const FALLBACK_MODIFIERS: ModifierGroup[] = [
@@ -48,7 +93,8 @@ interface CartLine { menuId: string; name: string; basePrice: number; unitPrice:
 interface Props { item: MenuItem; onClose: () => void; onAdd: (line: CartLine) => void; groupIds?: string[]; }
 
 export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props) {
-  const { data: apiGroups } = useModifierGroups();
+  const { data: apiGroups, isLoading } = useModifierGroups();
+  const dialogRef = useModalA11y(onClose);
 
   const groups = (() => {
     if (!apiGroups || apiGroups.length === 0) return FALLBACK_MODIFIERS;
@@ -158,30 +204,40 @@ export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props)
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{
-        width: 'min(560px, 92vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column',
-      }}>
-        <div style={{padding: '20px 24px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 16}}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`ปรับแต่ง ${item.name}`}
+        aria-busy={isLoading || undefined}
+        className="modal-card"
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: 'min(560px, 92vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
+      >
+        <div style={{padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 'var(--space-4)'}}>
           <div style={{
-            width: 56, height: 56, borderRadius: 12,
+            width: 56, height: 56, borderRadius: 'var(--radius-lg)',
             background: `linear-gradient(135deg, ${item.color}, ${item.color}cc)`,
             display: 'grid', placeItems: 'center',
             color: 'rgba(255,255,255,0.9)', fontSize: 9, fontWeight: 600, letterSpacing: '0.06em',
           }}>{item.nameEn.split(' ')[0].toUpperCase()}</div>
           <div style={{flex: 1}}>
             <div style={{fontSize: 18, fontWeight: 700}}>{item.name}</div>
-            <div style={{fontSize: 13, color: 'var(--color-text-secondary)'}}>{item.nameEn} • ราคาเริ่มต้น ฿{item.price}</div>
+            <div style={{fontSize: 'var(--fs-14)', color: 'var(--color-text-secondary)'}}>{item.nameEn} • ราคาเริ่มต้น ฿{item.price}</div>
           </div>
-          <button onClick={onClose} style={{
-            width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center',
+          <button onClick={onClose} aria-label="ปิด" className="icon-btn hit-44" style={{
+            width: 32, height: 32, borderRadius: 'var(--radius-md)', display: 'grid', placeItems: 'center',
             color: 'var(--color-text-secondary)',
-          }} onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-surface-2)'}
-             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
+          }}>
             <Icon name="x" size={18}/>
           </button>
         </div>
 
-        <div className="scroll" style={{flex: 1, overflow: 'auto', padding: '20px 24px'}}>
+        <div className="scroll" style={{flex: 1, overflow: 'auto', padding: 'var(--space-5) var(--space-6)'}}>
+          {isLoading ? (
+            <ModifierGroupsSkeleton />
+          ) : (
+          <>
           {groups.map((g) => (
             <div key={g.id} style={{marginBottom: 22}}>
               <div style={{display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10}}>
@@ -197,15 +253,17 @@ export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props)
                     : toggleCheck(g.id, o.id);
                   return (
                     <button key={o.id} onClick={onPick}
+                      aria-pressed={isSelected}
+                      className="pressable"
                       style={{
-                        padding: '12px 14px',
-                        borderRadius: 8, textAlign: 'left',
+                        padding: '12px var(--space-4)',
+                        borderRadius: 'var(--radius-md)', textAlign: 'left',
                         background: isSelected ? 'var(--color-primary)' : 'var(--color-surface)',
-                        color: isSelected ? 'white' : 'var(--color-text)',
+                        color: isSelected ? 'var(--color-text-inverse)' : 'var(--color-text)',
                         border: `1.5px solid ${isSelected ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)',
                         fontSize: 13, fontWeight: 600,
-                        transition: 'all 120ms var(--ease-out)',
+                        transition: 'background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out)',
                         minHeight: 48,
                       }}
                     >
@@ -213,7 +271,8 @@ export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props)
                       {o.diff !== 0 && (
                         <span className="num" style={{
                           fontSize: 11, fontWeight: 600,
-                          color: isSelected ? 'rgba(255,255,255,0.8)' : 'var(--color-text-muted)',
+                          opacity: isSelected ? 0.8 : 1,
+                          color: isSelected ? 'var(--color-text-inverse)' : 'var(--color-text-muted)',
                         }}>{o.diff > 0 ? `+${o.diff}` : o.diff}</span>
                       )}
                     </button>
@@ -224,35 +283,60 @@ export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props)
           ))}
 
           <div>
-            <div style={{fontSize: 14, fontWeight: 600, marginBottom: 8}}>หมายเหตุ <span style={{fontSize: 11, fontWeight: 500, color: 'var(--color-text-muted)'}}>(ตัวเลือก)</span></div>
+            <div style={{fontSize: 'var(--fs-14)', fontWeight: 600, marginBottom: 'var(--space-2)'}}>หมายเหตุ <span style={{fontSize: 11, fontWeight: 500, color: 'var(--color-text-muted)'}}>(ตัวเลือก)</span></div>
             <input type="text" placeholder="เช่น ไม่ใส่น้ำแข็ง, ใส่ในแก้วร้อน"
               value={note} onChange={(e) => setNote(e.target.value)}
+              className="input-std"
               style={{
-                width: '100%', padding: '10px 12px',
+                width: '100%', padding: '10px var(--space-3)', minHeight: 44,
                 background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-                borderRadius: 8, fontSize: 13, outline: 'none',
+                borderRadius: 'var(--radius-md)', fontSize: 13, outline: 'none',
+                color: 'var(--color-text)', boxSizing: 'border-box',
               }}
-              onFocus={(e) => e.target.style.boxShadow = 'var(--shadow-focus)'}
-              onBlur={(e) => e.target.style.boxShadow = 'none'}
             />
           </div>
+          </>
+          )}
         </div>
 
-        <div style={{padding: '16px 24px', borderTop: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 12, background: 'var(--color-surface-2)', borderRadius: '0 0 var(--radius-xl) var(--radius-xl)'}}>
-          <div style={{display: 'flex', alignItems: 'center', gap: 4, padding: 4, background: 'white', borderRadius: 8, border: '1px solid var(--color-border)'}}>
-            <button onClick={() => setQty((q) => Math.max(1, q - 1))} style={{width: 32, height: 32, borderRadius: 6, display: 'grid', placeItems: 'center'}}><Icon name="minus" size={14}/></button>
-            <div className="num" style={{minWidth: 24, textAlign: 'center', fontWeight: 600}}>{qty}</div>
-            <button onClick={() => setQty((q) => q + 1)} style={{width: 32, height: 32, borderRadius: 6, display: 'grid', placeItems: 'center'}}><Icon name="plus" size={14}/></button>
+        <div style={{padding: 'var(--space-4) var(--space-6)', borderTop: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)', background: 'var(--color-surface-2)', borderRadius: '0 0 var(--radius-xl) var(--radius-xl)'}}>
+          <div style={{display: 'flex', alignItems: 'center', gap: 'var(--space-1)', padding: 'var(--space-1)', background: 'var(--color-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)'}}>
+            <button onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="ลดจำนวน" className="icon-btn hit-44" style={{width: 36, height: 36, borderRadius: 'var(--radius-sm)', display: 'grid', placeItems: 'center'}}><Icon name="minus" size={14}/></button>
+            <div className="num" aria-live="polite" style={{minWidth: 28, textAlign: 'center', fontWeight: 600}}>{qty}</div>
+            <button onClick={() => setQty((q) => q + 1)} aria-label="เพิ่มจำนวน" className="icon-btn hit-44" style={{width: 36, height: 36, borderRadius: 'var(--radius-sm)', display: 'grid', placeItems: 'center'}}><Icon name="plus" size={14}/></button>
           </div>
           <div style={{flex: 1, textAlign: 'right'}}>
             <div style={{fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 500}}>ราคารวม</div>
             <div className="num" style={{fontSize: 22, fontWeight: 700, color: 'var(--color-primary)', letterSpacing: '-0.01em'}}>฿{(unitPrice * qty).toLocaleString()}</div>
           </div>
-          <button onClick={onConfirm} className="btn btn-primary btn-lg" style={{minWidth: 160}}>
+          <button onClick={onConfirm} disabled={isLoading} className="btn btn-primary btn-lg pressable" style={{minWidth: 160, minHeight: 44, opacity: isLoading ? 0.5 : 1}}>
             <Icon name="plus" size={16}/> เพิ่มลงตะกร้า
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Loading placeholder that mirrors the real option-group layout (label bar +
+ * a grid of option chips) so the modal doesn't pop fully-formed controls in
+ * cold or briefly show fallback options that then swap out. aria-busy lives on
+ * the dialog; this is the visual side.
+ */
+function ModifierGroupsSkeleton() {
+  return (
+    <div aria-hidden>
+      {[0, 1, 2].map((g) => (
+        <div key={g} style={{ marginBottom: 22 }}>
+          <Skeleton width={g === 0 ? '28%' : '36%'} height="var(--space-4)" radius="var(--radius-sm)" style={{ marginBottom: 'var(--space-3)' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 'var(--space-2)' }}>
+            {Array.from({ length: g === 0 ? 3 : 4 }).map((_, i) => (
+              <Skeleton key={i} height={48} radius="var(--radius-md)" />
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

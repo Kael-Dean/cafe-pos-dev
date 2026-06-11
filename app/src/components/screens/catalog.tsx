@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useToast, Select, NumberInput } from '../app-common';
+import { useFadeRise } from '@/lib/motion';
+import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import {
   useCategoriesAdmin,
@@ -32,7 +34,7 @@ const btnSm = (variant: 'primary' | 'ghost' | 'danger'): React.CSSProperties => 
   background:
     variant === 'primary' ? 'var(--color-primary)' :
     variant === 'danger'  ? 'var(--color-danger)'  : 'transparent',
-  color: variant === 'ghost' ? 'var(--color-text)' : '#fff',
+  color: variant === 'ghost' ? 'var(--color-text)' : 'var(--color-text-inverse)',
 });
 
 const btnIcon = (): React.CSSProperties => ({
@@ -60,6 +62,7 @@ type Tab = 'categories' | 'modifiers' | 'products';
 export default function CatalogAdmin() {
   const [tab, setTab] = useState<Tab>('categories');
   const { data: me } = useCurrentUser();
+  const screenRef = useFadeRise();
 
   if (me && !isAdmin(me.role)) {
     return (
@@ -70,7 +73,7 @@ export default function CatalogAdmin() {
   }
 
   return (
-    <div style={{ padding: 24, height: '100%', overflowY: 'auto', background: 'var(--color-bg)', boxSizing: 'border-box' }}>
+    <div ref={screenRef} style={{ padding: 24, height: '100%', overflowY: 'auto', background: 'var(--color-bg)', boxSizing: 'border-box' }}>
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>Catalog</h1>
         <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 4, marginBottom: 0 }}>
@@ -151,7 +154,11 @@ function ProductsTab() {
   };
 
   if (isLoading) return (
-    <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>กำลังโหลด…</div>
+    <div style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+      <div style={{ padding: 'var(--space-4) var(--space-5)' }}>
+        <SkeletonTable rows={6} cols={5} label="กำลังโหลดสินค้า" />
+      </div>
+    </div>
   );
 
   return (
@@ -210,7 +217,7 @@ function ProductsTab() {
 
       {/* Edit modal */}
       {editTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
           <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 460, maxWidth: '90vw', boxShadow: 'var(--shadow-lg)' }}>
             <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700 }}>แก้ไขสินค้า</h3>
             <div style={{ display: 'grid', gap: 14, marginBottom: 20 }}>
@@ -363,7 +370,11 @@ function CategoriesTab() {
   };
 
   if (isLoading) return (
-    <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>กำลังโหลด…</div>
+    <div style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+      <div style={{ padding: 'var(--space-4) var(--space-5)' }}>
+        <SkeletonTable rows={5} cols={4} label="กำลังโหลดหมวดหมู่" />
+      </div>
+    </div>
   );
 
   return (
@@ -456,7 +467,7 @@ function CategoriesTab() {
 
       {/* Delete confirm */}
       {deleteTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
           <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 360, boxShadow: 'var(--shadow-lg)' }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700 }}>ลบหมวดหมู่</h3>
             <p style={{ margin: '0 0 20px', fontSize: 14, color: 'var(--color-text-secondary)' }}>
@@ -607,7 +618,17 @@ function ModifierGroupsTab() {
   const showForm = isCreating || selectedId !== null;
 
   if (isLoading) return (
-    <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>กำลังโหลด…</div>
+    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }} aria-busy="true">
+      <span className="sr-only">กำลังโหลดกลุ่มตัวเลือก</span>
+      <div style={{ width: 280, flexShrink: 0, background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} height="var(--space-5)" width={['80%', '65%', '72%', '55%', '68%'][i]} />
+        ))}
+      </div>
+      <div style={{ flex: 1, background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)', padding: 'var(--space-5)' }}>
+        <SkeletonTable rows={4} cols={4} />
+      </div>
+    </div>
   );
 
   return (
@@ -763,7 +784,7 @@ function ModifierGroupsTab() {
 
       {/* Delete confirm */}
       {deleteTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
           <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 360, boxShadow: 'var(--shadow-lg)' }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700 }}>ลบกลุ่มตัวเลือก</h3>
             <p style={{ margin: '0 0 20px', fontSize: 14, color: 'var(--color-text-secondary)' }}>

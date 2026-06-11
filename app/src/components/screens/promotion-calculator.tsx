@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react';
 import Icon from '../icons';
 import { Tag, baht, Select, NumberInput } from '../app-common';
+import { useCountUp } from '@/lib/motion';
+import { Skeleton, SkeletonCard } from '@/components/ui/skeleton';
 import { useAllProducts } from '@/hooks/use-products';
 import { useProductDetail } from '@/hooks/use-bom';
 import { usePromotionBaseline } from '@/hooks/use-promotions';
@@ -28,12 +30,24 @@ const REC: Record<RecCode, { tone: 'neutral' | 'danger' | 'warning' | 'success';
 const fmtPct = (n: number) => `${n.toFixed(1)}%`;
 const fmtNum = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 1 });
 
-function MetricCard({ label, value, sub, highlight }: { label: string; value: string; sub?: string; highlight?: 'accent' | 'danger' | 'success' }) {
+function MetricCard({ label, value, sub, highlight, countTo, format }: {
+  label: string;
+  value: string;
+  sub?: string;
+  highlight?: 'accent' | 'danger' | 'success';
+  /** When provided, the headline tweens to this number (reduced-motion safe). */
+  countTo?: number;
+  format?: (n: number) => string;
+}) {
   const color = highlight === 'danger' ? 'var(--color-danger)' : highlight === 'success' ? 'var(--color-success)' : highlight === 'accent' ? 'var(--color-accent-600)' : 'var(--color-text)';
+  // Count-up only when a numeric target is supplied; otherwise render the string as-is.
+  const countRef = useCountUp(countTo ?? 0, format ? { format } : undefined);
   return (
     <div style={{ flex: 1, minWidth: 130, background: 'var(--color-surface-2)', borderRadius: 10, padding: '14px 16px' }}>
       <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{label}</div>
-      <div className="num" style={{ fontSize: 22, fontWeight: 800, color, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+      <div className="num" style={{ fontSize: 22, fontWeight: 800, color, fontVariantNumeric: 'tabular-nums' }}>
+        {countTo != null ? <span ref={countRef}>{value}</span> : value}
+      </div>
       {sub && <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>{sub}</div>}
     </div>
   );
@@ -122,7 +136,20 @@ export default function PromotionCalculator() {
           <div style={{ marginTop: 12, fontSize: 14 }}>เลือกสินค้าเพื่อเริ่มวิเคราะห์</div>
         </div>
       ) : detailLoading || !calc ? (
-        <div style={{ color: 'var(--color-text-secondary)', padding: 20 }}>กำลังโหลดข้อมูลสินค้า...</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }} aria-busy="true">
+          <span className="sr-only">กำลังโหลดข้อมูลสินค้า</span>
+          {/* Recommendation badge placeholder */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)' }}>
+            <Skeleton width={64} height={24} radius="var(--radius-pill)" />
+            <Skeleton width="55%" height="var(--space-4)" />
+          </div>
+          {/* Metric cards placeholder */}
+          <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <SkeletonCard key={i} lines={1} style={{ flex: 1, minWidth: 130, background: 'var(--color-surface-2)', border: 'none', borderRadius: 10, padding: '14px 16px', gap: 'var(--space-3)' }} />
+            ))}
+          </div>
+        </div>
       ) : (
         <>
           {/* Recommendation badge */}
@@ -138,10 +165,13 @@ export default function PromotionCalculator() {
             <MetricCard label="ราคาขาย" value={baht(calc.sellingPrice)} />
             <MetricCard label="ต้นทุน/หน่วย" value={calc.cogsPerUnit > 0 ? baht(calc.cogsPerUnit) : '—'}
               sub={calc.cogsPerUnit === 0 ? 'ไม่มีสูตร (BOM)' : undefined} />
-            <MetricCard label="กำไรขั้นต้นเดิม" value={fmtPct(calc.originalMarginPct)} highlight="accent" />
-            <MetricCard label={`ราคาหลังลด ${discountPct}%`} value={baht(calc.discountedPrice)} />
+            <MetricCard label="กำไรขั้นต้นเดิม" value={fmtPct(calc.originalMarginPct)}
+              countTo={calc.originalMarginPct} format={fmtPct} highlight="accent" />
+            <MetricCard label={`ราคาหลังลด ${discountPct}%`} value={baht(calc.discountedPrice)}
+              countTo={calc.discountedPrice} format={baht} />
             <MetricCard label="กำไรหลังลด"
               value={calc.belowCost ? 'ขาดทุน' : fmtPct(calc.discountedMarginPct)}
+              countTo={calc.belowCost ? undefined : calc.discountedMarginPct} format={fmtPct}
               highlight={calc.belowCost ? 'danger' : calc.discountedMarginPct < 0 ? 'danger' : 'success'} />
           </div>
 
@@ -164,7 +194,12 @@ export default function PromotionCalculator() {
             </div>
           )}
 
-          {baselineLoading && <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>กำลังโหลดข้อมูลยอดขาย...</div>}
+          {baselineLoading && (
+            <div aria-busy="true">
+              <span className="sr-only">กำลังโหลดข้อมูลยอดขาย</span>
+              <Skeleton width={180} height="var(--space-3)" />
+            </div>
+          )}
         </>
       )}
     </div>

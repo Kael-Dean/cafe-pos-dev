@@ -5,6 +5,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import Icon from '../icons';
 import { useToast, Tag, baht } from '../app-common';
 import { useI18n } from '@/lib/i18n';
+import { useStagger } from '@/lib/motion';
+import { SkeletonTable } from '@/components/ui/skeleton';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import {
   useMembers,
@@ -58,6 +60,10 @@ export default function MembersScreen() {
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
+  // Rows fade+rise in once per result set. Re-keyed on page/query so a fresh
+  // search replays the entrance; subtle (8px, 40ms apart), honors reduced-motion.
+  const rowsRef = useStagger({ selector: 'tbody tr', each: 0.03 });
+
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
       <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', gap: 16 }}>
@@ -65,8 +71,8 @@ export default function MembersScreen() {
           <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>{t.members.title}</h1>
           <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t.members.subtitle(total.toLocaleString())}</div>
         </div>
-        <button onClick={() => setShowRegister(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 8, background: 'var(--color-primary)', color: 'white', fontWeight: 600, fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+        <button onClick={() => setShowRegister(true)} className="pressable"
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', minHeight: 44, borderRadius: 8, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap' }}>
           <Icon name="plus" size={16} /> {t.members.registerBtn}
         </button>
       </div>
@@ -78,19 +84,21 @@ export default function MembersScreen() {
           <input value={searchInput} onChange={e => setSearchInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') runSearch(); }}
             placeholder={t.members.searchPlaceholder} style={{ ...IS, paddingLeft: 36 }} />
         </div>
-        <button onClick={runSearch} style={{ padding: '9px 20px', borderRadius: 8, background: 'var(--color-primary)', color: 'white', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>{t.common.search}</button>
+        <button onClick={runSearch} className="pressable" style={{ padding: '9px 20px', minHeight: 44, borderRadius: 8, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>{t.common.search}</button>
       </div>
 
       {/* List */}
       {isLoading ? (
-        <div style={{ color: 'var(--color-text-secondary)', padding: 20 }}>{t.common.loading}</div>
+        <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 'var(--space-4) var(--space-5)' }}>
+          <SkeletonTable rows={8} cols={6} label={t.common.loading} />
+        </div>
       ) : members.length === 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: 60, color: 'var(--color-text-muted)' }}>
           <Icon name="customers" size={40} color="var(--color-border)" />
           <div style={{ marginTop: 12, fontSize: 15 }}>{t.members.notFound}</div>
         </div>
       ) : (
-        <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div key={`${page}-${query.name ?? ''}-${query.phone ?? ''}`} ref={rowsRef} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: 'var(--color-surface-2)', textAlign: 'left' }}>
@@ -182,7 +190,7 @@ function RegisterMemberModal({ onClose, onRegistered }: { onClose: () => void; o
             <div style={{ fontSize: 17, fontWeight: 700 }}>{t.members.registerTitle}</div>
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{t.members.registerDesc}</div>
           </div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center', color: 'var(--color-text-secondary)' }}><Icon name="x" size={18} /></button>
+          <button onClick={onClose} aria-label={t.common.cancel} className="icon-btn hit-44" style={{ width: 36, height: 36, borderRadius: 8, display: 'grid', placeItems: 'center', color: 'var(--color-text-secondary)' }}><Icon name="x" size={18} /></button>
         </div>
 
         <div style={{ padding: '20px 24px', display: 'grid', gap: 14 }}>
@@ -203,9 +211,9 @@ function RegisterMemberModal({ onClose, onRegistered }: { onClose: () => void; o
         </div>
 
         <div style={{ padding: '16px 24px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 10, background: 'var(--color-surface-2)' }}>
-          <button onClick={onClose} style={{ padding: '11px 18px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, cursor: 'pointer' }}>{t.common.cancel}</button>
-          <button onClick={submit} disabled={register.isPending || checking}
-            style={{ flex: 1, padding: '11px 18px', borderRadius: 8, background: 'var(--color-primary)', color: 'white', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+          <button onClick={onClose} className="pressable" style={{ padding: '11px 18px', minHeight: 44, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, cursor: 'pointer' }}>{t.common.cancel}</button>
+          <button onClick={submit} disabled={register.isPending || checking} className="pressable"
+            style={{ flex: 1, padding: '11px 18px', minHeight: 44, borderRadius: 8, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 700, fontSize: 14, cursor: (register.isPending || checking) ? 'not-allowed' : 'pointer', opacity: (register.isPending || checking) ? 0.6 : 1 }}>
             {checking ? t.members.checking : register.isPending ? t.members.registering : t.members.registerBtn}
           </button>
         </div>
@@ -245,7 +253,7 @@ function MemberDetailModal({ accountId, onClose }: { accountId: string; onClose:
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }} className="num">{member?.phone ?? ''}</div>
           </div>
           {member && <Tag tone={TIER_TONE[member.tier]}>{t.members.tier[member.tier]}</Tag>}
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center', color: 'var(--color-text-secondary)' }}><Icon name="x" size={18} /></button>
+          <button onClick={onClose} aria-label={t.common.cancel} className="icon-btn hit-44" style={{ width: 36, height: 36, borderRadius: 8, display: 'grid', placeItems: 'center', color: 'var(--color-text-secondary)' }}><Icon name="x" size={18} /></button>
         </div>
 
         {/* Tabs */}
@@ -258,7 +266,7 @@ function MemberDetailModal({ accountId, onClose }: { accountId: string; onClose:
           {tab === 'orders' ? (
             <MemberOrdersTab accountId={accountId} />
           ) : isLoading || !member ? (
-            <div style={{ color: 'var(--color-text-secondary)' }}>{t.common.loading}</div>
+            <SkeletonTable rows={6} cols={3} header={false} label={t.common.loading} />
           ) : (
             <>
               <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
@@ -274,8 +282,8 @@ function MemberDetailModal({ accountId, onClose }: { accountId: string; onClose:
                   <input type="number" value={delta} onChange={e => setDelta(e.target.value)} placeholder={t.members.deltaPlaceholder} style={{ ...IS, width: 120 }} />
                   <input value={note} onChange={e => setNote(e.target.value)} placeholder={t.members.reasonPlaceholder} style={IS} />
                 </div>
-                <button onClick={submitAdjust} disabled={adjust.isPending}
-                  style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--color-primary)', color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+                <button onClick={submitAdjust} disabled={adjust.isPending} className="pressable"
+                  style={{ padding: '8px 18px', minHeight: 44, borderRadius: 8, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 13, cursor: adjust.isPending ? 'not-allowed' : 'pointer', opacity: adjust.isPending ? 0.6 : 1 }}>
                   {adjust.isPending ? t.members.savingAdjust : t.members.saveAdjust}
                 </button>
               </div>
@@ -324,7 +332,7 @@ function MemberOrdersTab({ accountId }: { accountId: string }) {
   const limit = 20;
   const { data, isLoading } = useMemberOrders(accountId, page, limit);
 
-  if (isLoading) return <div style={{ color: 'var(--color-text-secondary)' }}>{t.common.loading}</div>;
+  if (isLoading) return <SkeletonTable rows={5} cols={2} header={false} label={t.common.loading} />;
 
   const orders = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -423,7 +431,7 @@ function Stat({ label, value, accent, small }: { label: string; value: string; a
 const thCell: React.CSSProperties = { padding: '11px 16px', fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' };
 const td: React.CSSProperties = { padding: '11px 16px' };
 const pageBtn = (disabled: boolean): React.CSSProperties => ({
-  padding: '7px 16px', borderRadius: 8, fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
+  padding: '7px 16px', minHeight: 44, borderRadius: 8, fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
   border: '1px solid var(--color-border)', background: 'var(--color-surface)',
   color: disabled ? 'var(--color-text-muted)' : 'var(--color-text)', opacity: disabled ? 0.5 : 1,
 });
