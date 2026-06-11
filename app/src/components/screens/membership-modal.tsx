@@ -7,6 +7,7 @@ import {
   useLookupMember,
   useRegisterMember,
   useMembers,
+  isMemberNameTaken,
   type AccountRead,
   type LookupResponse,
   type RewardProductRead,
@@ -115,6 +116,7 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
   // register form
   const [regName, setRegName] = useState('');
   const [regDob, setRegDob] = useState('');
+  const [checkingName, setCheckingName] = useState(false);
 
   const doLookup = async () => {
     const p = phone.trim();
@@ -160,6 +162,11 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
     if (!regName.trim()) { toast({ kind: 'warning', title: 'กรอกชื่อสมาชิก' }); return; }
     if (!phone.trim()) { toast({ kind: 'warning', title: 'กรอกเบอร์โทร' }); return; }
     try {
+      setCheckingName(true);
+      if (await isMemberNameTaken(regName)) {
+        toast({ kind: 'warning', title: 'ชื่อนี้มีสมาชิกอยู่แล้ว', msg: 'กรุณาใช้ชื่ออื่น หรือค้นหาสมาชิกเดิม' });
+        return;
+      }
       const account = await register.mutateAsync({
         name: regName.trim(),
         phone: phone.trim(),
@@ -170,6 +177,8 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
       onSelectMember({ account, program: null, redeemReward: false, rewardProduct: null });
     } catch (e: unknown) {
       toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) });
+    } finally {
+      setCheckingName(false);
     }
   };
 
@@ -404,8 +413,8 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
           {phase === 'register' ? (
             <>
               <button onClick={() => { setPhase('lookup'); setFromMiss(false); }} style={{ padding: '11px 18px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, cursor: 'pointer' }}>ย้อนกลับ</button>
-              <button onClick={doRegister} disabled={register.isPending} style={{ flex: 1, padding: '11px 18px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
-                {register.isPending ? 'กำลังสมัคร...' : 'สมัครและแนบกับบิล'}
+              <button onClick={doRegister} disabled={register.isPending || checkingName} style={{ flex: 1, padding: '11px 18px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                {checkingName ? 'กำลังตรวจสอบ...' : register.isPending ? 'กำลังสมัคร...' : 'สมัครและแนบกับบิล'}
               </button>
             </>
           ) : result?.found && result.account ? (

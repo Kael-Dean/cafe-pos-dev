@@ -205,6 +205,22 @@ export function useRegisterMember() {
   });
 }
 
+/** Normalise a member name for duplicate comparison: trim, collapse inner whitespace, lowercase. */
+const normalizeMemberName = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
+
+/**
+ * Returns true when a member with this exact name already exists. The backend only enforces a
+ * unique phone, so duplicate-name registration is blocked on the client. The members endpoint does a
+ * substring match, so we re-check for an exact (normalised) match among the returned rows.
+ */
+export async function isMemberNameTaken(name: string): Promise<boolean> {
+  const target = normalizeMemberName(name);
+  if (!target) return false;
+  const params = new URLSearchParams({ name: name.trim(), page: '1', limit: '50' });
+  const page = await api.get<MembersPage>(`/api/v1/membership/members?${params}`);
+  return page.items.some((m) => normalizeMemberName(m.customer_name) === target);
+}
+
 // ── Member management (MANAGER / OWNER) ──────────────────────────────────────────
 export interface MembersQuery {
   name?: string;

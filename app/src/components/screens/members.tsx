@@ -11,6 +11,7 @@ import {
   useMemberOrders,
   useAdjustPoints,
   useRegisterMember,
+  isMemberNameTaken,
   type MembershipTier,
   type PointTxType,
   type OrderStatus,
@@ -151,11 +152,17 @@ function RegisterMemberModal({ onClose, onRegistered }: { onClose: () => void; o
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [dob, setDob] = useState('');
+  const [checking, setChecking] = useState(false);
 
   const submit = async () => {
     if (!name.trim()) { toast({ kind: 'warning', title: 'กรอกชื่อสมาชิก' }); return; }
     if (!phone.trim()) { toast({ kind: 'warning', title: 'กรอกเบอร์โทร' }); return; }
     try {
+      setChecking(true);
+      if (await isMemberNameTaken(name)) {
+        toast({ kind: 'warning', title: 'ชื่อนี้มีสมาชิกอยู่แล้ว', msg: 'กรุณาใช้ชื่ออื่น หรือค้นหาสมาชิกเดิม' });
+        return;
+      }
       const account = await register.mutateAsync({ name: name.trim(), phone: phone.trim(), date_of_birth: dob || undefined });
       await qc.invalidateQueries({ queryKey: ['membership', 'members'] });
       toast({ kind: 'success', title: 'สมัครสมาชิกแล้ว', msg: account.customer_name });
@@ -163,6 +170,8 @@ function RegisterMemberModal({ onClose, onRegistered }: { onClose: () => void; o
     } catch (e: unknown) {
       // 409 when the phone is already a member — surfaced via ApiError.message.
       toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) });
+    } finally {
+      setChecking(false);
     }
   };
 
@@ -199,9 +208,9 @@ function RegisterMemberModal({ onClose, onRegistered }: { onClose: () => void; o
 
         <div style={{ padding: '16px 24px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 10, background: 'var(--color-surface-2)' }}>
           <button onClick={onClose} style={{ padding: '11px 18px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, cursor: 'pointer' }}>ยกเลิก</button>
-          <button onClick={submit} disabled={register.isPending}
+          <button onClick={submit} disabled={register.isPending || checking}
             style={{ flex: 1, padding: '11px 18px', borderRadius: 8, background: 'var(--color-primary)', color: 'white', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
-            {register.isPending ? 'กำลังสมัคร...' : 'สมัครสมาชิก'}
+            {checking ? 'กำลังตรวจสอบ...' : register.isPending ? 'กำลังสมัคร...' : 'สมัครสมาชิก'}
           </button>
         </div>
       </div>
