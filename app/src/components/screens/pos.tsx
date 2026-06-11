@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import Icon from '../icons';
 import { useToast, baht } from '../app-common';
+import { useI18n } from '@/lib/i18n';
 import { useAllProducts, useCategories, type MenuItem } from '@/hooks/use-products';
 import { useProductDetail } from '@/hooks/use-bom';
 import { useCreateOrder, usePayOrder } from '@/hooks/use-orders';
@@ -30,6 +31,7 @@ function estimateMemberDiscount(member: MemberInfo | null, program: ProgramRead 
 
 export default function POSTerminal() {
   const toast = useToast();
+  const { t } = useI18n();
   const [category, setCategory] = useState('fav');
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -68,7 +70,7 @@ export default function POSTerminal() {
       setModifierItem(item);
     } else {
       addLine({ menuId: item.id, name: item.name, basePrice: item.price, unitPrice: item.price, qty: 1, mods: [], modIds: [], modKey: '' });
-      toast({ kind: 'success', title: 'เพิ่มลงตะกร้า', msg: item.name, duration: 1600 });
+      toast({ kind: 'success', title: t.pos.addedToCart, msg: item.name, duration: 1600 });
     }
     setPendingModifierId(null);
   }, [pendingDetail, pendingModifierId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -167,10 +169,6 @@ export default function POSTerminal() {
   const removeLine = (i: number) => setCart((cur) => cur.filter((_, k) => k !== i));
   const clearCart = () => { setCart([]); setBillNo((b) => b + 1); setMemberInfo(null); setSelectedPromoIds([]); setEligiblePromos([]); setShowPromoPanel(false); };
 
-  const PAY_LABEL: Record<string, string> = {
-    cash: 'เงินสด', card: 'บัตรเครดิต', qr: 'QR PromptPay', line: 'LINE Pay',
-  };
-
   const onPaid = () => {
     // Re-entrancy guard: ignore the call if an order/payment is already being
     // created, so a double-submit can't produce a duplicate (or empty) order.
@@ -215,8 +213,8 @@ export default function POSTerminal() {
         const finalDiscount = serverAuthoritative ? serverDiscount : 0;
         const earned = order.points_earned ?? 0;
         toast({
-          kind: 'success', title: 'ชำระเงินสำเร็จ',
-          msg: `บิล ${order.order_number} • ${baht(finalTotal)}${earned > 0 ? ` • +${earned} แต้ม` : ''} • ส่งครัวแล้ว`,
+          kind: 'success', title: t.pos.paid,
+          msg: t.pos.paidMsg(String(order.order_number), baht(finalTotal), earned > 0 ? t.pos.pointsPart(earned) : ''),
           duration: 3500,
         });
         setReceiptData({
@@ -225,7 +223,7 @@ export default function POSTerminal() {
           subtotal: subtotalSnapshot,
           total: finalTotal,
           paymentMethod: method ?? 'cash',
-          paymentLabel: PAY_LABEL[method ?? 'cash'] ?? method ?? 'cash',
+          paymentLabel: (t.pos.payReceipt as Record<string, string>)[method ?? 'cash'] ?? method ?? 'cash',
           discount: finalDiscount > 0 ? finalDiscount : undefined,
           memberName: memberSnapshot?.account.customer_name,
           pointsEarned: hasMember ? earned : undefined,
@@ -235,11 +233,11 @@ export default function POSTerminal() {
         // The order WAS created (it's already in the kitchen) but recording the
         // payment failed. Do NOT restore the cart — re-submitting would create a
         // duplicate order. Tell the cashier to settle the existing bill instead.
-        const pmsg = payErr instanceof Error ? payErr.message : 'กรุณาลองใหม่';
+        const pmsg = payErr instanceof Error ? payErr.message : t.pos.tryAgain;
         toast({
           kind: 'warning',
-          title: 'สร้างบิลแล้ว แต่ชำระเงินไม่สำเร็จ',
-          msg: `บิล ${order.order_number} ถูกส่งครัวแล้ว — ${pmsg} กรุณาเก็บเงินบิลนี้จากระบบ (อย่าสร้างบิลใหม่)`,
+          title: t.pos.paidFailedTitle,
+          msg: t.pos.paidFailedMsg(String(order.order_number), pmsg),
           duration: 6000,
         });
       })
@@ -249,7 +247,7 @@ export default function POSTerminal() {
       // cart also re-triggers POST /evaluate (the backend re-validates promotions/
       // membership at checkout — e.g. a HAPPY_HOUR that just expired), refreshing
       // eligibility so the cashier sees the current promos before trying again.
-      const msg = err instanceof Error ? err.message : 'กรุณาแจ้งผู้จัดการ';
+      const msg = err instanceof Error ? err.message : t.pos.contactManager;
       setCart(cartSnapshot);
       setMemberInfo(memberSnapshot);
       setSelectedPromoIds(promoSnapshot);
@@ -258,10 +256,8 @@ export default function POSTerminal() {
       const promoIssue = isValidation && promoSnapshot.length > 0;
       toast({
         kind: 'warning',
-        title: promoIssue ? 'โปรโมชั่นใช้ไม่ได้' : 'บิลบันทึกไม่สำเร็จ',
-        msg: promoIssue
-          ? `${msg} — รีเฟรชโปรโมชั่นให้แล้ว กรุณาตรวจสอบแล้วลองใหม่`
-          : `${msg} — กู้คืนตะกร้าให้แล้ว ลองใหม่อีกครั้ง`,
+        title: promoIssue ? t.pos.promoUnusable : t.pos.orderSaveFailed,
+        msg: promoIssue ? t.pos.promoRefreshedMsg(msg) : t.pos.cartRestoredMsg(msg),
         duration: 4500,
       });
     });
@@ -292,7 +288,7 @@ export default function POSTerminal() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
-          เมนู
+          {t.pos.tabMenu}
         </button>
         <button
           type="button"
@@ -307,9 +303,9 @@ export default function POSTerminal() {
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}
         >
-          ตะกร้า
+          {t.pos.tabCart}
           {cartCount > 0 && (
-            <span aria-label={`${cartCount} รายการ`} style={{
+            <span aria-label={t.pos.itemsAria(cartCount)} style={{
               background: 'var(--color-primary)', color: 'white',
               borderRadius: 999, fontSize: 11, fontWeight: 700,
               padding: '1px 6px', lineHeight: '16px',
@@ -327,12 +323,12 @@ export default function POSTerminal() {
         >
           <div style={{padding: '16px 20px 0 20px', display: 'flex', flexDirection: 'column', gap: 12}}>
             <div style={{display: 'flex', gap: 12, alignItems: 'center'}}>
-              <h1 style={{margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em'}}>เมนู</h1>
+              <h1 style={{margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em'}}>{t.pos.menuTitle}</h1>
               <div style={{flex: 1, position: 'relative'}}>
                 <div style={{position: 'absolute', top: 10, left: 12, color: 'var(--color-text-muted)'}}>
                   <Icon name="search" size={16} />
                 </div>
-                <input type="text" placeholder="ค้นหาเมนู ชื่อ หรือ hotkey..."
+                <input type="text" placeholder={t.pos.searchPlaceholder}
                   value={search} onChange={(e) => setSearch(e.target.value)}
                   className="input-std"
                   style={{
@@ -345,8 +341,8 @@ export default function POSTerminal() {
               </div>
             </div>
             <div style={{display: 'flex', gap: 6, overflowX: 'auto'}} className="scroll">
-              <CategoryTab label="★ ขายดี" active={category === 'fav'} onClick={() => { setCategory('fav'); setSearch(''); }} highlight />
-              <CategoryTab label="ทั้งหมด" active={category === 'all'} onClick={() => { setCategory('all'); setSearch(''); }} />
+              <CategoryTab label={t.pos.catFav} active={category === 'fav'} onClick={() => { setCategory('fav'); setSearch(''); }} highlight />
+              <CategoryTab label={t.pos.catAll} active={category === 'all'} onClick={() => { setCategory('all'); setSearch(''); }} />
               {catsLoading && !categories ? (
                 <div aria-hidden style={{ display: 'flex', gap: 6 }}>
                   {[72, 96, 80, 88].map((w, i) => (
@@ -365,12 +361,12 @@ export default function POSTerminal() {
             {isError ? (
               <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: 'var(--color-danger)'}}>
                 <div style={{marginBottom: 8}}><Icon name="warning" size={32}/></div>
-                ไม่สามารถโหลดเมนูได้ กรุณาตรวจสอบการเชื่อมต่อ
+                {t.pos.loadMenuError}
               </div>
             ) : prodLoading ? (
               /* Skeleton grid mirrors the real card layout so there is no layout shift */
               <div aria-hidden className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(160px,1fr))]" style={{gap: 12}}>
-                <span className="sr-only">กำลังโหลดเมนู...</span>
+                <span className="sr-only">{t.pos.loadingMenu}</span>
                 {Array.from({ length: 8 }).map((_, i) => (
                   <div key={i} style={{
                     background: 'var(--color-surface)', border: '1px solid var(--color-border)',
@@ -400,10 +396,10 @@ export default function POSTerminal() {
                       <Icon name={search.trim() ? 'search' : 'coffee'} size={28}/>
                     </div>
                     <div style={{fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)'}}>
-                      {search.trim() ? 'ไม่พบเมนูที่ค้นหา' : 'ยังไม่มีสินค้าในหมวดนี้'}
+                      {search.trim() ? t.pos.noSearchResults : t.pos.emptyCategory}
                     </div>
                     <div style={{fontSize: 13}}>
-                      {search.trim() ? 'ลองค้นหาด้วยคำอื่น หรือตรวจสอบตัวสะกดอีกครั้ง' : 'เพิ่มสินค้าได้ที่เมนู Catalog'}
+                      {search.trim() ? t.pos.noSearchHint : t.pos.emptyCategoryHint}
                     </div>
                   </div>
                 )}
@@ -419,7 +415,7 @@ export default function POSTerminal() {
         >
           <div style={{padding: '20px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
             <div>
-              <div style={{fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500}}>บิลปัจจุบัน</div>
+              <div style={{fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500}}>{t.pos.currentBill}</div>
               <div style={{fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em'}} className="num">A0{billNo}</div>
             </div>
             <div style={{display: 'flex', gap: 6, alignItems: 'center'}}>
@@ -432,10 +428,10 @@ export default function POSTerminal() {
                   <div style={{lineHeight: 1.1}}>
                     <div style={{fontSize: 12, fontWeight: 700, color: 'var(--color-primary-700)'}}>{memberInfo.account.customer_name}</div>
                     <div style={{fontSize: 10, color: 'var(--color-accent-600)'}}>
-                      {memberInfo.account.points_balance.toLocaleString()} แต้ม{memberInfo.redeemReward ? ' • แลกรางวัล' : ''}
+                      {t.pos.pointsUnit(memberInfo.account.points_balance.toLocaleString())}{memberInfo.redeemReward ? t.pos.redeemSuffix : ''}
                     </div>
                   </div>
-                  <button onClick={() => setMemberInfo(null)} title="นำสมาชิกออก" aria-label="นำสมาชิกออก"
+                  <button onClick={() => setMemberInfo(null)} title={t.pos.removeMember} aria-label={t.pos.removeMember}
                     className="hit-44 pressable"
                     style={{width: 22, height: 22, borderRadius: 999, display: 'grid', placeItems: 'center', color: 'var(--color-accent-600)'}}>
                     <Icon name="x" size={13} />
@@ -444,14 +440,14 @@ export default function POSTerminal() {
               ) : (
                 <>
                   <button className="btn btn-ghost" style={{padding: '8px 12px', fontSize: 12, minHeight: 44}} onClick={() => { setMembershipPhase('lookup'); setShowMembership(true); }}>
-                    <Icon name="user" size={14}/> ลูกค้า
+                    <Icon name="user" size={14}/> {t.pos.customer}
                   </button>
                   <button className="btn btn-ghost" style={{padding: '8px 12px', fontSize: 12, whiteSpace: 'nowrap', minHeight: 44}} onClick={() => { setMembershipPhase('register'); setShowMembership(true); }}>
-                    <Icon name="plus" size={14}/> สมัครสมาชิก
+                    <Icon name="plus" size={14}/> {t.pos.register}
                   </button>
                 </>
               )}
-              <button className="btn btn-ghost" style={{padding: 8, minHeight: 44, minWidth: 44}} title="Park bill" aria-label="Park bill">
+              <button className="btn btn-ghost" style={{padding: 8, minHeight: 44, minWidth: 44}} title={t.pos.parkBill} aria-label={t.pos.parkBill}>
                 <Icon name="park" size={16}/>
               </button>
             </div>
@@ -461,8 +457,8 @@ export default function POSTerminal() {
             {cart.length === 0 ? (
               <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
                 <div style={{marginBottom: 12, opacity: 0.6}}><Icon name="cart" size={48}/></div>
-                <div style={{fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4}}>ตะกร้าว่าง</div>
-                <div style={{fontSize: 13}}>เลือกเมนูจากด้านซ้ายเพื่อเริ่มออเดอร์</div>
+                <div style={{fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4}}>{t.pos.emptyCart}</div>
+                <div style={{fontSize: 13}}>{t.pos.emptyCartHint}</div>
               </div>
             ) : cart.map((l, i) => (
               <CartLine key={i} line={l} onInc={() => updateQty(i, +1)} onDec={() => updateQty(i, -1)} onRemove={() => removeLine(i)} />
@@ -472,13 +468,13 @@ export default function POSTerminal() {
           {/* Sticky checkout section on mobile */}
           <div style={{flexShrink: 0, borderTop: '1px solid var(--color-border)'}}>
             <div style={{padding: 20, background: 'var(--color-surface-2)'}}>
-              <Row label="ยอดรวม" value={baht(subtotal)} />
-              {memberDiscount > 0 && <Row label="ส่วนลดสมาชิก (โดยประมาณ)" value={`-${baht(memberDiscount)}`} />}
-              {promoDiscount > 0 && <Row label="ส่วนลดโปรโมชั่น" value={`-${baht(promoDiscount)}`} />}
-              {discount === 0 && <Row label="ส่วนลด" value={baht(0)} muted />}
+              <Row label={t.pos.subtotal} value={baht(subtotal)} />
+              {memberDiscount > 0 && <Row label={t.pos.memberDiscount} value={`-${baht(memberDiscount)}`} />}
+              {promoDiscount > 0 && <Row label={t.pos.promoDiscount} value={`-${baht(promoDiscount)}`} />}
+              {discount === 0 && <Row label={t.pos.discount} value={baht(0)} muted />}
               <div style={{height: 1, background: 'var(--color-border)', margin: '12px 0'}}/>
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'baseline'}}>
-                <div style={{fontSize: 15, fontWeight: 600}}>รวมทั้งสิ้น</div>
+                <div style={{fontSize: 15, fontWeight: 600}}>{t.pos.grandTotal}</div>
                 <div className="num" style={{fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--color-primary)'}}>
                   {baht(total)}
                 </div>
@@ -487,15 +483,15 @@ export default function POSTerminal() {
 
             <div style={{padding: '0 20px 20px', display: 'grid', gap: 8}}>
               <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8}}>
-                <PayButton icon="cash"  label="เงินสด"      onClick={() => cart.length && setPayment('cash')} disabled={!cart.length} pending={paying} />
-                <PayButton icon="card"  label="บัตร"         onClick={() => cart.length && setPayment('card')} disabled={!cart.length} pending={paying} />
-                <PayButton icon="qr"    label="QR PromptPay" onClick={() => cart.length && setPayment('qr')}   disabled={!cart.length} pending={paying} primary />
-                <PayButton icon="line"  label="LINE Pay"     onClick={() => cart.length && setPayment('line')} disabled={!cart.length} pending={paying} />
+                <PayButton icon="cash"  label={t.pos.pay.cash} onClick={() => cart.length && setPayment('cash')} disabled={!cart.length} pending={paying} />
+                <PayButton icon="card"  label={t.pos.pay.card} onClick={() => cart.length && setPayment('card')} disabled={!cart.length} pending={paying} />
+                <PayButton icon="qr"    label={t.pos.pay.qr}   onClick={() => cart.length && setPayment('qr')}   disabled={!cart.length} pending={paying} primary />
+                <PayButton icon="line"  label={t.pos.pay.line} onClick={() => cart.length && setPayment('line')} disabled={!cart.length} pending={paying} />
               </div>
               <div style={{display: 'flex', gap: 8, marginTop: 4}}>
                 <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8, minHeight: 44, opacity: eligiblePromos.length ? 1 : 0.5}}
                   onClick={() => eligiblePromos.length && setShowPromoPanel(true)} disabled={!eligiblePromos.length}>
-                  <Icon name="discount" size={14}/> โปรโมชั่น
+                  <Icon name="discount" size={14}/> {t.pos.promotions}
                   {eligiblePromos.length > 0 && (
                     <span style={{ marginLeft: 4, background: 'var(--color-accent)', color: 'var(--color-primary-700)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>
                       {selectedPromoIds.length > 0 ? `${selectedPromoIds.length}/${eligiblePromos.length}` : eligiblePromos.length}
@@ -503,7 +499,7 @@ export default function POSTerminal() {
                   )}
                 </button>
                 <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8, minHeight: 44}} onClick={() => cart.length && clearCart()}>
-                  <Icon name="void" size={14}/> Void
+                  <Icon name="void" size={14}/> {t.pos.void}
                 </button>
               </div>
             </div>
@@ -518,7 +514,7 @@ export default function POSTerminal() {
           onClose={() => { setModifierItem(null); setModifierGroupIds([]); }}
           onAdd={(line) => {
             addLine(line);
-            toast({ kind: 'success', title: 'เพิ่มลงตะกร้า', msg: `${line.name} • ${baht(line.unitPrice)}`, duration: 1800 });
+            toast({ kind: 'success', title: t.pos.addedToCart, msg: `${line.name} • ${baht(line.unitPrice)}`, duration: 1800 });
             setModifierItem(null);
             setModifierGroupIds([]);
           }}
@@ -535,11 +531,11 @@ export default function POSTerminal() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setShowPromoPanel(false)}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 520, maxHeight: '70vh', overflowY: 'auto', padding: 20, boxShadow: '0 -8px 30px rgba(0,0,0,0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>โปรโมชั่นที่ใช้ได้</div>
-              <button onClick={() => setShowPromoPanel(false)} aria-label="ปิด" className="icon-btn hit-44" style={{ width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center' }}><Icon name="x" size={16} /></button>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{t.pos.promoPanelTitle}</div>
+              <button onClick={() => setShowPromoPanel(false)} aria-label={t.common.close} className="icon-btn hit-44" style={{ width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center' }}><Icon name="x" size={16} /></button>
             </div>
             {eligiblePromos.length === 0 ? (
-              <div style={{ padding: 24, textAlign: 'center', color: 'var(--color-text-muted)' }}>ไม่มีโปรโมชั่นที่ใช้ได้กับตะกร้านี้</div>
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--color-text-muted)' }}>{t.pos.noPromos}</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {eligiblePromos.map(e => {
@@ -550,7 +546,7 @@ export default function POSTerminal() {
                       <input type="checkbox" checked={checked} disabled={locked} onChange={() => togglePromo(e)} style={{ width: 16, height: 16 }} />
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 14, fontWeight: 600 }}>
-                          {e.name}{e.is_exclusive && <span style={{ fontSize: 11, color: 'var(--color-danger)', fontWeight: 600 }}> • ใช้เดี่ยว</span>}
+                          {e.name}{e.is_exclusive && <span style={{ fontSize: 11, color: 'var(--color-danger)', fontWeight: 600 }}>{t.pos.exclusiveSuffix}</span>}
                         </div>
                       </div>
                       <div className="num" style={{ fontWeight: 700, color: 'var(--color-accent-600)' }}>-{baht(Number(e.discount_amount))}</div>
@@ -560,7 +556,7 @@ export default function POSTerminal() {
               </div>
             )}
             <button onClick={() => setShowPromoPanel(false)} className="pressable" style={{ marginTop: 16, width: '100%', padding: 12, minHeight: 48, borderRadius: 10, background: 'var(--color-primary)', color: 'white', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
-              ใช้ส่วนลด{promoDiscount > 0 ? ` (-${baht(promoDiscount)})` : ''}
+              {t.pos.applyDiscount}{promoDiscount > 0 ? ` (-${baht(promoDiscount)})` : ''}
             </button>
           </div>
         </div>
@@ -583,8 +579,8 @@ export default function POSTerminal() {
           }}>
             <span className="spinner" style={{ width: 36, height: 36, borderWidth: 3 }} aria-hidden />
             <div role="status" aria-live="polite">
-              <div style={{ fontSize: 16, fontWeight: 700 }}>กำลังเตรียมใบเสร็จ...</div>
-              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', marginTop: 4 }}>บันทึกบิลและส่งไปยังครัว</div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{t.pos.preparingReceipt}</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', marginTop: 4 }}>{t.pos.preparingReceiptSub}</div>
             </div>
           </div>
         </div>
@@ -620,7 +616,9 @@ const CategoryTab = ({ label, active, onClick, highlight }: { label: string; act
   }}>{label}</button>
 );
 
-const MenuCard = ({ item, onClick }: { item: MenuItem; onClick: () => void }) => (
+const MenuCard = ({ item, onClick }: { item: MenuItem; onClick: () => void }) => {
+  const { t } = useI18n();
+  return (
   <button onClick={onClick} className="menu-card" style={{
     borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column',
     textAlign: 'left', position: 'relative',
@@ -645,7 +643,7 @@ const MenuCard = ({ item, onClick }: { item: MenuItem; onClick: () => void }) =>
           fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 999,
           display: 'flex', alignItems: 'center', gap: 3,
         }}>
-          <Icon name="star" size={10} /> ขายดี
+          <Icon name="star" size={10} /> {t.pos.bestseller}
         </div>
       )}
       <div style={{
@@ -660,9 +658,12 @@ const MenuCard = ({ item, onClick }: { item: MenuItem; onClick: () => void }) =>
       <div className="num" style={{fontSize: 15, fontWeight: 700, color: 'var(--color-primary)'}}>฿{item.price}</div>
     </div>
   </button>
-);
+  );
+};
 
-const CartLine = ({ line, onInc, onDec, onRemove }: { line: CartLine; onInc: () => void; onDec: () => void; onRemove: () => void }) => (
+const CartLine = ({ line, onInc, onDec, onRemove }: { line: CartLine; onInc: () => void; onDec: () => void; onRemove: () => void }) => {
+  const { t } = useI18n();
+  return (
   <div style={{padding: '12px 20px', display: 'flex', gap: 12, alignItems: 'flex-start', borderBottom: '1px solid var(--color-surface-2)'}}>
     <div style={{flex: 1, minWidth: 0}}>
       <div style={{fontSize: 14, fontWeight: 600, marginBottom: 2}}>{line.name}</div>
@@ -673,16 +674,17 @@ const CartLine = ({ line, onInc, onDec, onRemove }: { line: CartLine; onInc: () 
       )}
     </div>
     <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
-      <button onClick={onDec} className="pressable hit-44" aria-label="ลดจำนวน" style={qtyBtnStyle}><Icon name="minus" size={14}/></button>
+      <button onClick={onDec} className="pressable hit-44" aria-label={t.pos.decQty} style={qtyBtnStyle}><Icon name="minus" size={14}/></button>
       <div className="num" style={{minWidth: 20, textAlign: 'center', fontWeight: 600}}>{line.qty}</div>
-      <button onClick={onInc} className="pressable hit-44" aria-label="เพิ่มจำนวน" style={qtyBtnStyle}><Icon name="plus" size={14}/></button>
+      <button onClick={onInc} className="pressable hit-44" aria-label={t.pos.incQty} style={qtyBtnStyle}><Icon name="plus" size={14}/></button>
     </div>
     <div style={{minWidth: 64, textAlign: 'right'}}>
       <div className="num" style={{fontWeight: 600, fontSize: 14}}>฿{(line.unitPrice * line.qty).toLocaleString()}</div>
-      <button onClick={onRemove} className="hit-44" style={{fontSize: 11, color: 'var(--color-danger)', marginTop: 2, position: 'relative'}}>ลบ</button>
+      <button onClick={onRemove} className="hit-44" style={{fontSize: 11, color: 'var(--color-danger)', marginTop: 2, position: 'relative'}}>{t.pos.remove}</button>
     </div>
   </div>
-);
+  );
+};
 
 const qtyBtnStyle: React.CSSProperties = {
   width: 34, height: 34, borderRadius: 6,
@@ -698,6 +700,7 @@ const Row = ({ label, value, muted }: { label: string; value: string; muted?: bo
 );
 
 const PayButton = ({ icon, label, onClick, disabled, primary, pending }: { icon: string; label: string; onClick: () => void; disabled: boolean; primary?: boolean; pending?: boolean }) => {
+  const { t } = useI18n();
   const off = disabled || pending;
   return (
     <button onClick={onClick} disabled={off} className="hover-raise" aria-busy={pending || undefined}
@@ -713,7 +716,7 @@ const PayButton = ({ icon, label, onClick, disabled, primary, pending }: { icon:
       }}
     >
       {pending ? <span className="spinner" style={{width: 18, height: 18}} aria-hidden /> : <Icon name={icon} size={20}/>}
-      <span style={{fontSize: 12}}>{pending ? 'กำลังบันทึก...' : label}</span>
+      <span style={{fontSize: 12}}>{pending ? t.common.saving : label}</span>
     </button>
   );
 };
