@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Icon from '../icons';
 import { useToast } from '../app-common';
+import { useI18n } from '@/lib/i18n';
 import {
   useShoppingList, useAddToShoppingList, useRemoveFromShoppingList, usePatchShoppingListItem,
   type ShoppingListItem,
@@ -14,6 +15,7 @@ const fmtQty = (n: number) => n.toLocaleString(undefined, { maximumFractionDigit
 
 export default function ShoppingListScreen() {
   const toast = useToast();
+  const { t } = useI18n();
   const [addOpen, setAddOpen] = useState(false);
   const [addItemId, setAddItemId] = useState('');
   const [addQty, setAddQty] = useState('');
@@ -43,7 +45,7 @@ export default function ShoppingListScreen() {
     const qty = addQty.trim();
     const qtyNum = Number(qty);
     if (qty && (Number.isNaN(qtyNum) || qtyNum < 0)) {
-      toast({ kind: 'warning', title: 'จำนวนไม่ถูกต้อง' });
+      toast({ kind: 'warning', title: t.shoppingList.invalidQty });
       return;
     }
     try {
@@ -53,9 +55,9 @@ export default function ShoppingListScreen() {
         note: addNote.trim() || undefined,
       });
       resetAddForm();
-      toast({ kind: 'success', title: 'เพิ่มเข้า Shopping List แล้ว' });
+      toast({ kind: 'success', title: t.shoppingList.added });
     } catch (err) {
-      toast({ kind: 'danger', title: 'เกิดข้อผิดพลาด', msg: err instanceof Error ? err.message : undefined });
+      toast({ kind: 'danger', title: t.common.error, msg: err instanceof Error ? err.message : undefined });
     }
   };
 
@@ -63,9 +65,9 @@ export default function ShoppingListScreen() {
     setRemovingId(item.id);
     try {
       await removeMut.mutateAsync(item.id);
-      toast({ kind: 'success', title: `ลบ ${item.inventoryItemName} แล้ว` });
+      toast({ kind: 'success', title: t.shoppingList.removed(item.inventoryItemName) });
     } catch (err) {
-      toast({ kind: 'danger', title: 'ลบไม่สำเร็จ', msg: err instanceof Error ? err.message : undefined });
+      toast({ kind: 'danger', title: t.shoppingList.removeFailed, msg: err instanceof Error ? err.message : undefined });
     } finally {
       setRemovingId(null);
     }
@@ -75,21 +77,21 @@ export default function ShoppingListScreen() {
     <div style={{ height: '100%', overflow: 'auto', padding: 24, background: 'var(--color-bg)' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>Shopping List</h1>
+        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>{t.shoppingList.title}</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={() => window.open('/api/v1/shopping-list/print', '_blank')}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}
           >
             <Icon name="print" size={16} />
-            พิมพ์รายการ
+            {t.shoppingList.printList}
           </button>
           <button
             onClick={() => setAddOpen(v => !v)}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
           >
             <Icon name="plus" size={16} color="#fff" />
-            เพิ่มวัตถุดิบ
+            {t.shoppingList.addItem}
           </button>
         </div>
       </div>
@@ -108,9 +110,9 @@ export default function ShoppingListScreen() {
                 }
               }}
             >
-              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>วัตถุดิบ</label>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>{t.shoppingList.ingredient}</label>
               <input
-                placeholder="พิมพ์เพื่อค้นหา หรือกดเพื่อเลือก..."
+                placeholder={t.shoppingList.searchPlaceholder}
                 value={invSearch}
                 onFocus={() => setInvFocused(true)}
                 onChange={e => { setInvSearch(e.target.value); setAddItemId(''); }}
@@ -135,13 +137,13 @@ export default function ShoppingListScreen() {
             </div>
             {/* Quantity (optional override) */}
             <div style={{ flex: 1, minWidth: 110 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>จำนวน (ไม่บังคับ)</label>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>{t.shoppingList.qtyOptional}</label>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <input
                   type="number"
                   min={0}
                   step="any"
-                  placeholder="อัตโนมัติ"
+                  placeholder={t.shoppingList.auto}
                   value={addQty}
                   onChange={e => setAddQty(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
@@ -152,9 +154,9 @@ export default function ShoppingListScreen() {
             </div>
             {/* Note */}
             <div style={{ flex: 3, minWidth: 160 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>หมายเหตุ (ไม่บังคับ)</label>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>{t.shoppingList.noteOptional}</label>
               <input
-                placeholder="เช่น ยี่ห้อ A"
+                placeholder={t.shoppingList.notePlaceholder}
                 value={addNote}
                 onChange={e => setAddNote(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
@@ -169,14 +171,14 @@ export default function ShoppingListScreen() {
                 disabled={!addItemId || addMut.isPending}
                 style={{ padding: '8px 16px', borderRadius: 7, border: 'none', background: 'var(--color-primary)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: (!addItemId || addMut.isPending) ? 'not-allowed' : 'pointer', opacity: (!addItemId || addMut.isPending) ? 0.5 : 1 }}
               >
-                {addMut.isPending ? 'กำลังเพิ่ม...' : 'เพิ่ม'}
+                {addMut.isPending ? t.shoppingList.adding : t.common.add}
               </button>
               <button
                 onClick={resetAddForm}
                 disabled={addMut.isPending}
                 style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 13, cursor: 'pointer' }}
               >
-                ยกเลิก
+                {t.common.cancel}
               </button>
             </div>
           </div>
@@ -185,12 +187,12 @@ export default function ShoppingListScreen() {
 
       {/* List */}
       {isLoading ? (
-        <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-secondary)', fontSize: 14 }}>กำลังโหลด...</div>
+        <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-secondary)', fontSize: 14 }}>{t.common.loading}</div>
       ) : items.length === 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: 'var(--color-text-secondary)' }}>
           <Icon name="cart" size={40} color="var(--color-border-strong)" />
-          <div style={{ marginTop: 12, fontSize: 14 }}>รายการว่างเปล่า</div>
-          <div style={{ fontSize: 12, marginTop: 4 }}>เพิ่มวัตถุดิบที่ต้องซื้อเข้ามาได้เลย</div>
+          <div style={{ marginTop: 12, fontSize: 14 }}>{t.shoppingList.empty}</div>
+          <div style={{ fontSize: 12, marginTop: 4 }}>{t.shoppingList.emptyHint}</div>
         </div>
       ) : (
         <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
@@ -217,6 +219,7 @@ function ShoppingRow({ item, isLast, removing, onRemove }: {
   onRemove: () => void;
 }) {
   const toast = useToast();
+  const { t } = useI18n();
   const patch = usePatchShoppingListItem();
 
   const isOverride = item.quantity != null;
@@ -243,7 +246,7 @@ function ShoppingRow({ item, isLast, removing, onRemove }: {
     try {
       await patch.mutateAsync({ itemId: item.id, quantity: n });
     } catch (err) {
-      toast({ kind: 'danger', title: 'บันทึกจำนวนไม่สำเร็จ', msg: err instanceof Error ? err.message : undefined });
+      toast({ kind: 'danger', title: t.shoppingList.saveQtyFailed, msg: err instanceof Error ? err.message : undefined });
       setDraft(String(effective));
     }
   };
@@ -252,7 +255,7 @@ function ShoppingRow({ item, isLast, removing, onRemove }: {
     try {
       await patch.mutateAsync({ itemId: item.id, quantity: null });
     } catch (err) {
-      toast({ kind: 'danger', title: 'รีเซ็ตไม่สำเร็จ', msg: err instanceof Error ? err.message : undefined });
+      toast({ kind: 'danger', title: t.shoppingList.resetFailed, msg: err instanceof Error ? err.message : undefined });
     }
   };
 
@@ -269,11 +272,11 @@ function ShoppingRow({ item, isLast, removing, onRemove }: {
           <span>{item.inventoryItemName}</span>
           {isOverride ? (
             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-primary)', background: 'var(--color-primary-50, rgba(120,90,60,0.1))', padding: '1px 7px', borderRadius: 999 }}>
-              กำหนดเอง
+              {t.shoppingList.overrideTag}
             </span>
           ) : (
             <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', background: 'var(--color-surface-2)', padding: '1px 7px', borderRadius: 999 }}>
-              แนะนำ
+              {t.shoppingList.suggestedTag}
             </span>
           )}
         </div>
@@ -282,7 +285,7 @@ function ShoppingRow({ item, isLast, removing, onRemove }: {
         )}
         {isOverride && (
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>
-            ระบบแนะนำ {fmtQty(item.suggestedQty)} {item.unit}
+            {t.shoppingList.suggestionLabel(fmtQty(item.suggestedQty), item.unit)}
           </div>
         )}
       </div>
@@ -299,7 +302,7 @@ function ShoppingRow({ item, isLast, removing, onRemove }: {
           onBlur={commit}
           onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
           disabled={patch.isPending}
-          aria-label={`จำนวนที่ต้องซื้อ ${item.inventoryItemName}`}
+          aria-label={t.shoppingList.qtyAria(item.inventoryItemName)}
           style={{
             width: 84, padding: '7px 10px', borderRadius: 7, fontSize: 14, fontWeight: 600,
             textAlign: 'right', boxSizing: 'border-box', background: 'var(--color-bg)',
@@ -312,7 +315,7 @@ function ShoppingRow({ item, isLast, removing, onRemove }: {
         <button
           onClick={resetToSuggested}
           disabled={!isOverride || patch.isPending}
-          title="กลับไปใช้จำนวนที่ระบบแนะนำ"
+          title={t.shoppingList.resetTitle}
           style={{
             width: 28, height: 28, borderRadius: 6, border: '1px solid var(--color-border)',
             background: 'transparent', display: 'grid', placeItems: 'center',
