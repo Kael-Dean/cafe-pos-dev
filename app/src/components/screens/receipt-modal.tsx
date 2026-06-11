@@ -1,8 +1,23 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import Icon from '../icons';
 import { bahtText } from '@/lib/baht-text';
+
+/**
+ * The preview reproduces a physical 80mm thermal slip, which is light paper
+ * with dark ink in BOTH themes (it is a representation of a real printout, not
+ * app chrome). These are intentionally NOT theme tokens — they stay constant so
+ * the preview always reads as paper. They are tinted toward the espresso brand
+ * hue rather than pure #fff / #000, per the no-pure-black/white design rule.
+ */
+const PAPER = '#FFFEFB';
+const PAPER_TRAY = '#EFE9E0';
+const PAPER_BORDER = '#E5E0D5';
+const INK = '#1C140D';
+const INK_MUTED = '#7A6E60';
+const INK_SOFT = '#4A3B2C';
+const DASH = '#B6A992';
 
 export interface ReceiptItem {
   name: string;
@@ -52,8 +67,53 @@ export const DEFAULT_STORE: StoreInfo = {
   phone: '044-511-234',
 };
 
+/**
+ * Modal a11y: trap focus inside the dialog, close on Esc, restore focus to the
+ * opener on unmount. The visual open/close stays on the existing modal-in CSS
+ * animation — this only wires keyboard + focus behaviour.
+ */
+function useModalA11y(onClose: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    const node = ref.current;
+
+    const focusables = () =>
+      Array.from(
+        node?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter((el) => el.offsetParent !== null);
+
+    focusables()[0]?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+      if (e.key !== 'Tab') return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      opener?.focus?.();
+    };
+    // Runs once for the modal's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return ref;
+}
+
 export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }: Props) {
   const [isPrinting, setIsPrinting] = useState(false);
+  const dialogRef = useModalA11y(onClose);
 
   const now = issuedAt ?? new Date();
   const buddhistYear = now.getFullYear() + 543;
@@ -89,22 +149,27 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
         className="receipt-print-root"
         style={{
           position: 'fixed', inset: 0, zIndex: 300,
-          background: 'rgba(20, 12, 6, 0.75)',
+          background: 'var(--color-scrim, rgba(26, 16, 8, 0.55))',
           backdropFilter: 'blur(6px)',
           display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-          padding: '20px 16px 40px',
+          padding: 'var(--space-5) var(--space-4) var(--space-10)',
           overflowY: 'auto',
         }}
         onClick={onClose}
       >
         <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={copy ? 'สำเนาใบเสร็จรับเงิน' : 'ใบเสร็จรับเงิน'}
+          aria-busy={isPrinting || undefined}
           className="receipt-modal-shell"
           onClick={e => e.stopPropagation()}
           style={{
             width: '100%', maxWidth: 460,
             background: 'var(--color-surface)',
-            borderRadius: 20,
-            boxShadow: '0 32px 80px rgba(61,40,23,0.28), 0 8px 24px rgba(61,40,23,0.14)',
+            borderRadius: 'var(--radius-xl)',
+            boxShadow: 'var(--shadow-lg)',
             display: 'flex', flexDirection: 'column',
             animation: 'modal-in var(--dur-slow) var(--ease-out)',
           }}
@@ -136,8 +201,8 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
             </button>
           </div>
 
-          {/* ── Receipt preview ── */}
-          <div style={{ padding: '20px', overflowY: 'auto', maxHeight: '68vh', background: '#EFE9E0' }}>
+          {/* ── Receipt preview (tinted paper tray; stays light in both themes) ── */}
+          <div style={{ padding: 'var(--space-5)', overflowY: 'auto', maxHeight: '68vh', background: PAPER_TRAY }}>
             <ReceiptPaper
               data={data}
               invoiceNo={invoiceNo} now={now} copy={copy}
@@ -148,27 +213,29 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
 
           {/* ── Footer actions ── */}
           <div className="receipt-no-print" style={{
-            padding: '12px 20px', borderTop: '1px solid var(--color-border)',
-            display: 'flex', gap: 8, alignItems: 'center',
+            padding: 'var(--space-3) var(--space-5)', borderTop: '1px solid var(--color-border)',
+            display: 'flex', gap: 'var(--space-2)', alignItems: 'center',
           }}>
-            <button onClick={handleBrowserPrint} className="icon-btn pressable" style={{
-              padding: '8px 14px', borderRadius: 8, fontSize: 13, minHeight: 44,
+            <button onClick={handleBrowserPrint} disabled={isPrinting} className="icon-btn pressable" style={{
+              padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 13, minHeight: 44,
               border: '1px solid var(--color-border)',
-              display: 'flex', alignItems: 'center', gap: 6,
+              display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
               color: 'var(--color-text-secondary)',
+              opacity: isPrinting ? 0.5 : 1,
             }}>
               <Icon name="print" size={14} /> บันทึก PDF
             </button>
             <div style={{ flex: 1 }} />
             <button onClick={onClose} className="icon-btn" style={{
-              padding: '8px 16px', borderRadius: 8, fontSize: 13, minHeight: 44,
+              padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 13, minHeight: 44,
               color: 'var(--color-text-secondary)',
             }}>ปิด</button>
             <button onClick={handlePrint} disabled={isPrinting} aria-busy={isPrinting || undefined} className="pressable" style={{
-              padding: '9px 22px', borderRadius: 8, fontSize: 14, fontWeight: 700, minHeight: 44,
-              background: isPrinting ? 'var(--color-border)' : 'var(--color-primary)',
-              color: 'white', display: 'flex', alignItems: 'center', gap: 8,
-              opacity: isPrinting ? 0.7 : 1,
+              padding: '9px 22px', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 700, minHeight: 44,
+              background: isPrinting ? 'var(--color-surface-2)' : 'var(--color-primary)',
+              color: isPrinting ? 'var(--color-text-secondary)' : 'var(--color-text-inverse)',
+              display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+              opacity: isPrinting ? 0.85 : 1,
               cursor: isPrinting ? 'wait' : 'pointer',
             }}>
               {isPrinting ? <span className="spinner" aria-hidden /> : <Icon name="printer" size={16} />}
@@ -192,8 +259,11 @@ const MONO: React.CSSProperties = {
 };
 
 function Dash() {
-  return <div aria-hidden style={{ borderTop: '1px dashed #B6A992', margin: '8px 0' }} />;
+  return <div aria-hidden style={{ borderTop: `1px dashed ${DASH}`, margin: '8px 0' }} />;
 }
+
+/** Paper-red for the "สำเนา" copy mark; fixed so it reads on the light slip in both themes. */
+const PAPER_COPY = '#B83A3A';
 
 function TRow({ l, r, bold, muted, indent }: {
   l: React.ReactNode; r?: React.ReactNode; bold?: boolean; muted?: boolean; indent?: boolean;
@@ -204,7 +274,7 @@ function TRow({ l, r, bold, muted, indent }: {
       padding: '1px 0',
       paddingLeft: indent ? 16 : 0,
       fontWeight: bold ? 700 : 400,
-      color: muted ? '#7A6E60' : '#1A1A1A',
+      color: muted ? INK_MUTED : INK,
     }}>
       <span style={{ wordBreak: 'break-word' }}>{l}</span>
       {r != null && <span style={{ ...MONO, flexShrink: 0, fontWeight: bold ? 700 : 400 }}>{r}</span>}
@@ -223,13 +293,13 @@ export function ReceiptPaper({ data, invoiceNo, now, copy, fmt, storeInfo }: {
 
   return (
     <div className="receipt-paper" style={{
-      background: '#FFFFFF',
+      background: PAPER,
       width: '100%', maxWidth: 340, margin: '0 auto',
-      border: '1px solid #E5E0D5', borderRadius: 4,
+      border: `1px solid ${PAPER_BORDER}`, borderRadius: 4,
       boxShadow: '0 6px 22px rgba(61,40,23,0.16)',
       padding: '20px 18px 24px',
       fontFamily: '"IBM Plex Sans Thai", "Sarabun", system-ui, sans-serif',
-      fontSize: 12.5, lineHeight: 1.5, color: '#1A1A1A',
+      fontSize: 12.5, lineHeight: 1.5, color: INK,
     }}>
       {/* ── Header (centered, like double-height storeName on the printer) ── */}
       <div style={{ textAlign: 'center' }}>
@@ -241,7 +311,7 @@ export function ReceiptPaper({ data, invoiceNo, now, copy, fmt, storeInfo }: {
         />
         <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: '0.01em' }}>{S.name}</div>
         <div style={{ marginTop: 3 }}>ใบเสร็จรับเงิน</div>
-        <div style={{ color: copy ? 'var(--color-danger)' : '#7A6E60', fontWeight: copy ? 700 : 400 }}>{copy ? 'สำเนา' : 'ต้นฉบับ'}</div>
+        <div style={{ color: copy ? PAPER_COPY : INK_MUTED, fontWeight: copy ? 700 : 400 }}>{copy ? 'สำเนา' : 'ต้นฉบับ'}</div>
       </div>
 
       <Dash />
@@ -257,7 +327,7 @@ export function ReceiptPaper({ data, invoiceNo, now, copy, fmt, storeInfo }: {
       {/* ── Order meta ── */}
       <div>เลขที่: <span style={MONO}>{invoiceNo}</span></div>
       <div>ออเดอร์: <span style={MONO}>#{data.orderNumber}</span></div>
-      <div style={{ color: '#7A6E60' }}>{dateStr}</div>
+      <div style={{ color: INK_MUTED }}>{dateStr}</div>
       {data.memberName && <div>ลูกค้า: {data.memberName}</div>}
 
       <Dash />
@@ -279,7 +349,7 @@ export function ReceiptPaper({ data, invoiceNo, now, copy, fmt, storeInfo }: {
 
       {/* ── Summary ── */}
       <TRow bold l="รวมทั้งสิ้น (บาท)" r={fmt(data.total)} />
-      <div style={{ color: '#4A3B2C' }}>({bahtText(data.total)})</div>
+      <div style={{ color: INK_SOFT }}>({bahtText(data.total)})</div>
       <div>ชำระ: {data.paymentLabel}</div>
       {data.cashGiven != null && (
         <>

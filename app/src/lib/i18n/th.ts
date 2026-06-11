@@ -208,6 +208,8 @@ export const th = {
   dashboard: {
     overline: 'ภาพรวม',
     title: 'แดชบอร์ด',
+    loadingKpis: 'กำลังโหลดตัวชี้วัดวันนี้...',
+    loadingChart: 'กำลังโหลดยอดขายรายชั่วโมง...',
     refresh: 'รีเฟรช',
     today: 'วันนี้',
     makeReport: 'สร้างรายงาน',

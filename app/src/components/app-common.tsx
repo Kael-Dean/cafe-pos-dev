@@ -5,6 +5,7 @@ import Icon from './icons';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { displayNumber, parseNumberInput, clampNumber } from '@/lib/number-input';
 import { useI18n } from '@/lib/i18n';
+import { useCountUp } from '@/lib/motion';
 
 // ---------- Toast ----------
 type ToastKind = 'success' | 'warning' | 'danger' | 'info';
@@ -229,20 +230,39 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
 };
 
 // ---------- Reusable bits ----------
-interface KPICardProps { label: string; value: number | string; prefix?: string; suffix?: string; delta?: number; vsLabel?: string; }
+interface KPICardProps {
+  label: string; value: number | string; prefix?: string; suffix?: string; delta?: number; vsLabel?: string;
+  /** Animate a numeric value counting up on mount/change (dashboard headline KPIs). */
+  countUp?: boolean;
+}
 
-export const KPICard = ({ label, value, prefix='', suffix='', delta, vsLabel }: KPICardProps) => {
+/** Renders a KPI value, optionally tweening it up to its target with useCountUp. */
+const KPIValue = ({ value, prefix, suffix, countUp }: { value: number | string; prefix: string; suffix: string; countUp?: boolean }) => {
+  const isNum = typeof value === 'number';
+  // Whole numbers print without decimals; floats keep one (e.g. GP% 68.4).
+  const fmt = (n: number) =>
+    `${prefix}${(Number.isInteger(value) ? Math.round(n) : Number(n.toFixed(1))).toLocaleString('en-US', { maximumFractionDigits: Number.isInteger(value) ? 0 : 1 })}${suffix}`;
+  const ref = useCountUp(isNum && countUp ? (value as number) : 0, { format: fmt });
+
+  if (isNum && countUp) {
+    // Seed with the final text so SSR/first paint and reduced-motion show the value.
+    return <span ref={ref}>{fmt(value as number)}</span>;
+  }
+  return <>{prefix}{isNum ? (value as number).toLocaleString() : value}{suffix}</>;
+};
+
+export const KPICard = ({ label, value, prefix='', suffix='', delta, vsLabel, countUp }: KPICardProps) => {
   const positive = (delta ?? 0) >= 0;
   return (
     <div style={{
       background: 'var(--color-surface)',
       border: '1px solid var(--color-border)',
-      borderRadius: 12, padding: 20,
-      display: 'flex', flexDirection: 'column', gap: 12,
+      borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)',
+      display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
     }}>
       <div style={{fontSize: 13, color: 'var(--color-text-secondary)', fontWeight: 500}}>{label}</div>
       <div className="num" style={{fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--color-text)'}}>
-        {prefix}{typeof value === 'number' ? value.toLocaleString() : value}{suffix}
+        <KPIValue value={value} prefix={prefix} suffix={suffix} countUp={countUp} />
       </div>
       {delta != null && (
         <div style={{display: 'flex', alignItems: 'center', gap: 6, fontSize: 12}}>

@@ -136,9 +136,13 @@ export default function KDS() {
 
       <div className="scroll" style={{ flex: 1, overflow: 'auto', padding: 24 }}>
         {isLoading && localTickets.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 300, color: 'rgba(255,255,255,0.55)' }}>
-            <div style={{ marginBottom: 12, opacity: 0.4 }}><Icon name="clock" size={40} /></div>
-            <div style={{ fontSize: 16 }}>{t.kds.loadingOrders}</div>
+          /* Skeleton ticket grid mirrors the real card layout (no layout shift when
+             orders arrive). Built with white-on-dark fills because the KDS root is
+             .surface-inverse — pinned dark in BOTH themes, so the global light
+             skeleton sweep would be invisible here. */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-busy="true">
+            <span className="sr-only">{t.kds.loadingOrders}</span>
+            {Array.from({ length: 6 }).map((_, i) => <TicketSkeleton key={i} />)}
           </div>
         ) : sorted.length === 0 ? (
           <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 300, color: 'rgba(255,255,255,0.55)', textAlign: 'center' }}>
@@ -201,6 +205,42 @@ const KDSStatChip = ({ label, count, color }: { label: string; count: number; co
   </div>
 );
 
+/* A single shimmer block tuned for the dark KDS surface. The global .skeleton's
+   dark variant keys off [data-theme='dark']; KDS is .surface-inverse (dark in
+   BOTH themes), so the placeholder fills are spelled out here in white-on-dark. */
+const DarkBar = ({ w, h = 12, r = 'var(--radius-sm)' }: { w: number | string; h?: number; r?: string }) => (
+  <div className="skeleton" aria-hidden style={{
+    width: typeof w === 'number' ? `${w}px` : w, height: h, borderRadius: r,
+    background: 'rgba(255,255,255,0.08)',
+  }} />
+);
+
+/* Placeholder ticket — mirrors OrderTicket's three bands (header / items / action). */
+const TicketSkeleton = () => (
+  <div aria-hidden style={{
+    minHeight: 120, borderRadius: 'var(--radius-lg)',
+    borderTop: '4px solid rgba(255,255,255,0.12)',
+    background: 'rgba(255,255,255,0.04)',
+    display: 'flex', flexDirection: 'column', overflow: 'hidden',
+  }}>
+    <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <DarkBar w={40} h={26} r="var(--radius-md)" />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <DarkBar w="55%" h={11} />
+        <DarkBar w={64} h={18} r="var(--radius-pill)" />
+      </div>
+      <DarkBar w={48} h={20} r="var(--radius-pill)" />
+    </div>
+    <div style={{ padding: '12px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <DarkBar w="80%" h={15} />
+      <DarkBar w="60%" h={13} />
+    </div>
+    <div style={{ padding: 12, background: 'rgba(255,255,255,0.03)' }}>
+      <DarkBar w="100%" h={36} r="var(--radius-md)" />
+    </div>
+  </div>
+);
+
 const OrderTicket = ({ ticket, leaving, mins, nameToId, onBump, onDone, onStepsClick }: {
   ticket: KDSTicket;
   leaving: boolean;
@@ -224,7 +264,7 @@ const OrderTicket = ({ ticket, leaving, mins, nameToId, onBump, onDone, onStepsC
 
   return (
     /* .rise-in plays once per mount; .card-out holds the slot (faded, unclickable) while delivering */
-    <div className={`surface-paper min-h-[120px] rise-in${leaving ? ' card-out' : ''}`} style={{ background: 'white', borderRadius: 12, borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className={`surface-paper min-h-[120px] rise-in${leaving ? ' card-out' : ''}`} style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--color-border)' }}>
         <div className="num" style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.01em' }}>#{ticket.queue}</div>
         <div style={{ flex: 1 }}>
@@ -322,7 +362,20 @@ const CookingStepsModal = ({ productId, productName, onClose }: {
         </div>
         <div className="scroll" style={{ overflow: 'auto', padding: 20, flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {isLoading ? (
-            <div style={{ textAlign: 'center', padding: 32, color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>{t.common.loading}</div>
+            /* Step placeholders mirror the numbered-step rows below so the modal
+               body doesn't jump when the real steps land. */
+            <div aria-busy="true" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <span className="sr-only">{t.common.loading}</span>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                  <DarkBar w={28} h={28} r="var(--radius-pill)" />
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
+                    <DarkBar w="92%" h={13} />
+                    <DarkBar w="64%" h={13} />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : !steps || steps.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 32, color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>{t.kds.noSteps}</div>
           ) : steps.map((step, idx) => (

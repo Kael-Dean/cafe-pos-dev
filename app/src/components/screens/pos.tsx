@@ -15,6 +15,7 @@ import ReceiptModal, { type ReceiptData } from './receipt-modal';
 import MembershipModal, { type MemberInfo } from './membership-modal';
 import { useMembershipProgram, type ProgramRead } from '@/hooks/use-membership';
 import { usePrinter } from '@/hooks/use-printer';
+import { useStagger } from '@/lib/motion';
 
 interface CartLine { menuId: string; name: string; basePrice: number; unitPrice: number; qty: number; mods: string[]; modIds: string[]; modKey: string; }
 
@@ -306,7 +307,7 @@ export default function POSTerminal() {
           {t.pos.tabCart}
           {cartCount > 0 && (
             <span aria-label={t.pos.itemsAria(cartCount)} style={{
-              background: 'var(--color-primary)', color: 'white',
+              background: 'var(--color-primary)', color: 'var(--color-text-inverse)',
               borderRadius: 999, fontSize: 11, fontWeight: 700,
               padding: '1px 6px', lineHeight: '16px',
             }}>{cartCount}</span>
@@ -382,10 +383,13 @@ export default function POSTerminal() {
               </div>
             ) : (
               <>
-                {/* keyed by category/search so the grid cross-fades on every filter change */}
-                <div key={`${category}:${search.trim()}`} className="fade-in grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(160px,1fr))]" style={{gap: 12}}>
+                {/* Keyed by category only: switching category remounts the grid and the
+                    cards stagger in (a deliberate, infrequent tap). Typing in search
+                    filters the cards in place with no re-animation — a cashier typing
+                    fast wants instant results, not motion on every keystroke. */}
+                <ProductGrid key={category}>
                   {filtered.map((m) => <MenuCard key={m.id} item={m} onClick={() => onMenuClick(m)} />)}
-                </div>
+                </ProductGrid>
                 {filtered.length === 0 && (
                   <div className="fade-in" style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-16) var(--space-6)', textAlign: 'center', color: 'var(--color-text-muted)'}}>
                     <div style={{
@@ -528,8 +532,8 @@ export default function POSTerminal() {
         />
       )}
       {showPromoPanel && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setShowPromoPanel(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 520, maxHeight: '70vh', overflowY: 'auto', padding: 20, boxShadow: '0 -8px 30px rgba(0,0,0,0.2)' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setShowPromoPanel(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 520, maxHeight: '70vh', overflowY: 'auto', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <div style={{ fontSize: 16, fontWeight: 700 }}>{t.pos.promoPanelTitle}</div>
               <button onClick={() => setShowPromoPanel(false)} aria-label={t.common.close} className="icon-btn hit-44" style={{ width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center' }}><Icon name="x" size={16} /></button>
@@ -555,7 +559,7 @@ export default function POSTerminal() {
                 })}
               </div>
             )}
-            <button onClick={() => setShowPromoPanel(false)} className="pressable" style={{ marginTop: 16, width: '100%', padding: 12, minHeight: 48, borderRadius: 10, background: 'var(--color-primary)', color: 'white', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+            <button onClick={() => setShowPromoPanel(false)} className="pressable" style={{ marginTop: 16, width: '100%', padding: 12, minHeight: 48, borderRadius: 10, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
               {t.pos.applyDiscount}{promoDiscount > 0 ? ` (-${baht(promoDiscount)})` : ''}
             </button>
           </div>
@@ -606,11 +610,23 @@ export default function POSTerminal() {
   );
 }
 
+/* Product grid wrapper that staggers its cards in on mount. Remounted (via key)
+   on category change so each category switch gets a quick, subtle reveal; the
+   stagger is fast and one-shot, never replaying while the cashier works a bill. */
+const ProductGrid = ({ children }: { children: React.ReactNode }) => {
+  const gridRef = useStagger({ each: 0.02, y: 6 });
+  return (
+    <div ref={gridRef} className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(160px,1fr))]" style={{gap: 12}}>
+      {children}
+    </div>
+  );
+};
+
 const CategoryTab = ({ label, active, onClick, highlight }: { label: string; active: boolean; onClick: () => void; highlight?: boolean }) => (
   <button onClick={onClick} className="pressable hit-44" aria-pressed={active} style={{
     padding: '9px 16px', borderRadius: 999, minHeight: 38,
     background: active ? 'var(--color-primary)' : (highlight ? 'var(--color-accent-50)' : 'var(--color-surface)'),
-    color: active ? 'white' : (highlight ? 'var(--color-primary-700)' : 'var(--color-text-secondary)'),
+    color: active ? 'var(--color-text-inverse)' : (highlight ? 'var(--color-primary-700)' : 'var(--color-text-secondary)'),
     border: `1px solid ${active ? 'var(--color-primary)' : 'var(--color-border)'}`,
     fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
   }}>{label}</button>
@@ -707,7 +723,7 @@ const PayButton = ({ icon, label, onClick, disabled, primary, pending }: { icon:
       style={{
         padding: '14px 12px', borderRadius: 8,
         background: off ? 'var(--color-surface-2)' : (primary ? 'var(--color-primary)' : 'var(--color-surface)'),
-        color: off ? 'var(--color-text-muted)' : (primary ? 'white' : 'var(--color-text)'),
+        color: off ? 'var(--color-text-muted)' : (primary ? 'var(--color-text-inverse)' : 'var(--color-text)'),
         border: `1px solid ${primary && !off ? 'var(--color-primary)' : 'var(--color-border)'}`,
         fontWeight: 600, fontSize: 14,
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,

@@ -192,6 +192,8 @@ export const en: Messages = {
   dashboard: {
     overline: 'Overview',
     title: 'Dashboard',
+    loadingKpis: 'Loading today’s metrics...',
+    loadingChart: 'Loading hourly sales...',
     refresh: 'Refresh',
     today: 'Today',
     makeReport: 'Create report',
