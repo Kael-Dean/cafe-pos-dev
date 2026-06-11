@@ -471,7 +471,7 @@ export default function POSTerminal() {
 
           {/* Sticky checkout section on mobile */}
           <div style={{flexShrink: 0, borderTop: '1px solid var(--color-border)'}}>
-            <div style={{padding: 20, background: 'var(--color-surface-2)'}}>
+            <div style={{padding: '20px 20px 14px', background: 'var(--color-surface-2)'}}>
               <Row label={t.pos.subtotal} value={baht(subtotal)} />
               {memberDiscount > 0 && <Row label={t.pos.memberDiscount} value={`-${baht(memberDiscount)}`} />}
               {promoDiscount > 0 && <Row label={t.pos.promoDiscount} value={`-${baht(promoDiscount)}`} />}
@@ -485,7 +485,7 @@ export default function POSTerminal() {
               </div>
             </div>
 
-            <div style={{padding: '0 20px 20px', display: 'grid', gap: 8}}>
+            <div style={{padding: '16px 20px 20px', display: 'grid', gap: 8}}>
               <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8}}>
                 <PayButton icon="cash"  label={t.pos.pay.cash} onClick={() => cart.length && setPayment('cash')} disabled={!cart.length} pending={paying} />
                 <PayButton icon="card"  label={t.pos.pay.card} onClick={() => cart.length && setPayment('card')} disabled={!cart.length} pending={paying} />
