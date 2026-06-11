@@ -33,21 +33,41 @@ export default function KDS() {
   const leaveTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => () => { leaveTimers.current.forEach(clearTimeout); }, []);
 
-  // Seed local state from server on each poll, merged with recent local actions
-  useEffect(() => {
-    if (!serverTickets) return;
+  // Merge a fresh server list with in-flight local actions: optimistic status bumps
+  // the server hasn't caught up to, and tickets we just delivered (filtered out).
+  const mergeServer = (tickets: KDSTicket[]) => {
     const now = Date.now();
     const recent = recentActions.current;
     for (const [id, a] of recent) if (now - a.at > 30000) recent.delete(id);
-    setLocalTickets(serverTickets
+    return tickets
       .filter(t => recent.get(t.orderId)?.status !== 'done')
       .map(t => {
         const a = recent.get(t.orderId);
         return a && a.status !== 'done' && STATUS_RANK[a.status] > STATUS_RANK[t.status]
           ? { ...t, status: a.status }
           : t;
-      }));
-  }, [serverTickets]);
+      });
+  };
+
+  // Seed local state from the server list DURING render (not in an effect) so the
+  // first paint — even from react-query's cache on a revisit — already shows the real
+  // tickets instead of flashing the empty state for one frame. Guarded by reference,
+  // so it only re-seeds when a poll actually returns a new list (no render loop).
+  const prevServer = useRef<KDSTicket[] | undefined>(undefined);
+  if (serverTickets && serverTickets !== prevServer.current) {
+    prevServer.current = serverTickets;
+    setLocalTickets(mergeServer(serverTickets));
+  }
+
+  // Entrance policy: only tickets that appear AFTER the first render slide in. On
+  // open, the screen's own fade already covers the cards; replaying a per-card
+  // .rise-in once the screen-switch fade releases its suppression read as a blink.
+  // Now initial cards just fade with the screen, and only new orders animate.
+  const knownIds = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    knownIds.current = new Set(localTickets.map(t => t.orderId));
+  });
+  const isNew = (orderId: string) => knownIds.current !== null && !knownIds.current.has(orderId);
 
   // Re-render every 30s so elapsed times update
   useEffect(() => {
@@ -163,6 +183,7 @@ export default function KDS() {
                 key={t.orderId}
                 ticket={t}
                 leaving={leaving.has(t.orderId)}
+                animateIn={isNew(t.orderId)}
                 mins={elapsed(t.placedAt)}
                 nameToId={nameToId}
                 onBump={() => onBump(t)}
@@ -241,9 +262,10 @@ const TicketSkeleton = () => (
   </div>
 );
 
-const OrderTicket = ({ ticket, leaving, mins, nameToId, onBump, onDone, onStepsClick }: {
+const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, onBump, onDone, onStepsClick }: {
   ticket: KDSTicket;
   leaving: boolean;
+  animateIn: boolean;
   mins: number;
   nameToId: Map<string, string>;
   onBump: () => void;
@@ -263,8 +285,9 @@ const OrderTicket = ({ ticket, leaving, mins, nameToId, onBump, onDone, onStepsC
   const typeLabel = (t.kds.orderType as Record<string, string>)[ticket.type] ?? ticket.type;
 
   return (
-    /* .rise-in plays once per mount; .card-out holds the slot (faded, unclickable) while delivering */
-    <div className={`surface-paper min-h-[120px] rise-in${leaving ? ' card-out' : ''}`} style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    /* .rise-in only for tickets that arrive after open (initial cards fade with the
+       screen — no replay blink); .card-out holds the slot (faded) while delivering */
+    <div className={`surface-paper min-h-[120px]${animateIn ? ' rise-in' : ''}${leaving ? ' card-out' : ''}`} style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--color-border)' }}>
         <div className="num" style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.01em' }}>#{ticket.queue}</div>
         <div style={{ flex: 1 }}>
