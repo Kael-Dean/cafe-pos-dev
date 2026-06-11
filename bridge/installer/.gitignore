@@ -1,0 +1,3 @@
+# build-time tool downloads (Inno Setup installer, caches) — do not commit
+.tools/
+.cache/
