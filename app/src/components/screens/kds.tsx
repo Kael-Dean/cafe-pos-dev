@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import Icon from '../icons';
 import { useToast, Tag } from '../app-common';
+import { useI18n } from '@/lib/i18n';
 import { useKDSOrders, useUpdateOrderStatus, type KDSTicket } from '@/hooks/use-orders';
 import { useAllProducts } from '@/hooks/use-products';
 import { useCookingSteps } from '@/hooks/use-cooking-steps';
@@ -12,6 +13,7 @@ const ACTION_COOLDOWN_MS = 600;
 
 export default function KDS() {
   const toast = useToast();
+  const { t } = useI18n();
   const { data: serverTickets, isLoading } = useKDSOrders();
   const updateStatus = useUpdateOrderStatus();
   const [localTickets, setLocalTickets] = useState<KDSTicket[]>([]);
@@ -70,9 +72,9 @@ export default function KDS() {
     updateStatus.mutateAsync({ orderId: ticket.orderId, status: 'IN_PROGRESS' })
       .catch(() => {
         recentActions.current.delete(ticket.orderId);
-        toast({ kind: 'danger', title: 'อัปเดตสถานะไม่สำเร็จ' });
+        toast({ kind: 'danger', title: t.kds.statusUpdateFailed });
       });
-    toast({ kind: 'info', title: `ออเดอร์ ${ticket.id} เริ่มทำ`, duration: 1600 });
+    toast({ kind: 'info', title: t.kds.orderStarted(ticket.id), duration: 1600 });
   };
 
   const onDone = (ticket: KDSTicket) => {
@@ -83,7 +85,7 @@ export default function KDS() {
       updateStatus.mutateAsync({ orderId: ticket.orderId, status: 'READY' })
         .catch(() => {
           recentActions.current.delete(ticket.orderId);
-          toast({ kind: 'danger', title: 'อัปเดตสถานะไม่สำเร็จ' });
+          toast({ kind: 'danger', title: t.kds.statusUpdateFailed });
         });
     } else {
       recentActions.current.set(ticket.orderId, { status: 'done', at: Date.now() });
@@ -95,11 +97,11 @@ export default function KDS() {
         setLeaving(cur => { const n = new Set(cur); n.delete(ticket.orderId); return n; });
       }, 220));
       updateStatus.mutateAsync({ orderId: ticket.orderId, status: 'COMPLETED' })
-        .then(() => toast({ kind: 'success', title: `ออเดอร์ ${ticket.id} เสร็จแล้ว`, msg: 'ส่งมอบลูกค้า', duration: 1800 }))
+        .then(() => toast({ kind: 'success', title: t.kds.orderDone(ticket.id), msg: t.kds.deliver, duration: 1800 }))
         .catch(() => {
           recentActions.current.delete(ticket.orderId);
           setLeaving(cur => { const n = new Set(cur); n.delete(ticket.orderId); return n; });
-          toast({ kind: 'danger', title: 'อัปเดตสถานะไม่สำเร็จ' });
+          toast({ kind: 'danger', title: t.kds.statusUpdateFailed });
         });
     }
   };
@@ -119,13 +121,13 @@ export default function KDS() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--color-primary-700)', color: 'white' }}>
       <div style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 24, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em' }}>Kitchen Display</div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>Sukhumvit 49 • บาริสต้าสเตชัน 1</div>
+          <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em' }}>{t.kds.title}</div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>Sukhumvit 49 • {t.kds.station}</div>
         </div>
         <div style={{ flex: 1, display: 'flex', gap: 12 }}>
-          <KDSStatChip label="ออเดอร์ใหม่" count={counts.new} color="var(--color-warning)" />
-          <KDSStatChip label="กำลังทำ" count={counts.progress} color="var(--color-accent)" />
-          <KDSStatChip label="พร้อมส่ง" count={counts.ready} color="var(--color-success)" />
+          <KDSStatChip label={t.kds.statNew} count={counts.new} color="var(--color-warning)" />
+          <KDSStatChip label={t.kds.statProgress} count={counts.progress} color="var(--color-accent)" />
+          <KDSStatChip label={t.kds.statReady} count={counts.ready} color="var(--color-success)" />
         </div>
         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }} className="num">
           <Clock />
@@ -136,7 +138,7 @@ export default function KDS() {
         {isLoading && localTickets.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 300, color: 'rgba(255,255,255,0.55)' }}>
             <div style={{ marginBottom: 12, opacity: 0.4 }}><Icon name="clock" size={40} /></div>
-            <div style={{ fontSize: 16 }}>กำลังโหลดออเดอร์...</div>
+            <div style={{ fontSize: 16 }}>{t.kds.loadingOrders}</div>
           </div>
         ) : sorted.length === 0 ? (
           <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 300, color: 'rgba(255,255,255,0.55)', textAlign: 'center' }}>
@@ -147,8 +149,8 @@ export default function KDS() {
             }}>
               <Icon name="check" size={40} />
             </div>
-            <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, color: 'rgba(255,255,255,0.85)' }}>เคลียร์หมดแล้ว</div>
-            <div>ไม่มีออเดอร์ค้างในคิว — ออเดอร์ใหม่จะเด้งขึ้นที่นี่อัตโนมัติ</div>
+            <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, color: 'rgba(255,255,255,0.85)' }}>{t.kds.allClear}</div>
+            <div>{t.kds.allClearHint}</div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -208,14 +210,17 @@ const OrderTicket = ({ ticket, leaving, mins, nameToId, onBump, onDone, onStepsC
   onDone: () => void;
   onStepsClick: (productId: string, productName: string) => void;
 }) => {
+  const { t } = useI18n();
   const urgency = mins >= 10 ? 'red' : mins >= 5 ? 'yellow' : 'normal';
   const accent = urgency === 'red' ? 'var(--color-danger)' : urgency === 'yellow' ? 'var(--color-warning)' : 'var(--color-accent)';
   const typeIconMap: Record<string, string> = { 'Dine-in': 'cake', 'Takeaway': 'cart', 'Delivery': 'park' };
-  const statusBadge = {
-    new:      { label: 'ใหม่',     bg: 'var(--color-warning)', color: '#9C6A1F' },
-    progress: { label: 'กำลังทำ',  bg: 'var(--color-accent)',  color: 'var(--color-primary-700)' },
-    ready:    { label: 'พร้อมส่ง', bg: 'var(--color-success)', color: 'white' },
-  }[ticket.status] || { label: '', bg: '', color: '' };
+  const statusStyle = {
+    new:      { bg: 'var(--color-warning)', color: '#9C6A1F' },
+    progress: { bg: 'var(--color-accent)',  color: 'var(--color-primary-700)' },
+    ready:    { bg: 'var(--color-success)', color: 'white' },
+  }[ticket.status] || { bg: '', color: '' };
+  const statusLabel = t.kds.badge[ticket.status];
+  const typeLabel = (t.kds.orderType as Record<string, string>)[ticket.type] ?? ticket.type;
 
   return (
     /* .rise-in plays once per mount; .card-out holds the slot (faded, unclickable) while delivering */
@@ -224,13 +229,13 @@ const OrderTicket = ({ ticket, leaving, mins, nameToId, onBump, onDone, onStepsC
         <div className="num" style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.01em' }}>#{ticket.queue}</div>
         <div style={{ flex: 1 }}>
           <div className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--color-text-secondary)' }}>
-            <Icon name={typeIconMap[ticket.type] || 'cart'} size={12} /> {ticket.type}
+            <Icon name={typeIconMap[ticket.type] || 'cart'} size={12} /> {typeLabel}
           </div>
           <Tag tone={urgency === 'red' ? 'danger' : urgency === 'yellow' ? 'warning' : 'accent'}>
-            <Icon name="clock" size={10} /> {mins} นาที
+            <Icon name="clock" size={10} /> {t.kds.minutes(mins)}
           </Tag>
         </div>
-        <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 999, background: statusBadge.bg, color: statusBadge.color }}>{statusBadge.label}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 999, background: statusStyle.bg, color: statusStyle.color }}>{statusLabel}</span>
       </div>
 
       <div style={{ padding: '12px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -242,8 +247,8 @@ const OrderTicket = ({ ticket, leaving, mins, nameToId, onBump, onDone, onStepsC
                 {nameToId.has(it.name) && (
                   <button
                     onClick={() => onStepsClick(nameToId.get(it.name)!, it.name)}
-                    title="วิธีทำ"
-                    aria-label={`วิธีทำ ${it.name}`}
+                    title={t.kds.howTo}
+                    aria-label={t.kds.howToAria(it.name)}
                     className="help-badge hit-44"
                     style={{ width: 22, height: 22, borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}
                   >?</button>
@@ -270,17 +275,17 @@ const OrderTicket = ({ ticket, leaving, mins, nameToId, onBump, onDone, onStepsC
       <div style={{ padding: 12, background: 'var(--color-surface-2)', display: 'flex', gap: 8 }}>
         {ticket.status === 'new' && (
           <button onClick={onBump} className="btn btn-primary min-h-[44px]" style={{ flex: 1 }}>
-            <Icon name="coffee" size={14} /> เริ่มทำ
+            <Icon name="coffee" size={14} /> {t.kds.start}
           </button>
         )}
         {ticket.status === 'progress' && (
           <button onClick={onDone} className="btn btn-accent min-h-[44px]" style={{ flex: 1 }}>
-            <Icon name="check" size={14} /> เสร็จแล้ว
+            <Icon name="check" size={14} /> {t.kds.done}
           </button>
         )}
         {ticket.status === 'ready' && (
           <button onClick={onDone} className="btn btn-primary min-h-[44px]" style={{ flex: 1, background: 'var(--color-success)', borderColor: 'var(--color-success)' }}>
-            <Icon name="check" size={14} /> ส่งมอบลูกค้า
+            <Icon name="check" size={14} /> {t.kds.deliver}
           </button>
         )}
       </div>
@@ -293,6 +298,7 @@ const CookingStepsModal = ({ productId, productName, onClose }: {
   productName: string;
   onClose: () => void;
 }) => {
+  const { t } = useI18n();
   const { data: steps, isLoading } = useCookingSteps(productId);
 
   return (
@@ -306,18 +312,18 @@ const CookingStepsModal = ({ productId, productName, onClose }: {
       >
         <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>วิธีทำ</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>{t.kds.howTo}</div>
             <div style={{ fontSize: 16, fontWeight: 700 }}>{productName}</div>
           </div>
-          <button onClick={onClose} aria-label="ปิด" className="icon-btn-soft hit-44" style={{ border: 'none', cursor: 'pointer', width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center' }}>
+          <button onClick={onClose} aria-label={t.common.close} className="icon-btn-soft hit-44" style={{ border: 'none', cursor: 'pointer', width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center' }}>
             <Icon name="x" size={16} />
           </button>
         </div>
         <div className="scroll" style={{ overflow: 'auto', padding: 20, flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {isLoading ? (
-            <div style={{ textAlign: 'center', padding: 32, color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>กำลังโหลด...</div>
+            <div style={{ textAlign: 'center', padding: 32, color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>{t.common.loading}</div>
           ) : !steps || steps.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 32, color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>ไม่มีขั้นตอนการทำ</div>
+            <div style={{ textAlign: 'center', padding: 32, color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>{t.kds.noSteps}</div>
           ) : steps.map((step, idx) => (
             <div key={step.id} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
               <div style={{ width: 28, height: 28, borderRadius: 999, background: 'var(--color-accent)', color: 'var(--color-primary-700)', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>{idx + 1}</div>
