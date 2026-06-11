@@ -1,0 +1,100 @@
+// English dictionary. Typed `: Messages` so it must mirror th.ts exactly —
+// a missing or extra key is a compile error. Brand/technical terms stay English (same
+// as Thai mode).
+
+import type { Messages } from './th';
+
+export const en: Messages = {
+  common: {
+    save: 'Save',
+    cancel: 'Cancel',
+    close: 'Close',
+    confirm: 'Confirm',
+    delete: 'Delete',
+    remove: 'Remove',
+    edit: 'Edit',
+    add: 'Add',
+    back: 'Back',
+    next: 'Next',
+    prev: 'Previous',
+    search: 'Search',
+    loading: 'Loading...',
+    saving: 'Saving...',
+    all: 'All',
+    none: 'None',
+    note: 'Note',
+    optional: 'optional',
+    required: 'required',
+    total: 'Total',
+    today: 'Today',
+    print: 'Print',
+    page: 'Page',
+    of: 'of',
+  },
+
+  nav: {
+    pos: 'POS Terminal',
+    kds: 'Kitchen (KDS)',
+    dashboard: 'Dashboard',
+    bom: 'BOM Builder',
+    bakery: 'Bakery / Recipes',
+    inventory: 'Inventory',
+    'pre-orders': 'Pre-Orders',
+    'shopping-list': 'Shopping List',
+    'stock-take': 'Stock Take',
+    cash: 'Cash / Reconciliation',
+    'receipt-copies': 'Receipt Copies',
+    promotions: 'Promotions / Loyalty',
+    members: 'Members',
+    protocols: 'Protocols / SOP',
+    shifts: 'Shift Schedule',
+    hr: 'HR & Admin',
+    hardware: 'Hardware',
+    customers: 'Customers (CRM)',
+    reports: 'Reports',
+    catalog: 'Catalog',
+    settings: 'Settings',
+  },
+
+  tabs: {
+    pos: 'POS',
+    kds: 'KDS',
+    inventory: 'Inventory',
+    dashboard: 'Dashboard',
+    more: 'More',
+    moreTitle: 'More menu',
+    moreOptions: 'More options',
+    closeMore: 'Close more options',
+  },
+
+  roles: {
+    OWNER: 'Owner',
+    MANAGER: 'Manager',
+    BARISTA: 'Barista',
+    BAKER: 'Baker',
+  },
+
+  sidebar: {
+    expand: 'Expand sidebar',
+    collapse: 'Collapse sidebar',
+    logout: 'Log out',
+  },
+
+  settings: {
+    title: 'Settings',
+    subtitle: 'Language • Store info • Devices • Integration • Backup',
+    languageTitle: 'Language',
+    languageDesc: 'Choose the language for the whole app. Applies instantly and is remembered on this device.',
+    thai: 'ไทย',
+    english: 'English',
+    comingSoon: 'Coming soon',
+    storeInfoTitle: 'Store info',
+    storeInfoDesc: 'Branch, tax, currency, tax ID, receipt logo',
+    devicesTitle: 'Devices',
+    devicesDesc: 'Receipt printer, EDC, QR generator, KDS, customer display',
+    integrationTitle: 'Integration',
+    integrationDesc: 'LINE OA, membership, GrabFood / LINE MAN, Shopee Food, e-Tax invoice',
+    backupTitle: 'Backup & Sync',
+    backupDesc: 'Automatic daily backup, multi-store sync, offline mode',
+  },
+};

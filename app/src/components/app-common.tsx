@@ -4,6 +4,7 @@ import { useState, useCallback, createContext, useContext, useRef, useEffect } f
 import Icon from './icons';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { displayNumber, parseNumberInput, clampNumber } from '@/lib/number-input';
+import { useI18n } from '@/lib/i18n';
 
 // ---------- Toast ----------
 type ToastKind = 'success' | 'warning' | 'danger' | 'info';
@@ -44,44 +45,41 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
 };
 
 // ---------- Sidebar ----------
-export type NavItem = { id: string; label: string; icon?: string; soft?: boolean; adminOnly?: boolean; ownerOnly?: boolean; divider?: boolean; };
+// Labels are resolved at render time from the active language (`t.nav[id]`); the array
+// holds only structural metadata (id, icon, visibility flags).
+export type NavItem = { id: string; icon?: string; soft?: boolean; adminOnly?: boolean; ownerOnly?: boolean; divider?: boolean; };
 
 export const NAV: NavItem[] = [
-  { id: 'pos',       label: 'POS Terminal',   icon: 'pos' },
-  { id: 'kds',       label: 'Kitchen (KDS)',   icon: 'kds' },
-  { id: 'dashboard', label: 'Dashboard',       icon: 'chart' },
-  { id: 'bom',       label: 'BOM Builder',     icon: 'inv' },
-  { id: 'bakery',    label: 'เบเกอรี่/ส่วนผสมทำเมนู', icon: 'cake' },
-  { id: 'inventory', label: 'Inventory',       icon: 'inv',      soft: true },
-  { id: 'pre-orders',    label: 'Pre-Orders',    icon: 'calendar' },
-  { id: 'shopping-list', label: 'Shopping List',  icon: 'cart' },
-  { id: 'stock-take',    label: 'Stock Take',      icon: 'check' },
-  { id: 'cash',      label: 'Cash',            icon: 'cash',     adminOnly: true },
-  { id: 'receipt-copies', label: 'สำเนาใบเสร็จ', icon: 'reports', adminOnly: true },
-  { id: 'div1',      label: '',                divider: true },
-  { id: 'promotions',label: 'Promotion / สะสมแต้ม', icon: 'tag' },
-  { id: 'members',   label: 'สมาชิก / Members', icon: 'customers', adminOnly: true },
-  { id: 'protocols', label: 'Protocols / SOP', icon: 'check' },
-  { id: 'shifts',    label: 'ตารางกะ',          icon: 'calendar' },
-  { id: 'hr',        label: 'HR & Admin',      icon: 'staff',    adminOnly: true },
-  { id: 'div2',      label: '',                divider: true },
-  { id: 'hardware',  label: 'Hardware',        icon: 'printer' },
-  { id: 'customers', label: 'Customers',       icon: 'customers', soft: true },
-  { id: 'reports',   label: 'Reports',         icon: 'reports',  soft: true },
-  { id: 'catalog',   label: 'Catalog',         icon: 'inv',      ownerOnly: true },
-  { id: 'settings',  label: 'Settings',        icon: 'settings', soft: true },
+  { id: 'pos',       icon: 'pos' },
+  { id: 'kds',       icon: 'kds' },
+  { id: 'dashboard', icon: 'chart' },
+  { id: 'bom',       icon: 'inv' },
+  { id: 'bakery',    icon: 'cake' },
+  { id: 'inventory', icon: 'inv',      soft: true },
+  { id: 'pre-orders',    icon: 'calendar' },
+  { id: 'shopping-list', icon: 'cart' },
+  { id: 'stock-take',    icon: 'check' },
+  { id: 'cash',      icon: 'cash',     adminOnly: true },
+  { id: 'receipt-copies', icon: 'reports', adminOnly: true },
+  { id: 'div1',      divider: true },
+  { id: 'promotions', icon: 'tag' },
+  { id: 'members',   icon: 'customers', adminOnly: true },
+  { id: 'protocols', icon: 'check' },
+  { id: 'shifts',    icon: 'calendar' },
+  { id: 'hr',        icon: 'staff',    adminOnly: true },
+  { id: 'div2',      divider: true },
+  { id: 'hardware',  icon: 'printer' },
+  { id: 'customers', icon: 'customers', soft: true },
+  { id: 'reports',   icon: 'reports',  soft: true },
+  { id: 'catalog',   icon: 'inv',      ownerOnly: true },
+  { id: 'settings',  icon: 'settings', soft: true },
 ];
 
 interface SidebarProps { current: string; onNavigate: (id: string) => void; onLogout?: () => void; branchName?: string; collapsed?: boolean; onToggle?: () => void; }
 
-const ROLE_LABEL: Record<string, string> = {
-  OWNER: 'เจ้าของ',
-  MANAGER: 'ผู้จัดการ',
-  BARISTA: 'บาริสต้า',
-  BAKER: 'เบเกอรี่',
-};
-
 export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit 49', collapsed = false, onToggle }: SidebarProps) => {
+  const { t } = useI18n();
+  const navLabel = (id: string) => (t.nav as Record<string, string>)[id] ?? id;
   const { data: me } = useCurrentUser();
   const role = me?.role;
   const isAdmin = role === 'OWNER' || role === 'MANAGER';
@@ -128,8 +126,8 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
           <button
             onClick={onToggle}
             className="icon-btn-soft hit-44"
-            title={collapsed ? 'ขยาย sidebar' : 'ย่อ sidebar'}
-            aria-label={collapsed ? 'ขยาย sidebar' : 'ย่อ sidebar'}
+            title={collapsed ? t.sidebar.expand : t.sidebar.collapse}
+            aria-label={collapsed ? t.sidebar.expand : t.sidebar.collapse}
             aria-expanded={!collapsed}
             style={{
               width: 28, height: 28, borderRadius: 6, flexShrink: 0,
@@ -154,7 +152,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
           return (
             <button key={n.id} onClick={() => onNavigate(n.id)}
               className={`sb-item${active ? ' active' : ''}`}
-              title={collapsed ? n.label : undefined}
+              title={collapsed ? navLabel(n.id) : undefined}
               aria-current={active ? 'page' : undefined}
               style={{
                 display: 'flex', alignItems: 'center', gap: 12,
@@ -166,7 +164,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
               }}
             >
               {n.icon && <Icon name={n.icon} size={18} />}
-              {!collapsed && <span className="sb-fade" style={{flex: 1, whiteSpace: 'nowrap'}}>{n.label}</span>}
+              {!collapsed && <span className="sb-fade" style={{flex: 1, whiteSpace: 'nowrap'}}>{navLabel(n.id)}</span>}
               {!collapsed && n.soft && <span className="sb-fade" style={{fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 500}}>P1</span>}
             </button>
           );
@@ -192,7 +190,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
           {!collapsed && (
             <div className="sb-fade" style={{flex: 1, minWidth: 0}}>
               <div style={{fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{me?.name ?? '...'}</div>
-              <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)'}}>{role ? ROLE_LABEL[role] ?? role : ''}</div>
+              <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)'}}>{role ? (t.roles as Record<string, string>)[role] ?? role : ''}</div>
             </div>
           )}
         </div>
@@ -208,15 +206,15 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
             }}
           >
             <Icon name="x" size={15} />
-            <span className="sb-fade">ออกจากระบบ</span>
+            <span className="sb-fade">{t.sidebar.logout}</span>
           </button>
         )}
         {onLogout && collapsed && (
           <button
             onClick={onLogout}
             className="sb-logout"
-            title="ออกจากระบบ"
-            aria-label="ออกจากระบบ"
+            title={t.sidebar.logout}
+            aria-label={t.sidebar.logout}
             style={{
               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
               padding: '9px 0', borderRadius: 8, minHeight: 44,
@@ -407,29 +405,33 @@ interface BottomTabBarProps {
   onNavigate: (screen: string) => void;
 }
 
+// Labels resolved at render time: main tabs from `t.tabs[id]`, more-sheet items from `t.nav[id]`.
 const MAIN_TABS = [
-  { id: 'pos',       label: 'POS',       icon: 'pos' },
-  { id: 'kds',       label: 'KDS',       icon: 'kds' },
-  { id: 'inventory', label: 'Inventory', icon: 'inv' },
-  { id: 'dashboard', label: 'Dashboard', icon: 'chart' },
+  { id: 'pos',       icon: 'pos' },
+  { id: 'kds',       icon: 'kds' },
+  { id: 'inventory', icon: 'inv' },
+  { id: 'dashboard', icon: 'chart' },
 ] as const;
 
 const MORE_ITEMS = [
-  { id: 'bom',          label: 'BOM Builder',       icon: 'inv' },
-  { id: 'pre-orders',   label: 'Pre-Orders',         icon: 'calendar' },
-  { id: 'catalog',      label: 'Catalog',            icon: 'tag' },
-  { id: 'hr',           label: 'HR & Admin',         icon: 'staff' },
-  { id: 'promotions',   label: 'Promotion / สะสมแต้ม', icon: 'tag' },
-  { id: 'protocols',    label: 'Protocols / SOP',    icon: 'check' },
-  { id: 'shifts',       label: 'ตารางกะ',             icon: 'calendar' },
-  { id: 'cash',         label: 'Cash',               icon: 'cash' },
-  { id: 'shopping-list',label: 'Shopping List',      icon: 'cart' },
-  { id: 'hardware',     label: 'Hardware',           icon: 'printer' },
+  { id: 'bom',          icon: 'inv' },
+  { id: 'pre-orders',   icon: 'calendar' },
+  { id: 'catalog',      icon: 'tag' },
+  { id: 'hr',           icon: 'staff' },
+  { id: 'promotions',   icon: 'tag' },
+  { id: 'protocols',    icon: 'check' },
+  { id: 'shifts',       icon: 'calendar' },
+  { id: 'cash',         icon: 'cash' },
+  { id: 'shopping-list',icon: 'cart' },
+  { id: 'hardware',     icon: 'printer' },
 ] as const;
 
 const MAIN_TAB_IDS = new Set<string>(MAIN_TABS.map((t) => t.id));
 
 export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) => {
+  const { t } = useI18n();
+  const tabLabel = (id: string) => (t.tabs as Record<string, string>)[id] ?? id;
+  const navLabel = (id: string) => (t.nav as Record<string, string>)[id] ?? id;
   const [moreOpen, setMoreOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
 
@@ -454,7 +456,7 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="More options"
+          aria-label={t.tabs.moreOptions}
           style={{
             position: 'fixed', inset: 0, zIndex: 60,
             background: 'rgba(26,16,8,0.45)',
@@ -477,10 +479,10 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
               padding: '16px 20px 12px',
               borderBottom: '1px solid var(--color-border)',
             }}>
-              <span style={{ fontWeight: 700, fontSize: 16 }}>เมนูเพิ่มเติม</span>
+              <span style={{ fontWeight: 700, fontSize: 16 }}>{t.tabs.moreTitle}</span>
               <button
                 onClick={() => setMoreOpen(false)}
-                aria-label="Close more options"
+                aria-label={t.tabs.closeMore}
                 className="icon-btn hit-44"
                 style={{
                   width: 32, height: 32, borderRadius: 999,
@@ -516,7 +518,7 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
                   >
                     <Icon name={item.icon} size={22} color={active ? 'var(--color-accent)' : 'var(--color-text-secondary)'} />
                     <span style={{ fontSize: 11, fontWeight: active ? 600 : 500, textAlign: 'center', lineHeight: 1.2 }}>
-                      {item.label}
+                      {navLabel(item.id)}
                     </span>
                   </button>
                 );
@@ -558,7 +560,7 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
             >
               <Icon name={tab.icon} size={22} color={active ? 'var(--color-accent)' : 'var(--color-text-muted)'} />
               <span style={{ fontSize: 10, fontWeight: active ? 700 : 500, letterSpacing: '0.01em' }}>
-                {tab.label}
+                {tabLabel(tab.id)}
               </span>
             </button>
           );
@@ -579,7 +581,7 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
         >
           <Icon name="dots" size={22} color={activeIsMore || moreOpen ? 'var(--color-accent)' : 'var(--color-text-muted)'} />
           <span style={{ fontSize: 10, fontWeight: activeIsMore || moreOpen ? 700 : 500, letterSpacing: '0.01em' }}>
-            More
+            {t.tabs.more}
           </span>
         </button>
       </nav>

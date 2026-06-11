@@ -65,16 +65,4 @@ export function Customers() {
   );
 }
 
-export function Settings() {
-  return (
-    <PlaceholderScreen title="Settings" icon="settings"
-      subtitle="ข้อมูลร้าน • อุปกรณ์ • Integration • Backup"
-      sections={[
-        { title: 'ข้อมูลร้าน', desc: 'สาขา ภาษี สกุลเงิน เลขผู้เสียภาษี โลโก้บนใบเสร็จ' },
-        { title: 'อุปกรณ์', desc: 'เครื่องพิมพ์ใบเสร็จ EDC QR Generator ระบบ KDS หน้าจอลูกค้า' },
-        { title: 'Integration', desc: 'LINE OA, ระบบสมาชิก, GrabFood/LINE MAN, Shopee Food, e-Tax invoice' },
-        { title: 'Backup & Sync', desc: 'Auto-backup รายวัน, multi-store sync, offline mode' },
-      ]}
-    />
-  );
-}
+// `Settings` now lives in screens/settings.tsx (real screen with the language switcher).
