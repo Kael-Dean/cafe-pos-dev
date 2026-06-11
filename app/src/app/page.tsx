@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ToastProvider, Sidebar, BottomTabBar } from '@/components/app-common';
 import { getToken, clearToken, subscribeAuth } from '@/lib/token-store';
@@ -105,13 +105,50 @@ export default function POS() {
       <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
         <Sidebar current={screen} onNavigate={(s) => { void navigate(s as Screen); }} onLogout={() => { void handleLogout(); }} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
         <main style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'auto' }}>
-          {/* key={screen} remounts the wrapper on navigation so .screen-enter
-              (fade + slide-up, transform/opacity only) plays once per switch. */}
-          <div key={screen} className="screen-enter" style={{ height: '100%' }}>
-            {screens[screen]}
-          </div>
+          {/* key={screen} remounts on navigation so the screen fade (.screen-enter,
+              opacity only) plays once per switch. ScreenFrame also tags itself
+              .screen-switching for the duration of that fade, which suppresses the
+              child entrance animations that used to stack on top and read as a
+              collapse→expand flicker. */}
+          <ScreenFrame key={screen}>{screens[screen]}</ScreenFrame>
         </main>
       </div>
     </ToastProvider>
+  );
+}
+
+/**
+ * Wraps the active screen. Remounted on every navigation (via key={screen} in the
+ * parent), so it always starts mid-switch: it carries `.screen-switching` while the
+ * one-shot screen fade plays, then drops it once the fade ends. That window is what
+ * suppresses the child .rise-in / .fade-in entrances (see globals.css) so switching
+ * screens reads as a single calm fade instead of a collapse→expand flicker. After the
+ * fade, genuinely new content (e.g. an incoming KDS ticket) animates in normally.
+ */
+function ScreenFrame({ children }: { children: React.ReactNode }) {
+  const [switching, setSwitching] = useState(true);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Safety net: onAnimationEnd clears the flag in the normal case. If that event
+  // never fires (reduced motion zeroes the duration, or the element is offscreen so
+  // the animation is skipped), drop the flag after the fade's worst-case duration so
+  // child entrances aren't suppressed forever. The timeout is longer than the
+  // 180ms screen-enter fade, so it never pre-empts the real animationend.
+  useEffect(() => {
+    const id = setTimeout(() => setSwitching(false), 400);
+    return () => clearTimeout(id);
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className={`screen-enter${switching ? ' screen-switching' : ''}`}
+      style={{ height: '100%' }}
+      onAnimationEnd={(e) => {
+        if (e.target === ref.current) setSwitching(false);
+      }}
+    >
+      {children}
+    </div>
   );
 }

@@ -313,9 +313,24 @@ label:focus-visible {
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 .fade-in { animation: fade-in var(--dur-base) var(--ease-out) both; }
 
-/* Screen switch: fade + slight slide-up (used with key={screen} in page.tsx) */
-@keyframes screen-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* Screen switch (key={screen} in page.tsx): fade only, no movement.
+   Switching screens happens dozens of times a day, so the transition stays calm
+   and never shifts layout. Two things caused the old "collapse → expand" flicker:
+   (1) the wrapper slid up (translateY) at the same time inner content ran its own
+   entrance, producing a double motion; (2) each screen's descendant entrances
+   (.rise-in / .fade-in) replayed on every remount, staggering content into place.
+   So: fade the wrapper only, and freeze descendant entrances for the first frame
+   of the switch so they don't double up or jump the layout. */
+@keyframes screen-enter { from { opacity: 0; } to { opacity: 1; } }
 .screen-enter { animation: screen-enter var(--dur-base) var(--ease-out) both; }
+
+/* While the screen itself is fading in (.screen-switching, removed once the fade
+   ends), cancel inner entrance animations. The screen fade already covers the whole
+   panel; replaying per-element rise/fade on top of it is what made the switch feel
+   like it collapsed then expanded. After the fade ends the class is dropped, so
+   genuinely new items (e.g. a fresh KDS ticket) still get their own .rise-in. */
+.screen-switching .rise-in,
+.screen-switching .fade-in { animation: none; }
 
 /* New card / list item entrance (KDS tickets, etc.) */
 @keyframes rise-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
