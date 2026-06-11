@@ -1,18 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Icon from '../icons';
 import { useToast } from '../app-common';
 import {
-  useShoppingList, useAddToShoppingList, useRemoveFromShoppingList,
+  useShoppingList, useAddToShoppingList, useRemoveFromShoppingList, usePatchShoppingListItem,
   type ShoppingListItem,
 } from '@/hooks/use-shopping-list';
 import { useInventory } from '@/hooks/use-inventory';
+
+/** Display amount with up to 3 decimals and thousands separators (e.g. 1,250 / 3.5). */
+const fmtQty = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 3 });
 
 export default function ShoppingListScreen() {
   const toast = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [addItemId, setAddItemId] = useState('');
+  const [addQty, setAddQty] = useState('');
   const [addNote, setAddNote] = useState('');
   const [invSearch, setInvSearch] = useState('');
   const [invFocused, setInvFocused] = useState(false);
@@ -23,9 +27,12 @@ export default function ShoppingListScreen() {
   const addMut = useAddToShoppingList();
   const removeMut = useRemoveFromShoppingList();
 
+  const selectedInvUnit = invItems.find(it => it.id === addItemId)?.unit ?? '';
+
   const resetAddForm = () => {
     setAddOpen(false);
     setAddItemId('');
+    setAddQty('');
     setAddNote('');
     setInvSearch('');
     setInvFocused(false);
@@ -33,8 +40,18 @@ export default function ShoppingListScreen() {
 
   const handleAdd = async () => {
     if (!addItemId) return;
+    const qty = addQty.trim();
+    const qtyNum = Number(qty);
+    if (qty && (Number.isNaN(qtyNum) || qtyNum < 0)) {
+      toast({ kind: 'warning', title: 'จำนวนไม่ถูกต้อง' });
+      return;
+    }
     try {
-      await addMut.mutateAsync({ inventory_item_id: addItemId, note: addNote.trim() || undefined });
+      await addMut.mutateAsync({
+        inventory_item_id: addItemId,
+        quantity: qty ? qty : undefined,
+        note: addNote.trim() || undefined,
+      });
       resetAddForm();
       toast({ kind: 'success', title: 'เพิ่มเข้า Shopping List แล้ว' });
     } catch (err) {
@@ -116,13 +133,31 @@ export default function ShoppingListScreen() {
                 </div>
               )}
             </div>
+            {/* Quantity (optional override) */}
+            <div style={{ flex: 1, minWidth: 110 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>จำนวน (ไม่บังคับ)</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  placeholder="อัตโนมัติ"
+                  value={addQty}
+                  onChange={e => setAddQty(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--color-border)', fontSize: 13, background: 'var(--color-bg)', boxSizing: 'border-box' }}
+                />
+                {selectedInvUnit && <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{selectedInvUnit}</span>}
+              </div>
+            </div>
             {/* Note */}
-            <div style={{ flex: 3, minWidth: 180 }}>
+            <div style={{ flex: 3, minWidth: 160 }}>
               <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>หมายเหตุ (ไม่บังคับ)</label>
               <input
-                placeholder="เช่น ซื้อ 5 kg"
+                placeholder="เช่น ยี่ห้อ A"
                 value={addNote}
                 onChange={e => setAddNote(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
                 maxLength={255}
                 style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--color-border)', fontSize: 13, background: 'var(--color-bg)', boxSizing: 'border-box' }}
               />
@@ -160,35 +195,143 @@ export default function ShoppingListScreen() {
       ) : (
         <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
           {items.map((item, idx) => (
-            <div
+            <ShoppingRow
               key={item.id}
-              style={{
-                display: 'flex', alignItems: 'center', padding: '12px 16px', gap: 12,
-                borderBottom: idx < items.length - 1 ? '1px solid var(--color-border)' : 'none',
-              }}
-            >
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 500 }}>
-                  {item.inventoryItemName}
-                  <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 400 }}>
-                    [{item.unit}]
-                  </span>
-                </div>
-                {item.note && (
-                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{item.note}</div>
-                )}
-              </div>
-              <button
-                onClick={() => handleRemove(item)}
-                disabled={removingId === item.id}
-                style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--color-text-secondary)', flexShrink: 0 }}
-              >
-                <Icon name="x" size={14} />
-              </button>
-            </div>
+              item={item}
+              isLast={idx === items.length - 1}
+              removing={removingId === item.id}
+              onRemove={() => handleRemove(item)}
+            />
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Single row — shows the buy amount, editable, with reset-to-suggested ─────────
+function ShoppingRow({ item, isLast, removing, onRemove }: {
+  item: ShoppingListItem;
+  isLast: boolean;
+  removing: boolean;
+  onRemove: () => void;
+}) {
+  const toast = useToast();
+  const patch = usePatchShoppingListItem();
+
+  const isOverride = item.quantity != null;
+  const effective = item.quantity ?? item.suggestedQty;
+
+  const [draft, setDraft] = useState(String(effective));
+  const [focused, setFocused] = useState(false);
+
+  // Keep the input in sync with server-side recomputation (suggestion changes as
+  // pre-orders / stock move) — but never clobber what the user is mid-typing.
+  useEffect(() => {
+    if (!focused) setDraft(String(effective));
+  }, [effective, focused]);
+
+  const commit = async () => {
+    setFocused(false);
+    const trimmed = draft.trim();
+    const n = Number(trimmed);
+    if (trimmed === '' || Number.isNaN(n) || n < 0) {
+      setDraft(String(effective)); // revert invalid input
+      return;
+    }
+    if (n === effective) return;   // no real change
+    try {
+      await patch.mutateAsync({ itemId: item.id, quantity: n });
+    } catch (err) {
+      toast({ kind: 'danger', title: 'บันทึกจำนวนไม่สำเร็จ', msg: err instanceof Error ? err.message : undefined });
+      setDraft(String(effective));
+    }
+  };
+
+  const resetToSuggested = async () => {
+    try {
+      await patch.mutateAsync({ itemId: item.id, quantity: null });
+    } catch (err) {
+      toast({ kind: 'danger', title: 'รีเซ็ตไม่สำเร็จ', msg: err instanceof Error ? err.message : undefined });
+    }
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', padding: '12px 16px', gap: 12,
+        borderBottom: isLast ? 'none' : '1px solid var(--color-border)',
+      }}
+    >
+      {/* Name + note */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span>{item.inventoryItemName}</span>
+          {isOverride ? (
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-primary)', background: 'var(--color-primary-50, rgba(120,90,60,0.1))', padding: '1px 7px', borderRadius: 999 }}>
+              กำหนดเอง
+            </span>
+          ) : (
+            <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', background: 'var(--color-surface-2)', padding: '1px 7px', borderRadius: 999 }}>
+              แนะนำ
+            </span>
+          )}
+        </div>
+        {item.note && (
+          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{item.note}</div>
+        )}
+        {isOverride && (
+          <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+            ระบบแนะนำ {fmtQty(item.suggestedQty)} {item.unit}
+          </div>
+        )}
+      </div>
+
+      {/* Editable buy amount */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <input
+          type="number"
+          min={0}
+          step="any"
+          value={draft}
+          onFocus={() => setFocused(true)}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+          disabled={patch.isPending}
+          aria-label={`จำนวนที่ต้องซื้อ ${item.inventoryItemName}`}
+          style={{
+            width: 84, padding: '7px 10px', borderRadius: 7, fontSize: 14, fontWeight: 600,
+            textAlign: 'right', boxSizing: 'border-box', background: 'var(--color-bg)',
+            border: `1px solid ${isOverride ? 'var(--color-primary)' : 'var(--color-border)'}`,
+          }}
+        />
+        <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', minWidth: 28 }}>{item.unit}</span>
+
+        {/* Reset to suggested — only when overridden */}
+        <button
+          onClick={resetToSuggested}
+          disabled={!isOverride || patch.isPending}
+          title="กลับไปใช้จำนวนที่ระบบแนะนำ"
+          style={{
+            width: 28, height: 28, borderRadius: 6, border: '1px solid var(--color-border)',
+            background: 'transparent', display: 'grid', placeItems: 'center',
+            cursor: isOverride ? 'pointer' : 'default', color: 'var(--color-text-secondary)',
+            opacity: isOverride ? 1 : 0.3,
+          }}
+        >
+          <Icon name="refresh" size={14} />
+        </button>
+      </div>
+
+      {/* Remove */}
+      <button
+        onClick={onRemove}
+        disabled={removing}
+        style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--color-text-secondary)', flexShrink: 0 }}
+      >
+        <Icon name="x" size={14} />
+      </button>
     </div>
   );
 }
