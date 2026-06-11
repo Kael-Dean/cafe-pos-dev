@@ -290,7 +290,7 @@ export default function LoyaltyConfig() {
       {canEdit && (
         <div>
           <button onClick={handleSave} disabled={saveProgram.isPending}
-            style={{ padding: '11px 26px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+            style={{ padding: '11px 26px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
             {saveProgram.isPending ? 'กำลังบันทึก...' : 'บันทึกโปรแกรมสะสมแต้ม'}
           </button>
         </div>

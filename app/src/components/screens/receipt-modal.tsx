@@ -202,7 +202,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
           </div>
 
           {/* ── Receipt preview (tinted paper tray; stays light in both themes) ── */}
-          <div style={{ padding: 'var(--space-5)', overflowY: 'auto', maxHeight: '68vh', background: PAPER_TRAY }}>
+          <div style={{ padding: 'var(--space-5)', overflowY: 'auto', maxHeight: '68dvh', background: PAPER_TRAY }}>
             <ReceiptPaper
               data={data}
               invoiceNo={invoiceNo} now={now} copy={copy}

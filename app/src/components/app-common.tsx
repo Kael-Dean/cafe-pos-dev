@@ -25,9 +25,12 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="toast-stack">
+      {/* Persistent live region: it exists before any toast mounts, so screen
+          readers announce children added to it. Polite for the common case;
+          danger toasts opt into role="alert" (assertive) for errors. */}
+      <div className="toast-stack" role="region" aria-label="การแจ้งเตือน" aria-live="polite" aria-relevant="additions">
         {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.kind || ''}`} role="status" aria-live="polite">
+          <div key={t.id} className={`toast ${t.kind || ''}`} role={t.kind === 'danger' ? 'alert' : 'status'}>
             <Icon name={t.kind === 'success' ? 'success' : t.kind === 'warning' ? 'warning' : t.kind === 'danger' ? 'warning' : 'info'} size={20} className="t-icon" color={
               t.kind === 'success' ? 'var(--color-success)' :
               t.kind === 'warning' ? 'var(--color-warning)' :
@@ -93,7 +96,10 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
   });
 
   return (
-    <div style={{ position: 'relative', flexShrink: 0 }}>
+    // Desktop/tablet only: below 768px the BottomTabBar is the nav, so the
+    // sidebar is hidden to avoid a duplicate nav landmark and to free the full
+    // width for content on phones.
+    <div className="hidden md:block" style={{ position: 'relative', flexShrink: 0 }}>
     <aside className="surface-inverse" style={{
       width: collapsed ? 64 : 240,
       height: '100dvh',
@@ -142,7 +148,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
         )}
       </div>
 
-      <nav style={{padding: collapsed ? '8px 8px' : '8px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', overflowX: 'hidden', transition: 'padding var(--dur-slow) var(--ease-out)'}}>
+      <nav aria-label="เมนูหลัก" style={{padding: collapsed ? '8px 8px' : '8px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', overflowX: 'hidden', transition: 'padding var(--dur-slow) var(--ease-out)'}}>
         {visibleNav.map((n) => {
           if (n.divider) {
             return <div key={n.id} style={{height: 1, background: 'rgba(255,255,255,0.07)', margin: '6px 2px'}} />;
@@ -289,7 +295,7 @@ export const Tag = ({ children, tone = 'neutral' }: TagProps) => {
   const toneMap: Record<TagTone, { bg: string; fg: string }> = {
     neutral: { bg: 'var(--color-surface-2)', fg: 'var(--color-text-secondary)' },
     success: { bg: 'var(--color-success-50)', fg: 'var(--color-success)' },
-    warning: { bg: 'var(--color-warning-50)', fg: '#9C6A1F' },
+    warning: { bg: 'var(--color-warning-50)', fg: 'var(--color-warning-fg)' },
     danger:  { bg: 'var(--color-danger-50)',  fg: 'var(--color-danger)' },
     info:    { bg: 'var(--color-info-50)',    fg: 'var(--color-info)' },
     accent:  { bg: 'var(--color-accent-50)',  fg: 'var(--color-primary-700)' },

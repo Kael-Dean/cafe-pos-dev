@@ -29,7 +29,7 @@ const STATUS_LABELS: Record<PreOrderStatus, string> = {
 };
 
 const STATUS_COLORS: Record<PreOrderStatus, { color: string; bg: string }> = {
-  PENDING:     { color: '#9C6A1F',                     bg: 'var(--color-warning-50)' },
+  PENDING:     { color: 'var(--color-warning-fg)',     bg: 'var(--color-warning-50)' },
   IN_PROGRESS: { color: 'var(--color-info)',           bg: 'var(--color-info-50)' },
   COMPLETED:   { color: 'var(--color-success)',        bg: 'var(--color-success-50)' },
   CANCELLED:   { color: 'var(--color-text-secondary)', bg: 'var(--color-surface-2)' },
@@ -693,7 +693,7 @@ function DetailPanel({
                       <div style={{ textAlign: 'right', fontWeight: 500 }}>฿{Number(it.lineTotal).toFixed(2)}</div>
                       <div style={{ display: 'grid', placeItems: 'center' }}>
                         {isPending && (
-                          <button onClick={() => onRemoveItem(it.id)} style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                          <button onClick={() => onRemoveItem(it.id)} aria-label="ลบรายการ" title="ลบรายการ" style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
                             <Icon name="x" size={14} />
                           </button>
                         )}
@@ -864,7 +864,7 @@ function FulfillmentRow({ mode, quantity, fgStock, fgUnit, canEdit, saving, onCh
             {fgStock.toLocaleString()} {fgUnit}
           </strong>
           {effectiveMode === 'FROM_INVENTORY' && shortfall !== null && shortfall > 0 && (
-            <span style={{ color: '#9C6A1F' }}>· ขาด {shortfall} → จะหักวัตถุดิบ</span>
+            <span style={{ color: 'var(--color-warning-fg)' }}>· ขาด {shortfall} → จะหักวัตถุดิบ</span>
           )}
         </span>
       )}
@@ -1074,7 +1074,7 @@ function CreateModal({
                     <div style={{ fontWeight: 500 }}>
                       ฿{((ci.unit_price ? Number(ci.unit_price) : (allProducts.find(p => p.id === ci.product_id)?.price ?? 0)) * ci.quantity).toFixed(2)}
                     </div>
-                    <button onClick={() => onRemoveItem(idx)} style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                    <button onClick={() => onRemoveItem(idx)} aria-label="ลบรายการ" title="ลบรายการ" style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
                       <Icon name="x" size={12} />
                     </button>
                   </div>

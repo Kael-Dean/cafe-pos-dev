@@ -112,7 +112,7 @@ function TaskCard({ task, admin, myId, onStatusChange, onConfirm, onDelete }: {
           </button>
         )}
         {task.status === 'IN_PROGRESS' && (
-          <button onClick={() => onStatusChange(task.id, 'PENDING_REVIEW')} className="pressable" style={{ minHeight: 32, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-warning-50)', color: '#9C6A1F', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
+          <button onClick={() => onStatusChange(task.id, 'PENDING_REVIEW')} className="pressable" style={{ minHeight: 32, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-warning-50)', color: 'var(--color-warning-fg)', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
             ส่งตรวจ
           </button>
         )}
@@ -726,7 +726,7 @@ export default function HRDashboard() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div style={{ fontWeight: 600, fontSize: 15 }}>วันลาของฉัน</div>
             <button onClick={() => setShowLeaveForm(v => !v)} className="pressable"
-              style={{ display: 'flex', alignItems: 'center', gap: 7, minHeight: 44, padding: '8px 16px', borderRadius: 'var(--radius-md)', background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 7, minHeight: 44, padding: '8px 16px', borderRadius: 'var(--radius-md)', background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
               <Icon name="plus" size={15} /> ขอลา
             </button>
           </div>
@@ -754,7 +754,7 @@ export default function HRDashboard() {
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
                 <button onClick={handleCreateLeave} disabled={createLeave.isPending} className="pressable"
-                  style={{ minHeight: 44, padding: '9px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 14, cursor: 'pointer', border: 'none' }}>
+                  style={{ minHeight: 44, padding: '9px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 600, fontSize: 14, cursor: 'pointer', border: 'none' }}>
                   {createLeave.isPending ? 'กำลังส่ง...' : 'ส่งคำขอ'}
                 </button>
                 <button onClick={() => setShowLeaveForm(false)} className="pressable" style={{ minHeight: 44, padding: '9px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 14, cursor: 'pointer' }}>ยกเลิก</button>

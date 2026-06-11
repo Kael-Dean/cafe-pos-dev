@@ -217,7 +217,7 @@ export default function ProtocolsScreen() {
           {admin && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
               <button onClick={() => setShowForm(v => !v)}
-                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
                 <Icon name="plus" size={15} /> สร้าง Protocol
               </button>
             </div>
@@ -249,7 +249,7 @@ export default function ProtocolsScreen() {
                     <span style={{ color: 'var(--color-text-muted)', width: 20, fontSize: 12, flexShrink: 0, paddingTop: 2 }}>{i + 1}.</span>
                     <input value={task} onChange={e => { const t = [...tasks]; t[i] = e.target.value; setTasks(t); }} placeholder={`งานที่ ${i + 1}`} style={{ ...IS, flex: 1 }} />
                     {tasks.length > 1 && (
-                      <button onClick={() => setTasks(tasks.filter((_, j) => j !== i))} style={{ padding: 8, borderRadius: 7, border: '1px solid var(--color-border)', color: 'var(--color-danger)', flexShrink: 0, cursor: 'pointer' }}>
+                      <button onClick={() => setTasks(tasks.filter((_, j) => j !== i))} aria-label={`ลบงานที่ ${i + 1}`} style={{ minWidth: 32, minHeight: 32, display: 'grid', placeItems: 'center', padding: 8, borderRadius: 7, border: '1px solid var(--color-border)', color: 'var(--color-danger)', flexShrink: 0, cursor: 'pointer' }}>
                         <Icon name="x" size={13} />
                       </button>
                     )}
@@ -263,7 +263,7 @@ export default function ProtocolsScreen() {
 
               <div style={{ display: 'flex', gap: 10 }}>
                 <button onClick={handleCreate} disabled={createProtocol.isPending}
-                  style={{ padding: '9px 18px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+                  style={{ padding: '9px 18px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
                   {createProtocol.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
                 </button>
                 <button onClick={() => setShowForm(false)} style={{ padding: '9px 18px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', fontSize: 14, cursor: 'pointer' }}>ยกเลิก</button>

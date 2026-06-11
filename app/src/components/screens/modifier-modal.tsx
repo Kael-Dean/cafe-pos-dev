@@ -212,7 +212,7 @@ export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props)
         aria-busy={isLoading || undefined}
         className="modal-card"
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 'min(560px, 92vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
+        style={{ width: 'min(560px, 92vw)', maxHeight: '90dvh', display: 'flex', flexDirection: 'column' }}
       >
         <div style={{padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 'var(--space-4)'}}>
           <div style={{

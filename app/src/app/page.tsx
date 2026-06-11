@@ -102,9 +102,9 @@ export default function POS() {
 
   return (
     <ToastProvider>
-      <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', height: '100dvh', width: '100vw', overflow: 'hidden' }}>
         <Sidebar current={screen} onNavigate={(s) => { void navigate(s as Screen); }} onLogout={() => { void handleLogout(); }} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
-        <main style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'auto' }}>
+        <main className="app-main" style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'auto' }}>
           {/* key={screen} remounts on navigation so the screen fade (.screen-enter,
               opacity only) plays once per switch. ScreenFrame also tags itself
               .screen-switching for the duration of that fade, which suppresses the

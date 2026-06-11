@@ -38,7 +38,11 @@ const btnSm = (variant: 'primary' | 'ghost' | 'danger'): React.CSSProperties => 
 });
 
 const btnIcon = (): React.CSSProperties => ({
-  padding: '2px 7px', borderRadius: 4, marginRight: 2,
+  // WCAG 2.2 SC 2.5.8: meet the 24x24px minimum target and keep adjacent
+  // reorder arrows from overlapping (gap via marginRight + inline-flex centering).
+  minWidth: 24, minHeight: 24,
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  padding: '2px 7px', borderRadius: 4, marginRight: 4,
   border: '1px solid var(--color-border)', background: 'transparent',
   color: 'var(--color-text-secondary)', fontSize: 14, cursor: 'pointer',
   fontFamily: 'inherit',

@@ -126,7 +126,7 @@ export default function CashReconciliation() {
                 </div>
               </div>
               <button onClick={handleOpen} disabled={openSession.isPending} className="pressable"
-                style={{ minHeight: 44, padding: '10px 20px', borderRadius: 'var(--radius-md)', background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 14, cursor: 'pointer', border: 'none' }}>
+                style={{ minHeight: 44, padding: '10px 20px', borderRadius: 'var(--radius-md)', background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 600, fontSize: 14, cursor: 'pointer', border: 'none' }}>
                 {openSession.isPending ? 'กำลังบันทึก...' : 'เปิดลิ้นชัก'}
               </button>
             </>

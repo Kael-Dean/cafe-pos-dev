@@ -12,6 +12,10 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
+  // Extend under the notch / home indicator so env(safe-area-inset-*) resolves to
+  // real values (the bottom tab bar and modal sheets rely on it). Without this the
+  // insets are 0 on notched iPhones/iPads and fixed UI sits under the home bar.
+  viewportFit: 'cover',
   // Resize the layout when the soft keyboard opens (Chrome/Android tablets).
   // iOS handles this via the VisualViewport hook (use-keyboard-inset).
   interactiveWidget: 'resizes-content',

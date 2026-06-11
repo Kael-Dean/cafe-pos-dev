@@ -282,9 +282,9 @@ const ProductionPanel = ({ product, stockItem, onSuccess, onError }: ProductionP
         <div style={{ padding: 20 }}>
           {recipeIncomplete && (
             <div style={{ padding: 12, marginBottom: 16, background: 'var(--color-warning-50)', border: '1px solid var(--color-warning)', borderRadius: 8, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              <Icon name="info" size={18} color="var(--color-warning)" />
+              <Icon name="info" size={18} color="var(--color-warning-fg)" />
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-warning)', marginBottom: 2 }}>เมนูนี้ยังไม่มีสูตร</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-warning-fg)', marginBottom: 2 }}>เมนูนี้ยังไม่มีสูตร</div>
                 <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
                   สามารถบันทึกการผลิตได้ แต่จะไม่หักวัตถุดิบ เพิ่มเฉพาะสต็อกสำเร็จรูป — แนะนำเพิ่มสูตรที่ BOM Builder ก่อน
                 </div>

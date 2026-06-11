@@ -497,7 +497,7 @@ export default function POSTerminal() {
                   onClick={() => eligiblePromos.length && setShowPromoPanel(true)} disabled={!eligiblePromos.length}>
                   <Icon name="discount" size={14}/> {t.pos.promotions}
                   {eligiblePromos.length > 0 && (
-                    <span style={{ marginLeft: 4, background: 'var(--color-accent)', color: 'var(--color-primary-700)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>
+                    <span style={{ marginLeft: 4, background: 'var(--color-accent)', color: 'var(--color-on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>
                       {selectedPromoIds.length > 0 ? `${selectedPromoIds.length}/${eligiblePromos.length}` : eligiblePromos.length}
                     </span>
                   )}
@@ -655,7 +655,7 @@ const MenuCard = ({ item, onClick }: { item: MenuItem; onClick: () => void }) =>
       {item.hot && (
         <div style={{
           position: 'absolute', top: 8, left: 8,
-          background: 'var(--color-accent)', color: 'var(--color-primary-700)',
+          background: 'var(--color-accent)', color: 'var(--color-on-accent)',
           fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 999,
           display: 'flex', alignItems: 'center', gap: 3,
         }}>

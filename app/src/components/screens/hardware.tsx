@@ -388,7 +388,7 @@ function PreviewModal({ onClose, children }: { onClose: () => void; children: Re
         </div>
 
         {/* Receipt paper */}
-        <div style={{ padding: 'var(--space-5)', overflowY: 'auto', maxHeight: '72vh' }}>
+        <div style={{ padding: 'var(--space-5)', overflowY: 'auto', maxHeight: '72dvh' }}>
           {children}
         </div>
 

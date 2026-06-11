@@ -20,13 +20,20 @@
 
   --color-text: #1A1A1A;
   --color-text-secondary: #6B7280;
-  --color-text-muted: #9CA3AF;
+  /* Muted darkened from #9CA3AF (2.5:1, AA fail) to clear 4.5:1 body text on
+     surface/cream while staying lighter than --color-text-secondary. */
+  --color-text-muted: #6C7079;
   --color-text-inverse: #FFFFFF;
 
   --color-success: #5C8A5A;       /* Matcha */
   --color-success-50: #EBF2EA;
   --color-warning: #E8A951;       /* Honey */
   --color-warning-50: #FBF1DF;
+  /* Foreground for text/icons on --color-warning-50. The honey --color-warning
+     itself is only ~1.8:1 on its own 50 tint, so status chips need a darker
+     amber. Theme-aware: deep amber on the light tint, light honey on the dark
+     tint. Both ≥4.5:1. Use this for any "warning" Tag / pill foreground. */
+  --color-warning-fg: #7A4E10;
   --color-danger: #C24545;        /* Berry */
   --color-danger-50: #F7E5E5;
   --color-info: #4A6FA5;
@@ -34,6 +41,18 @@
 
   --color-border: #E5E0D5;
   --color-border-strong: #C9C2B2;
+
+  /* Ink for text/icons sitting ON the caramel --color-accent fill (buttons,
+     chips). --color-accent is the same #D4A574 in both themes, so this near-black
+     espresso ink is theme-agnostic and reads ≥8:1 on it. Avoids the dark-mode
+     bug where --color-primary-700 inverts to a light tone (~1.7:1 on accent). */
+  --color-on-accent: #1C140D;
+
+  /* Keyboard focus ring colour. The global outline lands on light app surfaces
+     here; the caramel --color-accent is only ~2.2:1 on white (fails WCAG 1.4.11),
+     so light mode uses a deep amber (≥5:1 on every light surface). Dark mode and
+     the always-dark .surface-inverse override it back to caramel (≥7:1 there). */
+  --color-focus-ring: #8A5A14;
 
   /* ---------- Typography ---------- */
   --font-sans: "Inter", "Sukhumvit Set", "IBM Plex Sans Thai", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -120,6 +139,9 @@
   --color-success-50: #21301F;
   --color-warning: #E8B86A;
   --color-warning-50: #332817;
+  /* Light honey on the dark warning tint — #7A4E10 (light fg) would only be
+     ~3.1:1 here, so dark mode lifts it to ~7.9:1. */
+  --color-warning-fg: #E8B86A;
   --color-danger: #E07A7A;
   --color-danger-50: #3A2020;
   --color-info: #7AA0D4;
@@ -127,6 +149,12 @@
 
   --color-border: #3A2E22;
   --color-border-strong: #4D3F30;
+
+  /* On dark surfaces the caramel accent already reads ≥7:1, so the focus ring
+     stays caramel here (a deep amber would vanish on the dark background). */
+  --color-focus-ring: #D4A574;
+  /* --color-on-accent stays #1C140D: accent fill is the same caramel in both
+     themes, so the espresso ink keeps its ≥8:1 contrast. */
 
   /* Shadows — deeper/darker so elevation reads against dark surfaces */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.40);
@@ -159,6 +187,10 @@
   --color-accent: #D4A574;
   --color-accent-600: #B8895A;
   --color-accent-50: #FBF3E8;
+  /* This surface is dark in BOTH themes, so its focus ring must be the caramel
+     accent (≥7:1 on the espresso bg) rather than the light-mode deep amber
+     (~1.9:1 here). Pin it regardless of the active theme. */
+  --color-focus-ring: #D4A574;
 }
 
 /* A "paper" island that stays light in both themes (e.g. KDS order tickets sit
@@ -186,10 +218,14 @@
   --color-success-50: #EBF2EA;
   --color-warning: #E8A951;
   --color-warning-50: #FBF1DF;
+  --color-warning-fg: #7A4E10;
   --color-danger: #C24545;
   --color-danger-50: #F7E5E5;
   --color-info: #4A6FA5;
   --color-info-50: #E5ECF5;
+  /* Light island, so revert the focus ring to the light-mode deep amber even
+     when the app is in dark mode — caramel would only be ~2.2:1 on white here. */
+  --color-focus-ring: #8A5A14;
   color: var(--color-text);
 }
 
@@ -287,8 +323,8 @@ html[data-kb-open] .modal-card {
 .btn:active { transform: translateY(1px); }
 .btn-primary { background: var(--color-primary); color: var(--color-text-inverse); }
 .btn-primary:hover { background: var(--color-primary-700); }
-.btn-accent { background: var(--color-accent); color: var(--color-primary-700); }
-.btn-accent:hover { background: var(--color-accent-600); color: var(--color-text-inverse); }
+.btn-accent { background: var(--color-accent); color: var(--color-on-accent); }
+.btn-accent:hover { background: var(--color-accent-600); color: var(--color-on-accent); }
 .btn-ghost { background: transparent; color: var(--color-text); border: 1px solid var(--color-border); }
 .btn-ghost:hover { background: var(--color-surface-2); }
 .btn-danger { background: var(--color-danger); color: white; }
@@ -304,6 +340,13 @@ html[data-kb-open] .modal-card {
   }
   input, select, textarea {
     font-size: 16px; /* prevent iOS auto-zoom on focus */
+  }
+  /* Reserve the fixed BottomTabBar's footprint (64px + safe area) so the last
+     row of any screen — and a focused control near the bottom — is never hidden
+     behind the tab bar (WCAG 2.4.11 Focus Not Obscured). Screens fill the
+     padded content box (box-sizing: border-box) and scroll above the bar. */
+  .app-main {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
 }
 
@@ -329,17 +372,22 @@ button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible,
 label:focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
-/* Standard input focus — use className "input-std" instead of inline JS focus handlers */
+/* Standard input focus — use className "input-std" instead of inline JS focus handlers.
+   Pairs the border tint with the contrast-safe focus ring so the indicator is
+   visible even where the caramel border itself is low-contrast (WCAG 1.4.11). */
 .input-std { transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out); }
 .input-std:focus {
-  border-color: var(--color-accent) !important; /* beats inline border */
+  border-color: var(--color-focus-ring) !important; /* beats inline border */
   box-shadow: var(--shadow-focus);
-  outline: none;
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
 }
 
 /* ---------- Extended hit area: small icon buttons reach >=44px touch target ---------- */

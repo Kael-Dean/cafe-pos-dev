@@ -255,8 +255,8 @@ const OrderTicket = ({ ticket, leaving, mins, nameToId, onBump, onDone, onStepsC
   const accent = urgency === 'red' ? 'var(--color-danger)' : urgency === 'yellow' ? 'var(--color-warning)' : 'var(--color-accent)';
   const typeIconMap: Record<string, string> = { 'Dine-in': 'cake', 'Takeaway': 'cart', 'Delivery': 'park' };
   const statusStyle = {
-    new:      { bg: 'var(--color-warning)', color: '#9C6A1F' },
-    progress: { bg: 'var(--color-accent)',  color: 'var(--color-primary-700)' },
+    new:      { bg: 'var(--color-warning)', color: 'var(--color-on-accent)' },
+    progress: { bg: 'var(--color-accent)',  color: 'var(--color-on-accent)' },
     ready:    { bg: 'var(--color-success)', color: 'white' },
   }[ticket.status] || { bg: '', color: '' };
   const statusLabel = t.kds.badge[ticket.status];

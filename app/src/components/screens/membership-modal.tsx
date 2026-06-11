@@ -253,7 +253,7 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
         aria-busy={busy || undefined}
         className="modal-card"
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 'min(480px, 92vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
+        style={{ width: 'min(480px, 92vw)', maxHeight: '90dvh', display: 'flex', flexDirection: 'column' }}
       >
         {/* Header */}
         <div style={{ padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
@@ -389,8 +389,8 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
                 </div>
               )}
               <div>
-                <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ชื่อ *</label>
-                <input value={regName} onChange={(e) => setRegName(e.target.value)} style={IS} placeholder="ชื่อ-นามสกุล" />
+                <label htmlFor="reg-name" style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ชื่อ *</label>
+                <input id="reg-name" value={regName} onChange={(e) => setRegName(e.target.value)} required aria-required="true" style={IS} placeholder="ชื่อ-นามสกุล" />
               </div>
               <div>
                 <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>วันเกิด (ไม่บังคับ)</label>
@@ -484,7 +484,7 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
           {phase === 'register' ? (
             <>
               <button onClick={() => { setPhase('lookup'); setFromMiss(false); }} className="pressable" style={{ padding: '11px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: 14, cursor: 'pointer' }}>ย้อนกลับ</button>
-              <button onClick={doRegister} disabled={register.isPending || checkingName} className="pressable" style={{ flex: 1, padding: '11px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 700, fontSize: 14, cursor: 'pointer', opacity: (register.isPending || checkingName) ? 0.7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)' }}>
+              <button onClick={doRegister} disabled={register.isPending || checkingName} className="pressable" style={{ flex: 1, padding: '11px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 700, fontSize: 14, cursor: 'pointer', opacity: (register.isPending || checkingName) ? 0.7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)' }}>
                 {(checkingName || register.isPending) && <span className="spinner" aria-hidden style={{ width: 14, height: 14 }} />}
                 {checkingName ? 'กำลังตรวจสอบ...' : register.isPending ? 'กำลังสมัคร...' : 'สมัครและแนบกับบิล'}
               </button>

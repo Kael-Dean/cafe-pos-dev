@@ -28,7 +28,7 @@ const PREORDER_STATUS_LABELS: Record<PreOrderStatus, string> = {
 };
 
 const PREORDER_STATUS_COLORS: Record<PreOrderStatus, { fg: string; bg: string }> = {
-  PENDING:     { fg: '#9C6A1F',                     bg: 'var(--color-warning-50)' },
+  PENDING:     { fg: 'var(--color-warning-fg)',                     bg: 'var(--color-warning-50)' },
   IN_PROGRESS: { fg: 'var(--color-info)',           bg: 'var(--color-info-50)' },
   COMPLETED:   { fg: 'var(--color-success)',        bg: 'var(--color-success-50)' },
   CANCELLED:   { fg: 'var(--color-text-secondary)', bg: 'var(--color-surface-2)' },
@@ -71,7 +71,7 @@ function fmtTime(t: string): string {
 function shiftCellStyle(shift: ShiftAssignment | undefined): { bg: string; fg: string } {
   if (!shift) return { bg: 'transparent', fg: 'var(--color-text-muted)' };
   const h = parseInt(shift.start_time.slice(0, 2), 10);
-  if (h < 10) return { bg: 'var(--color-warning-50)', fg: '#9C6A1F' };          // early morning
+  if (h < 10) return { bg: 'var(--color-warning-50)', fg: 'var(--color-warning-fg)' };          // early morning
   if (h < 14) return { bg: 'var(--color-info-50)',    fg: 'var(--color-info)' };    // midday
   return { bg: 'var(--color-accent-50)', fg: 'var(--color-accent-600)' };          // afternoon/evening
 }
@@ -174,7 +174,7 @@ export default function ShiftSchedule() {
           {[
             { label: 'มีกะวันนี้',    val: shiftsToday,       color: 'var(--color-success)',        bg: 'var(--color-success-50)' },
             { label: 'ไม่มีกะวันนี้', val: noShiftToday,      color: 'var(--color-text-muted)',     bg: 'var(--color-surface-2)' },
-            { label: 'พรีออเดอร์',    val: weekPreOrderCount, color: '#9C6A1F',                     bg: 'var(--color-warning-50)' },
+            { label: 'พรีออเดอร์',    val: weekPreOrderCount, color: 'var(--color-warning-fg)',                     bg: 'var(--color-warning-50)' },
           ].map(st => (
             <div key={st.label} style={{ background: st.bg, borderRadius: 'var(--radius-lg)', padding: '10px 16px', textAlign: 'center', minWidth: 80 }}>
               <StatNum value={st.val} color={st.color} />

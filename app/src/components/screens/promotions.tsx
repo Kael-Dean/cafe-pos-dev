@@ -167,7 +167,7 @@ function PromoCard({ p, products, categories, onToggle, onEdit, onDelete, admin 
           <button onClick={() => onToggle(p)} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>
             {p.is_active ? 'ปิด' : 'เปิด'}
           </button>
-          <button onClick={() => onDelete(p.id)} style={{ padding: '6px 8px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-danger)', cursor: 'pointer' }}>
+          <button onClick={() => onDelete(p.id)} aria-label="ลบโปรโมชั่น" title="ลบ" style={{ minWidth: 24, minHeight: 24, display: 'grid', placeItems: 'center', padding: '6px 8px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-danger)', cursor: 'pointer' }}>
             <Icon name="trash" size={13} />
           </button>
         </div>
@@ -292,7 +292,7 @@ export default function PromotionsScreen() {
         </div>
         {admin && subTab === 'list' && (
           <button onClick={openCreate}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 20px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 20px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
             <Icon name="plus" size={15} /> สร้างโปรโมชั่น
           </button>
         )}
@@ -438,7 +438,7 @@ export default function PromotionsScreen() {
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
             <button onClick={handleSubmit} disabled={saving}
-              style={{ padding: '10px 22px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-primary-700)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+              style={{ padding: '10px 22px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
               {saving ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
             <button onClick={closeForm} style={{ padding: '10px 22px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', fontSize: 14, cursor: 'pointer' }}>ยกเลิก</button>

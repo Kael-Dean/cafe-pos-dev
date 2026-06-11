@@ -7,13 +7,23 @@ interface IconProps {
   strokeWidth?: number;
   className?: string;
   style?: React.CSSProperties;
+  /**
+   * Icons are decorative by default (aria-hidden) — every interactive icon in
+   * the app has a separate text label or aria-label. Pass an accessible name
+   * here only for the rare standalone-informative icon, which exposes it as
+   * role="img" with that label instead of hiding it.
+   */
+  title?: string;
 }
 
-export default function Icon({ name, size = 20, color = 'currentColor', strokeWidth = 1.5, className = '', style }: IconProps) {
+export default function Icon({ name, size = 20, color = 'currentColor', strokeWidth = 1.5, className = '', style, title }: IconProps) {
   const props = {
     width: size, height: size, viewBox: '0 0 24 24',
     fill: 'none', stroke: color, strokeWidth, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
     className, style,
+    // Decorative by default so screen readers skip the unlabeled glyph; opt into
+    // an accessible name via `title`.
+    ...(title ? { role: 'img' as const, 'aria-label': title } : { 'aria-hidden': true, focusable: false }),
   };
   const paths: Record<string, React.ReactNode> = {
     cart: <><circle cx="9" cy="21" r="1.5"/><circle cx="18" cy="21" r="1.5"/><path d="M3 3h2l3 12h12l2-8H6"/></>,
