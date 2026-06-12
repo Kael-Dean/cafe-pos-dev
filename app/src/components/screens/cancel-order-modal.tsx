@@ -150,7 +150,7 @@ export default function CancelOrderModal({ ticket, onClose, onConfirm }: Props) 
                 width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)',
                 padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 600,
                 background: alreadyMade ? 'var(--color-primary)' : 'var(--color-surface-2)',
-                color: alreadyMade ? 'var(--color-on-accent)' : 'var(--color-text)',
+                color: alreadyMade ? '#fff' : 'var(--color-text)',
                 border: `1px solid ${alreadyMade ? 'var(--color-primary)' : 'var(--color-border)'}`,
               }}
             >
