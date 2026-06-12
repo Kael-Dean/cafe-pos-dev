@@ -29,6 +29,9 @@ export interface ReceiptItem {
 
 export interface ReceiptData {
   orderNumber: string;
+  /** Backend-generated receipt number ("เลขที่:"), printed verbatim. Falls back
+   *  to a client-computed IV string only when the backend didn't supply one. */
+  receiptNo?: string;
   items: ReceiptItem[];
   subtotal: number;
   total: number;
@@ -117,7 +120,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
   const dialogRef = useModalA11y(onClose);
 
   const now = issuedAt ?? new Date();
-  const invoiceNo = makeInvoiceNo(String(data.orderNumber), now);
+  const invoiceNo = data.receiptNo ?? makeInvoiceNo(String(data.orderNumber), now);
   const formatDate = (d: Date) => d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
   const formatTime = (d: Date) => d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

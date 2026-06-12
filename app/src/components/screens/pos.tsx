@@ -223,6 +223,7 @@ export default function POSTerminal() {
         setReceiptIssuedAt(new Date(order.created_at));
         setReceiptData({
           orderNumber: String(displayOrderNo(order)),
+          ...(order.receipt_no ? { receiptNo: order.receipt_no } : {}),
           items: cartSnapshot.map(l => ({ name: l.name, qty: l.qty, unitPrice: l.unitPrice, mods: l.mods.length ? l.mods : undefined })),
           subtotal: subtotalSnapshot,
           total: finalTotal,
@@ -600,6 +601,7 @@ export default function POSTerminal() {
           onPrint={async () => {
             await printReceipt({
               orderNumber: receiptData.orderNumber,
+              ...(receiptData.receiptNo ? { receiptNo: receiptData.receiptNo } : {}),
               items: receiptData.items,
               subtotal: receiptData.subtotal,
               total: receiptData.total,

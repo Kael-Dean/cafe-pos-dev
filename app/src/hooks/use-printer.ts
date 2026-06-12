@@ -14,6 +14,9 @@ const PAY_LABEL: Record<string, string> = {
 
 export interface PrintReceiptArgs {
   orderNumber: string;
+  /** Backend-generated receipt number, printed verbatim. Falls back to a
+   *  client-computed IV string only when absent (pre-backend orders). */
+  receiptNo?: string;
   items: Array<{ name: string; qty: number; unitPrice: number; mods?: string[] }>;
   subtotal: number;
   total: number;
@@ -48,7 +51,7 @@ export function usePrinter() {
       storeTaxId:   store.taxId,
       storeBranch:  store.branch,
       storePhone:   store.phone,
-      invoiceNo:    makeInvoiceNo(args.orderNumber, args.issuedAt),
+      invoiceNo:    args.receiptNo ?? makeInvoiceNo(args.orderNumber, args.issuedAt),
       orderNumber:  args.orderNumber,
       items:        args.items,
       subtotal:     args.subtotal,

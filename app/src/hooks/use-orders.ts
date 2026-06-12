@@ -41,7 +41,9 @@ interface OrderItemRead {
 interface OrderRead {
   id: string;
   order_number: number;
-  daily_order_number?: number;
+  daily_number?: number;
+  business_date?: string;
+  receipt_no?: string;
   status: string;
   channel: string;
   total: string | number;
@@ -75,8 +77,8 @@ const STATUS_MAP: Record<string, KDSTicket['status']> = {
 
 /** The order number we show to users: the per-day running number when the
  *  backend provides it, else the global order_number (pre-backend fallback). */
-export function displayOrderNo(o: { order_number: number; daily_order_number?: number | null }): number {
-  return o.daily_order_number ?? o.order_number;
+export function displayOrderNo(o: { order_number: number; daily_number?: number | null }): number {
+  return o.daily_number ?? o.order_number;
 }
 
 export function parseModifiers(raw: unknown): string[] {

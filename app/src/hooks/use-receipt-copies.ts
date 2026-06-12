@@ -20,7 +20,9 @@ export interface OrderItemFull {
 export interface OrderFull {
   id: string;
   order_number: number;
-  daily_order_number?: number;
+  daily_number?: number;
+  business_date?: string;
+  receipt_no?: string;
   store_id: string;
   customer_id: string | null;
   status: string;
@@ -86,6 +88,7 @@ export function mapOrderToReceipt(o: OrderFull): ReceiptData {
     total: Number(o.total),
     paymentMethod: o.payment_method ?? '',
     paymentLabel: paymentLabel(o.payment_method),
+    ...(o.receipt_no ? { receiptNo: o.receipt_no } : {}),
     ...(discount > 0 ? { discount } : {}),
   };
 }
@@ -102,6 +105,7 @@ export function mapOrderToPrintArgs(o: OrderFull): PrintReceiptArgs {
     // the raw string — passing the Thai label directly prints it verbatim.
     paymentMethod: paymentLabel(o.payment_method),
     issuedAt: new Date(o.created_at),
+    ...(o.receipt_no ? { receiptNo: o.receipt_no } : {}),
     copy: true,
   };
 }
