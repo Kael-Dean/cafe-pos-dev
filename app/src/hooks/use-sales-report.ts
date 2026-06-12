@@ -1,4 +1,5 @@
 import { api } from '@/lib/api-client';
+import { makeInvoiceNo } from '@/lib/receipt-number';
 
 // ── Backend shapes (GET /api/v1/reports/sales) ─────────────────────────────────
 // Returns the SAME totals regardless of `granularity`; only the bucket grouping
@@ -32,7 +33,8 @@ export interface ReportRow {
  */
 export interface RegisterLine {
   no: number;          // running line number across the whole period
-  billNo: string;      // e.g. "#1042"
+  billNo: string;      // per-day running bill number, e.g. "#7" (matches the receipt/KDS)
+  receiptNo: string;   // backend receipt number, e.g. "IV25690612-0007"
   date: string;        // short Thai date, e.g. "5 มิ.ย."
   time: string;        // "HH:mm"
   channel: string;     // Thai channel label
@@ -143,6 +145,8 @@ interface RegOrderItem {
 }
 interface RegOrder {
   order_number: number;
+  daily_number?: number;
+  receipt_no?: string;
   channel: string;
   payment_method: string | null;
   customer_note: string | null;
@@ -196,13 +200,19 @@ async function loadRegister(fromIso: string, toIso: string): Promise<RegisterLin
     const date = dt.toLocaleDateString('th-TH-u-ca-buddhist', { day: 'numeric', month: 'short' });
     const time = dt.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
     const channel = CHANNEL_LABEL[o.channel] ?? o.channel;
+    // Per-day running bill number (matches the receipt/KDS); falls back to the
+    // global order_number for orders created before the backend shipped it.
+    const billDisplay = o.daily_number ?? o.order_number;
+    // Backend-owned receipt number; fall back to the client format only if absent.
+    const receiptNo = o.receipt_no ?? makeInvoiceNo(String(billDisplay), dt);
     const items = o.items ?? [];
     items.forEach((it, idx) => {
       no += 1;
       const mods = modifierNames(it.modifiers_json);
       lines.push({
         no,
-        billNo: `#${o.order_number}`,
+        billNo: `#${billDisplay}`,
+        receiptNo,
         date,
         time,
         channel,

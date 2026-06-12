@@ -20,10 +20,10 @@ function thaiDateTime(d: Date): string {
 // bill-level columns (discount/net/payment/note) on the first line of each bill
 // only — matching the on-screen RegisterTable.
 const REGISTER_HEADERS = [
-  'ลำดับ', 'เลขที่บิล', 'วันที่', 'เวลา', 'ช่องทาง', 'รายการ',
+  'ลำดับ', 'เลขที่บิล', 'เลขที่ใบเสร็จ', 'วันที่', 'เวลา', 'ช่องทาง', 'รายการ',
   'จำนวน', 'ราคา/หน่วย', 'จำนวนเงิน', 'ส่วนลด', 'สุทธิ', 'ชำระเงิน', 'หมายเหตุ',
 ] as const;
-const REGISTER_WIDTHS = [6, 12, 12, 8, 12, 34, 9, 12, 14, 12, 14, 16, 22];
+const REGISTER_WIDTHS = [6, 12, 17, 12, 8, 12, 34, 9, 12, 14, 12, 14, 16, 22];
 const REGISTER_COLS = REGISTER_HEADERS.length;
 const ZEBRA_ARGB = 'FFF6F1EA'; // very light latte — alternating bill bands
 
@@ -57,6 +57,7 @@ function addRegisterSheet(wb: Workbook, data: SalesReportData): void {
     const row = ws.addRow([
       r.no,
       first ? r.billNo : '',
+      first ? r.receiptNo : '',
       first ? r.date : '',
       first ? r.time : '',
       first ? r.channel : '',
@@ -69,7 +70,7 @@ function addRegisterSheet(wb: Workbook, data: SalesReportData): void {
       first ? r.billPayment ?? '' : '',
       first ? r.billNote ?? '' : '',
     ]);
-    [8, 9, 10, 11].forEach((c) => { row.getCell(c).numFmt = MONEY_FMT; });
+    [9, 10, 11, 12].forEach((c) => { row.getCell(c).numFmt = MONEY_FMT; });
     if (idx % 2 === 1) { // alternate every row, like the reference workbook
       for (let c = 1; c <= REGISTER_COLS; c++) {
         row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ZEBRA_ARGB } };
@@ -79,13 +80,13 @@ function addRegisterSheet(wb: Workbook, data: SalesReportData): void {
     if (first) totalNet += r.billNet ?? 0;
   });
 
-  const totalRow = ws.addRow(['', '', '', '', '', 'รวม', '', '', totalLine, '', totalNet, '', '']);
+  const totalRow = ws.addRow(['', '', '', '', '', '', 'รวม', '', '', totalLine, '', totalNet, '', '']);
   totalRow.font = { bold: true };
   for (let c = 1; c <= REGISTER_COLS; c++) {
     totalRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_ARGB } };
   }
-  totalRow.getCell(9).numFmt = MONEY_FMT;
-  totalRow.getCell(11).numFmt = MONEY_FMT;
+  totalRow.getCell(10).numFmt = MONEY_FMT;
+  totalRow.getCell(12).numFmt = MONEY_FMT;
 
   ws.views = [{ state: 'frozen', ySplit: 2 }];
 }

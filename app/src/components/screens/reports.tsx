@@ -181,6 +181,7 @@ function RegisterTable({ title, lines }: { title: string; lines: RegisterLine[] 
             <tr>
               <th style={thR}>ลำดับ</th>
               <th style={th}>เลขที่บิล</th>
+              <th style={th}>เลขที่ใบเสร็จ</th>
               <th style={th}>วันที่</th>
               <th style={th}>เวลา</th>
               <th style={th}>ช่องทาง</th>
@@ -196,7 +197,7 @@ function RegisterTable({ title, lines }: { title: string; lines: RegisterLine[] 
           </thead>
           <tbody>
             {lines.length === 0 ? (
-              <tr><td colSpan={13} style={{ padding: '20px 16px', textAlign: 'center', color: muted }}>ไม่มีรายการขายในช่วงที่เลือก</td></tr>
+              <tr><td colSpan={14} style={{ padding: '20px 16px', textAlign: 'center', color: muted }}>ไม่มีรายการขายในช่วงที่เลือก</td></tr>
             ) : lines.map((r, i) => (
               <tr
                 key={`${r.billNo}-${i}`}
@@ -207,6 +208,7 @@ function RegisterTable({ title, lines }: { title: string; lines: RegisterLine[] 
               >
                 <td style={{ ...tdR, color: 'var(--color-text-secondary)' }} className="num">{r.no}</td>
                 <td style={{ ...td, fontWeight: r.firstOfBill ? 600 : 400, color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.billNo : ''}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap', color: r.firstOfBill ? 'var(--color-text)' : muted }} className="num">{r.firstOfBill ? r.receiptNo : ''}</td>
                 <td style={{ ...td, whiteSpace: 'nowrap', color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.date : ''}</td>
                 <td style={{ ...td, whiteSpace: 'nowrap', color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.time : ''}</td>
                 <td style={{ ...td, whiteSpace: 'nowrap', color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.channel : ''}</td>
@@ -224,7 +226,7 @@ function RegisterTable({ title, lines }: { title: string; lines: RegisterLine[] 
           {lines.length > 0 && (
             <tfoot>
               <tr style={{ borderTop: '2px solid var(--color-border-strong, var(--color-border))', fontWeight: 700, background: 'var(--color-surface-2)' }}>
-                <td style={td} colSpan={8}>รวม</td>
+                <td style={td} colSpan={9}>รวม</td>
                 <td style={tdR} className="num">{baht(totalLine)}</td>
                 <td style={td} />
                 <td style={tdR} className="num">{baht(totalNet)}</td>
