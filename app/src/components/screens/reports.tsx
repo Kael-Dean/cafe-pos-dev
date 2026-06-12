@@ -13,6 +13,11 @@ import {
   type RegisterLine,
   type SalesReportData,
 } from '@/hooks/use-sales-report';
+import {
+  loadWastageReport,
+  type WastageReportData,
+  type WasteEventLine,
+} from '@/hooks/use-wastage-report';
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 function ymd(d: Date): string {
@@ -413,12 +418,321 @@ function SalesReport({ onBack }: { onBack: () => void }) {
   );
 }
 
+// ── Wastage report ────────────────────────────────────────────────────────────
+function fmtQty(n: number): string {
+  return n.toLocaleString(undefined, { maximumFractionDigits: 3 });
+}
+
+/* Per-event waste register — one row per recorded waste movement. Mirrors the
+   sales RegisterTable idiom (sticky header, zebra rows, total footer) but with
+   waste columns (ingredient / qty / reason / cost / who). */
+function WasteRegisterTable({ title, events }: { title: string; events: WasteEventLine[] }) {
+  const totalCost = events.reduce((s, e) => s + e.cost, 0);
+
+  const th: React.CSSProperties = {
+    padding: '8px 12px', fontWeight: 600, color: 'var(--color-text-secondary)',
+    whiteSpace: 'nowrap', textAlign: 'left', position: 'sticky', top: 0,
+    background: 'var(--color-surface-2)',
+  };
+  const thR: React.CSSProperties = { ...th, textAlign: 'right' };
+  const td: React.CSSProperties = { padding: '7px 12px', verticalAlign: 'top' };
+  const tdR: React.CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
+
+  return (
+    <Card style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border)' }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>{title}</div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+          ทุกครั้งที่บันทึกของเสีย • {events.length.toLocaleString()} รายการ
+        </div>
+      </div>
+      <div style={{ overflowX: 'auto', maxHeight: 520 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr>
+              <th style={thR}>ลำดับ</th>
+              <th style={th}>วันที่</th>
+              <th style={th}>เวลา</th>
+              <th style={{ ...th, minWidth: 180 }}>วัตถุดิบ</th>
+              <th style={thR}>จำนวน</th>
+              <th style={th}>หน่วย</th>
+              <th style={th}>เหตุผล</th>
+              <th style={thR}>มูลค่า</th>
+              <th style={th}>ผู้บันทึก</th>
+              <th style={{ ...th, minWidth: 140 }}>หมายเหตุ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {events.length === 0 ? (
+              <tr><td colSpan={10} style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--color-text-muted)' }}>ไม่มีรายการของเสียในช่วงที่เลือก</td></tr>
+            ) : events.map((e, i) => (
+              <tr key={e.id} style={{ background: i % 2 === 1 ? 'var(--color-surface-2)' : 'transparent', borderTop: '1px solid var(--color-border)' }}>
+                <td style={{ ...tdR, color: 'var(--color-text-secondary)' }} className="num">{e.no}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap' }}>{e.date}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap' }}>{e.time}</td>
+                <td style={td}>{e.itemName}</td>
+                <td style={tdR} className="num">{fmtQty(e.quantity)}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--color-text-secondary)' }}>{e.unit}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap' }}>{e.reasonLabel}</td>
+                <td style={tdR} className="num">{baht(e.cost)}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--color-text-secondary)' }}>{e.createdBy}</td>
+                <td style={{ ...td, color: 'var(--color-text-secondary)' }}>{e.note}</td>
+              </tr>
+            ))}
+          </tbody>
+          {events.length > 0 && (
+            <tfoot>
+              <tr style={{ borderTop: '2px solid var(--color-border-strong, var(--color-border))', fontWeight: 700, background: 'var(--color-surface-2)' }}>
+                <td style={td} colSpan={7}>รวมมูลค่า</td>
+                <td style={tdR} className="num">{baht(totalCost)}</td>
+                <td style={td} colSpan={2} />
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+/* Generic waste breakdown: label / middle column (preformatted string so it can
+   carry units or counts) / cost. Footer totals the cost column. */
+function WasteBreakdownTable({ title, sub, cols, rows }: {
+  title: string;
+  sub?: string;
+  cols: [string, string, string];
+  rows: { key: string; label: string; mid: string; cost: number }[];
+}) {
+  const totalCost = rows.reduce((s, r) => s + r.cost, 0);
+  return (
+    <Card style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border)' }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>{title}</div>
+        {sub && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{sub}</div>}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: 'var(--color-surface-2)' }}>
+              <th style={{ textAlign: 'left', padding: '8px 16px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>{cols[0]}</th>
+              <th style={{ textAlign: 'right', padding: '8px 16px', fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>{cols[1]}</th>
+              <th style={{ textAlign: 'right', padding: '8px 16px', fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>{cols[2]}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={3} style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--color-text-muted)' }}>ไม่มีข้อมูลในช่วงที่เลือก</td></tr>
+            ) : rows.map((r) => (
+              <tr key={r.key} style={{ borderTop: '1px solid var(--color-border)' }}>
+                <td style={{ padding: '8px 16px' }}>{r.label}</td>
+                <td style={{ padding: '8px 16px', textAlign: 'right' }} className="num">{r.mid}</td>
+                <td style={{ padding: '8px 16px', textAlign: 'right' }} className="num">{baht(r.cost)}</td>
+              </tr>
+            ))}
+          </tbody>
+          {rows.length > 0 && (
+            <tfoot>
+              <tr style={{ borderTop: '2px solid var(--color-border-strong, var(--color-border))', fontWeight: 700 }}>
+                <td style={{ padding: '8px 16px' }}>รวม</td>
+                <td style={{ padding: '8px 16px', textAlign: 'right' }} />
+                <td style={{ padding: '8px 16px', textAlign: 'right' }} className="num">{baht(totalCost)}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+function WasteReport({ onBack }: { onBack: () => void }) {
+  const { data: me } = useCurrentUser();
+  const storeName = me?.store_name ?? 'Kafé OS';
+
+  const [mode, setMode] = useState<ReportMode>('daily');
+  const [day, setDay] = useState(TODAY);
+  const [from, setFrom] = useState(MONTH_START);
+  const [to, setTo] = useState(TODAY);
+
+  const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<WastageReportData | null>(null);
+
+  async function runReport() {
+    setError(null);
+    if (mode === 'range' && from > to) {
+      setError('วันเริ่มต้องไม่เกินวันสิ้นสุด');
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await loadWastageReport({ mode, from: mode === 'daily' ? day : from, to });
+      setData(result);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'เรียกรายงานไม่สำเร็จ';
+      setError(msg.includes('403') || /สิทธิ|permission|forbidden/i.test(msg)
+        ? 'บัญชีนี้ไม่มีสิทธิ์ดูรายงาน (ต้องเป็นผู้จัดการหรือเจ้าของ)'
+        : msg);
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function download() {
+    if (!data) return;
+    setDownloading(true);
+    try {
+      const { downloadWastageReportExcel } = await import('@/lib/wastage-report-xlsx');
+      await downloadWastageReportExcel(data, storeName);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'สร้างไฟล์ Excel ไม่สำเร็จ');
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  const periodText = data
+    ? data.mode === 'daily'
+      ? `รายวัน — ${thaiDate(data.from)}`
+      : `ช่วงวันที่ ${thaiDate(data.from)} ถึง ${thaiDate(data.to)} (${data.dayCount} วัน)`
+    : '';
+
+  return (
+    <div className="scroll" style={{ height: '100%', overflow: 'auto', padding: 'var(--space-6)', background: 'var(--color-bg)' }}>
+      {/* Back to hub */}
+      <button className="btn btn-ghost hover-raise" onClick={onBack} style={{ marginBottom: 'var(--space-4)', alignSelf: 'flex-start' }}>
+        <Icon name="chevronLeft" size={14} /> รายงาน
+      </button>
+
+      {/* Header */}
+      <div style={{ marginBottom: 'var(--space-5)' }}>
+        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 2 }}>รายงาน</div>
+        <h1 className="text-balance" style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>เรียกรายงานของเสีย</h1>
+        <div className="text-pretty" style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)' }}>เลือกวัน/ช่วงวันที่ แล้วดาวน์โหลดเป็น Excel (.xlsx)</div>
+      </div>
+
+      {/* Controls */}
+      <Card style={{ marginBottom: 16 }}>
+        <div role="tablist" aria-label="ช่วงเวลารายงาน" style={{ display: 'inline-flex', background: 'var(--color-surface-2)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-1)', marginBottom: 'var(--space-4)' }}>
+          {([['daily', 'รายวัน'], ['range', 'รายเดือน / ช่วงวันที่']] as [ReportMode, string][]).map(([m, label]) => (
+            <button
+              key={m}
+              role="tab"
+              aria-selected={mode === m}
+              onClick={() => setMode(m)}
+              style={{
+                minHeight: 44, padding: '8px 16px', borderRadius: 'var(--radius-md)', border: 'none', cursor: 'pointer',
+                fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
+                background: mode === m ? 'var(--color-surface)' : 'transparent',
+                color: mode === m ? 'var(--color-text)' : 'var(--color-text-secondary)',
+                boxShadow: mode === m ? 'var(--shadow-sm)' : 'none',
+                transition: 'background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
+              }}
+            >{label}</button>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}>
+          {mode === 'daily' ? (
+            <>
+              <div>
+                <label style={LB}>วันที่</label>
+                <input type="date" value={day} max={TODAY} onChange={(e) => setDay(e.target.value)} style={IS} />
+              </div>
+              <button className="btn btn-ghost" onClick={() => setDay(TODAY)}>วันนี้</button>
+            </>
+          ) : (
+            <>
+              <div>
+                <label style={LB}>วันเริ่ม</label>
+                <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} style={IS} />
+              </div>
+              <div>
+                <label style={LB}>วันสิ้นสุด</label>
+                <input type="date" value={to} max={TODAY} onChange={(e) => setTo(e.target.value)} style={IS} />
+              </div>
+            </>
+          )}
+
+          <button className="btn btn-primary" onClick={runReport} disabled={loading}>
+            <Icon name="reports" size={14} /> {loading ? 'กำลังเรียก…' : 'เรียกรายงาน'}
+          </button>
+          <button className="btn btn-ghost" onClick={download} disabled={!data || downloading}>
+            <Icon name="download" size={14} /> {downloading ? 'กำลังสร้าง…' : 'ดาวน์โหลด Excel'}
+          </button>
+        </div>
+
+        {error && (
+          <div role="alert" style={{
+            marginTop: 'var(--space-4)', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: 13,
+            background: 'var(--color-danger-50)', color: 'var(--color-danger)',
+            border: '1px solid var(--color-danger)',
+          }}>{error}</div>
+        )}
+      </Card>
+
+      {loading && <ReportSkeleton rangeMode={mode === 'range'} />}
+
+      {!loading && data && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <Tag tone="accent">{periodText}</Tag>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${data.mode === 'range' ? 4 : 3}, 1fr)`,
+            gap: 16, marginBottom: 16,
+          }}>
+            <SummaryCard label="มูลค่าของเสีย" value={data.totalCost} format={baht} />
+            <SummaryCard label="จำนวนครั้ง" value={data.eventCount} format={(n) => Math.round(n).toLocaleString()} />
+            <SummaryCard label="ปริมาณรวม (ทุกหน่วย)" value={data.totalQuantity} format={fmtQty} />
+            {data.mode === 'range' && <SummaryCard label="มูลค่าเฉลี่ยต่อวัน" value={data.avgCostPerDay} format={baht} />}
+          </div>
+
+          <div style={{ display: 'grid', gap: 16 }}>
+            <WasteRegisterTable title={`รายการของเสีย — ${periodText}`} events={data.events} />
+            {data.mode === 'range' && (
+              <WasteBreakdownTable
+                title="ของเสียรายวัน"
+                sub="แต่ละวันในช่วงที่เลือก"
+                cols={['วันที่', 'จำนวนครั้ง', 'มูลค่า']}
+                rows={data.byDay.map((r) => ({ key: r.date, label: thaiDate(r.date), mid: `${r.eventCount.toLocaleString()} ครั้ง`, cost: r.cost }))}
+              />
+            )}
+            <WasteBreakdownTable
+              title="แยกตามวัตถุดิบ"
+              sub="เรียงตามมูลค่ามาก→น้อย"
+              cols={['วัตถุดิบ', 'จำนวน', 'มูลค่า']}
+              rows={data.byItem.map((r) => ({ key: r.itemId, label: r.itemName, mid: `${fmtQty(r.quantity)} ${r.unit}`, cost: r.cost }))}
+            />
+            <WasteBreakdownTable
+              title="แยกตามเหตุผล"
+              cols={['เหตุผล', 'จำนวนครั้ง', 'มูลค่า']}
+              rows={data.byReason.map((r) => ({ key: r.reasonCode, label: r.label, mid: `${r.eventCount.toLocaleString()} ครั้ง`, cost: r.cost }))}
+            />
+          </div>
+        </>
+      )}
+
+      {!data && !loading && !error && (
+        <Card style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 40 }}>
+          เลือกวันหรือช่วงวันที่ แล้วกด “เรียกรายงาน” เพื่อดูสรุปของเสีย
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ── Reports hub ───────────────────────────────────────────────────────────────
 // Landing page that lists the available reports. New reports are added by
 // appending to REPORTS and handling the id in Reports() below.
 type ReportEntry = { id: string; icon: string; title: string; desc: string };
 const REPORTS: ReportEntry[] = [
   { id: 'sales', icon: 'reports', title: 'รายงานยอดขาย', desc: 'สรุปยอดขายรายวัน/ช่วงวันที่ + ดาวน์โหลด Excel' },
+  { id: 'wastage', icon: 'inv', title: 'รายงานของเสีย', desc: 'ของเสียรายวัน/รายเดือน — แยกตามเหตุผล/วัตถุดิบ + ดาวน์โหลด Excel' },
 ];
 
 function ReportCard({ entry, onOpen }: { entry: ReportEntry; onOpen: (id: string) => void }) {
@@ -471,7 +785,8 @@ function ReportsHub({ onOpen }: { onOpen: (id: string) => void }) {
 // screen remounts on navigation (key={screen} in page.tsx), so re-entering the
 // reports screen always lands back on the hub.
 export function Reports() {
-  const [view, setView] = useState<'hub' | 'sales'>('hub');
+  const [view, setView] = useState<'hub' | 'sales' | 'wastage'>('hub');
   if (view === 'sales') return <SalesReport onBack={() => setView('hub')} />;
-  return <ReportsHub onOpen={(id) => { if (id === 'sales') setView('sales'); }} />;
+  if (view === 'wastage') return <WasteReport onBack={() => setView('hub')} />;
+  return <ReportsHub onOpen={(id) => { if (id === 'sales' || id === 'wastage') setView(id); }} />;
 }
