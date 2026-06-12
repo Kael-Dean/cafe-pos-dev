@@ -264,6 +264,16 @@ export const th = {
     orderStarted: (id: string) => `ออเดอร์ ${id} เริ่มทำ`,
     orderDone: (id: string) => `ออเดอร์ ${id} เสร็จแล้ว`,
     orderType: { 'Dine-in': 'ทานที่ร้าน', 'Takeaway': 'กลับบ้าน', 'Delivery': 'เดลิเวอรี' },
+    cancel: 'ยกเลิกออเดอร์',
+    cancelTitle: 'ยกเลิกออเดอร์',
+    cancelReasonLabel: 'เหตุผล',
+    cancelReasonPlaceholder: 'เช่น ลูกค้าสั่งผิด',
+    cancelMadeToggle: 'ทำเสร็จแล้ว?',
+    cancelMadeHint: 'เปิดถ้าเครื่องดื่ม/อาหารถูกทำไปแล้ว — วัตถุดิบจะถูกบันทึกเป็นของเสีย',
+    cancelConfirm: 'ยืนยันยกเลิก',
+    cancelDone: (id: string) => `ยกเลิกออเดอร์ ${id} แล้ว`,
+    cancelAlready: 'ออเดอร์นี้ถูกยกเลิกไปแล้ว',
+    cancelFailed: 'ยกเลิกไม่สำเร็จ',
   },
 
   // ── POS Terminal ──────────────────────────────────────────────────────────

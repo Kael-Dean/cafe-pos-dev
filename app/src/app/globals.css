@@ -36,6 +36,13 @@
   --color-warning-fg: #7A4E10;
   --color-danger: #C24545;        /* Berry */
   --color-danger-50: #F7E5E5;
+  /* Darker berry for danger TEXT on light surfaces and for solid danger FILLS
+     that carry white text. The base --color-danger (#C24545) is only ~4.4:1 as
+     text on --color-surface-2 (fails AA) and ~5:1 as a white-text fill; this
+     deeper berry reads ≥5.4:1 as text on every light surface and ≥6.6:1 with
+     white text. Mirrors the --color-warning-fg pattern. */
+  --color-danger-fg: #A83232;
+  --color-danger-strong: #A83232;
   --color-info: #4A6FA5;
   --color-info-50: #E5ECF5;
 
@@ -144,6 +151,11 @@
   --color-warning-fg: #E8B86A;
   --color-danger: #E07A7A;
   --color-danger-50: #3A2020;
+  /* Danger TEXT on dark surfaces stays the light berry (≥5.2:1 on surface-2);
+     a deep berry would vanish here. Danger FILLS with white text use the deeper
+     berry so white reads ≥6.6:1 (the light #E07A7A would only be ~2.9:1). */
+  --color-danger-fg: #E07A7A;
+  --color-danger-strong: #A83232;
   --color-info: #7AA0D4;
   --color-info-50: #1E2A3A;
 
@@ -221,6 +233,11 @@
   --color-warning-fg: #7A4E10;
   --color-danger: #C24545;
   --color-danger-50: #F7E5E5;
+  /* Paper stays light in both themes, so pin the deep-berry danger text/fill
+     tokens to their light-theme values (the dark-theme #E07A7A would only be
+     ~2.5:1 as text on this paper). */
+  --color-danger-fg: #A83232;
+  --color-danger-strong: #A83232;
   --color-info: #4A6FA5;
   --color-info-50: #E5ECF5;
   /* Light island, so revert the focus ring to the light-mode deep amber even

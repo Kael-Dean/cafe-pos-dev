@@ -145,6 +145,16 @@ export function usePayOrder() {
   });
 }
 
+export function useVoidOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orderId, reason, restock }:
+      { orderId: string; reason: string; restock: boolean }) =>
+      api.post<OrderRead>(`/api/v1/orders/${orderId}/void`, { reason, restock }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['kds-orders'] }); },
+  });
+}
+
 export function useUpdateOrderStatus() {
   const qc = useQueryClient();
   return useMutation({

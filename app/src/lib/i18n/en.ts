@@ -247,6 +247,16 @@ export const en: Messages = {
     orderStarted: (id: string) => `Order ${id} started`,
     orderDone: (id: string) => `Order ${id} done`,
     orderType: { 'Dine-in': 'Dine-in', 'Takeaway': 'Takeaway', 'Delivery': 'Delivery' },
+    cancel: 'Cancel order',
+    cancelTitle: 'Cancel order',
+    cancelReasonLabel: 'Reason',
+    cancelReasonPlaceholder: 'e.g. wrong order',
+    cancelMadeToggle: 'Already made?',
+    cancelMadeHint: 'Turn on if already prepared — ingredients are recorded as waste',
+    cancelConfirm: 'Confirm cancel',
+    cancelDone: (id: string) => `Order ${id} canceled`,
+    cancelAlready: 'This order was already canceled',
+    cancelFailed: 'Cancel failed',
   },
 
   pos: {

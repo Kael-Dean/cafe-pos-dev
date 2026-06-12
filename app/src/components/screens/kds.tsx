@@ -4,9 +4,11 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import Icon from '../icons';
 import { useToast, Tag } from '../app-common';
 import { useI18n } from '@/lib/i18n';
-import { useKDSOrders, useUpdateOrderStatus, type KDSTicket } from '@/hooks/use-orders';
+import { useKDSOrders, useUpdateOrderStatus, useVoidOrder, type KDSTicket } from '@/hooks/use-orders';
+import { ApiError } from '@/lib/api-client';
 import { useAllProducts } from '@/hooks/use-products';
 import { useCookingSteps } from '@/hooks/use-cooking-steps';
+import CancelOrderModal from './cancel-order-modal';
 
 const STATUS_RANK: Record<KDSTicket['status'], number> = { new: 0, progress: 1, ready: 2 };
 const ACTION_COOLDOWN_MS = 600;
@@ -16,6 +18,8 @@ export default function KDS() {
   const { t } = useI18n();
   const { data: serverTickets, isLoading } = useKDSOrders();
   const updateStatus = useUpdateOrderStatus();
+  const voidOrder = useVoidOrder();
+  const [cancelTarget, setCancelTarget] = useState<KDSTicket | null>(null);
   const [localTickets, setLocalTickets] = useState<KDSTicket[]>([]);
   const [tick, setTick] = useState(0);
   const [stepsModal, setStepsModal] = useState<{ productId: string; productName: string } | null>(null);
@@ -126,6 +130,38 @@ export default function KDS() {
     }
   };
 
+  // Cancel ("ยกเลิก"): mirrors onDone's deliver/done removal path — the card
+  // fades out of its slot, the ticket is dropped locally, and the VOID call
+  // reverts stock/money server-side (excluded from the next poll). On failure we
+  // restore the ticket; a 409 means it was already canceled, so we keep it gone.
+  const handleCancel = async (reason: string, restock: boolean) => {
+    const ticket = cancelTarget;
+    if (!ticket) return;
+    const { orderId } = ticket;
+    recentActions.current.set(orderId, { status: 'done', at: Date.now() });
+    setLeaving(cur => new Set(cur).add(orderId));
+    leaveTimers.current.push(setTimeout(() => {
+      setLocalTickets(cur => cur.filter(t => t.orderId !== orderId));
+      setLeaving(cur => { const n = new Set(cur); n.delete(orderId); return n; });
+    }, 220));
+    setCancelTarget(null);
+    try {
+      await voidOrder.mutateAsync({ orderId, reason, restock });
+      toast({ kind: 'success', title: t.kds.cancelDone(ticket.id), duration: 1800 });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        // already canceled — keep it removed, let invalidate run, soft info toast
+        toast({ kind: 'info', title: t.kds.cancelAlready, duration: 1800 });
+      } else {
+        // restore the ticket (the 220ms timer may have already removed it)
+        recentActions.current.delete(orderId);
+        setLeaving(cur => { const n = new Set(cur); n.delete(orderId); return n; });
+        setLocalTickets(cur => cur.some(t => t.orderId === orderId) ? cur : [...cur, ticket]);
+        toast({ kind: 'danger', title: t.kds.cancelFailed });
+      }
+    }
+  };
+
   // FIFO by order time — positions stay put when a status changes, so rapid taps
   // never land on a different card that jumped into the slot
   const sorted = [...localTickets].sort((a, b) => a.placedAt - b.placedAt);
@@ -188,6 +224,7 @@ export default function KDS() {
                 nameToId={nameToId}
                 onBump={() => onBump(t)}
                 onDone={() => onDone(t)}
+                onCancel={() => setCancelTarget(t)}
                 onStepsClick={(productId, productName) => setStepsModal({ productId, productName })}
               />
             ))}
@@ -200,6 +237,13 @@ export default function KDS() {
         productId={stepsModal.productId}
         productName={stepsModal.productName}
         onClose={() => setStepsModal(null)}
+      />
+    )}
+    {cancelTarget && (
+      <CancelOrderModal
+        ticket={cancelTarget}
+        onClose={() => setCancelTarget(null)}
+        onConfirm={handleCancel}
       />
     )}
     </>
@@ -262,7 +306,7 @@ const TicketSkeleton = () => (
   </div>
 );
 
-const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, onBump, onDone, onStepsClick }: {
+const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, onBump, onDone, onCancel, onStepsClick }: {
   ticket: KDSTicket;
   leaving: boolean;
   animateIn: boolean;
@@ -270,6 +314,7 @@ const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, onBump, onDon
   nameToId: Map<string, string>;
   onBump: () => void;
   onDone: () => void;
+  onCancel: () => void;
   onStepsClick: (productId: string, productName: string) => void;
 }) => {
   const { t } = useI18n();
@@ -351,6 +396,11 @@ const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, onBump, onDon
             <Icon name="check" size={14} /> {t.kds.deliver}
           </button>
         )}
+        {/* "ยกเลิก" — secondary, danger-tinted; auto-width so it never competes
+            with the primary action that keeps flex:1 */}
+        <button onClick={onCancel} className="btn btn-ghost min-h-[44px]" style={{ flex: '0 0 auto', color: 'var(--color-danger-fg)' }}>
+          <Icon name="trash" size={14} /> {t.kds.cancel}
+        </button>
       </div>
     </div>
   );
