@@ -382,18 +382,18 @@ const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, onBump, onDon
 
       <div style={{ padding: 12, background: 'var(--color-surface-2)', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {ticket.status === 'new' && (
-          <button onClick={onBump} className="btn btn-primary min-h-[44px]" style={{ width: '100%' }}>
-            <Icon name="coffee" size={14} /> {t.kds.start}
+          <button onClick={onBump} className="btn btn-primary min-h-[52px]" style={{ width: '100%', fontSize: 15 }}>
+            <Icon name="coffee" size={16} /> {t.kds.start}
           </button>
         )}
         {ticket.status === 'progress' && (
-          <button onClick={onDone} className="btn btn-accent min-h-[44px]" style={{ width: '100%' }}>
-            <Icon name="check" size={14} /> {t.kds.done}
+          <button onClick={onDone} className="btn btn-accent min-h-[52px]" style={{ width: '100%', fontSize: 15 }}>
+            <Icon name="check" size={16} /> {t.kds.done}
           </button>
         )}
         {ticket.status === 'ready' && (
-          <button onClick={onDone} className="btn btn-primary min-h-[44px]" style={{ width: '100%', background: 'var(--color-success)', borderColor: 'var(--color-success)' }}>
-            <Icon name="check" size={14} /> {t.kds.deliver}
+          <button onClick={onDone} className="btn btn-primary min-h-[52px]" style={{ width: '100%', fontSize: 15, background: 'var(--color-success)', borderColor: 'var(--color-success)' }}>
+            <Icon name="check" size={16} /> {t.kds.deliver}
           </button>
         )}
         {/* "ยกเลิก" — own row, compact + right-aligned so a mis-tap on the primary
