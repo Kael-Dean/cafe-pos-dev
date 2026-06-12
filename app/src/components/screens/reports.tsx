@@ -10,6 +10,7 @@ import {
   loadSalesReport,
   type ReportMode,
   type ReportRow,
+  type RegisterLine,
   type SalesReportData,
 } from '@/hooks/use-sales-report';
 
@@ -83,6 +84,11 @@ function ReportSkeleton({ rangeMode }: { rangeMode: boolean }) {
         ))}
       </div>
       <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
+        {/* Wide register table mirrors the primary on-screen table */}
+        <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
+          <Skeleton height={15} width="40%" radius="var(--radius-sm)" style={{ marginBottom: 'var(--space-4)' }} />
+          <SkeletonTable rows={6} cols={6} />
+        </div>
         {Array.from({ length: rangeMode ? 3 : 2 }).map((_, i) => (
           <div key={i} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
             <Skeleton height={15} width="30%" radius="var(--radius-sm)" style={{ marginBottom: 'var(--space-4)' }} />
@@ -134,6 +140,92 @@ function ReportTable({ title, cols, rows, sub }: {
                 <td style={{ padding: '8px 16px' }}>รวม</td>
                 <td style={{ padding: '8px 16px', textAlign: 'right' }} className="num">{totalCount.toLocaleString()}</td>
                 <td style={{ padding: '8px 16px', textAlign: 'right' }} className="num">{baht(totalRev)}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+/* Flat per-line sales register mirroring the ยอดขาย.xltx layout: one row per
+   product line, bill-level columns (discount/net/payment/note) shown only on the
+   first line of each bill. Horizontally scrollable — it is intentionally wide. */
+function RegisterTable({ title, lines }: { title: string; lines: RegisterLine[] }) {
+  const totalLine = lines.reduce((s, r) => s + r.lineTotal, 0);
+  const totalNet = lines.reduce((s, r) => s + (r.firstOfBill ? r.billNet ?? 0 : 0), 0);
+  const billCount = lines.reduce((s, r) => s + (r.firstOfBill ? 1 : 0), 0);
+
+  const th: React.CSSProperties = {
+    padding: '8px 12px', fontWeight: 600, color: 'var(--color-text-secondary)',
+    whiteSpace: 'nowrap', textAlign: 'left', position: 'sticky', top: 0,
+    background: 'var(--color-surface-2)',
+  };
+  const thR: React.CSSProperties = { ...th, textAlign: 'right' };
+  const td: React.CSSProperties = { padding: '7px 12px', verticalAlign: 'top' };
+  const tdR: React.CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
+  const muted = 'var(--color-text-muted)';
+
+  return (
+    <Card style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border)' }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>{title}</div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+          แยกตามรายการสินค้าในแต่ละบิล • {billCount.toLocaleString()} บิล • {lines.length.toLocaleString()} รายการ
+        </div>
+      </div>
+      <div style={{ overflowX: 'auto', maxHeight: 520 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr>
+              <th style={thR}>ลำดับ</th>
+              <th style={th}>เลขที่บิล</th>
+              <th style={th}>วันที่</th>
+              <th style={th}>เวลา</th>
+              <th style={th}>ช่องทาง</th>
+              <th style={{ ...th, minWidth: 200 }}>รายการ</th>
+              <th style={thR}>จำนวน</th>
+              <th style={thR}>ราคา/หน่วย</th>
+              <th style={thR}>จำนวนเงิน</th>
+              <th style={thR}>ส่วนลด</th>
+              <th style={thR}>สุทธิ</th>
+              <th style={th}>ชำระเงิน</th>
+              <th style={{ ...th, minWidth: 140 }}>หมายเหตุ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.length === 0 ? (
+              <tr><td colSpan={13} style={{ padding: '20px 16px', textAlign: 'center', color: muted }}>ไม่มีรายการขายในช่วงที่เลือก</td></tr>
+            ) : lines.map((r, i) => (
+              <tr
+                key={`${r.billNo}-${i}`}
+                style={{ borderTop: r.firstOfBill && i > 0 ? '1px solid var(--color-border)' : '1px solid transparent' }}
+              >
+                <td style={{ ...tdR, color: 'var(--color-text-secondary)' }} className="num">{r.no}</td>
+                <td style={{ ...td, fontWeight: r.firstOfBill ? 600 : 400, color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.billNo : ''}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap', color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.date : ''}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap', color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.time : ''}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap', color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.channel : ''}</td>
+                <td style={td}>{r.product}</td>
+                <td style={tdR} className="num">{r.qty.toLocaleString()}</td>
+                <td style={tdR} className="num">{baht(r.unitPrice)}</td>
+                <td style={tdR} className="num">{baht(r.lineTotal)}</td>
+                <td style={tdR} className="num">{r.firstOfBill && r.billDiscount ? baht(r.billDiscount) : ''}</td>
+                <td style={{ ...tdR, fontWeight: r.firstOfBill ? 600 : 400 }} className="num">{r.firstOfBill ? baht(r.billNet ?? 0) : ''}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap' }}>{r.firstOfBill ? r.billPayment : ''}</td>
+                <td style={{ ...td, color: 'var(--color-text-secondary)' }}>{r.firstOfBill ? r.billNote ?? '' : ''}</td>
+              </tr>
+            ))}
+          </tbody>
+          {lines.length > 0 && (
+            <tfoot>
+              <tr style={{ borderTop: '2px solid var(--color-border-strong, var(--color-border))', fontWeight: 700, background: 'var(--color-surface-2)' }}>
+                <td style={td} colSpan={8}>รวม</td>
+                <td style={tdR} className="num">{baht(totalLine)}</td>
+                <td style={td} />
+                <td style={tdR} className="num">{baht(totalNet)}</td>
+                <td style={td} colSpan={2} />
               </tr>
             </tfoot>
           )}
@@ -291,6 +383,7 @@ export function Reports() {
           </div>
 
           <div style={{ display: 'grid', gap: 16 }}>
+            <RegisterTable title={`ข้อมูลการขาย — ${periodText}`} lines={data.register} />
             {data.mode === 'range' && (
               <ReportTable title="ยอดขายรายวัน" sub="แต่ละวันในช่วงที่เลือก" cols={['วันที่', 'จำนวนบิล', 'ยอดขาย']} rows={data.byDay} />
             )}
