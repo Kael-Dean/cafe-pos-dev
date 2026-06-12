@@ -24,6 +24,8 @@ const REGISTER_HEADERS = [
   'จำนวน', 'ราคา/หน่วย', 'จำนวนเงิน', 'ส่วนลด', 'สุทธิ', 'ชำระเงิน', 'หมายเหตุ',
 ] as const;
 const REGISTER_WIDTHS = [6, 12, 12, 8, 12, 34, 9, 12, 14, 12, 14, 16, 22];
+const REGISTER_COLS = REGISTER_HEADERS.length;
+const ZEBRA_ARGB = 'FFF6F1EA'; // very light latte — alternating bill bands
 
 function addRegisterSheet(wb: Workbook, data: SalesReportData): void {
   const ws = wb.addWorksheet('การขาย');
@@ -34,21 +36,26 @@ function addRegisterSheet(wb: Workbook, data: SalesReportData): void {
       ? `ข้อมูลการขาย — ${thaiDate(data.from)}`
       : `ข้อมูลการขาย — ${thaiDate(data.from)} ถึง ${thaiDate(data.to)}`;
   ws.addRow([titleText]);
-  ws.mergeCells(1, 1, 1, REGISTER_HEADERS.length);
+  ws.mergeCells(1, 1, 1, REGISTER_COLS);
   ws.getRow(1).font = { bold: true, size: 14 };
   ws.getRow(1).alignment = { horizontal: 'center', vertical: 'middle' };
 
+  // Header — style every column explicitly (incl. ชำระเงิน / หมายเหตุ) so the
+  // fill never stops short of the last column.
   const head = ws.addRow([...REGISTER_HEADERS]);
   head.font = { bold: true };
-  head.eachCell((c) => {
-    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_ARGB } };
-    c.alignment = { vertical: 'middle', wrapText: true };
-  });
+  for (let c = 1; c <= REGISTER_COLS; c++) {
+    const cell = head.getCell(c);
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_ARGB } };
+    cell.alignment = { vertical: 'middle', wrapText: true };
+  }
 
   let totalLine = 0;
   let totalNet = 0;
+  let band = 0; // increments per bill → zebra stripes the whole bill, not each line
   for (const r of data.register) {
     const first = r.firstOfBill;
+    if (first) band += 1;
     const row = ws.addRow([
       r.no,
       first ? r.billNo : '',
@@ -65,12 +72,20 @@ function addRegisterSheet(wb: Workbook, data: SalesReportData): void {
       first ? r.billNote ?? '' : '',
     ]);
     [8, 9, 10, 11].forEach((c) => { row.getCell(c).numFmt = MONEY_FMT; });
+    if (band % 2 === 0) {
+      for (let c = 1; c <= REGISTER_COLS; c++) {
+        row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ZEBRA_ARGB } };
+      }
+    }
     totalLine += r.lineTotal;
     if (first) totalNet += r.billNet ?? 0;
   }
 
   const totalRow = ws.addRow(['', '', '', '', '', 'รวม', '', '', totalLine, '', totalNet, '', '']);
   totalRow.font = { bold: true };
+  for (let c = 1; c <= REGISTER_COLS; c++) {
+    totalRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_ARGB } };
+  }
   totalRow.getCell(9).numFmt = MONEY_FMT;
   totalRow.getCell(11).numFmt = MONEY_FMT;
 
