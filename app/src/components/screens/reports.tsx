@@ -240,8 +240,8 @@ function RegisterTable({ title, lines }: { title: string; lines: RegisterLine[] 
   );
 }
 
-// ── Screen ────────────────────────────────────────────────────────────────────
-export function Reports() {
+// ── Sales report ──────────────────────────────────────────────────────────────
+function SalesReport({ onBack }: { onBack: () => void }) {
   const { data: me } = useCurrentUser();
   const storeName = me?.store_name ?? 'Kafé OS';
 
@@ -297,6 +297,11 @@ export function Reports() {
 
   return (
     <div className="scroll" style={{ height: '100%', overflow: 'auto', padding: 'var(--space-6)', background: 'var(--color-bg)' }}>
+      {/* Back to hub */}
+      <button className="btn btn-ghost hover-raise" onClick={onBack} style={{ marginBottom: 'var(--space-4)', alignSelf: 'flex-start' }}>
+        <Icon name="chevronLeft" size={14} /> รายงาน
+      </button>
+
       {/* Header */}
       <div style={{ marginBottom: 'var(--space-5)' }}>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 2 }}>รายงาน</div>
@@ -406,4 +411,67 @@ export function Reports() {
       )}
     </div>
   );
+}
+
+// ── Reports hub ───────────────────────────────────────────────────────────────
+// Landing page that lists the available reports. New reports are added by
+// appending to REPORTS and handling the id in Reports() below.
+type ReportEntry = { id: string; icon: string; title: string; desc: string };
+const REPORTS: ReportEntry[] = [
+  { id: 'sales', icon: 'reports', title: 'รายงานยอดขาย', desc: 'สรุปยอดขายรายวัน/ช่วงวันที่ + ดาวน์โหลด Excel' },
+];
+
+function ReportCard({ entry, onOpen }: { entry: ReportEntry; onOpen: (id: string) => void }) {
+  return (
+    <button
+      className="hover-raise pressable"
+      onClick={() => onOpen(entry.id)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 'var(--space-4)', textAlign: 'left', width: '100%',
+        background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+        borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)', cursor: 'pointer', fontFamily: 'inherit',
+      }}
+    >
+      <div style={{
+        width: 44, height: 44, flexShrink: 0, borderRadius: 'var(--radius-md)',
+        background: 'var(--color-accent-50, var(--color-surface-2))', color: 'var(--color-accent)',
+        display: 'grid', placeItems: 'center',
+      }}>
+        <Icon name={entry.icon} size={22} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text)' }}>{entry.title}</div>
+        <div className="text-pretty" style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 2 }}>{entry.desc}</div>
+      </div>
+      <Icon name="chevronRight" size={18} color="var(--color-text-muted)" />
+    </button>
+  );
+}
+
+function ReportsHub({ onOpen }: { onOpen: (id: string) => void }) {
+  return (
+    <div className="scroll" style={{ height: '100%', overflow: 'auto', padding: 'var(--space-6)', background: 'var(--color-bg)' }}>
+      <div style={{ marginBottom: 'var(--space-5)' }}>
+        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 2 }}>รายงาน</div>
+        <h1 className="text-balance" style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>รายงานทั้งหมด</h1>
+        <div className="text-pretty" style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)' }}>เลือกรายงานที่ต้องการดู</div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 'var(--space-4)' }}>
+        {REPORTS.map((r) => (
+          <ReportCard key={r.id} entry={r} onOpen={onOpen} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────────
+// Small in-screen router: hub (default) → individual report sub-views. The whole
+// screen remounts on navigation (key={screen} in page.tsx), so re-entering the
+// reports screen always lands back on the hub.
+export function Reports() {
+  const [view, setView] = useState<'hub' | 'sales'>('hub');
+  if (view === 'sales') return <SalesReport onBack={() => setView('hub')} />;
+  return <ReportsHub onOpen={(id) => { if (id === 'sales') setView('sales'); }} />;
 }
