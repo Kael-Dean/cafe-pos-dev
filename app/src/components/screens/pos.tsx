@@ -6,7 +6,7 @@ import { useToast, baht } from '../app-common';
 import { useI18n } from '@/lib/i18n';
 import { useAllProducts, useCategories, type MenuItem } from '@/hooks/use-products';
 import { useProductDetail } from '@/hooks/use-bom';
-import { useCreateOrder, usePayOrder } from '@/hooks/use-orders';
+import { useCreateOrder, usePayOrder, displayOrderNo } from '@/hooks/use-orders';
 import { ApiError } from '@/lib/api-client';
 import { useEvaluatePromotions, type EligiblePromotion } from '@/hooks/use-promotions';
 import ModifierModal from './modifier-modal';
@@ -41,6 +41,8 @@ export default function POSTerminal() {
   const [modifierGroupIds, setModifierGroupIds] = useState<string[]>([]);
   const [payment, setPayment] = useState<string | null>(null);
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  // Server-issued order time for the live receipt; keeps the IV "เลขที่:" stable across reprints.
+  const [receiptIssuedAt, setReceiptIssuedAt] = useState<Date | null>(null);
   const [activeTab, setActiveTab] = useState<'menu' | 'cart'>('menu');
   const [showMembership, setShowMembership] = useState(false);
   const [membershipPhase, setMembershipPhase] = useState<'lookup' | 'register'>('lookup');
@@ -215,11 +217,12 @@ export default function POSTerminal() {
         const earned = order.points_earned ?? 0;
         toast({
           kind: 'success', title: t.pos.paid,
-          msg: t.pos.paidMsg(String(order.order_number), baht(finalTotal), earned > 0 ? t.pos.pointsPart(earned) : ''),
+          msg: t.pos.paidMsg(String(displayOrderNo(order)), baht(finalTotal), earned > 0 ? t.pos.pointsPart(earned) : ''),
           duration: 3500,
         });
+        setReceiptIssuedAt(new Date(order.created_at));
         setReceiptData({
-          orderNumber: String(order.order_number),
+          orderNumber: String(displayOrderNo(order)),
           items: cartSnapshot.map(l => ({ name: l.name, qty: l.qty, unitPrice: l.unitPrice, mods: l.mods.length ? l.mods : undefined })),
           subtotal: subtotalSnapshot,
           total: finalTotal,
@@ -238,7 +241,7 @@ export default function POSTerminal() {
         toast({
           kind: 'warning',
           title: t.pos.paidFailedTitle,
-          msg: t.pos.paidFailedMsg(String(order.order_number), pmsg),
+          msg: t.pos.paidFailedMsg(String(displayOrderNo(order)), pmsg),
           duration: 6000,
         });
       })
@@ -592,7 +595,8 @@ export default function POSTerminal() {
       {receiptData && (
         <ReceiptModal
           data={receiptData}
-          onClose={() => setReceiptData(null)}
+          issuedAt={receiptIssuedAt ?? undefined}
+          onClose={() => { setReceiptData(null); setReceiptIssuedAt(null); }}
           onPrint={async () => {
             await printReceipt({
               orderNumber: receiptData.orderNumber,
@@ -602,6 +606,7 @@ export default function POSTerminal() {
               paymentMethod: receiptData.paymentMethod,
               cashGiven: receiptData.cashGiven,
               memberName: receiptData.memberName,
+              ...(receiptIssuedAt ? { issuedAt: receiptIssuedAt } : {}),
             });
           }}
         />

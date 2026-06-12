@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import Icon from '../icons';
 import { bahtText } from '@/lib/baht-text';
+import { makeInvoiceNo } from '@/lib/receipt-number';
 
 /**
  * The preview reproduces a physical 80mm thermal slip, which is light paper
@@ -116,8 +117,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
   const dialogRef = useModalA11y(onClose);
 
   const now = issuedAt ?? new Date();
-  const buddhistYear = now.getFullYear() + 543;
-  const invoiceNo = `IV${buddhistYear}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(data.orderNumber).padStart(4, '0')}`;
+  const invoiceNo = makeInvoiceNo(String(data.orderNumber), now);
   const formatDate = (d: Date) => d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
   const formatTime = (d: Date) => d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

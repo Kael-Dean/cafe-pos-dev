@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 import { DEFAULT_STORE, type StoreInfo } from '@/components/screens/receipt-modal';
 import { sendPrintJob } from '@/lib/printer-bridge';
+import { makeInvoiceNo } from '@/lib/receipt-number';
 
 const PAY_LABEL: Record<string, string> = {
   cash: 'เงินสด',
@@ -26,12 +27,6 @@ export interface PrintReceiptArgs {
   copy?: boolean;
   /** Optional store-header override (only defined fields win); defaults to DEFAULT_STORE. */
   store?: Partial<StoreInfo>;
-}
-
-// Receipt running number, mirrors the on-screen receipt modal.
-function makeInvoiceNo(orderNumber: string, when: Date = new Date()): string {
-  const buddhistYear = when.getFullYear() + 543;
-  return `IV${buddhistYear}${String(when.getMonth() + 1).padStart(2, '0')}${String(when.getDate()).padStart(2, '0')}-${orderNumber.padStart(4, '0')}`;
 }
 
 export function usePrinter() {

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
-import { parseModifiers } from '@/hooks/use-orders';
+import { parseModifiers, displayOrderNo } from '@/hooks/use-orders';
 import type { ReceiptData } from '@/components/screens/receipt-modal';
 import type { PrintReceiptArgs } from '@/hooks/use-printer';
 
@@ -20,6 +20,7 @@ export interface OrderItemFull {
 export interface OrderFull {
   id: string;
   order_number: number;
+  daily_order_number?: number;
   store_id: string;
   customer_id: string | null;
   status: string;
@@ -79,7 +80,7 @@ function mapItems(o: OrderFull) {
 export function mapOrderToReceipt(o: OrderFull): ReceiptData {
   const discount = Number(o.discount);
   return {
-    orderNumber: String(o.order_number),
+    orderNumber: String(displayOrderNo(o)),
     items: mapItems(o),
     subtotal: Number(o.subtotal),
     total: Number(o.total),
@@ -93,7 +94,7 @@ export function mapOrderToReceipt(o: OrderFull): ReceiptData {
  *  original order date so the reprint shows when the sale actually happened. */
 export function mapOrderToPrintArgs(o: OrderFull): PrintReceiptArgs {
   return {
-    orderNumber: String(o.order_number),
+    orderNumber: String(displayOrderNo(o)),
     items: mapItems(o),
     subtotal: Number(o.subtotal),
     total: Number(o.total),

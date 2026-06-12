@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useFadeRise } from '@/lib/motion';
 import { useToast, baht } from '../app-common';
 import { usePrinter } from '@/hooks/use-printer';
+import { displayOrderNo } from '@/hooks/use-orders';
 import ReceiptModal from './receipt-modal';
 import {
   useReceiptCopies,
@@ -179,7 +180,7 @@ export default function ReceiptCopies() {
                 onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-surface-2)'; }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
               >
-                <div style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>#{o.order_number}</div>
+                <div style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>#{displayOrderNo(o)}</div>
                 <div style={{ color: 'var(--color-text-secondary)', fontVariantNumeric: 'tabular-nums' }}>{formatTime(o.created_at)}</div>
                 <div style={{ color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {preview} <span style={{ opacity: 0.6 }}>({itemCount})</span>
