@@ -52,10 +52,8 @@ function addRegisterSheet(wb: Workbook, data: SalesReportData): void {
 
   let totalLine = 0;
   let totalNet = 0;
-  let band = 0; // increments per bill → zebra stripes the whole bill, not each line
-  for (const r of data.register) {
+  data.register.forEach((r, idx) => {
     const first = r.firstOfBill;
-    if (first) band += 1;
     const row = ws.addRow([
       r.no,
       first ? r.billNo : '',
@@ -72,14 +70,14 @@ function addRegisterSheet(wb: Workbook, data: SalesReportData): void {
       first ? r.billNote ?? '' : '',
     ]);
     [8, 9, 10, 11].forEach((c) => { row.getCell(c).numFmt = MONEY_FMT; });
-    if (band % 2 === 0) {
+    if (idx % 2 === 1) { // alternate every row, like the reference workbook
       for (let c = 1; c <= REGISTER_COLS; c++) {
         row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ZEBRA_ARGB } };
       }
     }
     totalLine += r.lineTotal;
     if (first) totalNet += r.billNet ?? 0;
-  }
+  });
 
   const totalRow = ws.addRow(['', '', '', '', '', 'รวม', '', '', totalLine, '', totalNet, '', '']);
   totalRow.font = { bold: true };

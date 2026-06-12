@@ -157,14 +157,6 @@ function RegisterTable({ title, lines }: { title: string; lines: RegisterLine[] 
   const totalNet = lines.reduce((s, r) => s + (r.firstOfBill ? r.billNet ?? 0 : 0), 0);
   const billCount = lines.reduce((s, r) => s + (r.firstOfBill ? 1 : 0), 0);
 
-  // Zebra by bill: every line of a bill shares one shade so multi-line bills read
-  // as a block. `band` flips each time a new bill starts.
-  let band = 0;
-  const bands = lines.map((r) => {
-    if (r.firstOfBill) band += 1;
-    return band % 2 === 0;
-  });
-
   const th: React.CSSProperties = {
     padding: '8px 12px', fontWeight: 600, color: 'var(--color-text-secondary)',
     whiteSpace: 'nowrap', textAlign: 'left', position: 'sticky', top: 0,
@@ -210,7 +202,7 @@ function RegisterTable({ title, lines }: { title: string; lines: RegisterLine[] 
                 key={`${r.billNo}-${i}`}
                 style={{
                   borderTop: r.firstOfBill && i > 0 ? '1px solid var(--color-border)' : '1px solid transparent',
-                  background: bands[i] ? 'var(--color-surface-2)' : 'transparent',
+                  background: i % 2 === 1 ? 'var(--color-surface-2)' : 'transparent',
                 }}
               >
                 <td style={{ ...tdR, color: 'var(--color-text-secondary)' }} className="num">{r.no}</td>
