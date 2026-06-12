@@ -118,6 +118,16 @@ export default function CancelOrderModal({ ticket, onClose, onConfirm }: Props) 
         </div>
 
         <div className="scroll" style={{ padding: 'var(--space-6)', overflow: 'auto' }}>
+          <div role="alert" style={{
+            display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+            padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-5)',
+            borderRadius: 'var(--radius-md)', background: 'var(--color-danger-50)',
+            color: 'var(--color-danger)', fontSize: 14, fontWeight: 700,
+          }}>
+            <Icon name="warning" size={18} />
+            <span>{t.kds.cancelWarning(String(ticket.queue))}</span>
+          </div>
+
           <label htmlFor="cancel-reason" style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 'var(--space-2)' }}>
             {t.kds.cancelReasonLabel}
           </label>

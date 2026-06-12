@@ -266,6 +266,7 @@ export const th = {
     orderType: { 'Dine-in': 'ทานที่ร้าน', 'Takeaway': 'กลับบ้าน', 'Delivery': 'เดลิเวอรี' },
     cancel: 'ยกเลิกออเดอร์',
     cancelTitle: 'ยกเลิกออเดอร์',
+    cancelWarning: (id: string) => `ต้องการยกเลิกออเดอร์ #${id} ใช่ไหม?`,
     cancelReasonLabel: 'เหตุผล',
     cancelReasonPlaceholder: 'เช่น ลูกค้าสั่งผิด',
     cancelMadeToggle: 'ทำเสร็จแล้ว?',

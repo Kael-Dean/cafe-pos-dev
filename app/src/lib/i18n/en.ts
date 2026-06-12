@@ -249,6 +249,7 @@ export const en: Messages = {
     orderType: { 'Dine-in': 'Dine-in', 'Takeaway': 'Takeaway', 'Delivery': 'Delivery' },
     cancel: 'Cancel order',
     cancelTitle: 'Cancel order',
+    cancelWarning: (id: string) => `Cancel order #${id}?`,
     cancelReasonLabel: 'Reason',
     cancelReasonPlaceholder: 'e.g. wrong order',
     cancelMadeToggle: 'Already made?',

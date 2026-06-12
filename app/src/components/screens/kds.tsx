@@ -380,27 +380,33 @@ const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, onBump, onDon
         ))}
       </div>
 
-      <div style={{ padding: 12, background: 'var(--color-surface-2)', display: 'flex', gap: 8 }}>
+      <div style={{ padding: 12, background: 'var(--color-surface-2)', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {ticket.status === 'new' && (
-          <button onClick={onBump} className="btn btn-primary min-h-[44px]" style={{ flex: 1 }}>
+          <button onClick={onBump} className="btn btn-primary min-h-[44px]" style={{ width: '100%' }}>
             <Icon name="coffee" size={14} /> {t.kds.start}
           </button>
         )}
         {ticket.status === 'progress' && (
-          <button onClick={onDone} className="btn btn-accent min-h-[44px]" style={{ flex: 1 }}>
+          <button onClick={onDone} className="btn btn-accent min-h-[44px]" style={{ width: '100%' }}>
             <Icon name="check" size={14} /> {t.kds.done}
           </button>
         )}
         {ticket.status === 'ready' && (
-          <button onClick={onDone} className="btn btn-primary min-h-[44px]" style={{ flex: 1, background: 'var(--color-success)', borderColor: 'var(--color-success)' }}>
+          <button onClick={onDone} className="btn btn-primary min-h-[44px]" style={{ width: '100%', background: 'var(--color-success)', borderColor: 'var(--color-success)' }}>
             <Icon name="check" size={14} /> {t.kds.deliver}
           </button>
         )}
-        {/* "ยกเลิก" — secondary, danger-tinted; auto-width so it never competes
-            with the primary action that keeps flex:1 */}
-        <button onClick={onCancel} className="btn btn-ghost min-h-[44px]" style={{ flex: '0 0 auto', color: 'var(--color-danger-fg)' }}>
-          <Icon name="trash" size={14} /> {t.kds.cancel}
-        </button>
+        {/* "ยกเลิก" — own row, compact + right-aligned so a mis-tap on the primary
+            action above is much harder. Click opens a confirm dialog (no direct void). */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            className="btn btn-ghost"
+            style={{ padding: '4px 10px', minHeight: 32, fontSize: 12, color: 'var(--color-danger-fg)' }}
+          >
+            <Icon name="trash" size={12} /> {t.kds.cancel}
+          </button>
+        </div>
       </div>
     </div>
   );
