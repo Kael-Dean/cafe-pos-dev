@@ -70,6 +70,7 @@ export default function Inventory() {
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [draftReceiptId, setDraftReceiptId] = useState<string | null>(null);
   const [wastageOpen, setWastageOpen] = useState(false);
+  const [wastagePresetId, setWastagePresetId] = useState<string | null>(null);
   const [addIngredientOpen, setAddIngredientOpen] = useState(false);
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<InventoryItem | null>(null);
   const [supplierHistoryItem, setSupplierHistoryItem] = useState<InventoryItem | null>(null);
@@ -167,7 +168,7 @@ export default function Inventory() {
 
   const openNewReceipt = () => { setDraftReceiptId(null); setReceiptOpen(true); };
   const openDraftReceipt = (id: string) => { setDraftReceiptId(id); setReceiptOpen(true); };
-  const openWastage = (itemId?: string) => { setWastageOpen(true); };
+  const openWastage = (itemId?: string) => { setWastagePresetId(itemId ?? null); setWastageOpen(true); };
 
   const TABS = [
     { id: 'items',   label: 'วัตถุดิบ' },
@@ -242,7 +243,7 @@ export default function Inventory() {
           }}
         />
       )}
-      {wastageOpen && <WastageModal items={inventoryItems ?? []} presetItemId={null} onClose={() => setWastageOpen(false)} onSubmit={submitWastage} />}
+      {wastageOpen && <WastageModal items={inventoryItems ?? []} presetItemId={wastagePresetId} onClose={() => setWastageOpen(false)} onSubmit={submitWastage} />}
       {addIngredientOpen && <AddIngredientModal onClose={() => setAddIngredientOpen(false)} onSubmit={submitAddIngredient} isPending={createItem.isPending} />}
       {deleteConfirmItem && (
         <DeleteInventoryConfirmModal
