@@ -197,6 +197,10 @@ export default function POSTerminal() {
         modifier_ids: l.modIds,
       })),
       ...(memberSnapshot ? {
+        // Attribute the sale to the member's customer so the salesperson KPI
+        // (Order → Customer → Salesperson) can pick it up — orders without
+        // customer_id are excluded from that report.
+        customer_id: memberSnapshot.account.customer_id,
         member_id: memberSnapshot.account.id,
         redeem_reward: memberSnapshot.redeemReward,
         reward_product_id: memberSnapshot.rewardProduct?.id ?? null,
