@@ -1,7 +1,7 @@
 import type { WastageReportData } from '@/hooks/use-wastage-report';
 import type { Workbook } from 'exceljs';
 
-const MONEY_FMT = '#,##0.00';
+const MONEY_FMT = '#,##0.00" บาท"';
 const QTY_FMT = '#,##0.###';
 const HEADER_ARGB = 'FFEFE7DD'; // soft latte tone for header rows
 const ZEBRA_ARGB = 'FFF6F1EA';
