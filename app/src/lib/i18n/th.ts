@@ -42,7 +42,7 @@ export const th = {
     pos: 'หน้าขาย (POS)',
     kds: 'ครัว (KDS)',
     dashboard: 'แดชบอร์ด',
-    bom: 'สูตรการผลิต (BOM)',
+    bom: 'สร้างเมนู',
     bakery: 'เบเกอรี่ / ส่วนผสมทำเมนู',
     inventory: 'คลังวัตถุดิบ',
     'pre-orders': 'พรีออเดอร์',
