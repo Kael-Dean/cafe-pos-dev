@@ -302,7 +302,7 @@ export default function BOMBuilder() {
         <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--color-border)' }}>
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 4 }}>P1 — Inventory</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}>BOM Builder</h2>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}>สร้างเมนู</h2>
             <button onClick={() => setAddMenuOpen(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)', flexShrink: 0 }} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={12} /> เพิ่มรายการ</button>
           </div>
           <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>สูตรอาหาร · ต้นทุน · margin</div>
@@ -658,7 +658,7 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
           )}
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
         <div>
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>
             {productType === 'MENU' ? 'ราคาขาย' : 'ต้นทุนผลิต'}
