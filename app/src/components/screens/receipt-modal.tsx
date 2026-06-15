@@ -91,7 +91,7 @@ function useModalA11y(onClose: () => void) {
         ) ?? [],
       ).filter((el) => el.offsetParent !== null);
 
-    focusables()[0]?.focus();
+    focusables()[0]?.focus({ preventScroll: true });
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
@@ -121,9 +121,8 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
   const dialogRef = useModalA11y(onClose);
 
   const now = issuedAt ?? new Date();
-  const [invoiceNo, setInvoiceNo] = useState(
-    () => data.receiptNo ?? makeInvoiceNo(String(data.orderNumber), now),
-  );
+  const invoiceNo = data.receiptNo ?? makeInvoiceNo(String(data.orderNumber), now);
+  const [dateStr, setDateStr] = useState(() => now.toLocaleString('th-TH'));
   const formatDate = (d: Date) => d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
   const formatTime = (d: Date) => d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -149,7 +148,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
           .receipt-print-root .receipt-no-print { display: none !important; }
           .receipt-print-root .receipt-scroll { max-height: none !important; overflow: visible !important; padding: 0 !important; background: white !important; }
           .receipt-print-root .receipt-paper { box-shadow: none !important; border: none !important; margin: 0 !important; border-radius: 0 !important; max-height: none !important; overflow: visible !important; }
-          .receipt-print-root .receipt-invoice-input { border: none !important; padding: 0 !important; background: transparent !important; }
+          .receipt-print-root .receipt-edit-input { border: none !important; padding: 0 !important; background: transparent !important; }
         }
       `}</style>
 
@@ -159,8 +158,8 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
           position: 'fixed', inset: 0, zIndex: 300,
           background: 'var(--color-scrim, rgba(26, 16, 8, 0.55))',
           backdropFilter: 'blur(6px)',
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-          padding: 'var(--space-5) var(--space-4) var(--space-10)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 'var(--space-4)',
           overflowY: 'auto',
         }}
         onClick={onClose}
@@ -175,17 +174,17 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
           onClick={e => e.stopPropagation()}
           style={{
             width: '100%', maxWidth: 460,
-            maxHeight: 'calc(100dvh - var(--space-5) - var(--space-10))',
+            maxHeight: 'calc(100dvh - (var(--space-4) * 2))',
             background: 'var(--color-surface)',
             borderRadius: 'var(--radius-xl)',
             boxShadow: 'var(--shadow-lg)',
-            display: 'flex', flexDirection: 'column', minHeight: 0,
+            display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden',
             animation: 'modal-in var(--dur-slow) var(--ease-out)',
           }}
         >
           {/* ── Toolbar ── */}
           <div className="receipt-no-print" style={{
-            padding: '14px 20px',
+            padding: '14px 20px', flexShrink: 0,
             display: 'flex', alignItems: 'center', gap: 10,
             borderBottom: '1px solid var(--color-border)',
           }}>
@@ -215,7 +214,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
             <ReceiptPaper
               data={data}
               invoiceNo={invoiceNo} now={now} copy={copy}
-              editable={copy} onInvoiceNoChange={setInvoiceNo}
+              dateStr={dateStr} editableDate={copy} onDateChange={setDateStr}
               fmt={fmt} formatDate={formatDate} formatTime={formatTime}
               storeInfo={DEFAULT_STORE}
             />
@@ -223,7 +222,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
 
           {/* ── Footer actions ── */}
           <div className="receipt-no-print" style={{
-            padding: 'var(--space-3) var(--space-5)', borderTop: '1px solid var(--color-border)',
+            padding: 'var(--space-3) var(--space-5)', flexShrink: 0, borderTop: '1px solid var(--color-border)',
             display: 'flex', gap: 'var(--space-2)', alignItems: 'center',
           }}>
             <button onClick={handleBrowserPrint} disabled={isPrinting} className="icon-btn pressable" style={{
@@ -292,17 +291,19 @@ function TRow({ l, r, bold, muted, indent }: {
   );
 }
 
-export function ReceiptPaper({ data, invoiceNo, now, copy, editable, onInvoiceNoChange, fmt, storeInfo }: {
+export function ReceiptPaper({ data, invoiceNo, now, copy, dateStr, editableDate, onDateChange, fmt, storeInfo }: {
   data: ReceiptData; invoiceNo: string; now: Date; copy?: boolean;
-  /** When true, the "เลขที่:" line becomes an editable input (frontend-only). */
-  editable?: boolean;
-  onInvoiceNoChange?: (v: string) => void;
+  /** Display string for the date/time line; defaults to `now` in th-TH. */
+  dateStr?: string;
+  /** When true, the date line becomes an editable input (frontend-only). */
+  editableDate?: boolean;
+  onDateChange?: (v: string) => void;
   fmt: (n: number) => string;
   formatDate?: (d: Date) => string; formatTime?: (d: Date) => string;
   storeInfo?: StoreInfo;
 }) {
   const S = { ...DEFAULT_STORE, ...storeInfo };
-  const dateStr = now.toLocaleString('th-TH'); // matches the bridge's Date.toLocaleString('th-TH')
+  const dateText = dateStr ?? now.toLocaleString('th-TH'); // matches the bridge's Date.toLocaleString('th-TH')
 
   return (
     <div className="receipt-paper" style={{
@@ -338,28 +339,27 @@ export function ReceiptPaper({ data, invoiceNo, now, copy, editable, onInvoiceNo
       <Dash />
 
       {/* ── Order meta ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span>เลขที่:</span>
-        {editable ? (
+      <div>เลขที่: <span style={MONO}>{invoiceNo}</span></div>
+      <div>ออเดอร์: <span style={MONO}>#{data.orderNumber}</span></div>
+      {editableDate ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <input
-            className="receipt-invoice-input"
-            value={invoiceNo}
-            onChange={e => onInvoiceNoChange?.(e.target.value)}
-            aria-label="แก้เลขที่ใบเสร็จ"
+            className="receipt-edit-input"
+            value={dateText}
+            onChange={e => onDateChange?.(e.target.value)}
+            aria-label="แก้วันที่ในใบเสร็จ"
             spellCheck={false}
             style={{
-              ...MONO, flex: 1, minWidth: 0, color: INK,
+              ...MONO, flex: 1, minWidth: 0, color: INK_MUTED,
               padding: '1px 5px', borderRadius: 4,
               border: `1px solid ${DASH}`, background: PAPER,
               fontSize: 'inherit', lineHeight: 'inherit',
             }}
           />
-        ) : (
-          <span style={MONO}>{invoiceNo}</span>
-        )}
-      </div>
-      <div>ออเดอร์: <span style={MONO}>#{data.orderNumber}</span></div>
-      <div style={{ color: INK_MUTED }}>{dateStr}</div>
+        </div>
+      ) : (
+        <div style={{ color: INK_MUTED }}>{dateText}</div>
+      )}
       {data.memberName && <div>ลูกค้า: {data.memberName}</div>}
       {data.salesName && <div>เซลล์: {data.salesName}</div>}
 
