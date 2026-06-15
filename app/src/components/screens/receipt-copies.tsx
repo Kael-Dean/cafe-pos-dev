@@ -196,6 +196,7 @@ export default function ReceiptCopies() {
       {/* ── Receipt copy preview ── */}
       {selected && (
         <ReceiptModal
+          key={selected.id}
           data={mapOrderToReceipt(selected)}
           issuedAt={new Date(selected.created_at)}
           copy

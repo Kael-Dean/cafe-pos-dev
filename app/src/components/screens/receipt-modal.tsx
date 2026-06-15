@@ -41,6 +41,7 @@ export interface ReceiptData {
   // ── Membership (server-computed; present when a member was attached) ──
   discount?: number;
   memberName?: string;
+  salesName?: string;
   pointsEarned?: number;
   rewardRedeemed?: boolean;
 }
@@ -65,7 +66,7 @@ interface Props {
 
 export const DEFAULT_STORE: StoreInfo = {
   name: 'ร้านตะวันอ้อมข้าว',
-  address: '123 ถ.ราชดำเนิน ต.ในเมือง อ.เมืองสุรินทร์ จ.สุรินทร์ 32000',
+  address: '126 หมู่ 4 ตำบลตาอ็อง อำเภอเมืองสุรินทร์ จังหวัดสุรินทร์ 32000',
   taxId: '0105544000001',
   branch: 'สาขาที่ 00001',
   phone: '044-511-234',
@@ -120,7 +121,9 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
   const dialogRef = useModalA11y(onClose);
 
   const now = issuedAt ?? new Date();
-  const invoiceNo = data.receiptNo ?? makeInvoiceNo(String(data.orderNumber), now);
+  const [invoiceNo, setInvoiceNo] = useState(
+    () => data.receiptNo ?? makeInvoiceNo(String(data.orderNumber), now),
+  );
   const formatDate = (d: Date) => d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
   const formatTime = (d: Date) => d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -144,7 +147,9 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
           .receipt-print-root { position: fixed; inset: 0; display: block !important; overflow: visible; background: white; }
           .receipt-print-root .receipt-modal-shell { all: unset; display: block; }
           .receipt-print-root .receipt-no-print { display: none !important; }
+          .receipt-print-root .receipt-scroll { max-height: none !important; overflow: visible !important; padding: 0 !important; background: white !important; }
           .receipt-print-root .receipt-paper { box-shadow: none !important; border: none !important; margin: 0 !important; border-radius: 0 !important; max-height: none !important; overflow: visible !important; }
+          .receipt-print-root .receipt-invoice-input { border: none !important; padding: 0 !important; background: transparent !important; }
         }
       `}</style>
 
@@ -170,10 +175,11 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
           onClick={e => e.stopPropagation()}
           style={{
             width: '100%', maxWidth: 460,
+            maxHeight: 'calc(100dvh - var(--space-5) - var(--space-10))',
             background: 'var(--color-surface)',
             borderRadius: 'var(--radius-xl)',
             boxShadow: 'var(--shadow-lg)',
-            display: 'flex', flexDirection: 'column',
+            display: 'flex', flexDirection: 'column', minHeight: 0,
             animation: 'modal-in var(--dur-slow) var(--ease-out)',
           }}
         >
@@ -205,10 +211,11 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
           </div>
 
           {/* ── Receipt preview (tinted paper tray; stays light in both themes) ── */}
-          <div style={{ padding: 'var(--space-5)', overflowY: 'auto', maxHeight: '68dvh', background: PAPER_TRAY }}>
+          <div className="receipt-scroll" style={{ padding: 'var(--space-5)', overflowY: 'auto', flex: 1, minHeight: 0, background: PAPER_TRAY }}>
             <ReceiptPaper
               data={data}
               invoiceNo={invoiceNo} now={now} copy={copy}
+              editable={copy} onInvoiceNoChange={setInvoiceNo}
               fmt={fmt} formatDate={formatDate} formatTime={formatTime}
               storeInfo={DEFAULT_STORE}
             />
@@ -285,8 +292,11 @@ function TRow({ l, r, bold, muted, indent }: {
   );
 }
 
-export function ReceiptPaper({ data, invoiceNo, now, copy, fmt, storeInfo }: {
+export function ReceiptPaper({ data, invoiceNo, now, copy, editable, onInvoiceNoChange, fmt, storeInfo }: {
   data: ReceiptData; invoiceNo: string; now: Date; copy?: boolean;
+  /** When true, the "เลขที่:" line becomes an editable input (frontend-only). */
+  editable?: boolean;
+  onInvoiceNoChange?: (v: string) => void;
   fmt: (n: number) => string;
   formatDate?: (d: Date) => string; formatTime?: (d: Date) => string;
   storeInfo?: StoreInfo;
@@ -314,7 +324,7 @@ export function ReceiptPaper({ data, invoiceNo, now, copy, fmt, storeInfo }: {
         />
         <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: '0.01em' }}>{S.name}</div>
         <div style={{ marginTop: 3 }}>ใบเสร็จรับเงิน</div>
-        <div style={{ color: copy ? PAPER_COPY : INK_MUTED, fontWeight: copy ? 700 : 400 }}>{copy ? 'สำเนา' : 'ต้นฉบับ'}</div>
+        {copy && <div style={{ color: PAPER_COPY, fontWeight: 700 }}>สำเนา</div>}
       </div>
 
       <Dash />
@@ -328,10 +338,30 @@ export function ReceiptPaper({ data, invoiceNo, now, copy, fmt, storeInfo }: {
       <Dash />
 
       {/* ── Order meta ── */}
-      <div>เลขที่: <span style={MONO}>{invoiceNo}</span></div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span>เลขที่:</span>
+        {editable ? (
+          <input
+            className="receipt-invoice-input"
+            value={invoiceNo}
+            onChange={e => onInvoiceNoChange?.(e.target.value)}
+            aria-label="แก้เลขที่ใบเสร็จ"
+            spellCheck={false}
+            style={{
+              ...MONO, flex: 1, minWidth: 0, color: INK,
+              padding: '1px 5px', borderRadius: 4,
+              border: `1px solid ${DASH}`, background: PAPER,
+              fontSize: 'inherit', lineHeight: 'inherit',
+            }}
+          />
+        ) : (
+          <span style={MONO}>{invoiceNo}</span>
+        )}
+      </div>
       <div>ออเดอร์: <span style={MONO}>#{data.orderNumber}</span></div>
       <div style={{ color: INK_MUTED }}>{dateStr}</div>
       {data.memberName && <div>ลูกค้า: {data.memberName}</div>}
+      {data.salesName && <div>เซลล์: {data.salesName}</div>}
 
       <Dash />
 
