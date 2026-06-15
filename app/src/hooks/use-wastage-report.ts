@@ -106,6 +106,7 @@ const REASON_LABEL: Record<string, string> = {
   SPILLED: 'หก / เสียระหว่างทำ',
   TRIAL: 'ชิม / ทดลอง',
   DAMAGED: 'ชำรุด / เสียหาย',
+  CANCELED: 'ยกเลิกออเดอร์',
   OTHER: 'อื่น ๆ',
 };
 export function reasonLabel(code: string): string {

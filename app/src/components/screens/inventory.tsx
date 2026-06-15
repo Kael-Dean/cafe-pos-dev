@@ -22,6 +22,14 @@ const WASTAGE_REASONS = [
   { id: 'OTHER',   label: 'อื่นๆ' },
 ] as const;
 
+// Display-only labels for reason_codes shown in movement history. Superset of the
+// selectable list above: CANCELED is set by the backend on order-cancel write-offs
+// and must render properly, but is not offered in the manual wastage form.
+const WASTAGE_REASON_LABELS: Record<string, string> = {
+  ...Object.fromEntries(WASTAGE_REASONS.map(r => [r.id, r.label])),
+  CANCELED: 'ยกเลิกออเดอร์',
+};
+
 const stockStatusOf = (it: InventoryItem) => {
   if (it.stock < it.parLevel * 0.5) return { tone: 'danger' as const,  label: 'Critical' };
   if (it.stock < it.parLevel)        return { tone: 'warning' as const, label: 'Low' };
@@ -678,13 +686,13 @@ const WastageTab = ({ items, movements, totalCost, onAdd }: { items: InventoryIt
       ) : movements.map((m, idx) => {
         const inv = items.find(i => i.id === m.invId);
         const lossValue = inv ? inv.costPerUnit * m.qty : 0;
-        const reason = WASTAGE_REASONS.find(r => r.id === m.reason);
+        const reasonLabel = m.reason ? (WASTAGE_REASON_LABELS[m.reason] ?? m.reason) : null;
         return (
           <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '140px 1.5fr 110px 130px 110px 1fr', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === movements.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{formatRelative(m.at)}</div>
             <div style={{ fontSize: 14, fontWeight: 500 }}>{inv?.name || m.invId}</div>
             <div className="num" style={{ fontSize: 13, fontWeight: 600, textAlign: 'right', color: 'var(--color-danger)' }}>-{m.qty.toLocaleString()} {inv?.unit}</div>
-            <div><Tag tone={m.reason === 'EXPIRED' ? 'danger' : m.reason === 'TRIAL' ? 'info' : 'warning'}>{reason?.label || m.reason}</Tag></div>
+            <div><Tag tone={m.reason === 'EXPIRED' ? 'danger' : m.reason === 'TRIAL' || m.reason === 'CANCELED' ? 'info' : 'warning'}>{reasonLabel}</Tag></div>
             <div className="num" style={{ fontSize: 13, fontWeight: 600, textAlign: 'right' }}>{baht(lossValue)}</div>
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}><div>{m.user}</div>{m.note && <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>{m.note}</div>}</div>
           </div>

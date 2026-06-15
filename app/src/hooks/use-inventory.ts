@@ -27,8 +27,10 @@ export type MovementType =
   | 'RECEIVE' | 'SALE' | 'WASTE' | 'ADJUST'
   | 'TRANSFER_IN' | 'TRANSFER_OUT';
 
+// CANCELED is set by the backend on order-cancel write-offs — it is a valid
+// movement reason_code but is NOT user-selectable in the manual wastage form.
 export type WastageReason =
-  | 'EXPIRED' | 'SPILLED' | 'TRIAL' | 'DAMAGED' | 'OTHER';
+  | 'EXPIRED' | 'SPILLED' | 'TRIAL' | 'DAMAGED' | 'CANCELED' | 'OTHER';
 
 interface CreatedBy { id: string; name: string; }
 
