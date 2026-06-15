@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import { DEFAULT_STORE, type StoreInfo } from '@/components/screens/receipt-modal';
 import { sendPrintJob } from '@/lib/printer-bridge';
 import { makeInvoiceNo } from '@/lib/receipt-number';
+import { buildReceiptLines } from '@/lib/receipt-lines';
 
 const PAY_LABEL: Record<string, string> = {
   cash: 'เงินสด',
@@ -46,18 +47,47 @@ export function usePrinter() {
       branch:  o?.branch?.trim()  || DEFAULT_STORE.branch,
       phone:   o?.phone?.trim()   || DEFAULT_STORE.phone,
     };
-    const body: Record<string, unknown> = {
+    const invoiceNo    = args.receiptNo ?? makeInvoiceNo(args.orderNumber, args.issuedAt);
+    const paymentLabel = PAY_LABEL[args.paymentMethod] ?? args.paymentMethod;
+    const dateStr      = (args.issuedAt ?? new Date()).toLocaleString('th-TH');
+
+    // The full receipt layout is built HERE and shipped as a neutral line-list.
+    // The bridge just renders it (ESC/POS for LAN, raster for USB) — so future
+    // receipt changes are an app-only deploy, never a bridge reinstall.
+    const lines = buildReceiptLines({
       storeName:    store.name,
       storeAddress: store.address,
       storeTaxId:   store.taxId,
       storeBranch:  store.branch,
       storePhone:   store.phone,
-      invoiceNo:    args.receiptNo ?? makeInvoiceNo(args.orderNumber, args.issuedAt),
+      invoiceNo,
+      orderNumber:  args.orderNumber,
+      dateStr,
+      copy:         args.copy,
+      memberName:   args.memberName,
+      salesName:    args.salesName,
+      items:        args.items,
+      total:        args.total,
+      paymentLabel,
+      cashGiven:    args.cashGiven,
+    });
+
+    const body: Record<string, unknown> = {
+      // Neutral layout — the bridge prefers this when present.
+      lines,
+      // Flat fields kept for backward-compat: an older bridge that doesn't yet
+      // understand `lines` falls back to building the receipt from these.
+      storeName:    store.name,
+      storeAddress: store.address,
+      storeTaxId:   store.taxId,
+      storeBranch:  store.branch,
+      storePhone:   store.phone,
+      invoiceNo,
       orderNumber:  args.orderNumber,
       items:        args.items,
       subtotal:     args.subtotal,
       total:        args.total,
-      paymentLabel: PAY_LABEL[args.paymentMethod] ?? args.paymentMethod,
+      paymentLabel,
     };
 
     if (args.cashGiven != null) body.cashGiven = args.cashGiven;
