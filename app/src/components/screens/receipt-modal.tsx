@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../icons';
 import { bahtText } from '@/lib/baht-text';
 import { makeInvoiceNo } from '@/lib/receipt-number';
@@ -138,7 +139,13 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
 
   const handleBrowserPrint = () => window.print();
 
-  return (
+  // Portal to <body>: screen roots animate in via GSAP (useFadeRise), which
+  // leaves an inline `transform` on the ancestor. A non-none transform makes it
+  // the containing block for `position: fixed`, trapping this overlay inside the
+  // page column instead of the viewport. Portaling escapes that — and also makes
+  // `.receipt-print-root` a direct child of <body> so the @media print rule
+  // (`body > *:not(.receipt-print-root)`) actually isolates the slip.
+  const overlay = (
     <>
       <style>{`
         @media print {
@@ -255,6 +262,8 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
       </div>
     </>
   );
+
+  return typeof document !== 'undefined' ? createPortal(overlay, document.body) : null;
 }
 
 /* ─── Faithful thermal-receipt preview ──────────────────────────────
