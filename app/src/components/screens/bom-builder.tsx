@@ -676,17 +676,8 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
             </div>
             <StepButtons value={editedPrice} step={5} min={0} onChange={onPriceChange} />
           </div>
-          {productType === 'MENU' && editedPrice > 0 && (
-            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2, fontSize: 11 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, color: 'var(--color-text-muted)' }}>
-                <span>ก่อน VAT (ฐาน)</span>
-                <span className="num" style={{ fontWeight: 600, color: 'var(--color-text-secondary)' }}>฿{exVat(editedPrice).toFixed(2)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, color: 'var(--color-text-muted)' }}>
-                <span>VAT 7%</span>
-                <span className="num" style={{ fontWeight: 600, color: 'var(--color-text-secondary)' }}>฿{(editedPrice - exVat(editedPrice)).toFixed(2)}</span>
-              </div>
-            </div>
+          {productType === 'MENU' && (
+            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--color-text-muted)' }}>รวม VAT 7%</div>
           )}
         </div>
         {isProduced && (
@@ -714,12 +705,20 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
       </div>
     </div>
 
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${productType === 'MENU' ? 4 : 3}, minmax(0, 1fr))`, gap: 12, marginBottom: 16 }}>
       <SummaryCard
         label={isProduced ? 'ต้นทุนวัตถุดิบ/ชิ้น' : 'ต้นทุนวัตถุดิบ'}
         value={`฿${costPerUnit.toFixed(2)}`}
         hint={isProduced ? `฿${totalCost.toFixed(2)} / ${batchSize} ชิ้น` : undefined}
       />
+      {productType === 'MENU' && (
+        <SummaryCard
+          label="ก่อน VAT (ฐาน)"
+          value={`฿${exVat(editedPrice).toFixed(2)}`}
+          highlight="info"
+          hint={`VAT 7% · ฿${(editedPrice - exVat(editedPrice)).toFixed(2)}`}
+        />
+      )}
       <SummaryCard label="ส่วนต่าง (Contribution)" value={`฿${margin.toFixed(2)}`} color={margin >= 0 ? 'var(--color-text)' : 'var(--color-danger)'} hint={productType === 'MENU' ? 'คิดจากฐานก่อน VAT' : undefined} />
       {productType === 'MENU'
         ? <SummaryCard label="Margin" value={`${marginPct.toFixed(1)}%`} highlight={marginToneOf(marginPct)} />
