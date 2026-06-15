@@ -88,7 +88,7 @@ export function buildReceiptLines(d: ReceiptLinesInput): ReceiptLine[] {
   // Summary
   L.push({ t: 'hr' });
   if (d.discount != null && d.discount > 0) {
-    L.push({ t: 'lr', l: 'รวมย่อย', r: fmt2(d.subtotal ?? d.total + d.discount), size: N });
+    L.push({ t: 'lr', l: 'รวม', r: fmt2(d.subtotal ?? d.total + d.discount), size: N });
     if (d.discountLines && d.discountLines.length > 0) {
       for (const dl of d.discountLines) {
         L.push({ t: 'lr', l: `  ${dl.label}`, r: `-${fmt2(dl.amount)}`, size: N });

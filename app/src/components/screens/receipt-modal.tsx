@@ -496,7 +496,7 @@ export function ReceiptPaper({ data, invoiceNo, now, copy, dateStr, editableDate
       {/* ── Summary ── */}
       {data.discount != null && data.discount > 0 && (
         <>
-          <TRow l="รวมย่อย" r={fmt(data.subtotal)} />
+          <TRow l="รวม" r={fmt(data.subtotal)} />
           {data.discountLines && data.discountLines.length > 0 ? (
             data.discountLines.map((d, i) => (
               <TRow key={i} indent muted l={d.label} r={`-${fmt(d.amount)}`} />
