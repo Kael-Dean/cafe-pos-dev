@@ -32,9 +32,20 @@ export interface ReceiptLinesInput {
   memberName?: string;
   salesName?: string;
   items: Array<{ name: string; qty: number; unitPrice: number; mods?: string[] }>;
+  /** Pre-discount sum; printed as "รวมย่อย" only when a discount applies. */
+  subtotal?: number;
   total: number;
+  /** Total discount (server-authoritative). Drives whether the discount block prints. */
+  discount?: number;
+  /** Per-line discount breakdown (promotions + member reward). */
+  discountLines?: { label: string; amount: number }[];
   paymentLabel: string;
   cashGiven?: number;
+  // ── Membership points (earn OR redeem — mutually exclusive per bill) ──
+  pointsEarned?: number;
+  pointsRedeemed?: number;
+  rewardLabel?: string;
+  pointsBalanceAfter?: number;
 }
 
 const N = 26;    // body text, px (sized for a 58 mm / 384-dot head)
@@ -76,6 +87,16 @@ export function buildReceiptLines(d: ReceiptLinesInput): ReceiptLine[] {
 
   // Summary
   L.push({ t: 'hr' });
+  if (d.discount != null && d.discount > 0) {
+    L.push({ t: 'lr', l: 'รวมย่อย', r: fmt2(d.subtotal ?? d.total + d.discount), size: N });
+    if (d.discountLines && d.discountLines.length > 0) {
+      for (const dl of d.discountLines) {
+        L.push({ t: 'lr', l: `  ${dl.label}`, r: `-${fmt2(dl.amount)}`, size: N });
+      }
+    } else {
+      L.push({ t: 'lr', l: 'ส่วนลด', r: `-${fmt2(d.discount)}`, size: N });
+    }
+  }
   L.push({ t: 'lr', l: 'รวมทั้งสิ้น (บาท)', r: fmt2(d.total), size: N, bold: true });
   L.push({ t: 'text', s: `(${bahtText(d.total)})`, a: 'left', size: N });
   L.push({ t: 'text', s: 'ราคารวมภาษีมูลค่าเพิ่ม 7% แล้ว (VAT included)', a: 'left', size: N });
@@ -83,6 +104,20 @@ export function buildReceiptLines(d: ReceiptLinesInput): ReceiptLine[] {
   if (d.cashGiven != null) {
     L.push({ t: 'lr', l: 'รับเงิน', r: fmt2(d.cashGiven), size: N });
     L.push({ t: 'lr', l: 'เงินทอน', r: fmt2(d.cashGiven - d.total), size: N });
+  }
+
+  // Membership points (earn OR redeem — mutually exclusive per bill)
+  if (d.memberName && ((d.pointsEarned ?? 0) > 0 || (d.pointsRedeemed ?? 0) > 0 || d.pointsBalanceAfter != null)) {
+    L.push({ t: 'hr' });
+    if ((d.pointsRedeemed ?? 0) > 0) {
+      L.push({ t: 'lr', l: `ใช้แต้มแลก${d.rewardLabel ? `: ${d.rewardLabel}` : ''}`, r: `-${d.pointsRedeemed} แต้ม`, size: N });
+    }
+    if ((d.pointsEarned ?? 0) > 0) {
+      L.push({ t: 'lr', l: 'ได้รับแต้ม', r: `+${d.pointsEarned} แต้ม`, size: N });
+    }
+    if (d.pointsBalanceAfter != null) {
+      L.push({ t: 'lr', l: 'แต้มสะสมคงเหลือ', r: `${d.pointsBalanceAfter} แต้ม`, size: N, bold: true });
+    }
   }
 
   // Footer

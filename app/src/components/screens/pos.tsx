@@ -190,9 +190,15 @@ export default function POSTerminal() {
     const subtotalSnapshot = subtotal;
     const totalSnapshot = total;
     const discountSnapshot = discount;
+    const memberDiscountSnapshot = memberDiscount;
     const memberSnapshot = memberInfo;
     const salesNameSnapshot = memberSalesName;
     const promoSnapshot = selectedPromoIds;
+    // Snapshot the selected promos' names + amounts now — clearCart() wipes
+    // eligiblePromos below, but the receipt needs the breakdown after the await.
+    const promoDetailSnapshot = eligiblePromos
+      .filter(e => selectedPromoIds.includes(e.promotion_id))
+      .map(e => ({ name: e.name, amount: Number(e.discount_amount) }));
     setPayment(null);
     clearCart();
     const methodMap: Record<string, 'CASH' | 'CARD' | 'QR_PROMPTPAY' | 'LINE_PAY'> = {
@@ -229,6 +235,32 @@ export default function POSTerminal() {
         const finalTotal = serverAuthoritative ? serverTotal : totalSnapshot;
         const finalDiscount = serverAuthoritative ? serverDiscount : 0;
         const earned = order.points_earned ?? 0;
+
+        // ── Discount breakdown (cashier-side estimate; total uses server value) ──
+        const discountLines: { label: string; amount: number }[] = [];
+        for (const p of promoDetailSnapshot) {
+          if (p.amount > 0) discountLines.push({ label: p.name, amount: p.amount });
+        }
+        if (memberSnapshot && memberDiscountSnapshot > 0) {
+          const freeItem = memberSnapshot.program?.reward_type === 'FREE_ITEM';
+          discountLines.push({
+            label: freeItem
+              ? `ส่วนลดสมาชิก (${memberSnapshot.rewardProduct?.name ?? 'ของรางวัล'})`
+              : 'ส่วนลดสมาชิก',
+            amount: memberDiscountSnapshot,
+          });
+        }
+
+        // ── Points (earn OR redeem — mutually exclusive; server is authoritative
+        //    for which happened via reward_redeemed / points_earned) ──
+        const redeemed = order.reward_redeemed
+          ? (memberSnapshot?.program?.points_to_redeem ?? program?.points_to_redeem ?? 0)
+          : 0;
+        const balanceBefore = memberSnapshot?.account.points_balance ?? 0;
+        const pointsBalanceAfter = hasMember ? balanceBefore + earned - redeemed : undefined;
+        const rewardLabel = order.reward_redeemed
+          ? (memberSnapshot?.rewardProduct?.name ?? undefined)
+          : undefined;
         toast({
           kind: 'success', title: t.pos.paid,
           msg: t.pos.paidMsg(String(displayOrderNo(order)), baht(finalTotal), earned > 0 ? t.pos.pointsPart(earned) : ''),
@@ -245,9 +277,13 @@ export default function POSTerminal() {
           paymentMethod: method ?? 'cash',
           paymentLabel: (t.pos.payReceipt as Record<string, string>)[method ?? 'cash'] ?? method ?? 'cash',
           discount: finalDiscount > 0 ? finalDiscount : undefined,
+          discountLines: finalDiscount > 0 && discountLines.length > 0 ? discountLines : undefined,
           memberName: memberSnapshot?.account.customer_name,
           salesName: memberSnapshot ? salesNameSnapshot : undefined,
           pointsEarned: hasMember ? earned : undefined,
+          pointsRedeemed: redeemed > 0 ? redeemed : undefined,
+          rewardLabel,
+          pointsBalanceAfter,
           rewardRedeemed: order.reward_redeemed,
         });
       }).catch((payErr: unknown) => {
@@ -641,6 +677,12 @@ export default function POSTerminal() {
               cashGiven: receiptData.cashGiven,
               memberName: receiptData.memberName,
               salesName: receiptData.salesName,
+              discount: receiptData.discount,
+              discountLines: receiptData.discountLines,
+              pointsEarned: receiptData.pointsEarned,
+              pointsRedeemed: receiptData.pointsRedeemed,
+              rewardLabel: receiptData.rewardLabel,
+              pointsBalanceAfter: receiptData.pointsBalanceAfter,
               ...(receiptIssuedAt ? { issuedAt: receiptIssuedAt } : {}),
             });
           }}

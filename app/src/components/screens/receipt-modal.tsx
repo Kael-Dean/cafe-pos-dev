@@ -41,9 +41,22 @@ export interface ReceiptData {
   cashGiven?: number;
   // ── Membership (server-computed; present when a member was attached) ──
   discount?: number;
+  /** Per-line discount breakdown (promotions + member reward), shown above the
+   *  total. Amounts are the cashier-side estimate; the total uses the server's
+   *  authoritative `discount`. Normally they agree. */
+  discountLines?: { label: string; amount: number }[];
   memberName?: string;
   salesName?: string;
   pointsEarned?: number;
+  /** Points spent on a redemption this bill (= program.points_to_redeem). Earn
+   *  and redeem are mutually exclusive per order, so at most one of
+   *  pointsEarned / pointsRedeemed is non-zero. */
+  pointsRedeemed?: number;
+  /** What was redeemed (e.g. free-item product name), shown next to the spend. */
+  rewardLabel?: string;
+  /** Member's point balance AFTER this bill posted (client-computed:
+   *  balanceBefore + earned − redeemed). */
+  pointsBalanceAfter?: number;
   rewardRedeemed?: boolean;
 }
 
@@ -481,6 +494,18 @@ export function ReceiptPaper({ data, invoiceNo, now, copy, dateStr, editableDate
       <Dash />
 
       {/* ── Summary ── */}
+      {data.discount != null && data.discount > 0 && (
+        <>
+          <TRow l="รวมย่อย" r={fmt(data.subtotal)} />
+          {data.discountLines && data.discountLines.length > 0 ? (
+            data.discountLines.map((d, i) => (
+              <TRow key={i} indent muted l={d.label} r={`-${fmt(d.amount)}`} />
+            ))
+          ) : (
+            <TRow muted l="ส่วนลด" r={`-${fmt(data.discount)}`} />
+          )}
+        </>
+      )}
       <TRow bold l="รวมทั้งสิ้น (บาท)" r={fmt(data.total)} />
       <div style={{ color: INK_SOFT }}>({bahtText(data.total)})</div>
       <div style={{ color: INK_MUTED, fontSize: 11.5 }}>ราคารวมภาษีมูลค่าเพิ่ม 7% แล้ว (VAT included)</div>
@@ -491,6 +516,28 @@ export function ReceiptPaper({ data, invoiceNo, now, copy, dateStr, editableDate
           <TRow l="เงินทอน" r={fmt(data.cashGiven - data.total)} />
         </>
       )}
+
+      {/* ── Membership points (earn OR redeem — mutually exclusive per bill) ── */}
+      {data.memberName &&
+        (((data.pointsEarned ?? 0) > 0) ||
+          ((data.pointsRedeemed ?? 0) > 0) ||
+          data.pointsBalanceAfter != null) && (
+          <>
+            <Dash />
+            {(data.pointsRedeemed ?? 0) > 0 && (
+              <TRow
+                l={`ใช้แต้มแลก${data.rewardLabel ? `: ${data.rewardLabel}` : ''}`}
+                r={`-${data.pointsRedeemed!.toLocaleString('th-TH')} แต้ม`}
+              />
+            )}
+            {(data.pointsEarned ?? 0) > 0 && (
+              <TRow l="ได้รับแต้ม" r={`+${data.pointsEarned!.toLocaleString('th-TH')} แต้ม`} />
+            )}
+            {data.pointsBalanceAfter != null && (
+              <TRow bold l="แต้มสะสมคงเหลือ" r={`${data.pointsBalanceAfter.toLocaleString('th-TH')} แต้ม`} />
+            )}
+          </>
+        )}
 
       <Dash />
 

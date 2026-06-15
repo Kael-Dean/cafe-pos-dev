@@ -96,6 +96,7 @@ export function mapOrderToReceipt(o: OrderFull): ReceiptData {
 /** Order → print job (usePrinter().printReceipt). Marked as a copy with the
  *  original order date so the reprint shows when the sale actually happened. */
 export function mapOrderToPrintArgs(o: OrderFull): PrintReceiptArgs {
+  const discount = Number(o.discount);
   return {
     orderNumber: String(displayOrderNo(o)),
     items: mapItems(o),
@@ -106,6 +107,9 @@ export function mapOrderToPrintArgs(o: OrderFull): PrintReceiptArgs {
     paymentMethod: paymentLabel(o.payment_method),
     issuedAt: new Date(o.created_at),
     ...(o.receipt_no ? { receiptNo: o.receipt_no } : {}),
+    // Historical orders only carry the discount total (no per-promo breakdown
+    // or points), so reprints show a single "ส่วนลด" line — no breakdown/points.
+    ...(discount > 0 ? { discount } : {}),
     copy: true,
   };
 }

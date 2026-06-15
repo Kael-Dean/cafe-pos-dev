@@ -25,6 +25,14 @@ export interface PrintReceiptArgs {
   cashGiven?: number;
   memberName?: string;
   salesName?: string;
+  /** Total discount + per-line breakdown (promotions + member reward). */
+  discount?: number;
+  discountLines?: { label: string; amount: number }[];
+  /** Membership points (earn OR redeem — mutually exclusive per bill). */
+  pointsEarned?: number;
+  pointsRedeemed?: number;
+  rewardLabel?: string;
+  pointsBalanceAfter?: number;
   /** Original order date/time — used on reprinted copies so they show when the
    *  order actually happened (not "now"). Defaults to the current time. */
   issuedAt?: Date;
@@ -67,9 +75,16 @@ export function usePrinter() {
       memberName:   args.memberName,
       salesName:    args.salesName,
       items:        args.items,
+      subtotal:     args.subtotal,
       total:        args.total,
+      discount:     args.discount,
+      discountLines: args.discountLines,
       paymentLabel,
       cashGiven:    args.cashGiven,
+      pointsEarned: args.pointsEarned,
+      pointsRedeemed: args.pointsRedeemed,
+      rewardLabel:  args.rewardLabel,
+      pointsBalanceAfter: args.pointsBalanceAfter,
     });
 
     const body: Record<string, unknown> = {
