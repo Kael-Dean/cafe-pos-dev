@@ -151,7 +151,10 @@ export function useVoidOrder() {
     mutationFn: ({ orderId, reason, restock }:
       { orderId: string; reason: string; restock: boolean }) =>
       api.post<OrderRead>(`/api/v1/orders/${orderId}/void`, { reason, restock }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['kds-orders'] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['kds-orders'] });
+      qc.invalidateQueries({ queryKey: ['receipt-copies'] });
+    },
   });
 }
 

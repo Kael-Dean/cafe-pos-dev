@@ -6,8 +6,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useFadeRise } from '@/lib/motion';
 import { useToast, baht } from '../app-common';
 import { usePrinter } from '@/hooks/use-printer';
-import { displayOrderNo } from '@/hooks/use-orders';
+import { displayOrderNo, useVoidOrder } from '@/hooks/use-orders';
+import { ApiError } from '@/lib/api-client';
 import ReceiptModal from './receipt-modal';
+import CancelOrderModal from './cancel-order-modal';
 import {
   useReceiptCopies,
   mapOrderToReceipt,
@@ -28,9 +30,11 @@ function formatTime(iso: string): string {
 export default function ReceiptCopies() {
   const toast = useToast();
   const { printReceipt } = usePrinter();
+  const voidOrder = useVoidOrder();
 
   const [date, setDate] = useState(todayISO());
   const [selected, setSelected] = useState<OrderFull | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<OrderFull | null>(null);
   const [confirmAll, setConfirmAll] = useState(false);
   const [printingAll, setPrintingAll] = useState(false);
 
@@ -62,6 +66,25 @@ export default function ReceiptCopies() {
       });
     } finally {
       setPrintingAll(false);
+    }
+  };
+
+  // Cancel a receipt: the backend reverts stock + money and flips the order to
+  // VOID. The order then drops out of this list (it only shows paid statuses)
+  // when the query re-fetches.
+  const handleCancel = async (reason: string, restock: boolean) => {
+    const order = cancelTarget;
+    if (!order) return;
+    setCancelTarget(null);
+    try {
+      await voidOrder.mutateAsync({ orderId: order.id, reason, restock });
+      toast({ kind: 'success', title: 'ยกเลิกใบเสร็จแล้ว', msg: `ออเดอร์ #${displayOrderNo(order)}` });
+    } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 409) {
+        toast({ kind: 'info', title: 'ใบเสร็จนี้ถูกยกเลิกไปแล้ว' });
+      } else {
+        toast({ kind: 'danger', title: 'ยกเลิกไม่สำเร็จ', msg: String(e instanceof Error ? e.message : e) });
+      }
     }
   };
 
@@ -200,6 +223,7 @@ export default function ReceiptCopies() {
           data={mapOrderToReceipt(selected)}
           issuedAt={new Date(selected.created_at)}
           copy
+          onCancel={() => { setCancelTarget(selected); setSelected(null); }}
           onClose={() => setSelected(null)}
           onPrint={async () => {
             try {
@@ -209,6 +233,15 @@ export default function ReceiptCopies() {
               toast({ kind: 'danger', title: 'พิมพ์ไม่สำเร็จ', msg: String(e instanceof Error ? e.message : e) });
             }
           }}
+        />
+      )}
+
+      {/* ── Cancel-receipt dialog ── */}
+      {cancelTarget && (
+        <CancelOrderModal
+          orderLabel={String(displayOrderNo(cancelTarget))}
+          onClose={() => setCancelTarget(null)}
+          onConfirm={handleCancel}
         />
       )}
 

@@ -241,7 +241,7 @@ export default function KDS() {
     )}
     {cancelTarget && (
       <CancelOrderModal
-        ticket={cancelTarget}
+        orderLabel={String(cancelTarget.queue)}
         onClose={() => setCancelTarget(null)}
         onConfirm={handleCancel}
       />

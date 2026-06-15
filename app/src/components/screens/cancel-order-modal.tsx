@@ -3,10 +3,10 @@
 import { useState, useRef, useEffect } from 'react';
 import Icon from '../icons';
 import { useI18n } from '@/lib/i18n';
-import { type KDSTicket } from '@/hooks/use-orders';
 
 interface Props {
-  ticket: KDSTicket;
+  /** Number shown in the header/warning, e.g. the KDS queue or the order no. */
+  orderLabel: string;
   onClose: () => void;
   onConfirm: (reason: string, restock: boolean) => Promise<void>;
 }
@@ -58,7 +58,7 @@ function useModalA11y(onClose: () => void) {
   return ref;
 }
 
-export default function CancelOrderModal({ ticket, onClose, onConfirm }: Props) {
+export default function CancelOrderModal({ orderLabel, onClose, onConfirm }: Props) {
   const { t } = useI18n();
   const [reason, setReason] = useState('');
   const [alreadyMade, setAlreadyMade] = useState(false);
@@ -107,7 +107,7 @@ export default function CancelOrderModal({ ticket, onClose, onConfirm }: Props) 
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 16, fontWeight: 700 }}>{t.kds.cancelTitle}</div>
-            <div className="num" style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>#{ticket.queue}</div>
+            <div className="num" style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>#{orderLabel}</div>
           </div>
           <button onClick={onClose} aria-label={t.common.close} className="icon-btn hit-44" style={{
             width: 32, height: 32, borderRadius: 'var(--radius-md)', display: 'grid', placeItems: 'center',
@@ -125,7 +125,7 @@ export default function CancelOrderModal({ ticket, onClose, onConfirm }: Props) 
             color: 'var(--color-danger)', fontSize: 14, fontWeight: 700,
           }}>
             <Icon name="warning" size={18} />
-            <span>{t.kds.cancelWarning(String(ticket.queue))}</span>
+            <span>{t.kds.cancelWarning(orderLabel)}</span>
           </div>
 
           <label htmlFor="cancel-reason" style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 'var(--space-2)' }}>

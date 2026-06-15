@@ -63,6 +63,9 @@ interface Props {
   issuedAt?: Date;
   /** Render as a duplicate ("สำเนา") instead of the original. */
   copy?: boolean;
+  /** When provided, shows a danger "ยกเลิกใบเสร็จ" action in the footer that
+   *  reverts the sale (stock + money) via the order-cancel flow. */
+  onCancel?: () => void;
 }
 
 export const DEFAULT_STORE: StoreInfo = {
@@ -117,7 +120,7 @@ function useModalA11y(onClose: () => void) {
   return ref;
 }
 
-export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }: Props) {
+export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, onCancel }: Props) {
   const [isPrinting, setIsPrinting] = useState(false);
   const dialogRef = useModalA11y(onClose);
 
@@ -230,8 +233,19 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy }:
           {/* ── Footer actions ── */}
           <div className="receipt-no-print" style={{
             padding: 'var(--space-3) var(--space-5)', flexShrink: 0, borderTop: '1px solid var(--color-border)',
-            display: 'flex', gap: 'var(--space-2)', alignItems: 'center',
+            display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap', rowGap: 'var(--space-2)',
           }}>
+            {onCancel && (
+              <button onClick={onCancel} disabled={isPrinting} className="icon-btn pressable" style={{
+                padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 13, minHeight: 44,
+                border: '1px solid var(--color-danger)',
+                display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                color: 'var(--color-danger)', background: 'var(--color-danger-50)',
+                opacity: isPrinting ? 0.5 : 1,
+              }}>
+                <Icon name="trash" size={14} /> ยกเลิกใบเสร็จ
+              </button>
+            )}
             <button onClick={handleBrowserPrint} disabled={isPrinting} className="icon-btn pressable" style={{
               padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 13, minHeight: 44,
               border: '1px solid var(--color-border)',
