@@ -158,6 +158,20 @@ export function useVoidOrder() {
   });
 }
 
+/** Backdate an order on the server (business_date + daily_number + receipt_no +
+ *  created_at, plus the order's stock movements) so it counts as a past sale. */
+export function useSetOrderDate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orderId, businessDate }: { orderId: string; businessDate: string }) =>
+      api.patch<OrderRead>(`/api/v1/orders/${orderId}/date`, { business_date: businessDate }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['kds-orders'] });
+      qc.invalidateQueries({ queryKey: ['receipt-copies'] });
+    },
+  });
+}
+
 export function useUpdateOrderStatus() {
   const qc = useQueryClient();
   return useMutation({

@@ -6,7 +6,7 @@ import { useToast, baht } from '../app-common';
 import { useI18n } from '@/lib/i18n';
 import { useAllProducts, useCategories, type MenuItem } from '@/hooks/use-products';
 import { useProductDetail } from '@/hooks/use-bom';
-import { useCreateOrder, usePayOrder, displayOrderNo } from '@/hooks/use-orders';
+import { useCreateOrder, usePayOrder, useSetOrderDate, displayOrderNo } from '@/hooks/use-orders';
 import { ApiError } from '@/lib/api-client';
 import { useEvaluatePromotions, type EligiblePromotion } from '@/hooks/use-promotions';
 import ModifierModal from './modifier-modal';
@@ -44,6 +44,8 @@ export default function POSTerminal() {
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   // Server-issued order time for the live receipt; keeps the IV "เลขที่:" stable across reprints.
   const [receiptIssuedAt, setReceiptIssuedAt] = useState<Date | null>(null);
+  // Order id behind the live receipt — lets us backdate it (past-sale entry).
+  const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'menu' | 'cart'>('menu');
   const [showMembership, setShowMembership] = useState(false);
   const [membershipPhase, setMembershipPhase] = useState<'lookup' | 'register'>('lookup');
@@ -57,6 +59,7 @@ export default function POSTerminal() {
   const { data: program } = useMembershipProgram();
   const createOrder = useCreateOrder();
   const payOrder = usePayOrder();
+  const setOrderDate = useSetOrderDate();
   const evaluate = useEvaluatePromotions();
   const { printReceipt } = usePrinter();
 
@@ -232,6 +235,7 @@ export default function POSTerminal() {
           duration: 3500,
         });
         setReceiptIssuedAt(new Date(order.created_at));
+        setReceiptOrderId(order.id);
         setReceiptData({
           orderNumber: String(displayOrderNo(order)),
           ...(order.receipt_no ? { receiptNo: order.receipt_no } : {}),
@@ -612,7 +616,20 @@ export default function POSTerminal() {
         <ReceiptModal
           data={receiptData}
           issuedAt={receiptIssuedAt ?? undefined}
-          onClose={() => { setReceiptData(null); setReceiptIssuedAt(null); }}
+          onClose={() => { setReceiptData(null); setReceiptIssuedAt(null); setReceiptOrderId(null); }}
+          {...(receiptOrderId ? {
+            onSaveDate: async (iso: string) => {
+              try {
+                const updated = await setOrderDate.mutateAsync({ orderId: receiptOrderId, businessDate: iso });
+                setReceiptIssuedAt(new Date(updated.created_at));
+                setReceiptData(prev => prev ? { ...prev, receiptNo: updated.receipt_no } : prev);
+                toast({ kind: 'success', title: 'บันทึกวันที่ใบเสร็จแล้ว', msg: `เลขที่ ${updated.receipt_no}` });
+              } catch (e: unknown) {
+                toast({ kind: 'danger', title: 'บันทึกวันที่ไม่สำเร็จ', msg: String(e instanceof Error ? e.message : e) });
+                throw e;
+              }
+            },
+          } : {})}
           onPrint={async () => {
             await printReceipt({
               orderNumber: receiptData.orderNumber,

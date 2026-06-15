@@ -6,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useFadeRise } from '@/lib/motion';
 import { useToast, baht } from '../app-common';
 import { usePrinter } from '@/hooks/use-printer';
-import { displayOrderNo, useVoidOrder } from '@/hooks/use-orders';
+import { displayOrderNo, useVoidOrder, useSetOrderDate } from '@/hooks/use-orders';
 import { ApiError } from '@/lib/api-client';
 import ReceiptModal from './receipt-modal';
 import CancelOrderModal from './cancel-order-modal';
@@ -31,6 +31,7 @@ export default function ReceiptCopies() {
   const toast = useToast();
   const { printReceipt } = usePrinter();
   const voidOrder = useVoidOrder();
+  const setOrderDate = useSetOrderDate();
 
   const [date, setDate] = useState(todayISO());
   const [selected, setSelected] = useState<OrderFull | null>(null);
@@ -224,6 +225,22 @@ export default function ReceiptCopies() {
           issuedAt={new Date(selected.created_at)}
           copy
           onCancel={() => { setCancelTarget(selected); setSelected(null); }}
+          onSaveDate={async (iso: string) => {
+            try {
+              const updated = await setOrderDate.mutateAsync({ orderId: selected.id, businessDate: iso });
+              setSelected(prev => prev ? {
+                ...prev,
+                created_at: updated.created_at,
+                receipt_no: updated.receipt_no,
+                business_date: updated.business_date,
+                daily_number: updated.daily_number,
+              } : prev);
+              toast({ kind: 'success', title: 'บันทึกวันที่ใบเสร็จแล้ว', msg: `เลขที่ ${updated.receipt_no}` });
+            } catch (e: unknown) {
+              toast({ kind: 'danger', title: 'บันทึกวันที่ไม่สำเร็จ', msg: String(e instanceof Error ? e.message : e) });
+              throw e;
+            }
+          }}
           onClose={() => setSelected(null)}
           onPrint={async () => {
             try {

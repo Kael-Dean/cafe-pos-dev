@@ -66,6 +66,20 @@ interface Props {
   /** When provided, shows a danger "ยกเลิกใบเสร็จ" action in the footer that
    *  reverts the sale (stock + money) via the order-cancel flow. */
   onCancel?: () => void;
+  /** When provided, shows a date picker that backdates the order on the server
+   *  (for entering past sales). Receives "YYYY-MM-DD"; resolves once persisted. */
+  onSaveDate?: (businessDateISO: string) => Promise<void>;
+}
+
+/** Local calendar day as "YYYY-MM-DD" (matches <input type="date">). */
+function toYMD(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Combine a "YYYY-MM-DD" day with the time-of-day from another Date. */
+function combineDateTime(ymd: string, timeFrom: Date): Date {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, m - 1, d, timeFrom.getHours(), timeFrom.getMinutes(), timeFrom.getSeconds());
 }
 
 export const DEFAULT_STORE: StoreInfo = {
@@ -120,13 +134,32 @@ function useModalA11y(onClose: () => void) {
   return ref;
 }
 
-export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, onCancel }: Props) {
+export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, onCancel, onSaveDate }: Props) {
   const [isPrinting, setIsPrinting] = useState(false);
   const dialogRef = useModalA11y(onClose);
 
   const now = issuedAt ?? new Date();
   const invoiceNo = data.receiptNo ?? makeInvoiceNo(String(data.orderNumber), now);
-  const [dateStr, setDateStr] = useState(() => now.toLocaleString('th-TH'));
+
+  // ── Backdating: pick a day, persist to the server (for past-sale entry) ──
+  const originalDate = toYMD(now);
+  const [pickedDate, setPickedDate] = useState(originalDate);
+  const [savingDate, setSavingDate] = useState(false);
+  // The slip + header reflect the chosen day (with the original time-of-day) so
+  // the preview matches before printing; the server receipt no. updates on save.
+  const shownDate = onSaveDate ? combineDateTime(pickedDate, now) : now;
+  const dateStr = shownDate.toLocaleString('th-TH');
+  const todayYMD = toYMD(new Date());
+  const dateChanged = onSaveDate != null && pickedDate !== originalDate;
+
+  const handleSaveDate = useCallback(async () => {
+    if (!onSaveDate || savingDate || pickedDate === originalDate) return;
+    setSavingDate(true);
+    try { await onSaveDate(pickedDate); }
+    catch { /* parent surfaces the error toast */ }
+    finally { setSavingDate(false); }
+  }, [onSaveDate, savingDate, pickedDate, originalDate]);
+
   const formatDate = (d: Date) => d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
   const formatTime = (d: Date) => d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -208,7 +241,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 700 }}>ใบเสร็จรับเงิน</div>
               <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
-                ออเดอร์ #{data.orderNumber} · {formatDate(now)} {formatTime(now)}
+                ออเดอร์ #{data.orderNumber} · {formatDate(shownDate)} {formatTime(shownDate)}
               </div>
             </div>
             <button onClick={onClose} aria-label="ปิด" className="icon-btn hit-44" style={{
@@ -219,12 +252,56 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
             </button>
           </div>
 
+          {/* ── Backdate editor (server-persisted; for keying past sales) ── */}
+          {onSaveDate && (
+            <div className="receipt-no-print" style={{
+              padding: 'var(--space-3) var(--space-5)', flexShrink: 0,
+              borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
+              display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap',
+            }}>
+              <div style={{ flex: 1, minWidth: 120 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text)' }}>วันที่ใบเสร็จ</div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>แก้เพื่อคีย์ขายย้อนหลัง</div>
+              </div>
+              <input
+                type="date"
+                aria-label="วันที่ใบเสร็จ"
+                value={pickedDate}
+                max={todayYMD}
+                onChange={e => setPickedDate(e.target.value)}
+                className="input-std"
+                style={{
+                  padding: '8px var(--space-3)', minHeight: 40, borderRadius: 'var(--radius-md)', fontSize: 14,
+                  border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)',
+                }}
+              />
+              <button
+                onClick={handleSaveDate}
+                disabled={!dateChanged || savingDate}
+                aria-busy={savingDate || undefined}
+                className="pressable"
+                style={{
+                  padding: '9px var(--space-4)', minHeight: 40, borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                  background: (!dateChanged || savingDate) ? 'var(--color-border)' : 'var(--color-primary)',
+                  color: (!dateChanged || savingDate) ? 'var(--color-text-muted)' : 'var(--color-text-inverse)',
+                  cursor: (!dateChanged || savingDate) ? 'default' : 'pointer',
+                }}
+              >
+                {savingDate
+                  ? <span className="spinner" aria-hidden style={{ width: 14, height: 14 }} />
+                  : <Icon name="check" size={14} />}
+                บันทึกวันที่
+              </button>
+            </div>
+          )}
+
           {/* ── Receipt preview (tinted paper tray; stays light in both themes) ── */}
           <div className="receipt-scroll" style={{ padding: 'var(--space-5)', overflowY: 'auto', flex: 1, minHeight: 0, background: PAPER_TRAY }}>
             <ReceiptPaper
               data={data}
-              invoiceNo={invoiceNo} now={now} copy={copy}
-              dateStr={dateStr} editableDate={copy} onDateChange={setDateStr}
+              invoiceNo={invoiceNo} now={shownDate} copy={copy}
+              dateStr={dateStr}
               fmt={fmt} formatDate={formatDate} formatTime={formatTime}
               storeInfo={DEFAULT_STORE}
             />
