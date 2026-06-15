@@ -12,7 +12,7 @@ export interface ModifierRead {
   is_active: boolean;
 }
 
-interface ModifierGroupRead {
+export interface ModifierGroupRead {
   id: string;
   store_id: string;
   name: string;
@@ -71,6 +71,28 @@ export function useModifierGroups() {
       return data
         .filter(g => g.is_active)
         .map(mapGroup);
+    },
+  });
+}
+
+// Raw groups for the menu builder, where editing needs the full modifier shape
+// (price_delta, inventory link, sort_order) that the POS-facing mapGroup drops.
+// Shares the ['modifier-groups'] key prefix so the existing add/update/delete
+// mutations invalidate it too.
+export function useModifierGroupsAdmin() {
+  return useQuery<ModifierGroupRead[]>({
+    queryKey: ['modifier-groups', 'admin'],
+    queryFn: async () => {
+      const data = await api.get<ModifierGroupRead[]>('/api/v1/modifier-groups');
+      return data
+        .filter(g => g.is_active)
+        .map(g => ({
+          ...g,
+          modifiers: g.modifiers
+            .filter(m => m.is_active)
+            .slice()
+            .sort((a, b) => a.sort_order - b.sort_order),
+        }));
     },
   });
 }
@@ -150,5 +172,51 @@ export function useDeleteModifier() {
     mutationFn: ({ groupId, modifierId }: { groupId: string; modifierId: string }) =>
       api.delete<void>(`/api/v1/modifier-groups/${groupId}/modifiers/${modifierId}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['modifier-groups'] }),
+  });
+}
+
+// ── Modifier recipe items (multi-ingredient override/delta) ────────────────────
+// A modifier can rewrite the product's base recipe at checkout:
+//   override → replaces the base quantity for that ingredient (0 = skip it)
+//   delta    → adds/subtracts to the base quantity (can introduce a new one)
+// ModifierRead does NOT embed these — fetch per-modifier when editing.
+
+export type ModifierRecipeMode = 'override' | 'delta';
+
+export interface ModifierRecipeItemRead {
+  id?: string;
+  inventory_item_id: string;
+  quantity: string | number;
+  mode: ModifierRecipeMode;
+}
+
+export interface ModifierRecipeItemInput {
+  inventory_item_id: string;
+  quantity: string;
+  mode: ModifierRecipeMode;
+}
+
+export function useModifierRecipeItems(groupId: string, modifierId: string, enabled: boolean) {
+  return useQuery<ModifierRecipeItemRead[]>({
+    queryKey: ['modifier-recipe-items', groupId, modifierId],
+    queryFn: () =>
+      api.get<ModifierRecipeItemRead[]>(
+        `/api/v1/modifier-groups/${groupId}/modifiers/${modifierId}/recipe-items`,
+      ),
+    enabled,
+  });
+}
+
+// Full bulk-replace: send the complete desired set every call; [] clears all.
+export function useReplaceModifierRecipeItems() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, modifierId, items }: { groupId: string; modifierId: string; items: ModifierRecipeItemInput[] }) =>
+      api.put<ModifierRecipeItemRead[]>(
+        `/api/v1/modifier-groups/${groupId}/modifiers/${modifierId}/recipe-items`,
+        { items },
+      ),
+    onSuccess: (_data, { groupId, modifierId }) =>
+      qc.invalidateQueries({ queryKey: ['modifier-recipe-items', groupId, modifierId] }),
   });
 }

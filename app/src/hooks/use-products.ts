@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
+import { downscaleImage } from '@/lib/image-resize';
 
 // ── Backend shapes (exact field names from schemas/catalog.py) ────────────────
 interface CategoryRead {
@@ -21,6 +22,7 @@ interface ProductRead {
   product_type: 'MADE_TO_ORDER' | 'PRODUCED';
   servings_per_batch: number;
   finished_goods_item_id: string | null;
+  image_url: string | null;   // R2 public URL, or null when no photo uploaded
 }
 
 // ── Frontend shapes ───────────────────────────────────────────────────────────
@@ -37,6 +39,7 @@ export interface MenuItem {
   productType: 'MADE_TO_ORDER' | 'PRODUCED';
   servingsPerBatch: number;
   finishedGoodsItemId: string | null;
+  imageUrl: string | null;  // product.image_url — card background when present
 }
 
 export interface Category {
@@ -70,6 +73,7 @@ function mapProduct(p: ProductRead): MenuItem {
     productType: p.product_type ?? 'MADE_TO_ORDER',
     servingsPerBatch: p.servings_per_batch ?? 1,
     finishedGoodsItemId: p.finished_goods_item_id ?? null,
+    imageUrl: p.image_url ?? null,
   };
 }
 
@@ -204,5 +208,67 @@ export function useUpdateProductAdmin() {
     mutationFn: ({ productId, ...payload }: { productId: string } & ProductUpdateAdminPayload) =>
       api.patch<ProductReadAdmin>(`/api/v1/products/${productId}`, payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['products'] }),
+  });
+}
+
+// ── Product image upload (Cloudflare R2, presigned direct upload) ──────────────
+// 3-step flow (see HANDOFF_PRODUCT_IMAGES.md):
+//   1. POST .../image-upload-url  → short-lived signed PUT URL + object key
+//   2. PUT  {upload_url} raw bytes → straight to R2 (NOT through our API)
+//   3. PUT  .../image {key}        → backend verifies + persists image_url
+// The image is downscaled client-side first so the content_type we sign in
+// step 1 matches the bytes we PUT in step 2 (R2 rejects a mismatch with 403).
+
+interface ImageUploadUrlResponse {
+  upload_url: string;
+  key: string;
+  public_url: string;
+  expires_in: number;
+}
+
+export async function uploadProductImage(productId: string, file: File): Promise<string> {
+  const blob = await downscaleImage(file);
+  const contentType = blob.type || file.type;
+
+  // 1. presigned URL — requested at upload time so the 5-min TTL never goes stale.
+  const { upload_url, key } = await api.post<ImageUploadUrlResponse>(
+    `/api/v1/products/${productId}/image-upload-url`,
+    { content_type: contentType },
+  );
+
+  // 2. raw PUT straight to R2 — no auth header, Content-Type MUST match step 1.
+  const put = await fetch(upload_url, {
+    method: 'PUT',
+    headers: { 'Content-Type': contentType },
+    body: blob,
+  });
+  if (!put.ok) throw new Error(`อัปโหลดรูปไป R2 ไม่สำเร็จ (HTTP ${put.status})`);
+
+  // 3. confirm — backend saves image_url and returns the updated product.
+  const product = await api.put<ProductRead>(`/api/v1/products/${productId}/image`, { key });
+  return product.image_url ?? '';
+}
+
+export function useUploadProductImage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ productId, file }: { productId: string; file: File }) =>
+      uploadProductImage(productId, file),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['product-detail'] });
+    },
+  });
+}
+
+export function useDeleteProductImage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (productId: string) =>
+      api.delete<void>(`/api/v1/products/${productId}/image`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['product-detail'] });
+    },
   });
 }

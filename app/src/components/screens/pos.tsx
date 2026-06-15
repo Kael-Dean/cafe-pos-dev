@@ -723,17 +723,23 @@ const MenuCard = ({ item, onClick }: { item: MenuItem; onClick: () => void }) =>
   }}>
     <div style={{
       aspectRatio: '4 / 3',
-      background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}cc 100%)`,
+      background: item.imageUrl
+        ? `center / cover no-repeat url(${item.imageUrl})`
+        : `linear-gradient(135deg, ${item.color} 0%, ${item.color}cc 100%)`,
       position: 'relative', display: 'grid', placeItems: 'center',
     }}>
-      <div style={{
-        position: 'absolute', inset: 0,
-        backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 8px, transparent 8px 16px)',
-      }}/>
-      <div style={{
-        fontFamily: 'var(--font-num)', color: 'rgba(255,255,255,0.92)',
-        fontSize: 11, letterSpacing: '0.08em', fontWeight: 500,
-      }}>{item.nameEn.toUpperCase()}</div>
+      {!item.imageUrl && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 8px, transparent 8px 16px)',
+        }}/>
+      )}
+      {!item.imageUrl && (
+        <div style={{
+          fontFamily: 'var(--font-num)', color: 'rgba(255,255,255,0.92)',
+          fontSize: 11, letterSpacing: '0.08em', fontWeight: 500,
+        }}>{item.nameEn.toUpperCase()}</div>
+      )}
       {item.hot && (
         <div style={{
           position: 'absolute', top: 8, left: 8,

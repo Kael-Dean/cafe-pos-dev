@@ -5,10 +5,10 @@ import Icon from '../icons';
 import { useToast, Tag, baht, Select, NumberInput } from '../app-common';
 import { useStagger } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
-import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, useUpdateProduct, type MenuItem, type Category } from '@/hooks/use-products';
+import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, useUpdateProduct, useUploadProductImage, useDeleteProductImage, type MenuItem, type Category } from '@/hooks/use-products';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
 import { useProductDetail, useUpdateRecipe, useLinkModifierGroups, type RecipeItem } from '@/hooks/use-bom';
-import { useModifierGroups, useCreateModifierGroup, useAddModifier, useDeleteModifier, DEFAULT_DRINK_MODIFIER_GROUPS, type ModifierGroup } from '@/hooks/use-modifier-groups';
+import { useModifierGroups, useModifierGroupsAdmin, useAddModifier, useUpdateModifier, useDeleteModifier, useModifierRecipeItems, useReplaceModifierRecipeItems, type ModifierGroup, type ModifierGroupRead, type ModifierRead, type ModifierRecipeItemInput } from '@/hooks/use-modifier-groups';
 import { useCookingSteps, useReplaceCookingSteps, type CookingStepRead } from '@/hooks/use-cooking-steps';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { api } from '@/lib/api-client';
@@ -49,10 +49,8 @@ export default function BOMBuilder() {
   const createProduct = useCreateProduct();
   const deleteProduct = useDeleteProduct();
   const linkModifierGroups = useLinkModifierGroups();
-  const createModifierGroup = useCreateModifierGroup();
-  const addModifier = useAddModifier();
-  const deleteModifier = useDeleteModifier();
-  const { data: modifierGroups } = useModifierGroups();
+  const { data: modifierGroups } = useModifierGroups();          // mapped — for the group picker
+  const { data: adminModifierGroups } = useModifierGroupsAdmin(); // raw — for inline editing
   const { data: currentUser } = useCurrentUser();
   const { data: stepsData } = useCookingSteps(selectedId);
   const replaceSteps = useReplaceCookingSteps();
@@ -345,7 +343,12 @@ export default function BOMBuilder() {
                   display: 'flex', gap: 12, alignItems: 'center', flex: 1, minWidth: 0, padding: 10,
                   background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 8, background: m.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{m.tag}</div>
+                  {m.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={m.imageUrl} alt={m.name} style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flexShrink: 0, display: 'block' }} />
+                  ) : (
+                    <div style={{ width: 40, height: 40, borderRadius: 8, background: m.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{m.tag}</div>
+                  )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.name}</div>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 3 }}>
@@ -442,24 +445,8 @@ export default function BOMBuilder() {
             onRename={handleRename}
             duplicating={duplicating}
             linkedGroupIds={productDetail?.modifierGroupIds ?? []}
-            allModifierGroups={modifierGroups ?? []}
+            allModifierGroups={adminModifierGroups ?? []}
             onModifierGroupPickerOpen={() => setModifierGroupPickerOpen(true)}
-            onAddModifier={async (groupId, name, priceDelta) => {
-              try {
-                await addModifier.mutateAsync({ groupId, name, price_delta: priceDelta });
-                toast({ kind: 'success', title: 'เพิ่มตัวเลือกแล้ว', msg: name });
-              } catch {
-                toast({ kind: 'danger', title: 'เพิ่มไม่สำเร็จ', msg: 'กรุณาลองใหม่' });
-              }
-            }}
-            onDeleteModifier={async (groupId, modifierId) => {
-              try {
-                await deleteModifier.mutateAsync({ groupId, modifierId });
-                toast({ kind: 'success', title: 'ลบตัวเลือกแล้ว' });
-              } catch {
-                toast({ kind: 'danger', title: 'ลบไม่สำเร็จ', msg: 'กรุณาลองใหม่' });
-              }
-            }}
           />
           <CookingStepsSection
             steps={editedSteps}
@@ -554,10 +541,8 @@ interface RightPanelProps {
   onRename: (name: string) => void;
   duplicating: boolean;
   linkedGroupIds: string[];
-  allModifierGroups: ModifierGroup[];
+  allModifierGroups: ModifierGroupRead[];
   onModifierGroupPickerOpen: () => void;
-  onAddModifier: (groupId: string, name: string, priceDelta: string) => Promise<void>;
-  onDeleteModifier: (groupId: string, modifierId: string) => Promise<void>;
 }
 
 // Menu title with an explicit "เปลี่ยนชื่อ" button. Clicking the button (or the
@@ -642,10 +627,10 @@ const StepButtons = ({ value, step, min, max, onChange }: { value: number; step:
   );
 };
 
-const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryId, categories, inventoryItems, totalCost, isProduced, batchSize, editedServingsPerBatch, onServingsPerBatchChange, costPerUnit, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onCategoryChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, onDuplicate, onRename, duplicating, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen, onAddModifier, onDeleteModifier }: RightPanelProps) => (
+const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryId, categories, inventoryItems, totalCost, isProduced, batchSize, editedServingsPerBatch, onServingsPerBatchChange, costPerUnit, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onCategoryChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, onDuplicate, onRename, duplicating, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen }: RightPanelProps) => (
   <>
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
-      <div style={{ width: 80, height: 80, borderRadius: 12, background: product.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 800, flexShrink: 0 }}>{product.tag}</div>
+      <ProductImageControl product={product} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500 }}>{product.nameEn}</div>
         <EditableMenuName name={product.name} onRename={onRename} />
@@ -793,9 +778,8 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
     <ModifierSection
       linkedGroupIds={linkedGroupIds}
       allModifierGroups={allModifierGroups}
+      inventoryItems={inventoryItems}
       onPickerOpen={onModifierGroupPickerOpen}
-      onAddModifier={onAddModifier}
-      onDeleteModifier={onDeleteModifier}
     />
 
     {productType === 'MENU' && (
@@ -966,17 +950,16 @@ const SummaryCard = ({ label, value, color, highlight, hint }: { label: string; 
 // ── Modifier Group Management ─────────────────────────────────────────────────
 
 const ModifierSection = ({
-  linkedGroupIds, allModifierGroups, onPickerOpen, onAddModifier, onDeleteModifier,
+  linkedGroupIds, allModifierGroups, inventoryItems, onPickerOpen,
 }: {
   linkedGroupIds: string[];
-  allModifierGroups: ModifierGroup[];
+  allModifierGroups: ModifierGroupRead[];
+  inventoryItems: InventoryItem[];
   onPickerOpen: () => void;
-  onAddModifier: (groupId: string, name: string, priceDelta: string) => Promise<void>;
-  onDeleteModifier: (groupId: string, modifierId: string) => Promise<void>;
 }) => {
   const linkedGroups = linkedGroupIds
     .map(id => allModifierGroups.find(g => g.id === id))
-    .filter((g): g is ModifierGroup => g !== undefined);
+    .filter((g): g is ModifierGroupRead => g !== undefined);
 
   return (
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', marginTop: 16 }}>
@@ -996,8 +979,7 @@ const ModifierSection = ({
           <ModifierGroupRow
             key={group.id}
             group={group}
-            onAddModifier={(name, priceDelta) => onAddModifier(group.id, name, priceDelta)}
-            onDeleteModifier={(modifierId) => onDeleteModifier(group.id, modifierId)}
+            inventoryItems={inventoryItems}
           />
         ))
       )}
@@ -1005,73 +987,343 @@ const ModifierSection = ({
   );
 };
 
-const ModifierGroupRow = ({ group, onAddModifier, onDeleteModifier }: {
-  group: ModifierGroup;
-  onAddModifier: (name: string, priceDelta: string) => Promise<void>;
-  onDeleteModifier: (modifierId: string) => Promise<void>;
+const fmtDelta = (n: number) => n === 0 ? '—' : n > 0 ? `+฿${n}` : `-฿${Math.abs(n)}`;
+
+// One inventory-link <Select> + qty input, reused by the add form and the edit row.
+const InventoryLinkFields = ({ inventoryItems, invId, invQty, onInvId, onInvQty }: {
+  inventoryItems: InventoryItem[];
+  invId: string; invQty: string;
+  onInvId: (v: string) => void; onInvQty: (v: string) => void;
 }) => {
+  const linked = inventoryItems.find(i => i.id === invId);
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>หักสต็อก:</span>
+      <Select
+        value={invId}
+        onChange={onInvId}
+        ariaLabel="วัตถุดิบที่หัก"
+        style={{ minWidth: 180 }}
+        triggerStyle={{ padding: '6px 10px', fontSize: 13, borderRadius: 6 }}
+        menuMaxHeight={240}
+        options={[{ value: '', label: '— ไม่ผูกวัตถุดิบ —' }, ...inventoryItems.map(i => ({ value: i.id, label: i.name }))]}
+      />
+      {invId && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input type="number" min={0} step={0.1} placeholder="ปริมาณ" value={invQty} onChange={e => onInvQty(e.target.value)} style={{ width: 84, padding: '6px 10px', fontSize: 13, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
+          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{linked?.unit ?? 'หน่วย'}/แก้ว</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ModifierGroupRow = ({ group, inventoryItems }: {
+  group: ModifierGroupRead;
+  inventoryItems: InventoryItem[];
+}) => {
+  const toast = useToast();
+  const addModifier = useAddModifier();
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDelta, setNewDelta] = useState('0');
-  const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [newInvId, setNewInvId] = useState('');
+  const [newInvQty, setNewInvQty] = useState('');
+  const isRadio = group.max_select === 1;
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
-    setSaving(true);
+    const hasLink = !!newInvId && !!newInvQty && Number(newInvQty) > 0;
     try {
-      await onAddModifier(newName.trim(), newDelta || '0');
-      setNewName('');
-      setNewDelta('0');
-      setAddOpen(false);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async (modifierId: string) => {
-    setDeletingId(modifierId);
-    try {
-      await onDeleteModifier(modifierId);
-    } finally {
-      setDeletingId(null);
+      await addModifier.mutateAsync({
+        groupId: group.id,
+        name: newName.trim(),
+        price_delta: newDelta || '0',
+        inventory_item_id: hasLink ? newInvId : null,
+        inventory_qty: hasLink ? newInvQty : null,
+      });
+      setNewName(''); setNewDelta('0'); setNewInvId(''); setNewInvQty(''); setAddOpen(false);
+      toast({ kind: 'success', title: 'เพิ่มตัวเลือกแล้ว', msg: newName.trim() });
+    } catch (err) {
+      toast({ kind: 'danger', title: 'เพิ่มไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
     }
   };
 
   return (
     <div style={{ borderBottom: '1px solid var(--color-border)' }}>
       <div style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--color-surface-2)' }}>
-        <div style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>{group.label}</div>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>{group.name}</div>
         <Tag tone={group.required ? 'danger' : 'warning'}>{group.required ? 'จำเป็น' : 'ตัวเลือก'}</Tag>
-        <Tag tone="info">{group.type === 'radio' ? 'เลือกได้ 1' : 'เลือกได้หลาย'}</Tag>
+        <Tag tone="info">{isRadio ? 'เลือกได้ 1' : 'เลือกได้หลาย'}</Tag>
         <button onClick={() => setAddOpen(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 12, fontWeight: 600, background: addOpen ? 'var(--color-accent-50)' : 'transparent', color: addOpen ? 'var(--color-primary-700)' : 'var(--color-text-secondary)', border: `1px solid ${addOpen ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)' }}>
           <Icon name="plus" size={12} /> เพิ่มตัวเลือก
         </button>
       </div>
-      {group.options.map(option => (
-        <div key={option.id} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid var(--color-border)' }}>
-          <div style={{ flex: 1, fontSize: 13 }}>{option.label}</div>
-          <div className="num" style={{ fontSize: 12, fontWeight: 600, minWidth: 50, textAlign: 'right', color: option.diff === 0 ? 'var(--color-text-muted)' : 'var(--color-text)' }}>
-            {option.diff === 0 ? '—' : option.diff > 0 ? `+฿${option.diff}` : `-฿${Math.abs(option.diff)}`}
+      {group.modifiers.map(modifier => (
+        <ModifierOptionRow key={modifier.id} groupId={group.id} modifier={modifier} inventoryItems={inventoryItems} />
+      ))}
+      {addOpen && (
+        <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px solid var(--color-border)', background: 'var(--color-accent-50)' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="text" placeholder="ชื่อตัวเลือก..." value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} style={{ flex: 1, padding: '7px 10px', fontSize: 13, border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} autoFocus />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>฿</span>
+              <input type="number" step="1" placeholder="0" value={newDelta} onChange={e => setNewDelta(e.target.value)} title="ส่วนต่างราคา (ติดลบได้)" style={{ width: 72, padding: '7px 10px', fontSize: 13, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
+            </div>
           </div>
-          <button onClick={() => handleDelete(option.id)} disabled={deletingId === option.id} title="ลบตัวเลือก" style={{ display: 'grid', placeItems: 'center', width: 28, height: 28, borderRadius: 6, background: 'transparent', border: 'none', cursor: deletingId === option.id ? 'not-allowed' : 'pointer', color: 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
-            {deletingId === option.id ? '…' : <Icon name="trash" size={13} />}
+          <InventoryLinkFields inventoryItems={inventoryItems} invId={newInvId} invQty={newInvQty} onInvId={setNewInvId} onInvQty={setNewInvQty} />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button onClick={() => setAddOpen(false)} style={{ padding: '7px 12px', fontSize: 12, fontWeight: 500, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
+            <button onClick={handleAdd} disabled={addModifier.isPending || !newName.trim()} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: (addModifier.isPending || !newName.trim()) ? 'var(--color-surface-2)' : 'var(--color-primary)', color: (addModifier.isPending || !newName.trim()) ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 6, cursor: (addModifier.isPending || !newName.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+              {addModifier.isPending ? 'กำลังเพิ่ม…' : 'เพิ่มตัวเลือก'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// One option inside a group: shows price delta + inventory link, expands to an
+// inline editor (name / price_delta / single-item deduction) and an optional
+// multi-ingredient recipe-override editor.
+const ModifierOptionRow = ({ groupId, modifier, inventoryItems }: {
+  groupId: string;
+  modifier: ModifierRead;
+  inventoryItems: InventoryItem[];
+}) => {
+  const toast = useToast();
+  const updateModifier = useUpdateModifier();
+  const deleteModifier = useDeleteModifier();
+  const [editing, setEditing] = useState(false);
+  const [recipeOpen, setRecipeOpen] = useState(false);
+  const [name, setName] = useState(modifier.name);
+  const [delta, setDelta] = useState(String(modifier.price_delta));
+  const [invId, setInvId] = useState(modifier.inventory_item_id ?? '');
+  const [invQty, setInvQty] = useState(modifier.inventory_qty ?? '');
+
+  // Re-sync local edit fields whenever the saved modifier changes (after refetch).
+  useEffect(() => {
+    setName(modifier.name);
+    setDelta(String(modifier.price_delta));
+    setInvId(modifier.inventory_item_id ?? '');
+    setInvQty(modifier.inventory_qty ?? '');
+  }, [modifier.name, modifier.price_delta, modifier.inventory_item_id, modifier.inventory_qty]);
+
+  const deltaNum = Number(modifier.price_delta) || 0;
+  const linkedInv = inventoryItems.find(i => i.id === modifier.inventory_item_id);
+
+  const handleSave = async () => {
+    const hasLink = !!invId && !!invQty && Number(invQty) > 0;
+    try {
+      await updateModifier.mutateAsync({
+        groupId,
+        modifierId: modifier.id,
+        name: name.trim() || modifier.name,
+        price_delta: delta || '0',
+        inventory_item_id: hasLink ? invId : null,
+        inventory_qty: hasLink ? invQty : null,
+      });
+      setEditing(false);
+      toast({ kind: 'success', title: 'บันทึกตัวเลือกแล้ว', msg: name.trim() || modifier.name });
+    } catch (err) {
+      toast({ kind: 'danger', title: 'บันทึกไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await deleteModifier.mutateAsync({ groupId, modifierId: modifier.id });
+      toast({ kind: 'success', title: 'ลบตัวเลือกแล้ว', msg: modifier.name });
+    } catch (err) {
+      toast({ kind: 'danger', title: 'ลบไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+    }
+  };
+
+  return (
+    <div style={{ borderTop: '1px solid var(--color-border)' }}>
+      <div style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{modifier.name}</div>
+          {linkedInv && (
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
+              หัก {Number(modifier.inventory_qty)} {linkedInv.unit} · {linkedInv.name}
+            </div>
+          )}
+        </div>
+        <div className="num" style={{ fontSize: 12, fontWeight: 600, minWidth: 50, textAlign: 'right', color: deltaNum === 0 ? 'var(--color-text-muted)' : 'var(--color-text)' }}>{fmtDelta(deltaNum)}</div>
+        <button onClick={() => setEditing(v => !v)} title="แก้ไขตัวเลือก" aria-label={`แก้ไข ${modifier.name}`} style={{ display: 'grid', placeItems: 'center', width: 28, height: 28, borderRadius: 6, background: editing ? 'var(--color-accent-50)' : 'transparent', border: 'none', cursor: 'pointer', color: editing ? 'var(--color-accent)' : 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { if (!editing) { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-accent)'; } }} onMouseLeave={e => { if (!editing) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; } }}>
+          <Icon name="pencil" size={13} />
+        </button>
+        <button onClick={handleDelete} disabled={deleteModifier.isPending} title="ลบตัวเลือก" aria-label={`ลบ ${modifier.name}`} style={{ display: 'grid', placeItems: 'center', width: 28, height: 28, borderRadius: 6, background: 'transparent', border: 'none', cursor: deleteModifier.isPending ? 'not-allowed' : 'pointer', color: 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
+          {deleteModifier.isPending ? '…' : <Icon name="trash" size={13} />}
+        </button>
+      </div>
+
+      {editing && (
+        <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--color-surface-2)', borderTop: '1px solid var(--color-border)' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="ชื่อตัวเลือก" style={{ flex: 1, padding: '7px 10px', fontSize: 13, border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>฿</span>
+              <input type="number" step="1" value={delta} onChange={e => setDelta(e.target.value)} title="ส่วนต่างราคา (ติดลบได้)" style={{ width: 72, padding: '7px 10px', fontSize: 13, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
+            </div>
+          </div>
+          <InventoryLinkFields inventoryItems={inventoryItems} invId={invId} invQty={invQty} onInvId={setInvId} onInvQty={setInvQty} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <button onClick={() => setRecipeOpen(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 12, fontWeight: 600, background: recipeOpen ? 'var(--color-accent-50)' : 'transparent', color: recipeOpen ? 'var(--color-primary-700)' : 'var(--color-text-secondary)', border: `1px solid ${recipeOpen ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <Icon name="chevronDown" size={12} style={{ transform: recipeOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} /> สูตรขั้นสูง (แทนที่/บวก-ลบ หลายวัตถุดิบ)
+            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setEditing(false)} style={{ padding: '7px 12px', fontSize: 12, fontWeight: 500, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>ปิด</button>
+              <button onClick={handleSave} disabled={updateModifier.isPending} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: updateModifier.isPending ? 'var(--color-surface-2)' : 'var(--color-primary)', color: updateModifier.isPending ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 6, cursor: updateModifier.isPending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Icon name="check" size={14} />{updateModifier.isPending ? 'กำลังบันทึก…' : 'บันทึก'}
+              </button>
+            </div>
+          </div>
+          {recipeOpen && (
+            <ModifierRecipeEditor groupId={groupId} modifierId={modifier.id} inventoryItems={inventoryItems} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Phase-2 recipe override editor: a full set of {inventory_item_id, quantity, mode}
+// rows that rewrite the product's base recipe at checkout. Saving does a bulk
+// replace (the complete desired set each call; empty rows are dropped).
+const ModifierRecipeEditor = ({ groupId, modifierId, inventoryItems }: {
+  groupId: string;
+  modifierId: string;
+  inventoryItems: InventoryItem[];
+}) => {
+  const toast = useToast();
+  const { data: items, isLoading } = useModifierRecipeItems(groupId, modifierId, true);
+  const replace = useReplaceModifierRecipeItems();
+  const [rows, setRows] = useState<ModifierRecipeItemInput[]>([]);
+
+  useEffect(() => {
+    setRows((items ?? []).map(it => ({
+      inventory_item_id: it.inventory_item_id,
+      quantity: String(it.quantity),
+      mode: it.mode,
+    })));
+  }, [items]);
+
+  const updateRow = (idx: number, patch: Partial<ModifierRecipeItemInput>) =>
+    setRows(r => r.map((x, i) => i === idx ? { ...x, ...patch } : x));
+  const removeRow = (idx: number) => setRows(r => r.filter((_, i) => i !== idx));
+  const addRow = () => setRows(r => [...r, { inventory_item_id: '', quantity: '0', mode: 'override' }]);
+
+  const handleSave = async () => {
+    const clean = rows
+      .filter(r => r.inventory_item_id)
+      .map(r => ({ inventory_item_id: r.inventory_item_id, quantity: r.quantity || '0', mode: r.mode }));
+    try {
+      await replace.mutateAsync({ groupId, modifierId, items: clean });
+      toast({ kind: 'success', title: 'บันทึกสูตรขั้นสูงแล้ว', msg: `${clean.length} วัตถุดิบ` });
+    } catch (err) {
+      toast({ kind: 'danger', title: 'บันทึกไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+    }
+  };
+
+  return (
+    <div style={{ padding: 12, border: '1px dashed var(--color-border)', borderRadius: 8, background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ fontSize: 11, color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
+        <strong>แทนที่</strong> = เขียนทับปริมาณในสูตรหลัก (0 = ไม่หักวัตถุดิบนั้น เช่น “ไม่ใส่วิป”) ·
+        <strong> บวก/ลบ</strong> = บวก/ลบจากสูตรหลัก (ติดลบได้ เช่น “เพิ่มชีส +30g”)
+      </div>
+      {isLoading ? (
+        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: 8 }}>กำลังโหลด…</div>
+      ) : rows.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: 8 }}>ยังไม่มีสูตรขั้นสูง</div>
+      ) : rows.map((row, idx) => (
+        <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Select
+            value={row.inventory_item_id}
+            onChange={v => updateRow(idx, { inventory_item_id: v })}
+            ariaLabel="วัตถุดิบ"
+            style={{ minWidth: 170 }}
+            triggerStyle={{ padding: '6px 10px', fontSize: 13, borderRadius: 6 }}
+            menuMaxHeight={240}
+            options={[{ value: '', label: '— เลือกวัตถุดิบ —' }, ...inventoryItems.map(i => ({ value: i.id, label: i.name }))]}
+          />
+          <input type="number" step={0.1} value={row.quantity} onChange={e => updateRow(idx, { quantity: e.target.value })} title="ปริมาณ" style={{ width: 84, padding: '6px 10px', fontSize: 13, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
+          <div style={{ display: 'flex', border: '1px solid var(--color-border)', borderRadius: 6, overflow: 'hidden' }}>
+            {(['override', 'delta'] as const).map(m => (
+              <button key={m} onClick={() => updateRow(idx, { mode: m })} style={{ padding: '6px 10px', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: row.mode === m ? 'var(--color-primary)' : 'var(--color-surface)', color: row.mode === m ? 'var(--color-text-inverse)' : 'var(--color-text-secondary)' }}>
+                {m === 'override' ? 'แทนที่' : 'บวก/ลบ'}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => removeRow(idx)} title="ลบแถว" style={{ display: 'grid', placeItems: 'center', width: 28, height: 28, borderRadius: 6, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
+            <Icon name="trash" size={13} />
           </button>
         </div>
       ))}
-      {addOpen && (
-        <div style={{ padding: '10px 20px', display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px solid var(--color-border)', background: 'var(--color-accent-50)' }}>
-          <input type="text" placeholder="ชื่อตัวเลือก..." value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} style={{ flex: 1, padding: '7px 10px', fontSize: 13, border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} autoFocus />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>฿</span>
-            <input type="number" step="1" placeholder="0" value={newDelta} onChange={e => setNewDelta(e.target.value)} style={{ width: 72, padding: '7px 10px', fontSize: 13, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
-          </div>
-          <button onClick={handleAdd} disabled={saving || !newName.trim()} style={{ padding: '7px 14px', fontSize: 13, fontWeight: 600, background: (saving || !newName.trim()) ? 'var(--color-surface-2)' : 'var(--color-primary)', color: (saving || !newName.trim()) ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 6, cursor: (saving || !newName.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-            {saving ? '…' : 'เพิ่ม'}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+        <button onClick={addRow} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>
+          <Icon name="plus" size={12} /> เพิ่มวัตถุดิบ
+        </button>
+        <button onClick={handleSave} disabled={replace.isPending} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: replace.isPending ? 'var(--color-surface-2)' : 'var(--color-primary)', color: replace.isPending ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 6, cursor: replace.isPending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Icon name="check" size={14} />{replace.isPending ? 'กำลังบันทึก…' : 'บันทึกสูตรขั้นสูง'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ── Product image control (upload / replace / remove a menu photo) ────────────
+const ProductImageControl = ({ product }: { product: MenuItem }) => {
+  const toast = useToast();
+  const uploadImage = useUploadProductImage();
+  const deleteImage = useDeleteProductImage();
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';  // allow re-picking the same file
+    if (!file) return;
+    uploadImage.mutate({ productId: product.id, file }, {
+      onSuccess: () => toast({ kind: 'success', title: 'อัปโหลดรูปแล้ว', msg: product.name }),
+      onError: (err) => toast({ kind: 'danger', title: 'อัปโหลดไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' }),
+    });
+  };
+
+  const onRemove = () => {
+    deleteImage.mutate(product.id, {
+      onSuccess: () => toast({ kind: 'success', title: 'ลบรูปแล้ว', msg: product.name }),
+      onError: (err) => toast({ kind: 'danger', title: 'ลบรูปไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' }),
+    });
+  };
+
+  const busy = uploadImage.isPending || deleteImage.isPending;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+      <div style={{ position: 'relative', width: 80, height: 80, borderRadius: 12, overflow: 'hidden', flexShrink: 0 }}>
+        {product.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={product.imageUrl} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        ) : (
+          <div style={{ width: '100%', height: '100%', background: product.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 800 }}>{product.tag}</div>
+        )}
+        {busy && (
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'grid', placeItems: 'center', color: '#fff', fontSize: 11, fontWeight: 600 }}>…</div>
+        )}
+      </div>
+      <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={onPick} style={{ display: 'none' }} />
+      <div style={{ display: 'flex', gap: 4 }}>
+        <button onClick={() => fileRef.current?.click()} disabled={busy} style={{ padding: '4px 8px', fontSize: 11, fontWeight: 600, background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 6, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+          {product.imageUrl ? 'เปลี่ยนรูป' : '＋ รูป'}
+        </button>
+        {product.imageUrl && (
+          <button onClick={onRemove} disabled={busy} title="ลบรูป" aria-label="ลบรูป" style={{ padding: '4px 8px', fontSize: 11, fontWeight: 600, background: 'transparent', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)', borderRadius: 6, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            ลบ
           </button>
-          <button onClick={() => setAddOpen(false)} style={{ padding: '7px 10px', fontSize: 12, fontWeight: 500, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
