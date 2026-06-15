@@ -23,6 +23,7 @@ export interface PrintReceiptArgs {
   paymentMethod: string;
   cashGiven?: number;
   memberName?: string;
+  salesName?: string;
   /** Original order date/time — used on reprinted copies so they show when the
    *  order actually happened (not "now"). Defaults to the current time. */
   issuedAt?: Date;
@@ -61,6 +62,7 @@ export function usePrinter() {
 
     if (args.cashGiven != null) body.cashGiven = args.cashGiven;
     if (args.memberName) body.memberName = args.memberName;
+    if (args.salesName) body.salesName = args.salesName;
     if (args.issuedAt) body.issuedAt = args.issuedAt.toISOString();
     if (args.copy) body.copy = true;
 

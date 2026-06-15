@@ -154,6 +154,7 @@ export const th = {
     colBalance: 'แต้มคงเหลือ',
     colLifetime: 'สะสมตลอดชีพ',
     colTier: 'ระดับ',
+    salesLabel: 'เซลล์',
     // register modal
     registerTitle: 'สมัครสมาชิกใหม่',
     registerDesc: 'กรอกข้อมูลเพื่อสมัครสมาชิกสะสมแต้ม',
@@ -297,6 +298,7 @@ export const th = {
     pointsUnit: (n: string) => `${n} แต้ม`,
     redeemSuffix: ' • แลกรางวัล',
     removeMember: 'นำสมาชิกออก',
+    salesLabel: 'เซลล์',
     customer: 'ลูกค้า',
     register: 'สมัครสมาชิก',
     parkBill: 'พักบิล',

@@ -14,6 +14,7 @@ import PaymentModal from './payment-modal';
 import ReceiptModal, { type ReceiptData } from './receipt-modal';
 import MembershipModal, { type MemberInfo } from './membership-modal';
 import { useMembershipProgram, type ProgramRead } from '@/hooks/use-membership';
+import { useCustomerDetail } from '@/hooks/use-customers';
 import { usePrinter } from '@/hooks/use-printer';
 import { useStagger } from '@/lib/motion';
 
@@ -137,6 +138,11 @@ export default function POSTerminal() {
     });
   };
 
+  // Resolve the attached member's assigned salesperson (เซลส์) so it can be shown
+  // on the bill chip and printed on the receipt. Disabled until a member is set.
+  const { data: memberCustomer } = useCustomerDetail(memberInfo?.account.customer_id);
+  const memberSalesName = memberCustomer?.sales_name ?? undefined;
+
   const subtotal = cart.reduce((s, l) => s + l.unitPrice * l.qty, 0);
   const memberDiscount = estimateMemberDiscount(memberInfo, program, subtotal);
   const discount = Math.min(subtotal, memberDiscount + promoDiscount);
@@ -182,6 +188,7 @@ export default function POSTerminal() {
     const totalSnapshot = total;
     const discountSnapshot = discount;
     const memberSnapshot = memberInfo;
+    const salesNameSnapshot = memberSalesName;
     const promoSnapshot = selectedPromoIds;
     setPayment(null);
     clearCart();
@@ -235,6 +242,7 @@ export default function POSTerminal() {
           paymentLabel: (t.pos.payReceipt as Record<string, string>)[method ?? 'cash'] ?? method ?? 'cash',
           discount: finalDiscount > 0 ? finalDiscount : undefined,
           memberName: memberSnapshot?.account.customer_name,
+          salesName: memberSnapshot ? salesNameSnapshot : undefined,
           pointsEarned: hasMember ? earned : undefined,
           rewardRedeemed: order.reward_redeemed,
         });
@@ -442,6 +450,9 @@ export default function POSTerminal() {
                     <div style={{fontSize: 10, color: 'var(--color-accent-600)'}}>
                       {t.pos.pointsUnit(memberInfo.account.points_balance.toLocaleString())}{memberInfo.redeemReward ? t.pos.redeemSuffix : ''}
                     </div>
+                    {memberSalesName && (
+                      <div style={{fontSize: 10, color: 'var(--color-text-secondary)'}}>{t.pos.salesLabel}: {memberSalesName}</div>
+                    )}
                   </div>
                   <button onClick={() => setMemberInfo(null)} title={t.pos.removeMember} aria-label={t.pos.removeMember}
                     className="hit-44 pressable"
@@ -612,6 +623,7 @@ export default function POSTerminal() {
               paymentMethod: receiptData.paymentMethod,
               cashGiven: receiptData.cashGiven,
               memberName: receiptData.memberName,
+              salesName: receiptData.salesName,
               ...(receiptIssuedAt ? { issuedAt: receiptIssuedAt } : {}),
             });
           }}

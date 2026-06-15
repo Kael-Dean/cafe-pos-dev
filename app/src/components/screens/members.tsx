@@ -8,6 +8,7 @@ import { useI18n } from '@/lib/i18n';
 import { useStagger } from '@/lib/motion';
 import { SkeletonTable } from '@/components/ui/skeleton';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
+import { useCustomerDetail } from '@/hooks/use-customers';
 import {
   useMembers,
   useMemberDetail,
@@ -226,6 +227,7 @@ function MemberDetailModal({ accountId, onClose }: { accountId: string; onClose:
   const toast = useToast();
   const { t } = useI18n();
   const { data: member, isLoading } = useMemberDetail(accountId);
+  const { data: customer } = useCustomerDetail(member?.customer_id);
   const adjust = useAdjustPoints();
   const [tab, setTab] = useState<'points' | 'orders'>('points');
   const [delta, setDelta] = useState('');
@@ -251,6 +253,11 @@ function MemberDetailModal({ accountId, onClose }: { accountId: string; onClose:
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 17, fontWeight: 700 }}>{member?.customer_name ?? t.members.memberFallback}</div>
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }} className="num">{member?.phone ?? ''}</div>
+            {customer?.sales_name && (
+              <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                {t.members.salesLabel}: <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{customer.sales_name}</span>
+              </div>
+            )}
           </div>
           {member && <Tag tone={TIER_TONE[member.tier]}>{t.members.tier[member.tier]}</Tag>}
           <button onClick={onClose} aria-label={t.common.cancel} className="icon-btn hit-44" style={{ width: 36, height: 36, borderRadius: 8, display: 'grid', placeItems: 'center', color: 'var(--color-text-secondary)' }}><Icon name="x" size={18} /></button>

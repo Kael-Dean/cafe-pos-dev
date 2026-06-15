@@ -116,6 +116,7 @@ interface PrintBody {
   paymentLabel: string;
   cashGiven?: number;
   memberName?: string;
+  salesName?: string;
 }
 
 function buildESCPOS(data: PrintBody): Buffer {
@@ -146,6 +147,7 @@ function buildESCPOS(data: PrintBody): Buffer {
   parts.push(line(`ออเดอร์: #${data.orderNumber}`));
   parts.push(line(new Date().toLocaleString('th-TH')));
   if (data.memberName) parts.push(line(`ลูกค้า: ${data.memberName}`));
+  if (data.salesName) parts.push(line(`เซลล์: ${data.salesName}`));
   parts.push(line(dash));
 
   // Items header

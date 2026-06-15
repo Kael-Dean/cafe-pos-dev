@@ -171,6 +171,7 @@ function buildESCPOS(data) {
   parts.push(line(`ออเดอร์: #${data.orderNumber}`));
   parts.push(line((data.issuedAt ? new Date(data.issuedAt) : new Date()).toLocaleString('th-TH')));
   if (data.memberName) parts.push(line(`ลูกค้า: ${data.memberName}`));
+  if (data.salesName) parts.push(line(`เซลล์: ${data.salesName}`));
   parts.push(line(dash));
 
   parts.push(line(leftRight('รายการ', 'จำนวนเงิน')));
@@ -531,6 +532,7 @@ function buildReceiptLines(d) {
   L.push({ t: 'text', s: `ออเดอร์: #${d.orderNumber}`, a: 'left', size: N });
   L.push({ t: 'text', s: new Date().toLocaleString('th-TH'), a: 'left', size: N });
   if (d.memberName) L.push({ t: 'text', s: `ลูกค้า: ${d.memberName}`, a: 'left', size: N });
+  if (d.salesName) L.push({ t: 'text', s: `เซลล์: ${d.salesName}`, a: 'left', size: N });
   L.push({ t: 'hr' });
   L.push({ t: 'lr', l: 'รายการ', r: 'จำนวนเงิน', size: N });
   L.push({ t: 'hr' });
