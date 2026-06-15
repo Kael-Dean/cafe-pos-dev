@@ -17,6 +17,11 @@ import { setNavGuard } from '@/lib/nav-guard';
 type ProductType = 'MENU' | 'INGREDIENT';
 type ApiProductType = 'MADE_TO_ORDER' | 'PRODUCED';
 
+// VAT 7% (frontend-only). ราคาขายที่เก็บ/ส่ง BE เป็นราคารวม VAT แล้ว (เลขกลม เช่น 60, 100);
+// exVat() ถอดฐานก่อน VAT ออกมา เพื่อแสดง breakdown ใต้ช่องราคา และคิด margin จากรายได้จริง (ไม่รวม VAT).
+const VAT_RATE = 0.07;
+const exVat = (gross: number) => gross / (1 + VAT_RATE);
+
 export default function BOMBuilder() {
   const toast = useToast();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -132,8 +137,10 @@ export default function BOMBuilder() {
   const isProduced = selectedProduct?.productType === 'PRODUCED';
   const batchSize = isProduced ? Math.max(1, editedServingsPerBatch) : 1;
   const costPerUnit = totalCost / batchSize;
-  const margin = editedPrice - costPerUnit;
-  const marginPct = editedPrice > 0 ? (margin / editedPrice) * 100 : 0;
+  // เมนูขาย: ราคาเป็นราคารวม VAT → คิด margin จากฐานก่อน VAT (รายได้จริง). อื่นๆ คงเดิม.
+  const revenueBasis = productType === 'MENU' ? exVat(editedPrice) : editedPrice;
+  const margin = revenueBasis - costPerUnit;
+  const marginPct = revenueBasis > 0 ? (margin / revenueBasis) * 100 : 0;
 
   // Edit handlers passed to the panel — each flags unsaved changes so switching
   // menus warns before discarding (same guard as catalog.tsx).
@@ -669,6 +676,18 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
             </div>
             <StepButtons value={editedPrice} step={5} min={0} onChange={onPriceChange} />
           </div>
+          {productType === 'MENU' && editedPrice > 0 && (
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2, fontSize: 11 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, color: 'var(--color-text-muted)' }}>
+                <span>ก่อน VAT (ฐาน)</span>
+                <span className="num" style={{ fontWeight: 600, color: 'var(--color-text-secondary)' }}>฿{exVat(editedPrice).toFixed(2)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, color: 'var(--color-text-muted)' }}>
+                <span>VAT 7%</span>
+                <span className="num" style={{ fontWeight: 600, color: 'var(--color-text-secondary)' }}>฿{(editedPrice - exVat(editedPrice)).toFixed(2)}</span>
+              </div>
+            </div>
+          )}
         </div>
         {isProduced && (
           <div>
@@ -701,7 +720,7 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
         value={`฿${costPerUnit.toFixed(2)}`}
         hint={isProduced ? `฿${totalCost.toFixed(2)} / ${batchSize} ชิ้น` : undefined}
       />
-      <SummaryCard label="ส่วนต่าง (Contribution)" value={`฿${margin.toFixed(2)}`} color={margin >= 0 ? 'var(--color-text)' : 'var(--color-danger)'} />
+      <SummaryCard label="ส่วนต่าง (Contribution)" value={`฿${margin.toFixed(2)}`} color={margin >= 0 ? 'var(--color-text)' : 'var(--color-danger)'} hint={productType === 'MENU' ? 'คิดจากฐานก่อน VAT' : undefined} />
       {productType === 'MENU'
         ? <SummaryCard label="Margin" value={`${marginPct.toFixed(1)}%`} highlight={marginToneOf(marginPct)} />
         : <SummaryCard label="ต้นทุน/หน่วย" value={`฿${costPerUnit.toFixed(2)}`} highlight="info" />
@@ -1169,7 +1188,7 @@ const IngredientPicker = ({ existingIds, inventory, onConfirm, onClose }: {
               return (
                 <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', background: 'var(--color-surface)', border: '1px solid var(--color-accent)', borderRadius: 20, fontSize: 12, fontWeight: 600, color: 'var(--color-primary-700)' }}>
                   {inv.name}
-                  <button onClick={() => toggle(id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'grid', placeItems: 'center', color: 'var(--color-text-muted)', lineHeight: 1 }}>
+                  <button onClick={() => toggle(id)} aria-label={`เอา ${inv.name} ออก`} title="เอาออก" style={{ minWidth: 24, minHeight: 24, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'grid', placeItems: 'center', color: 'var(--color-text-muted)', lineHeight: 1 }}>
                     <Icon name="x" size={11} />
                   </button>
                 </span>
