@@ -156,7 +156,7 @@ function buildESCPOS(data) {
     line(data.storeName),
     cmd(GS,  0x21, 0x00),
     line('ใบเสร็จรับเงิน'),
-    line(data.copy ? 'สำเนา' : 'ต้นฉบับ'),
+    ...(data.copy ? [line('สำเนา')] : []),
     line(dash),
     cmd(ESC, 0x61, 0x00),
   ];
@@ -188,6 +188,7 @@ function buildESCPOS(data) {
   parts.push(line(leftRight('รวมทั้งสิ้น (บาท)', fmt2(data.total))));
   parts.push(cmd(ESC, 0x45, 0x00));
   parts.push(line(`(${bahtText(data.total)})`));
+  parts.push(line('ราคารวมภาษีมูลค่าเพิ่ม 7% แล้ว (VAT included)'));
   parts.push(line(`ชำระ: ${data.paymentLabel}`));
 
   if (data.cashGiven != null) {

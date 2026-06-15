@@ -67,9 +67,9 @@ interface Props {
 export const DEFAULT_STORE: StoreInfo = {
   name: 'ร้านตะวันอ้อมข้าว',
   address: '126 หมู่ 4 ตำบลตาอ็อง อำเภอเมืองสุรินทร์ จังหวัดสุรินทร์ 32000',
-  taxId: '0105544000001',
+  taxId: '0993000134281',
   branch: 'สาขาที่ 00001',
-  phone: '044-511-234',
+  phone: '062-334-5526',
 };
 
 /**
@@ -383,6 +383,7 @@ export function ReceiptPaper({ data, invoiceNo, now, copy, dateStr, editableDate
       {/* ── Summary ── */}
       <TRow bold l="รวมทั้งสิ้น (บาท)" r={fmt(data.total)} />
       <div style={{ color: INK_SOFT }}>({bahtText(data.total)})</div>
+      <div style={{ color: INK_MUTED, fontSize: 11.5 }}>ราคารวมภาษีมูลค่าเพิ่ม 7% แล้ว (VAT included)</div>
       <div>ชำระ: {data.paymentLabel}</div>
       {data.cashGiven != null && (
         <>
