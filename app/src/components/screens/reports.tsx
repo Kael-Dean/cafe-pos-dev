@@ -495,15 +495,20 @@ function WasteRegisterTable({ title, events }: { title: string; events: WasteEve
   );
 }
 
-/* Generic waste breakdown: label / middle column (preformatted string so it can
-   carry units or counts) / cost. Footer totals the cost column. */
-function WasteBreakdownTable({ title, sub, cols, rows }: {
+/* Generic waste breakdown: label / event count / quantity (preformatted string so
+   it can carry a unit) / cost — surfaces every metric the backend returns per
+   group, matching the Excel export. Footer totals the count and cost columns;
+   quantity is left blank because it can mix units across rows. */
+function WasteBreakdownTable({ title, sub, firstCol, rows }: {
   title: string;
   sub?: string;
-  cols: [string, string, string];
-  rows: { key: string; label: string; mid: string; cost: number }[];
+  firstCol: string;
+  rows: { key: string; label: string; count: number; qty: string; cost: number }[];
 }) {
+  const totalCount = rows.reduce((s, r) => s + r.count, 0);
   const totalCost = rows.reduce((s, r) => s + r.cost, 0);
+  const thR: React.CSSProperties = { textAlign: 'right', padding: '8px 16px', fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' };
+  const cellR: React.CSSProperties = { padding: '8px 16px', textAlign: 'right' };
   return (
     <Card style={{ padding: 0, overflow: 'hidden' }}>
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border)' }}>
@@ -514,19 +519,21 @@ function WasteBreakdownTable({ title, sub, cols, rows }: {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--color-surface-2)' }}>
-              <th style={{ textAlign: 'left', padding: '8px 16px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>{cols[0]}</th>
-              <th style={{ textAlign: 'right', padding: '8px 16px', fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>{cols[1]}</th>
-              <th style={{ textAlign: 'right', padding: '8px 16px', fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>{cols[2]}</th>
+              <th style={{ textAlign: 'left', padding: '8px 16px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>{firstCol}</th>
+              <th style={thR}>จำนวนครั้ง</th>
+              <th style={thR}>ปริมาณ</th>
+              <th style={thR}>มูลค่า</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={3} style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--color-text-muted)' }}>ไม่มีข้อมูลในช่วงที่เลือก</td></tr>
+              <tr><td colSpan={4} style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--color-text-muted)' }}>ไม่มีข้อมูลในช่วงที่เลือก</td></tr>
             ) : rows.map((r) => (
               <tr key={r.key} style={{ borderTop: '1px solid var(--color-border)' }}>
                 <td style={{ padding: '8px 16px' }}>{r.label}</td>
-                <td style={{ padding: '8px 16px', textAlign: 'right' }} className="num">{r.mid}</td>
-                <td style={{ padding: '8px 16px', textAlign: 'right' }} className="num">{baht(r.cost)}</td>
+                <td style={cellR} className="num">{r.count.toLocaleString()}</td>
+                <td style={cellR} className="num">{r.qty}</td>
+                <td style={cellR} className="num">{baht(r.cost)}</td>
               </tr>
             ))}
           </tbody>
@@ -534,8 +541,9 @@ function WasteBreakdownTable({ title, sub, cols, rows }: {
             <tfoot>
               <tr style={{ borderTop: '2px solid var(--color-border-strong, var(--color-border))', fontWeight: 700 }}>
                 <td style={{ padding: '8px 16px' }}>รวม</td>
-                <td style={{ padding: '8px 16px', textAlign: 'right' }} />
-                <td style={{ padding: '8px 16px', textAlign: 'right' }} className="num">{baht(totalCost)}</td>
+                <td style={cellR} className="num">{totalCount.toLocaleString()}</td>
+                <td style={cellR} />
+                <td style={cellR} className="num">{baht(totalCost)}</td>
               </tr>
             </tfoot>
           )}
@@ -698,20 +706,20 @@ function WasteReport({ onBack }: { onBack: () => void }) {
               <WasteBreakdownTable
                 title="ของเสียรายวัน"
                 sub="แต่ละวันในช่วงที่เลือก"
-                cols={['วันที่', 'จำนวนครั้ง', 'มูลค่า']}
-                rows={data.byDay.map((r) => ({ key: r.date, label: thaiDate(r.date), mid: `${r.eventCount.toLocaleString()} ครั้ง`, cost: r.cost }))}
+                firstCol="วันที่"
+                rows={data.byDay.map((r) => ({ key: r.date, label: thaiDate(r.date), count: r.eventCount, qty: fmtQty(r.quantity), cost: r.cost }))}
               />
             )}
             <WasteBreakdownTable
               title="แยกตามวัตถุดิบ"
               sub="เรียงตามมูลค่ามาก→น้อย"
-              cols={['วัตถุดิบ', 'จำนวน', 'มูลค่า']}
-              rows={data.byItem.map((r) => ({ key: r.itemId, label: r.itemName, mid: `${fmtQty(r.quantity)} ${r.unit}`, cost: r.cost }))}
+              firstCol="วัตถุดิบ"
+              rows={data.byItem.map((r) => ({ key: r.itemId, label: r.itemName, count: r.eventCount, qty: `${fmtQty(r.quantity)} ${r.unit}`, cost: r.cost }))}
             />
             <WasteBreakdownTable
               title="แยกตามเหตุผล"
-              cols={['เหตุผล', 'จำนวนครั้ง', 'มูลค่า']}
-              rows={data.byReason.map((r) => ({ key: r.reasonCode, label: r.label, mid: `${r.eventCount.toLocaleString()} ครั้ง`, cost: r.cost }))}
+              firstCol="เหตุผล"
+              rows={data.byReason.map((r) => ({ key: r.reasonCode, label: r.label, count: r.eventCount, qty: fmtQty(r.quantity), cost: r.cost }))}
             />
           </div>
         </>
