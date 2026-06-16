@@ -21,7 +21,7 @@ function thaiDateTime(d: Date): string {
 const REGISTER_HEADERS = [
   'ลำดับ', 'วันที่', 'เวลา', 'วัตถุดิบ', 'จำนวน', 'หน่วย', 'เหตุผล', 'มูลค่า', 'ผู้บันทึก', 'หมายเหตุ',
 ] as const;
-const REGISTER_WIDTHS = [6, 12, 8, 30, 12, 10, 18, 14, 18, 26];
+const REGISTER_WIDTHS = [6, 12, 8, 30, 12, 10, 18, 14, 18, 48];
 const REGISTER_COLS = REGISTER_HEADERS.length;
 
 function addRegisterSheet(wb: Workbook, data: WastageReportData): void {
