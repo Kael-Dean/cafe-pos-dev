@@ -155,6 +155,10 @@ export const th = {
     colLifetime: 'สะสมตลอดชีพ',
     colTier: 'ระดับ',
     salesLabel: 'เซลล์',
+    salesSelect: 'เลือกเซลส์',
+    salesNone: '— ไม่มีเซลส์ —',
+    salesUpdated: 'อัปเดตเซลส์แล้ว',
+    salesEmpty: 'ร้านนี้ยังไม่มีรายชื่อเซลส์',
     // register modal
     registerTitle: 'สมัครสมาชิกใหม่',
     registerDesc: 'กรอกข้อมูลเพื่อสมัครสมาชิกสะสมแต้ม',

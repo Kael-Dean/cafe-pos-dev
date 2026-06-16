@@ -3,12 +3,13 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Icon from '../icons';
-import { useToast, Tag, baht } from '../app-common';
+import { useToast, Tag, baht, Select } from '../app-common';
 import { useI18n } from '@/lib/i18n';
 import { useStagger } from '@/lib/motion';
 import { SkeletonTable } from '@/components/ui/skeleton';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { useCustomerDetail } from '@/hooks/use-customers';
+import { useSalespeople, useAssignSales } from '@/hooks/use-salespeople';
 import {
   useMembers,
   useMemberDetail,
@@ -228,10 +229,21 @@ function MemberDetailModal({ accountId, onClose }: { accountId: string; onClose:
   const { t } = useI18n();
   const { data: member, isLoading } = useMemberDetail(accountId);
   const { data: customer } = useCustomerDetail(member?.customer_id);
+  const { data: salespeople } = useSalespeople();
+  const assignSales = useAssignSales(member?.customer_id);
   const adjust = useAdjustPoints();
   const [tab, setTab] = useState<'points' | 'orders'>('points');
   const [delta, setDelta] = useState('');
   const [note, setNote] = useState('');
+
+  const handleAssignSales = async (salesId: string) => {
+    try {
+      await assignSales.mutateAsync(salesId || null);
+      toast({ kind: 'success', title: t.members.salesUpdated });
+    } catch (e: unknown) {
+      toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) });
+    }
+  };
 
   const submitAdjust = async () => {
     const d = Number(delta);
@@ -280,6 +292,26 @@ function MemberDetailModal({ accountId, onClose }: { accountId: string; onClose:
                 <Stat label={t.members.statBalance} value={member.points_balance.toLocaleString()} accent />
                 <Stat label={t.members.statLifetime} value={member.lifetime_points_earned.toLocaleString()} />
                 <Stat label={t.members.statJoined} value={fmtDate(member.joined_at)} small />
+              </div>
+
+              {/* Assign salesperson (เซลส์) — store-scoped list; clear with the first option */}
+              <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, padding: 14, marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{t.members.salesLabel}</div>
+                {salespeople && salespeople.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{t.members.salesEmpty}</div>
+                ) : (
+                  <Select
+                    value={customer?.sales_id ?? ''}
+                    onChange={handleAssignSales}
+                    disabled={assignSales.isPending}
+                    ariaLabel={t.members.salesLabel}
+                    placeholder={t.members.salesSelect}
+                    options={[
+                      { value: '', label: t.members.salesNone },
+                      ...(salespeople ?? []).map(s => ({ value: s.id, label: s.name })),
+                    ]}
+                  />
+                )}
               </div>
 
               {/* Adjust points */}
