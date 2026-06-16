@@ -34,7 +34,7 @@ function estimateMemberDiscount(member: MemberInfo | null, program: ProgramRead 
 export default function POSTerminal() {
   const toast = useToast();
   const { t } = useI18n();
-  const [category, setCategory] = useState('fav');
+  const [category, setCategory] = useState('all');
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [billNo, setBillNo] = useState(48);
