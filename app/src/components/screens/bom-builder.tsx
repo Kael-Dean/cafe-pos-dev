@@ -13,6 +13,7 @@ import { useCookingSteps, useReplaceCookingSteps, type CookingStepRead } from '@
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { api } from '@/lib/api-client';
 import { setNavGuard } from '@/lib/nav-guard';
+import ImageCropModal from './image-crop-modal';
 
 type ProductType = 'MENU' | 'INGREDIENT';
 type ApiProductType = 'MADE_TO_ORDER' | 'PRODUCED';
@@ -1280,11 +1281,18 @@ const ProductImageControl = ({ product }: { product: MenuItem }) => {
   const uploadImage = useUploadProductImage();
   const deleteImage = useDeleteProductImage();
   const fileRef = useRef<HTMLInputElement>(null);
+  // The picked file waits in the crop modal; only the framed square uploads.
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';  // allow re-picking the same file
     if (!file) return;
+    setPendingFile(file);  // open the crop step; upload happens on confirm
+  };
+
+  const onCropConfirm = (file: File) => {
+    setPendingFile(null);
     uploadImage.mutate({ productId: product.id, file }, {
       onSuccess: () => toast({ kind: 'success', title: 'อัปโหลดรูปแล้ว', msg: product.name }),
       onError: (err) => toast({ kind: 'danger', title: 'อัปโหลดไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' }),
@@ -1324,6 +1332,13 @@ const ProductImageControl = ({ product }: { product: MenuItem }) => {
           </button>
         )}
       </div>
+      {pendingFile && (
+        <ImageCropModal
+          file={pendingFile}
+          onCancel={() => setPendingFile(null)}
+          onConfirm={onCropConfirm}
+        />
+      )}
     </div>
   );
 };
