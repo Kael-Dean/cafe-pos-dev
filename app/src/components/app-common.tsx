@@ -68,6 +68,7 @@ export const NAV: NavItem[] = [
   { id: 'div1',      divider: true },
   { id: 'promotions', icon: 'tag' },
   { id: 'members',   icon: 'customers', adminOnly: true },
+  { id: 'sales',     icon: 'staff',    adminOnly: true },
   { id: 'protocols', icon: 'check' },
   { id: 'shifts',    icon: 'calendar' },
   { id: 'hr',        icon: 'staff',    adminOnly: true },

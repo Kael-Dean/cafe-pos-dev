@@ -47,6 +47,7 @@ export const en: Messages = {
     'receipt-copies': 'Receipt Copies',
     promotions: 'Promotions / Loyalty',
     members: 'Members',
+    sales: 'Salespeople',
     protocols: 'Protocols / SOP',
     shifts: 'Shift Schedule',
     hr: 'HR & Admin',
@@ -129,6 +130,25 @@ export const en: Messages = {
     resetFailed: 'Could not reset',
     resetTitle: 'Revert to the suggested amount',
     qtyAria: (name: string) => `Quantity to buy for ${name}`,
+  },
+
+  sales: {
+    title: 'Salespeople',
+    subtitle: (n: string) => `Add, remove, and rename your store's salespeople · ${n} total`,
+    adminOnly: 'Managers or owners only.',
+    addBtn: 'Add salesperson',
+    colName: 'Name',
+    namePlaceholder: 'New salesperson name',
+    empty: 'No salespeople yet — tap "Add salesperson" to start.',
+    added: 'Salesperson added',
+    renamed: 'Name updated',
+    deleted: 'Salesperson deleted',
+    deleteTitle: 'Delete salesperson',
+    deleteConfirm: 'Delete',
+    deleteFailed: 'Delete failed',
+    saveFailed: 'Save failed',
+    nameTaken: 'A salesperson with this name already exists',
+    tryAgain: 'Please try again',
   },
 
   members: {

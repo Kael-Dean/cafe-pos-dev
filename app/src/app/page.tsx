@@ -26,12 +26,13 @@ import HardwareScreen from '@/components/screens/hardware';
 import CatalogAdmin from '@/components/screens/catalog';
 import StockTakeScreen from '@/components/screens/stock-take';
 import MembersScreen from '@/components/screens/members';
+import SalesScreen from '@/components/screens/sales';
 import ReceiptCopies from '@/components/screens/receipt-copies';
 
 type Screen =
   | 'pos' | 'kds' | 'dashboard' | 'bom' | 'bakery' | 'inventory'
   | 'pre-orders' | 'shopping-list' | 'stock-take'
-  | 'cash' | 'receipt-copies' | 'promotions' | 'members' | 'protocols' | 'hr' | 'shifts'
+  | 'cash' | 'receipt-copies' | 'promotions' | 'members' | 'sales' | 'protocols' | 'hr' | 'shifts'
   | 'hardware' | 'customers' | 'reports' | 'catalog' | 'settings';
 
 export default function POS() {
@@ -90,6 +91,7 @@ export default function POS() {
     'receipt-copies': <ReceiptCopies />,
     promotions: <PromotionsScreen />,
     members:    <MembersScreen />,
+    sales:      <SalesScreen />,
     protocols:  <ProtocolsScreen />,
     hr:         <HRDashboard />,
     shifts:     <ShiftSchedule />,
