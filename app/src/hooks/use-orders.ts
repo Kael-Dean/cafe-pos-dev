@@ -9,7 +9,7 @@ export interface KDSTicket {
   type: 'Dine-in' | 'Takeaway' | 'Delivery';
   placedAt: number; // epoch ms
   status: 'new' | 'progress' | 'ready';
-  items: { name: string; qty: number; mods: string[] }[];
+  items: { name: string; qty: number; mods: { id: string; name: string }[] }[];
 }
 
 // ── Create-order payload shape ────────────────────────────────────────────────
@@ -81,16 +81,27 @@ export function displayOrderNo(o: { order_number: number; daily_number?: number 
   return o.daily_number ?? o.order_number;
 }
 
-export function parseModifiers(raw: unknown): string[] {
+/** Order item modifiers_json shape (from BE _snapshot_modifiers):
+ *  { modifiers: [{ id, name, price_delta, ... }] }. The snapshot does NOT carry
+ *  the group name, so we keep the modifier `id` to resolve its group on screen. */
+export function parseModifierEntries(raw: unknown): { id: string; name: string }[] {
   if (!raw || typeof raw !== 'object') return [];
   const obj = raw as Record<string, unknown>;
   const mods = obj.modifiers;
   if (Array.isArray(mods)) {
     return (mods as Record<string, unknown>[])
-      .map(m => m.name)
-      .filter((n): n is string => typeof n === 'string');
+      .map(m => ({
+        id: typeof m.id === 'string' ? m.id : '',
+        name: typeof m.name === 'string' ? m.name : '',
+      }))
+      .filter(m => m.name !== '');
   }
   return [];
+}
+
+/** Names only — for receipts/reports that don't show the group label. */
+export function parseModifiers(raw: unknown): string[] {
+  return parseModifierEntries(raw).map(m => m.name);
 }
 
 function mapToTicket(o: OrderRead): KDSTicket {
@@ -105,7 +116,7 @@ function mapToTicket(o: OrderRead): KDSTicket {
     items: (o.items ?? []).map(it => ({
       name: it.product_name,
       qty: it.quantity,
-      mods: parseModifiers(it.modifiers_json),
+      mods: parseModifierEntries(it.modifiers_json),
     })),
   };
 }

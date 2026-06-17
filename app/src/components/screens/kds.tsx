@@ -7,6 +7,7 @@ import { useI18n } from '@/lib/i18n';
 import { useKDSOrders, useUpdateOrderStatus, useVoidOrder, type KDSTicket } from '@/hooks/use-orders';
 import { ApiError } from '@/lib/api-client';
 import { useAllProducts } from '@/hooks/use-products';
+import { useModifierGroups } from '@/hooks/use-modifier-groups';
 import { useCookingSteps } from '@/hooks/use-cooking-steps';
 import CancelOrderModal from './cancel-order-modal';
 
@@ -29,6 +30,14 @@ export default function KDS() {
     allProducts?.forEach(p => m.set(p.name, p.id));
     return m;
   }, [allProducts]);
+  // Order snapshots store only modifier id+name, not the group ("ความหวาน"), so
+  // resolve each modifier's group label from the modifier-groups catalog.
+  const { data: modGroupList } = useModifierGroups();
+  const modGroup = useMemo(() => {
+    const m = new Map<string, string>();
+    modGroupList?.forEach(g => g.options.forEach(o => m.set(o.id, g.label)));
+    return m;
+  }, [modGroupList]);
 
   // Recent local actions: stale poll results must not revert a status we already
   // advanced (or resurrect a ticket we already delivered) while the PATCH is in flight
@@ -222,6 +231,7 @@ export default function KDS() {
                 animateIn={isNew(t.orderId)}
                 mins={elapsed(t.placedAt)}
                 nameToId={nameToId}
+                modGroup={modGroup}
                 onBump={() => onBump(t)}
                 onDone={() => onDone(t)}
                 onCancel={() => setCancelTarget(t)}
@@ -306,12 +316,13 @@ const TicketSkeleton = () => (
   </div>
 );
 
-const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, onBump, onDone, onCancel, onStepsClick }: {
+const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, modGroup, onBump, onDone, onCancel, onStepsClick }: {
   ticket: KDSTicket;
   leaving: boolean;
   animateIn: boolean;
   mins: number;
   nameToId: Map<string, string>;
+  modGroup: Map<string, string>;
   onBump: () => void;
   onDone: () => void;
   onCancel: () => void;
@@ -367,10 +378,12 @@ const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, onBump, onDon
             {it.mods.length > 0 && (
               <div className="text-sm" style={{ color: 'var(--color-text-secondary)', marginTop: 2, lineHeight: 1.5 }}>
                 {it.mods.map((m, k) => {
-                  const isSpecial = m.startsWith('+') || m.includes('นมโอ๊ต') || m.includes('นมอัลมอนด์');
+                  const isSpecial = m.name.startsWith('+') || m.name.includes('นมโอ๊ต') || m.name.includes('นมอัลมอนด์');
+                  const group = modGroup.get(m.id);
                   return (
                     <span key={k} style={{ fontWeight: isSpecial ? 700 : 400, color: isSpecial ? 'var(--color-primary)' : 'inherit' }}>
-                      {m}{k < it.mods.length - 1 ? ' • ' : ''}
+                      {group && <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>{group} </span>}
+                      {m.name}{k < it.mods.length - 1 ? ' • ' : ''}
                     </span>
                   );
                 })}
