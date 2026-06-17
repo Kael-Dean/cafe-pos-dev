@@ -39,6 +39,35 @@ export interface ModifierGroup {
   options: ModifierOption[];
 }
 
+// Keywords that mark the "normal / full" option in a single-select group when
+// the labels aren't percentages (e.g. ความหวาน → ปกติ).
+const NORMAL_OPTION_KEYWORDS = ['ปกติ', 'ธรรมดา', 'เต็ม', 'normal', 'standard', 'regular', 'full'];
+
+/**
+ * Pick which option in a radio group should start selected. The backend has no
+ * is_default flag and options are free text, so we infer it:
+ *   1. If EVERY label is percentage-like (`50`, `100`, `25%`) → the highest %
+ *      (so a sweetness/strength filter opens at 100%, not the first chip).
+ *   2. Else the first label containing a "normal/full" keyword (ปกติ, normal…).
+ *   3. Else the first option (unchanged behaviour for groups like ขนาด S/M/L).
+ */
+function pickDefaultIndex(labels: string[]): number {
+  const pcts = labels.map((l) => {
+    const m = l.trim().match(/^(\d+)\s*%?$/);
+    return m ? Number(m[1]) : null;
+  });
+  if (pcts.length > 0 && pcts.every((p) => p !== null)) {
+    let best = 0;
+    pcts.forEach((p, i) => { if ((p as number) > (pcts[best] as number)) best = i; });
+    return best;
+  }
+  const ki = labels.findIndex((l) => {
+    const low = l.trim().toLowerCase();
+    return NORMAL_OPTION_KEYWORDS.some((k) => low.includes(k));
+  });
+  return ki >= 0 ? ki : 0;
+}
+
 function mapGroup(g: ModifierGroupRead): ModifierGroup {
   // max_select === 1 → single-select (radio); otherwise multi-select (check)
   const isRadio = g.max_select === 1;
@@ -47,6 +76,10 @@ function mapGroup(g: ModifierGroupRead): ModifierGroup {
     .filter(m => m.is_active)
     .slice()
     .sort((a, b) => a.sort_order - b.sort_order);
+
+  // For radio groups, infer the default option from the labels (see helper);
+  // check groups start with nothing selected so no default applies.
+  const defaultIdx = isRadio ? pickDefaultIndex(sorted.map(m => m.name)) : -1;
 
   return {
     id: g.id,
@@ -57,8 +90,7 @@ function mapGroup(g: ModifierGroupRead): ModifierGroup {
       id: m.id,
       label: m.name,
       diff: Number(m.price_delta),
-      // No is_default in backend — first option defaults for radio groups
-      ...(isRadio && idx === 0 ? { default: true } : {}),
+      ...(idx === defaultIdx ? { default: true } : {}),
     })),
   };
 }
