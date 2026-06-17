@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import Icon from '../icons';
 import { Tag, baht } from '../app-common';
 import { useCurrentUser } from '@/hooks/use-current-user';
@@ -156,8 +156,10 @@ function ReportTable({ title, cols, rows, sub }: {
 
 /* Flat per-line sales register mirroring the ยอดขาย.xltx layout: one row per
    product line, bill-level columns (discount/net/payment/note) shown only on the
-   first line of each bill. Horizontally scrollable — it is intentionally wide. */
-function RegisterTable({ title, lines }: { title: string; lines: RegisterLine[] }) {
+   first line of each bill. Horizontally scrollable — it is intentionally wide.
+   In range (monthly) mode, set `groupByDay` to band the lines into per-day blocks
+   with a day header and a per-day subtotal row. */
+function RegisterTable({ title, lines, groupByDay = false }: { title: string; lines: RegisterLine[]; groupByDay?: boolean }) {
   const totalLine = lines.reduce((s, r) => s + r.lineTotal, 0);
   const totalNet = lines.reduce((s, r) => s + (r.firstOfBill ? r.billNet ?? 0 : 0), 0);
   const billCount = lines.reduce((s, r) => s + (r.firstOfBill ? 1 : 0), 0);
@@ -172,12 +174,53 @@ function RegisterTable({ title, lines }: { title: string; lines: RegisterLine[] 
   const tdR: React.CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
   const muted = 'var(--color-text-muted)';
 
+  // One data row. `i` is the global line index (stable zebra striping across the
+  // whole period, regardless of day banding).
+  function renderRow(r: RegisterLine, i: number) {
+    return (
+      <tr
+        key={`${r.billNo}-${i}`}
+        style={{
+          borderTop: r.firstOfBill && i > 0 ? '1px solid var(--color-border)' : '1px solid transparent',
+          background: i % 2 === 1 ? 'var(--color-surface-2)' : 'transparent',
+        }}
+      >
+        <td style={{ ...tdR, color: 'var(--color-text-secondary)' }} className="num">{r.no}</td>
+        <td style={{ ...td, fontWeight: r.firstOfBill ? 600 : 400, color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.billNo : ''}</td>
+        <td style={{ ...td, whiteSpace: 'nowrap', color: r.firstOfBill ? 'var(--color-text)' : muted }} className="num">{r.firstOfBill ? r.receiptNo : ''}</td>
+        <td style={{ ...td, whiteSpace: 'nowrap', color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.date : ''}</td>
+        <td style={{ ...td, whiteSpace: 'nowrap', color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.time : ''}</td>
+        <td style={{ ...td, whiteSpace: 'nowrap', color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.channel : ''}</td>
+        <td style={td}>{r.product}</td>
+        <td style={tdR} className="num">{r.qty.toLocaleString()}</td>
+        <td style={tdR} className="num">{baht(r.unitPrice)}</td>
+        <td style={tdR} className="num">{baht(r.lineTotal)}</td>
+        <td style={tdR} className="num">{r.firstOfBill && r.billDiscount ? baht(r.billDiscount) : ''}</td>
+        <td style={{ ...tdR, fontWeight: r.firstOfBill ? 600 : 400 }} className="num">{r.firstOfBill ? baht(r.billNet ?? 0) : ''}</td>
+        <td style={{ ...td, whiteSpace: 'nowrap' }}>{r.firstOfBill ? r.billPayment : ''}</td>
+        <td style={{ ...td, color: 'var(--color-text-secondary)' }}>{r.firstOfBill ? r.billNote ?? '' : ''}</td>
+      </tr>
+    );
+  }
+
+  // Group consecutive lines by calendar day. Lines arrive chronologically, so a
+  // day's lines are always contiguous → one pass over the flat list.
+  const groups: { iso: string; date: string; lines: RegisterLine[]; start: number }[] = [];
+  if (groupByDay) {
+    lines.forEach((r, i) => {
+      const last = groups[groups.length - 1];
+      if (!last || last.iso !== r.iso) groups.push({ iso: r.iso, date: r.date, lines: [r], start: i });
+      else last.lines.push(r);
+    });
+  }
+
   return (
     <Card style={{ padding: 0, overflow: 'hidden' }}>
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border)' }}>
         <div style={{ fontSize: 15, fontWeight: 700 }}>{title}</div>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
           แยกตามรายการสินค้าในแต่ละบิล • {billCount.toLocaleString()} บิล • {lines.length.toLocaleString()} รายการ
+          {groupByDay && groups.length > 0 && ` • ${groups.length.toLocaleString()} วัน`}
         </div>
       </div>
       <div style={{ overflowX: 'auto', maxHeight: 520 }}>
@@ -203,35 +246,50 @@ function RegisterTable({ title, lines }: { title: string; lines: RegisterLine[] 
           <tbody>
             {lines.length === 0 ? (
               <tr><td colSpan={14} style={{ padding: '20px 16px', textAlign: 'center', color: muted }}>ไม่มีรายการขายในช่วงที่เลือก</td></tr>
-            ) : lines.map((r, i) => (
-              <tr
-                key={`${r.billNo}-${i}`}
-                style={{
-                  borderTop: r.firstOfBill && i > 0 ? '1px solid var(--color-border)' : '1px solid transparent',
-                  background: i % 2 === 1 ? 'var(--color-surface-2)' : 'transparent',
-                }}
-              >
-                <td style={{ ...tdR, color: 'var(--color-text-secondary)' }} className="num">{r.no}</td>
-                <td style={{ ...td, fontWeight: r.firstOfBill ? 600 : 400, color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.billNo : ''}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap', color: r.firstOfBill ? 'var(--color-text)' : muted }} className="num">{r.firstOfBill ? r.receiptNo : ''}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap', color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.date : ''}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap', color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.time : ''}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap', color: r.firstOfBill ? 'var(--color-text)' : muted }}>{r.firstOfBill ? r.channel : ''}</td>
-                <td style={td}>{r.product}</td>
-                <td style={tdR} className="num">{r.qty.toLocaleString()}</td>
-                <td style={tdR} className="num">{baht(r.unitPrice)}</td>
-                <td style={tdR} className="num">{baht(r.lineTotal)}</td>
-                <td style={tdR} className="num">{r.firstOfBill && r.billDiscount ? baht(r.billDiscount) : ''}</td>
-                <td style={{ ...tdR, fontWeight: r.firstOfBill ? 600 : 400 }} className="num">{r.firstOfBill ? baht(r.billNet ?? 0) : ''}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap' }}>{r.firstOfBill ? r.billPayment : ''}</td>
-                <td style={{ ...td, color: 'var(--color-text-secondary)' }}>{r.firstOfBill ? r.billNote ?? '' : ''}</td>
-              </tr>
-            ))}
+            ) : groupByDay ? (
+              groups.map((g) => {
+                const gBills = g.lines.reduce((s, r) => s + (r.firstOfBill ? 1 : 0), 0);
+                const gQty = g.lines.reduce((s, r) => s + r.qty, 0);
+                const gLine = g.lines.reduce((s, r) => s + r.lineTotal, 0);
+                const gDiscount = g.lines.reduce((s, r) => s + (r.firstOfBill ? r.billDiscount ?? 0 : 0), 0);
+                const gNet = g.lines.reduce((s, r) => s + (r.firstOfBill ? r.billNet ?? 0 : 0), 0);
+                return (
+                  <Fragment key={`day-${g.iso}`}>
+                    {/* Day header band — which day the rows below belong to */}
+                    <tr>
+                      <td colSpan={14} style={{
+                        padding: '9px 12px', fontWeight: 700, fontSize: 13,
+                        color: 'var(--color-text)', background: 'var(--color-accent-50, var(--color-surface-2))',
+                        borderTop: '2px solid var(--color-border)',
+                      }}>
+                        {thaiDate(g.iso)}
+                        <span style={{ fontWeight: 500, color: 'var(--color-text-secondary)', marginLeft: 8 }}>
+                          • {gBills.toLocaleString()} บิล • {baht(gNet)}
+                        </span>
+                      </td>
+                    </tr>
+                    {g.lines.map((r, j) => renderRow(r, g.start + j))}
+                    {/* Per-day subtotal */}
+                    <tr style={{ borderTop: '1px solid var(--color-border)', fontWeight: 600, background: 'var(--color-surface-2)' }}>
+                      <td style={td} colSpan={7}>รวมวันที่ {g.date}</td>
+                      <td style={tdR} className="num">{gQty.toLocaleString()}</td>
+                      <td style={td} />
+                      <td style={tdR} className="num">{baht(gLine)}</td>
+                      <td style={tdR} className="num">{gDiscount ? baht(gDiscount) : ''}</td>
+                      <td style={tdR} className="num">{baht(gNet)}</td>
+                      <td style={td} colSpan={2} />
+                    </tr>
+                  </Fragment>
+                );
+              })
+            ) : (
+              lines.map((r, i) => renderRow(r, i))
+            )}
           </tbody>
           {lines.length > 0 && (
             <tfoot>
               <tr style={{ borderTop: '2px solid var(--color-border-strong, var(--color-border))', fontWeight: 700, background: 'var(--color-surface-2)' }}>
-                <td style={td} colSpan={9}>รวม</td>
+                <td style={td} colSpan={9}>รวมทั้งหมด</td>
                 <td style={tdR} className="num">{baht(totalLine)}</td>
                 <td style={td} />
                 <td style={tdR} className="num">{baht(totalNet)}</td>
@@ -398,7 +456,7 @@ function SalesReport({ onBack }: { onBack: () => void }) {
           </div>
 
           <div style={{ display: 'grid', gap: 16 }}>
-            <RegisterTable title={`ข้อมูลการขาย — ${periodText}`} lines={data.register} />
+            <RegisterTable title={`ข้อมูลการขาย — ${periodText}`} lines={data.register} groupByDay={data.mode === 'range'} />
             {data.mode === 'range' && (
               <ReportTable title="ยอดขายรายวัน" sub="แต่ละวันในช่วงที่เลือก" cols={['วันที่', 'จำนวนบิล', 'ยอดขาย']} rows={data.byDay} />
             )}

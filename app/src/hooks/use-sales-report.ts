@@ -35,6 +35,7 @@ export interface RegisterLine {
   no: number;          // running line number across the whole period
   billNo: string;      // per-day running bill number, e.g. "#7" (matches the receipt/KDS)
   receiptNo: string;   // backend receipt number, e.g. "IV25690612-0007"
+  iso: string;         // local calendar day "YYYY-MM-DD" — grouping key for per-day blocks
   date: string;        // short Thai date, e.g. "5 มิ.ย."
   time: string;        // "HH:mm"
   channel: string;     // Thai channel label
@@ -197,6 +198,7 @@ async function loadRegister(fromIso: string, toIso: string): Promise<RegisterLin
   let no = 0;
   for (const o of orders) {
     const dt = new Date(o.created_at);
+    const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
     const date = dt.toLocaleDateString('th-TH-u-ca-buddhist', { day: 'numeric', month: 'short' });
     const time = dt.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
     const channel = CHANNEL_LABEL[o.channel] ?? o.channel;
@@ -213,6 +215,7 @@ async function loadRegister(fromIso: string, toIso: string): Promise<RegisterLin
         no,
         billNo: `#${billDisplay}`,
         receiptNo,
+        iso,
         date,
         time,
         channel,
