@@ -27,7 +27,7 @@ export interface ReceiptLinesInput {
   orderNumber: string;
   /** Pre-formatted th-TH date/time string (caller controls now vs. reprint time). */
   dateStr: string;
-  /** Marks the slip as a duplicate ("สำเนา") instead of the original ("ต้นฉบับ"). */
+  /** Marks the slip as a duplicate ("สำเนา"); originals print no mark (matches the web preview). */
   copy?: boolean;
   memberName?: string;
   salesName?: string;
@@ -58,7 +58,8 @@ export function buildReceiptLines(d: ReceiptLinesInput): ReceiptLine[] {
   // Header
   L.push({ t: 'text', s: d.storeName, a: 'center', size: BIG, bold: true });
   L.push({ t: 'text', s: 'ใบเสร็จรับเงิน', a: 'center', size: N });
-  L.push({ t: 'text', s: d.copy ? 'สำเนา' : 'ต้นฉบับ', a: 'center', size: N });
+  // Originals print no mark (matches the on-screen preview); only reprints are marked "สำเนา".
+  if (d.copy) L.push({ t: 'text', s: 'สำเนา', a: 'center', size: N });
   L.push({ t: 'hr' });
 
   // Store info
