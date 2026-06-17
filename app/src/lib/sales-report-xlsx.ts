@@ -26,6 +26,8 @@ const REGISTER_HEADERS = [
 const REGISTER_WIDTHS = [6, 12, 17, 12, 8, 12, 34, 9, 12, 14, 12, 14, 16, 22];
 const REGISTER_COLS = REGISTER_HEADERS.length;
 const ZEBRA_ARGB = 'FFF6F1EA'; // very light latte — alternating bill bands
+const DAYBAND_ARGB = 'FFE7DBCB'; // deeper latte — per-day header bands
+const SUBTOTAL_ARGB = 'FFF1E9DE'; // light — per-day subtotal rows
 
 function addRegisterSheet(wb: Workbook, data: SalesReportData): void {
   const ws = wb.addWorksheet('การขาย');
@@ -52,7 +54,9 @@ function addRegisterSheet(wb: Workbook, data: SalesReportData): void {
 
   let totalLine = 0;
   let totalNet = 0;
-  data.register.forEach((r, idx) => {
+  let zebra = 0; // running data-row index — keeps striping consistent across day bands
+
+  function addLineRow(r: SalesReportData['register'][number]): void {
     const first = r.firstOfBill;
     const row = ws.addRow([
       r.no,
@@ -71,16 +75,57 @@ function addRegisterSheet(wb: Workbook, data: SalesReportData): void {
       first ? r.billNote ?? '' : '',
     ]);
     [9, 10, 11, 12].forEach((c) => { row.getCell(c).numFmt = MONEY_FMT; });
-    if (idx % 2 === 1) { // alternate every row, like the reference workbook
+    if (zebra % 2 === 1) { // alternate every row, like the reference workbook
       for (let c = 1; c <= REGISTER_COLS; c++) {
         row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ZEBRA_ARGB } };
       }
     }
+    zebra += 1;
     totalLine += r.lineTotal;
     if (first) totalNet += r.billNet ?? 0;
-  });
+  }
 
-  const totalRow = ws.addRow(['', '', '', '', '', '', 'รวม', '', '', totalLine, '', totalNet, '', '']);
+  if (data.mode === 'range') {
+    // Band the register into per-day blocks: a day header row, the day's lines,
+    // then a per-day subtotal. Lines arrive chronologically → one pass.
+    const groups: { iso: string; date: string; lines: SalesReportData['register'] }[] = [];
+    data.register.forEach((r) => {
+      const last = groups[groups.length - 1];
+      if (!last || last.iso !== r.iso) groups.push({ iso: r.iso, date: r.date, lines: [r] });
+      else last.lines.push(r);
+    });
+
+    for (const g of groups) {
+      const gBills = g.lines.reduce((s, r) => s + (r.firstOfBill ? 1 : 0), 0);
+      const gQty = g.lines.reduce((s, r) => s + r.qty, 0);
+      const gLine = g.lines.reduce((s, r) => s + r.lineTotal, 0);
+      const gDiscount = g.lines.reduce((s, r) => s + (r.firstOfBill ? r.billDiscount ?? 0 : 0), 0);
+      const gNet = g.lines.reduce((s, r) => s + (r.firstOfBill ? r.billNet ?? 0 : 0), 0);
+
+      // Day header band (merged across all columns)
+      const hdrRow = ws.addRow([`${thaiDate(g.iso)}  •  ${gBills.toLocaleString()} บิล`]);
+      ws.mergeCells(hdrRow.number, 1, hdrRow.number, REGISTER_COLS);
+      hdrRow.font = { bold: true };
+      hdrRow.alignment = { vertical: 'middle' };
+      for (let c = 1; c <= REGISTER_COLS; c++) {
+        hdrRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DAYBAND_ARGB } };
+      }
+
+      g.lines.forEach(addLineRow);
+
+      // Per-day subtotal
+      const sub = ws.addRow(['', '', '', '', '', '', `รวมวันที่ ${g.date}`, gQty, '', gLine, gDiscount || null, gNet, '', '']);
+      sub.font = { bold: true };
+      for (let c = 1; c <= REGISTER_COLS; c++) {
+        sub.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: SUBTOTAL_ARGB } };
+      }
+      [10, 11, 12].forEach((c) => { sub.getCell(c).numFmt = MONEY_FMT; });
+    }
+  } else {
+    data.register.forEach(addLineRow);
+  }
+
+  const totalRow = ws.addRow(['', '', '', '', '', '', 'รวมทั้งหมด', '', '', totalLine, '', totalNet, '', '']);
   totalRow.font = { bold: true };
   for (let c = 1; c <= REGISTER_COLS; c++) {
     totalRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_ARGB } };

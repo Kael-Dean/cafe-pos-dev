@@ -483,8 +483,10 @@ function fmtQty(n: number): string {
 
 /* Per-event waste register — one row per recorded waste movement. Mirrors the
    sales RegisterTable idiom (sticky header, zebra rows, total footer) but with
-   waste columns (ingredient / qty / reason / cost / who). */
-function WasteRegisterTable({ title, events }: { title: string; events: WasteEventLine[] }) {
+   waste columns (ingredient / qty / reason / cost / who). In range (monthly) mode,
+   set `groupByDay` to band the events into per-day blocks with a day header and a
+   per-day subtotal row. */
+function WasteRegisterTable({ title, events, groupByDay = false }: { title: string; events: WasteEventLine[]; groupByDay?: boolean }) {
   const totalCost = events.reduce((s, e) => s + e.cost, 0);
 
   const th: React.CSSProperties = {
@@ -496,12 +498,41 @@ function WasteRegisterTable({ title, events }: { title: string; events: WasteEve
   const td: React.CSSProperties = { padding: '7px 12px', verticalAlign: 'top' };
   const tdR: React.CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
 
+  // One data row. `i` is the global event index (stable zebra striping).
+  function renderRow(e: WasteEventLine, i: number) {
+    return (
+      <tr key={e.id} style={{ background: i % 2 === 1 ? 'var(--color-surface-2)' : 'transparent', borderTop: '1px solid var(--color-border)' }}>
+        <td style={{ ...tdR, color: 'var(--color-text-secondary)' }} className="num">{e.no}</td>
+        <td style={{ ...td, whiteSpace: 'nowrap' }}>{e.date}</td>
+        <td style={{ ...td, whiteSpace: 'nowrap' }}>{e.time}</td>
+        <td style={td}>{e.itemName}</td>
+        <td style={tdR} className="num">{fmtQty(e.quantity)}</td>
+        <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--color-text-secondary)' }}>{e.unit}</td>
+        <td style={{ ...td, whiteSpace: 'nowrap' }}>{e.reasonLabel}</td>
+        <td style={tdR} className="num">{baht(e.cost)}</td>
+        <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--color-text-secondary)' }}>{e.createdBy}</td>
+        <td style={{ ...td, color: 'var(--color-text-secondary)' }}>{e.note}</td>
+      </tr>
+    );
+  }
+
+  // Group consecutive events by calendar day (events arrive chronologically).
+  const groups: { iso: string; date: string; events: WasteEventLine[]; start: number }[] = [];
+  if (groupByDay) {
+    events.forEach((e, i) => {
+      const last = groups[groups.length - 1];
+      if (!last || last.iso !== e.iso) groups.push({ iso: e.iso, date: e.date, events: [e], start: i });
+      else last.events.push(e);
+    });
+  }
+
   return (
     <Card style={{ padding: 0, overflow: 'hidden' }}>
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border)' }}>
         <div style={{ fontSize: 15, fontWeight: 700 }}>{title}</div>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
           ทุกครั้งที่บันทึกของเสีย • {events.length.toLocaleString()} รายการ
+          {groupByDay && groups.length > 0 && ` • ${groups.length.toLocaleString()} วัน`}
         </div>
       </div>
       <div style={{ overflowX: 'auto', maxHeight: 520 }}>
@@ -523,25 +554,43 @@ function WasteRegisterTable({ title, events }: { title: string; events: WasteEve
           <tbody>
             {events.length === 0 ? (
               <tr><td colSpan={10} style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--color-text-muted)' }}>ไม่มีรายการของเสียในช่วงที่เลือก</td></tr>
-            ) : events.map((e, i) => (
-              <tr key={e.id} style={{ background: i % 2 === 1 ? 'var(--color-surface-2)' : 'transparent', borderTop: '1px solid var(--color-border)' }}>
-                <td style={{ ...tdR, color: 'var(--color-text-secondary)' }} className="num">{e.no}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap' }}>{e.date}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap' }}>{e.time}</td>
-                <td style={td}>{e.itemName}</td>
-                <td style={tdR} className="num">{fmtQty(e.quantity)}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--color-text-secondary)' }}>{e.unit}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap' }}>{e.reasonLabel}</td>
-                <td style={tdR} className="num">{baht(e.cost)}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--color-text-secondary)' }}>{e.createdBy}</td>
-                <td style={{ ...td, color: 'var(--color-text-secondary)' }}>{e.note}</td>
-              </tr>
-            ))}
+            ) : groupByDay ? (
+              groups.map((g) => {
+                const gCount = g.events.length;
+                const gCost = g.events.reduce((s, e) => s + e.cost, 0);
+                return (
+                  <Fragment key={`day-${g.iso}`}>
+                    {/* Day header band */}
+                    <tr>
+                      <td colSpan={10} style={{
+                        padding: '9px 12px', fontWeight: 700, fontSize: 13,
+                        color: 'var(--color-text)', background: 'var(--color-accent-50, var(--color-surface-2))',
+                        borderTop: '2px solid var(--color-border)',
+                      }}>
+                        {thaiDate(g.iso)}
+                        <span style={{ fontWeight: 500, color: 'var(--color-text-secondary)', marginLeft: 8 }}>
+                          • {gCount.toLocaleString()} ครั้ง • {baht(gCost)}
+                        </span>
+                      </td>
+                    </tr>
+                    {g.events.map((e, j) => renderRow(e, g.start + j))}
+                    {/* Per-day subtotal */}
+                    <tr style={{ borderTop: '1px solid var(--color-border)', fontWeight: 600, background: 'var(--color-surface-2)' }}>
+                      <td style={td} colSpan={7}>รวมวันที่ {g.date} • {gCount.toLocaleString()} ครั้ง</td>
+                      <td style={tdR} className="num">{baht(gCost)}</td>
+                      <td style={td} colSpan={2} />
+                    </tr>
+                  </Fragment>
+                );
+              })
+            ) : (
+              events.map((e, i) => renderRow(e, i))
+            )}
           </tbody>
           {events.length > 0 && (
             <tfoot>
               <tr style={{ borderTop: '2px solid var(--color-border-strong, var(--color-border))', fontWeight: 700, background: 'var(--color-surface-2)' }}>
-                <td style={td} colSpan={7}>รวมมูลค่า</td>
+                <td style={td} colSpan={7}>รวมมูลค่าทั้งหมด</td>
                 <td style={tdR} className="num">{baht(totalCost)}</td>
                 <td style={td} colSpan={2} />
               </tr>
@@ -759,7 +808,7 @@ function WasteReport({ onBack }: { onBack: () => void }) {
           </div>
 
           <div style={{ display: 'grid', gap: 16 }}>
-            <WasteRegisterTable title={`รายการของเสีย — ${periodText}`} events={data.events} />
+            <WasteRegisterTable title={`รายการของเสีย — ${periodText}`} events={data.events} groupByDay={data.mode === 'range'} />
             {data.mode === 'range' && (
               <WasteBreakdownTable
                 title="ของเสียรายวัน"

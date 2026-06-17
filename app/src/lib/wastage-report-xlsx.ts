@@ -5,6 +5,8 @@ const MONEY_FMT = '#,##0.00" บาท"';
 const QTY_FMT = '#,##0.###';
 const HEADER_ARGB = 'FFEFE7DD'; // soft latte tone for header rows
 const ZEBRA_ARGB = 'FFF6F1EA';
+const DAYBAND_ARGB = 'FFE7DBCB'; // deeper latte — per-day header bands
+const SUBTOTAL_ARGB = 'FFF1E9DE'; // light — per-day subtotal rows
 
 // 'YYYY-MM-DD' → "1 มิถุนายน 2569" (Buddhist era)
 function thaiDate(ymd: string): string {
@@ -46,21 +48,59 @@ function addRegisterSheet(wb: Workbook, data: WastageReportData): void {
   }
 
   let totalCost = 0;
-  data.events.forEach((e, idx) => {
+  let zebra = 0; // running data-row index — striping stays consistent across day bands
+
+  function addEventRow(e: WastageReportData['events'][number]): void {
     const row = ws.addRow([
       e.no, e.date, e.time, e.itemName, e.quantity, e.unit, e.reasonLabel, e.cost, e.createdBy, e.note,
     ]);
     row.getCell(5).numFmt = QTY_FMT;
     row.getCell(8).numFmt = MONEY_FMT;
-    if (idx % 2 === 1) {
+    if (zebra % 2 === 1) {
       for (let c = 1; c <= REGISTER_COLS; c++) {
         row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ZEBRA_ARGB } };
       }
     }
+    zebra += 1;
     totalCost += e.cost;
-  });
+  }
 
-  const totalRow = ws.addRow(['', '', '', 'รวม', '', '', '', totalCost, '', '']);
+  if (data.mode === 'range') {
+    // Band events into per-day blocks: day header, the day's events, then a
+    // per-day subtotal. Events arrive chronologically → one pass.
+    const groups: { iso: string; date: string; events: WastageReportData['events'] }[] = [];
+    data.events.forEach((e) => {
+      const last = groups[groups.length - 1];
+      if (!last || last.iso !== e.iso) groups.push({ iso: e.iso, date: e.date, events: [e] });
+      else last.events.push(e);
+    });
+
+    for (const g of groups) {
+      const gCount = g.events.length;
+      const gCost = g.events.reduce((s, e) => s + e.cost, 0);
+
+      const hdrRow = ws.addRow([`${thaiDate(g.iso)}  •  ${gCount.toLocaleString()} ครั้ง`]);
+      ws.mergeCells(hdrRow.number, 1, hdrRow.number, REGISTER_COLS);
+      hdrRow.font = { bold: true };
+      hdrRow.alignment = { vertical: 'middle' };
+      for (let c = 1; c <= REGISTER_COLS; c++) {
+        hdrRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DAYBAND_ARGB } };
+      }
+
+      g.events.forEach(addEventRow);
+
+      const sub = ws.addRow(['', '', '', `รวมวันที่ ${g.date} (${gCount.toLocaleString()} ครั้ง)`, '', '', '', gCost, '', '']);
+      sub.font = { bold: true };
+      for (let c = 1; c <= REGISTER_COLS; c++) {
+        sub.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: SUBTOTAL_ARGB } };
+      }
+      sub.getCell(8).numFmt = MONEY_FMT;
+    }
+  } else {
+    data.events.forEach(addEventRow);
+  }
+
+  const totalRow = ws.addRow(['', '', '', 'รวมทั้งหมด', '', '', '', totalCost, '', '']);
   totalRow.font = { bold: true };
   for (let c = 1; c <= REGISTER_COLS; c++) {
     totalRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_ARGB } };

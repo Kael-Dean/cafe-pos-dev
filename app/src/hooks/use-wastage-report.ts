@@ -74,6 +74,7 @@ export interface WasteItemRow {
 export interface WasteEventLine {
   no: number;
   id: string;
+  iso: string;       // local calendar day "YYYY-MM-DD" — grouping key for per-day blocks
   date: string;      // short Thai date "5 มิ.ย."
   time: string;      // "HH:mm"
   itemName: string;
@@ -178,11 +179,18 @@ export async function loadWastageReport(opts: {
     cost: Number(r.estimated_cost),
   })).sort((a, b) => b.cost - a.cost);
 
-  const events: WasteEventLine[] = (rep.events ?? []).map((e, i) => {
+  const events: WasteEventLine[] = (rep.events ?? [])
+    .slice()
+    // Chronological (oldest→newest) so a day's events are contiguous → clean
+    // per-day banding, matching the sales register idiom.
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .map((e, i) => {
     const dt = new Date(e.created_at);
+    const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
     return {
       no: i + 1,
       id: e.id,
+      iso,
       date: dt.toLocaleDateString('th-TH-u-ca-buddhist', { day: 'numeric', month: 'short' }),
       time: dt.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
       itemName: e.item_name,
