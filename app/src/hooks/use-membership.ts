@@ -266,6 +266,19 @@ export function useMemberOrders(accountId: string | null, page = 1, limit = 20) 
   });
 }
 
+/** DELETE /customers/{customer_id} — soft-delete the customer behind a member
+ *  (MANAGER / OWNER). The member then drops off the list on refetch. */
+export function useDeleteMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (customerId: string) => api.delete<void>(`/api/v1/customers/${customerId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: MEMBERS_KEY });
+      qc.invalidateQueries({ queryKey: ['customers'] });
+    },
+  });
+}
+
 export function useAdjustPoints() {
   const qc = useQueryClient();
   return useMutation({

@@ -179,6 +179,12 @@ export const th = {
     salesNone: '— ไม่มีเซลส์ —',
     salesUpdated: 'อัปเดตเซลส์แล้ว',
     salesEmpty: 'ร้านนี้ยังไม่มีรายชื่อเซลส์',
+    // delete member
+    deleteBtn: 'ลบสมาชิก',
+    deleteTitle: 'ลบสมาชิก',
+    deleteConfirm: 'ลบสมาชิก',
+    memberDeleted: 'ลบสมาชิกแล้ว',
+    deleteFailed: 'ลบไม่สำเร็จ',
     // register modal
     registerTitle: 'สมัครสมาชิกใหม่',
     registerDesc: 'กรอกข้อมูลเพื่อสมัครสมาชิกสะสมแต้ม',

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Icon from '../icons';
 import { useToast, Tag, baht, Select } from '../app-common';
@@ -16,10 +16,12 @@ import {
   useMemberOrders,
   useAdjustPoints,
   useRegisterMember,
+  useDeleteMember,
   isMemberNameTaken,
   type MembershipTier,
   type PointTxType,
   type OrderStatus,
+  type AccountRead,
 } from '@/hooks/use-membership';
 
 const TIER_TONE: Record<MembershipTier, 'neutral' | 'success' | 'info' | 'accent'> = { NONE: 'neutral', BRONZE: 'success', SILVER: 'info', GOLD: 'accent' };
@@ -42,21 +44,25 @@ export default function MembersScreen() {
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showRegister, setShowRegister] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<AccountRead | null>(null);
 
   const limit = 50;
   const { data, isLoading } = useMembers({ ...query, page, limit });
 
+  // Live search: as the user types, debounce 250ms then update the query so
+  // results appear without pressing the button. All-digits → phone, else name.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      const v = searchInput.trim();
+      setPage(1);
+      setQuery(!v ? {} : /^\d+$/.test(v) ? { phone: v } : { name: v });
+    }, 250);
+    return () => clearTimeout(id);
+  }, [searchInput]);
+
   if (!isAdmin(me?.role)) {
     return <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>{t.members.adminOnly}</div>;
   }
-
-  const runSearch = () => {
-    const v = searchInput.trim();
-    setPage(1);
-    if (!v) { setQuery({}); return; }
-    // All-digits → phone search; otherwise name.
-    setQuery(/^\d+$/.test(v) ? { phone: v } : { name: v });
-  };
 
   const members = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -79,14 +85,19 @@ export default function MembersScreen() {
         </button>
       </div>
 
-      {/* Search */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 18, maxWidth: 460 }}>
-        <div style={{ flex: 1, position: 'relative' }}>
+      {/* Search — live: results update as you type (debounced) */}
+      <div style={{ marginBottom: 18, maxWidth: 460 }}>
+        <div style={{ position: 'relative' }}>
           <div style={{ position: 'absolute', top: 10, left: 12, color: 'var(--color-text-muted)' }}><Icon name="search" size={16} /></div>
-          <input value={searchInput} onChange={e => setSearchInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') runSearch(); }}
-            placeholder={t.members.searchPlaceholder} style={{ ...IS, paddingLeft: 36 }} />
+          <input value={searchInput} onChange={e => setSearchInput(e.target.value)}
+            placeholder={t.members.searchPlaceholder} style={{ ...IS, paddingLeft: 36, paddingRight: searchInput ? 36 : 12 }} />
+          {searchInput && (
+            <button onClick={() => setSearchInput('')} aria-label={t.common.cancel} className="icon-btn hit-44"
+              style={{ position: 'absolute', top: '50%', right: 6, transform: 'translateY(-50%)', width: 28, height: 28, borderRadius: 999, display: 'grid', placeItems: 'center', color: 'var(--color-text-secondary)' }}>
+              <Icon name="x" size={14} />
+            </button>
+          )}
         </div>
-        <button onClick={runSearch} className="pressable" style={{ padding: '9px 20px', minHeight: 44, borderRadius: 8, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>{t.common.search}</button>
       </div>
 
       {/* List */}
@@ -122,7 +133,16 @@ export default function MembersScreen() {
                   <td style={{ ...td, textAlign: 'right', fontWeight: 700 }} className="num">{m.points_balance.toLocaleString()}</td>
                   <td style={{ ...td, textAlign: 'right', color: 'var(--color-text-secondary)' }} className="num">{m.lifetime_points_earned.toLocaleString()}</td>
                   <td style={td}><Tag tone={TIER_TONE[m.tier]}>{t.members.tier[m.tier]}</Tag></td>
-                  <td style={{ ...td, textAlign: 'right', color: 'var(--color-text-muted)' }}><Icon name="chevronRight" size={16} /></td>
+                  <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={e => { e.stopPropagation(); setDeleteTarget(m); }} aria-label={t.members.deleteBtn}
+                        className="icon-btn hit-44" title={t.members.deleteBtn}
+                        style={{ width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center', color: 'var(--color-danger)' }}>
+                        <Icon name="trash" size={16} />
+                      </button>
+                      <Icon name="chevronRight" size={16} color="var(--color-text-muted)" />
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -146,6 +166,43 @@ export default function MembersScreen() {
           onRegistered={(account) => { setShowRegister(false); setSelectedId(account.id); }}
         />
       )}
+      {deleteTarget && (
+        <DeleteMemberModal member={deleteTarget} onClose={() => setDeleteTarget(null)} />
+      )}
+    </div>
+  );
+}
+
+function DeleteMemberModal({ member, onClose }: { member: AccountRead; onClose: () => void }) {
+  const toast = useToast();
+  const { t } = useI18n();
+  const del = useDeleteMember();
+
+  const submit = async () => {
+    try {
+      await del.mutateAsync(member.customer_id);
+      toast({ kind: 'success', title: t.members.memberDeleted, msg: member.customer_name });
+      onClose();
+    } catch (e: unknown) {
+      toast({ kind: 'danger', title: t.members.deleteFailed, msg: String(e instanceof Error ? e.message : e) });
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 'min(400px, 94vw)', padding: 24 }}>
+        <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700 }}>{t.members.deleteTitle}</h3>
+        <p style={{ margin: '0 0 20px', fontSize: 14, color: 'var(--color-text-secondary)' }}>
+          {t.members.deleteConfirm} <strong>{member.customer_name}</strong>?
+        </p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} className="pressable" style={{ padding: '9px 18px', minHeight: 44, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>{t.common.cancel}</button>
+          <button onClick={submit} disabled={del.isPending} className="pressable"
+            style={{ padding: '9px 18px', minHeight: 44, borderRadius: 8, background: 'var(--color-danger)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: del.isPending ? 'not-allowed' : 'pointer', opacity: del.isPending ? 0.6 : 1 }}>
+            {t.common.delete}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

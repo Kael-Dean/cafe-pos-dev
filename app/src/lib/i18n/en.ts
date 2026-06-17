@@ -168,6 +168,12 @@ export const en: Messages = {
     salesNone: '— None —',
     salesUpdated: 'Salesperson updated',
     salesEmpty: 'No salespeople for this store yet',
+    // delete member
+    deleteBtn: 'Delete member',
+    deleteTitle: 'Delete member',
+    deleteConfirm: 'Delete',
+    memberDeleted: 'Member deleted',
+    deleteFailed: 'Delete failed',
     registerTitle: 'New member',
     registerDesc: 'Enter details to enroll a loyalty member',
     nameLabel: 'Name *',
