@@ -78,8 +78,17 @@ function mapItems(o: OrderFull) {
   }));
 }
 
+// Buyer (ลูกค้า) + salesperson (เซลส์) names aren't on the order itself — they
+// live on the linked customer. The receipt screen resolves them (via
+// useCustomerDetail on o.customer_id) and passes them in here so reprints show
+// the same buyer/sales block as the original bill.
+export interface ReceiptParties {
+  memberName?: string;
+  salesName?: string;
+}
+
 /** Order → on-screen receipt (ReceiptModal). */
-export function mapOrderToReceipt(o: OrderFull): ReceiptData {
+export function mapOrderToReceipt(o: OrderFull, parties?: ReceiptParties): ReceiptData {
   const discount = Number(o.discount);
   return {
     orderNumber: String(displayOrderNo(o)),
@@ -90,12 +99,15 @@ export function mapOrderToReceipt(o: OrderFull): ReceiptData {
     paymentLabel: paymentLabel(o.payment_method),
     ...(o.receipt_no ? { receiptNo: o.receipt_no } : {}),
     ...(discount > 0 ? { discount } : {}),
+    ...(parties?.memberName ? { memberName: parties.memberName } : {}),
+    ...(parties?.salesName ? { salesName: parties.salesName } : {}),
   };
 }
 
-/** Order → print job (usePrinter().printReceipt). Marked as a copy with the
- *  original order date so the reprint shows when the sale actually happened. */
-export function mapOrderToPrintArgs(o: OrderFull): PrintReceiptArgs {
+/** Order → print job (usePrinter().printReceipt). Reprints are no longer marked
+ *  "สำเนา" — they reproduce the original bill exactly, keeping the original
+ *  order date so the slip shows when the sale actually happened. */
+export function mapOrderToPrintArgs(o: OrderFull, parties?: ReceiptParties): PrintReceiptArgs {
   const discount = Number(o.discount);
   return {
     orderNumber: String(displayOrderNo(o)),
@@ -110,7 +122,8 @@ export function mapOrderToPrintArgs(o: OrderFull): PrintReceiptArgs {
     // Historical orders only carry the discount total (no per-promo breakdown
     // or points), so reprints show a single "ส่วนลด" line — no breakdown/points.
     ...(discount > 0 ? { discount } : {}),
-    copy: true,
+    ...(parties?.memberName ? { memberName: parties.memberName } : {}),
+    ...(parties?.salesName ? { salesName: parties.salesName } : {}),
   };
 }
 

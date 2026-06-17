@@ -7,7 +7,8 @@ import { useFadeRise } from '@/lib/motion';
 import { useToast, baht } from '../app-common';
 import { usePrinter } from '@/hooks/use-printer';
 import { displayOrderNo, useVoidOrder, useSetOrderDate } from '@/hooks/use-orders';
-import { ApiError } from '@/lib/api-client';
+import { useCustomerDetail, type CustomerDetail } from '@/hooks/use-customers';
+import { ApiError, api } from '@/lib/api-client';
 import ReceiptModal from './receipt-modal';
 import CancelOrderModal from './cancel-order-modal';
 import {
@@ -40,6 +41,11 @@ export default function ReceiptCopies() {
   const [printingAll, setPrintingAll] = useState(false);
 
   const { data: orders, isLoading, isError, error } = useReceiptCopies(date);
+  // Resolve the buyer (ลูกค้า) + salesperson (เซลส์) for the opened receipt so the
+  // copy shows the same parties block as the original bill. Member-less sales have
+  // no customer_id → nothing to resolve, nothing shown.
+  const { data: selCustomer } = useCustomerDetail(selected?.customer_id ?? undefined);
+  const selParties = { memberName: selCustomer?.name, salesName: selCustomer?.sales_name ?? undefined };
   const rootRef = useFadeRise({ y: 8, duration: 0.22 });
 
   const summary = useMemo(() => {
@@ -55,7 +61,16 @@ export default function ReceiptCopies() {
     let done = 0;
     try {
       for (const o of orders) {
-        await printReceipt(mapOrderToPrintArgs(o));
+        // Resolve the buyer/sales for each bill (cheap GET; skipped for member-less
+        // sales). A lookup failure shouldn't abort the batch — just print without it.
+        let parties: { memberName?: string; salesName?: string } | undefined;
+        if (o.customer_id) {
+          try {
+            const c = await api.get<CustomerDetail>(`/api/v1/customers/${o.customer_id}`);
+            parties = { memberName: c.name, salesName: c.sales_name ?? undefined };
+          } catch { /* print without parties */ }
+        }
+        await printReceipt(mapOrderToPrintArgs(o, parties));
         done += 1;
       }
       toast({ kind: 'success', title: 'พิมพ์สำเนาครบแล้ว', msg: `${done} ใบ` });
@@ -221,9 +236,8 @@ export default function ReceiptCopies() {
       {selected && (
         <ReceiptModal
           key={selected.id}
-          data={mapOrderToReceipt(selected)}
+          data={mapOrderToReceipt(selected, selParties)}
           issuedAt={new Date(selected.created_at)}
-          copy
           onCancel={() => { setCancelTarget(selected); setSelected(null); }}
           onSaveDate={async (iso: string) => {
             try {
@@ -244,7 +258,7 @@ export default function ReceiptCopies() {
           onClose={() => setSelected(null)}
           onPrint={async () => {
             try {
-              await printReceipt(mapOrderToPrintArgs(selected));
+              await printReceipt(mapOrderToPrintArgs(selected, selParties));
               toast({ kind: 'success', title: 'พิมพ์สำเนาแล้ว', msg: `ออเดอร์ #${selected.order_number}` });
             } catch (e: unknown) {
               toast({ kind: 'danger', title: 'พิมพ์ไม่สำเร็จ', msg: String(e instanceof Error ? e.message : e) });
