@@ -18,6 +18,11 @@ import {
   type WastageReportData,
   type WasteEventLine,
 } from '@/hooks/use-wastage-report';
+import {
+  loadSalespersonReport,
+  type SalespersonReportData,
+  type SalespersonKpi,
+} from '@/hooks/use-salesperson-kpi';
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 function ymd(d: Date): string {
@@ -841,6 +846,290 @@ function WasteReport({ onBack }: { onBack: () => void }) {
   );
 }
 
+// ── Salesperson report ──────────────────────────────────────────────────────────
+const fmtInt = (n: number) => Math.round(n).toLocaleString();
+
+/* Headline table: one row per salesperson with their assigned/buying member
+   counts, item count and attributed revenue. Sorted by revenue (loader). */
+function SalespersonSummaryTable({ rows }: { rows: SalespersonKpi[] }) {
+  const tMembers = rows.reduce((s, r) => s + r.memberCount, 0);
+  const tBuying = rows.reduce((s, r) => s + r.buyingMemberCount, 0);
+  const tItems = rows.reduce((s, r) => s + r.totalItems, 0);
+  const tValue = rows.reduce((s, r) => s + r.totalValue, 0);
+  const thL: React.CSSProperties = { textAlign: 'left', padding: '8px 16px', fontWeight: 600, color: 'var(--color-text-secondary)' };
+  const thR: React.CSSProperties = { textAlign: 'right', padding: '8px 16px', fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' };
+  const cR: React.CSSProperties = { padding: '8px 16px', textAlign: 'right' };
+  return (
+    <Card style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border)' }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>สรุปตามเซลส์</div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>เรียงตามยอดขายมาก→น้อย</div>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: 'var(--color-surface-2)' }}>
+              <th style={thL}>เซลส์</th>
+              <th style={thR}>สมาชิกที่ดูแล</th>
+              <th style={thR}>สมาชิกที่ซื้อ</th>
+              <th style={thR}>จำนวนสินค้า</th>
+              <th style={thR}>ยอดขาย</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={5} style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--color-text-muted)' }}>ไม่มีข้อมูลในช่วงที่เลือก</td></tr>
+            ) : rows.map((r) => (
+              <tr key={r.salesId} style={{ borderTop: '1px solid var(--color-border)' }}>
+                <td style={{ padding: '8px 16px', fontWeight: 600 }}>{r.salesName}</td>
+                <td style={cR} className="num">{r.memberCount.toLocaleString()}</td>
+                <td style={cR} className="num">{r.buyingMemberCount.toLocaleString()}</td>
+                <td style={cR} className="num">{r.totalItems.toLocaleString()}</td>
+                <td style={cR} className="num">{baht(r.totalValue)}</td>
+              </tr>
+            ))}
+          </tbody>
+          {rows.length > 0 && (
+            <tfoot>
+              <tr style={{ borderTop: '2px solid var(--color-border-strong, var(--color-border))', fontWeight: 700 }}>
+                <td style={{ padding: '8px 16px' }}>รวม</td>
+                <td style={cR} className="num">{tMembers.toLocaleString()}</td>
+                <td style={cR} className="num">{tBuying.toLocaleString()}</td>
+                <td style={cR} className="num">{tItems.toLocaleString()}</td>
+                <td style={cR} className="num">{baht(tValue)}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+/* Per-salesperson drill-down (collapsible): every assigned member, their bill /
+   item counts and revenue, with the product breakdown listed under each member. */
+function SalespersonDetailCard({ sp, defaultOpen }: { sp: SalespersonKpi; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const members = [...sp.members].sort((a, z) => z.totalValue - a.totalValue || z.totalItems - a.totalItems);
+  const td: React.CSSProperties = { padding: '7px 16px', verticalAlign: 'top' };
+  const tdR: React.CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
+  const thL: React.CSSProperties = { textAlign: 'left', padding: '8px 16px', fontWeight: 600, color: 'var(--color-text-secondary)' };
+  const thR: React.CSSProperties = { ...thL, textAlign: 'right', whiteSpace: 'nowrap' };
+  return (
+    <Card style={{ padding: 0, overflow: 'hidden' }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 'var(--space-3)', textAlign: 'left',
+          padding: '14px 16px', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+        }}
+      >
+        <Icon name="chevronRight" size={16} color="var(--color-text-muted)" style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform var(--dur-fast) var(--ease-out)', flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>{sp.salesName}</div>
+          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+            ดูแล {sp.memberCount.toLocaleString()} คน • ซื้อ {sp.buyingMemberCount.toLocaleString()} คน • {sp.totalItems.toLocaleString()} ชิ้น
+          </div>
+        </div>
+        <div className="num" style={{ fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap' }}>{baht(sp.totalValue)}</div>
+      </button>
+      {open && (
+        <div style={{ overflowX: 'auto', borderTop: '1px solid var(--color-border)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: 'var(--color-surface-2)' }}>
+                <th style={thL}>สมาชิก</th>
+                <th style={thL}>เบอร์โทร</th>
+                <th style={thR}>จำนวนบิล</th>
+                <th style={thR}>จำนวนสินค้า</th>
+                <th style={thR}>ยอดซื้อ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {members.length === 0 ? (
+                <tr><td colSpan={5} style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--color-text-muted)' }}>ยังไม่มีสมาชิกที่มอบหมาย</td></tr>
+              ) : members.map((m) => (
+                <Fragment key={m.customerId}>
+                  <tr style={{ borderTop: '1px solid var(--color-border)' }}>
+                    <td style={{ ...td, fontWeight: 600 }}>{m.name}</td>
+                    <td style={{ ...td, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>{m.phone ?? '—'}</td>
+                    <td style={tdR} className="num">{m.orderCount.toLocaleString()}</td>
+                    <td style={tdR} className="num">{m.totalItems.toLocaleString()}</td>
+                    <td style={tdR} className="num">{baht(m.totalValue)}</td>
+                  </tr>
+                  {m.items.length > 0 && (
+                    <tr style={{ background: 'var(--color-surface-2)' }}>
+                      <td colSpan={5} style={{ padding: '4px 16px 9px 32px' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 8px' }}>
+                          {m.items.map((it, j) => (
+                            <span key={`${m.customerId}-${it.productName}-${j}`} style={{
+                              fontSize: 12, color: 'var(--color-text-secondary)',
+                              background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                              borderRadius: 'var(--radius-pill)', padding: '2px 9px', whiteSpace: 'nowrap',
+                            }}>
+                              {it.productName} <span className="num" style={{ color: 'var(--color-text-muted)' }}>×{it.quantity.toLocaleString()}</span> · <span className="num">{baht(it.value)}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function SalespersonReport({ onBack }: { onBack: () => void }) {
+  const [mode, setMode] = useState<ReportMode>('range');
+  const [day, setDay] = useState(TODAY);
+  const [from, setFrom] = useState(MONTH_START);
+  const [to, setTo] = useState(TODAY);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<SalespersonReportData | null>(null);
+
+  async function runReport() {
+    setError(null);
+    if (mode === 'range' && from > to) {
+      setError('วันเริ่มต้องไม่เกินวันสิ้นสุด');
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await loadSalespersonReport({ mode, from: mode === 'daily' ? day : from, to });
+      setData(result);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'เรียกรายงานไม่สำเร็จ';
+      setError(msg.includes('403') || /สิทธิ|permission|forbidden/i.test(msg)
+        ? 'บัญชีนี้ไม่มีสิทธิ์ดูรายงาน (ต้องเป็นผู้จัดการหรือเจ้าของ)'
+        : msg);
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const periodText = data
+    ? data.mode === 'daily'
+      ? `รายวัน — ${thaiDate(data.from)}`
+      : `ช่วงวันที่ ${thaiDate(data.from)} ถึง ${thaiDate(data.to)} (${data.dayCount} วัน)`
+    : '';
+
+  return (
+    <div className="scroll" style={{ height: '100%', overflow: 'auto', padding: 'var(--space-6)', background: 'var(--color-bg)' }}>
+      <button className="btn btn-ghost hover-raise" onClick={onBack} style={{ marginBottom: 'var(--space-4)', alignSelf: 'flex-start' }}>
+        <Icon name="chevronLeft" size={14} /> รายงาน
+      </button>
+
+      <div style={{ marginBottom: 'var(--space-5)' }}>
+        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 2 }}>รายงาน</div>
+        <h1 className="text-balance" style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>รายงานเซลส์</h1>
+        <div className="text-pretty" style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)' }}>ยอดขายและสมาชิกที่แต่ละเซลส์ดูแล — กดที่ชื่อเซลส์เพื่อดูรายละเอียดรายคน</div>
+      </div>
+
+      <Card style={{ marginBottom: 16 }}>
+        <div role="tablist" aria-label="ช่วงเวลารายงาน" style={{ display: 'inline-flex', background: 'var(--color-surface-2)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-1)', marginBottom: 'var(--space-4)' }}>
+          {([['daily', 'รายวัน'], ['range', 'รายเดือน / ช่วงวันที่']] as [ReportMode, string][]).map(([m, label]) => (
+            <button
+              key={m}
+              role="tab"
+              aria-selected={mode === m}
+              onClick={() => setMode(m)}
+              style={{
+                minHeight: 44, padding: '8px 16px', borderRadius: 'var(--radius-md)', border: 'none', cursor: 'pointer',
+                fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
+                background: mode === m ? 'var(--color-surface)' : 'transparent',
+                color: mode === m ? 'var(--color-text)' : 'var(--color-text-secondary)',
+                boxShadow: mode === m ? 'var(--shadow-sm)' : 'none',
+                transition: 'background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
+              }}
+            >{label}</button>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}>
+          {mode === 'daily' ? (
+            <>
+              <div>
+                <label style={LB}>วันที่</label>
+                <input type="date" value={day} max={TODAY} onChange={(e) => setDay(e.target.value)} style={IS} />
+              </div>
+              <button className="btn btn-ghost" onClick={() => setDay(TODAY)}>วันนี้</button>
+            </>
+          ) : (
+            <>
+              <div>
+                <label style={LB}>วันเริ่ม</label>
+                <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} style={IS} />
+              </div>
+              <div>
+                <label style={LB}>วันสิ้นสุด</label>
+                <input type="date" value={to} max={TODAY} onChange={(e) => setTo(e.target.value)} style={IS} />
+              </div>
+            </>
+          )}
+
+          <button className="btn btn-primary" onClick={runReport} disabled={loading}>
+            <Icon name="reports" size={14} /> {loading ? 'กำลังเรียก…' : 'เรียกรายงาน'}
+          </button>
+        </div>
+
+        {error && (
+          <div role="alert" style={{
+            marginTop: 'var(--space-4)', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: 13,
+            background: 'var(--color-danger-50)', color: 'var(--color-danger)',
+            border: '1px solid var(--color-danger)',
+          }}>{error}</div>
+        )}
+      </Card>
+
+      {loading && <ReportSkeleton rangeMode={mode === 'range'} />}
+
+      {!loading && data && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <Tag tone="accent">{periodText}</Tag>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 }}>
+            <SummaryCard label="จำนวนเซลส์" value={data.totalSalespeople} format={fmtInt} />
+            <SummaryCard label="สมาชิกที่ดูแล" value={data.totalMembers} format={fmtInt} />
+            <SummaryCard label="สมาชิกที่ซื้อ" value={data.buyingMembers} format={fmtInt} />
+            <SummaryCard label="ยอดขายรวม" value={data.totalValue} format={baht} />
+          </div>
+
+          <div style={{ display: 'grid', gap: 16 }}>
+            <SalespersonSummaryTable rows={data.salespeople} />
+            {data.salespeople.length > 0 && (
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)', margin: '4px 2px 10px' }}>รายละเอียดรายเซลส์</div>
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {data.salespeople.map((sp) => (
+                    <SalespersonDetailCard key={sp.salesId} sp={sp} defaultOpen={data.salespeople.length <= 3} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {!data && !loading && !error && (
+        <Card style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 40 }}>
+          เลือกวันหรือช่วงวันที่ แล้วกด “เรียกรายงาน” เพื่อดูข้อมูลเซลส์
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ── Reports hub ───────────────────────────────────────────────────────────────
 // Landing page that lists the available reports. New reports are added by
 // appending to REPORTS and handling the id in Reports() below.
@@ -848,6 +1137,7 @@ type ReportEntry = { id: string; icon: string; title: string; desc: string };
 const REPORTS: ReportEntry[] = [
   { id: 'sales', icon: 'reports', title: 'รายงานยอดขาย', desc: 'สรุปยอดขายรายวัน/ช่วงวันที่ + ดาวน์โหลด Excel' },
   { id: 'wastage', icon: 'inv', title: 'รายงานของเสีย', desc: 'ของเสียรายวัน/รายเดือน — แยกตามเหตุผล/วัตถุดิบ + ดาวน์โหลด Excel' },
+  { id: 'salesperson', icon: 'user', title: 'รายงานเซลส์', desc: 'ยอดขายและสมาชิกที่แต่ละเซลส์ดูแล — เจาะลึกรายคนและสินค้าที่ซื้อ' },
 ];
 
 function ReportCard({ entry, onOpen }: { entry: ReportEntry; onOpen: (id: string) => void }) {
@@ -900,8 +1190,9 @@ function ReportsHub({ onOpen }: { onOpen: (id: string) => void }) {
 // screen remounts on navigation (key={screen} in page.tsx), so re-entering the
 // reports screen always lands back on the hub.
 export function Reports() {
-  const [view, setView] = useState<'hub' | 'sales' | 'wastage'>('hub');
+  const [view, setView] = useState<'hub' | 'sales' | 'wastage' | 'salesperson'>('hub');
   if (view === 'sales') return <SalesReport onBack={() => setView('hub')} />;
   if (view === 'wastage') return <WasteReport onBack={() => setView('hub')} />;
-  return <ReportsHub onOpen={(id) => { if (id === 'sales' || id === 'wastage') setView(id); }} />;
+  if (view === 'salesperson') return <SalespersonReport onBack={() => setView('hub')} />;
+  return <ReportsHub onOpen={(id) => { if (id === 'sales' || id === 'wastage' || id === 'salesperson') setView(id); }} />;
 }
