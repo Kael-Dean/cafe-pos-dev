@@ -316,16 +316,25 @@ export async function downloadSalespersonReportExcel(
       ? `รายวัน — ${thaiDate(data.from)}`
       : `รายเดือน / ช่วงวันที่ — ${thaiDate(data.from)} ถึง ${thaiDate(data.to)}`;
 
-  // ── Summary sheet ──────────────────────────────────────────────────────────
+  // Decorated headline table first, so the workbook opens on a styled sheet just
+  // like the sales report opens on its register (not on the plain summary).
+  addKpiSheet(wb, data, stats);
+
+  // ── Summary sheet (styled: title block + header band + zebra metrics) ────────
   const s = wb.addWorksheet('สรุป');
-  s.columns = [{ width: 28 }, { width: 22 }];
+  s.columns = [{ width: 30 }, { width: 22 }];
   s.addRow([storeName]);
   s.getRow(1).font = { bold: true, size: 16 };
+  s.mergeCells(1, 1, 1, 2);
   s.addRow(['รายงานเซลส์']);
   s.getRow(2).font = { bold: true, size: 13 };
+  s.mergeCells(2, 1, 2, 2);
   s.addRow([periodLabel]);
+  s.mergeCells(3, 1, 3, 2);
   s.addRow([`ออกรายงานเมื่อ ${thaiDateTime(new Date())}`]);
+  s.mergeCells(4, 1, 4, 2);
   s.addRow([]);
+  headerRow(s, ['รายการ', 'ค่า']);
 
   const summary: Array<[string, number, 'money' | 'int']> = [
     ['ยอดขายรวม', data.totalValue, 'money'],
@@ -343,17 +352,26 @@ export async function downloadSalespersonReportExcel(
     summary.push(['จำนวนวัน', data.dayCount, 'int']);
     summary.push(['ยอดเฉลี่ยต่อวัน', div(data.totalValue, data.dayCount), 'money']);
   }
+  let sZebra = 0;
   for (const [label, value, kind] of summary) {
     const r = s.addRow([label, value]);
     r.getCell(1).font = { bold: true };
     r.getCell(2).numFmt = kind === 'money' ? MONEY_FMT : INT_FMT;
+    if (sZebra % 2 === 1) fillRow(s, r.number, 2, ZEBRA_ARGB);
+    sZebra += 1;
   }
+  s.views = [{ state: 'frozen', ySplit: 6 }];
 
-  // ── Breakdown sheets ─────────────────────────────────────────────────────────
-  addKpiSheet(wb, data, stats);
+  // ── Deeper breakdown sheets ──────────────────────────────────────────────────
   addDetailSheet(wb, data, stats);
   addMembersSheet(wb, data);
   addProductsSheet(wb, stats);
+
+  // Open the file on the first (decorated) tab.
+  wb.views = [{
+    x: 0, y: 0, width: 20000, height: 12000,
+    firstSheet: 0, activeTab: 0, visibility: 'visible',
+  }];
 
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer as BlobPart], {
