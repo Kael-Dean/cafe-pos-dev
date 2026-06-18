@@ -45,6 +45,7 @@ interface FormState {
   is_active: boolean;
   earn_mode: EarnMode;
   baht_per_point: string;
+  earn_category_id: string; // PER_ITEM only; '' = count all items
   points_to_redeem: string;
   reward_type: RewardType;
   reward_value: string;
@@ -61,7 +62,7 @@ interface FormState {
 }
 
 const DEFAULTS: FormState = {
-  is_active: true, earn_mode: 'PER_BAHT', baht_per_point: '50', points_to_redeem: '100',
+  is_active: true, earn_mode: 'PER_BAHT', baht_per_point: '50', earn_category_id: '', points_to_redeem: '100',
   reward_type: 'DISCOUNT_FIXED', reward_value: '50', reward_scope: 'ALL', reward_category_id: '',
   min_order_baht: '', points_expire_after_days: '365',
   tier_bronze_threshold: '', tier_silver_threshold: '', tier_gold_threshold: '',
@@ -74,6 +75,7 @@ function fromProgram(p: ProgramRead): FormState {
     is_active: p.is_active,
     earn_mode: p.earn_mode,
     baht_per_point: s(p.baht_per_point),
+    earn_category_id: p.earn_category_id ?? '',
     points_to_redeem: s(p.points_to_redeem),
     reward_type: p.reward_type,
     reward_value: s(p.reward_value),
@@ -147,6 +149,8 @@ export default function LoyaltyConfig() {
       is_active: form.is_active,
       earn_mode: form.earn_mode,
       baht_per_point: form.earn_mode === 'PER_BAHT' ? Number(form.baht_per_point) : null,
+      // BE rejects (422) a non-null earn_category_id outside PER_ITEM → clear it on mode switch.
+      earn_category_id: form.earn_mode === 'PER_ITEM' ? (form.earn_category_id || null) : null,
       points_to_redeem: Number(form.points_to_redeem),
       reward_type: form.reward_type,
       reward_value: form.reward_type === 'FREE_ITEM' ? null : Number(form.reward_value),
@@ -216,6 +220,12 @@ export default function LoyaltyConfig() {
           {form.earn_mode === 'PER_BAHT' && (
             <Field label="บาทต่อ 1 แต้ม *">
               <input type="number" value={form.baht_per_point} disabled={dis} onChange={e => set('baht_per_point', e.target.value)} style={IS} placeholder="50" />
+            </Field>
+          )}
+          {form.earn_mode === 'PER_ITEM' && (
+            <Field label="หมวดหมู่ที่นับแต้ม">
+              <Select value={form.earn_category_id} disabled={dis} onChange={v => set('earn_category_id', v)} ariaLabel="หมวดหมู่ที่นับแต้ม"
+                options={[{ value: '', label: 'ทุกหมวดหมู่ (ทุกชิ้น)' }, ...(categories ?? []).map(c => ({ value: c.id, label: c.label }))]} />
             </Field>
           )}
         </Grid>

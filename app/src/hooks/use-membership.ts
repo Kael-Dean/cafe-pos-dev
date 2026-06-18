@@ -15,6 +15,7 @@ export interface ProgramRead {
   is_active: boolean;
   earn_mode: EarnMode;
   baht_per_point: string | null;
+  earn_category_id: string | null; // PER_ITEM only: count items in this category; null = all items
   points_to_redeem: number;
   reward_type: RewardType;
   reward_value: string | null;
@@ -37,6 +38,7 @@ export interface ProgramWrite {
   is_active: boolean;
   earn_mode: EarnMode;
   baht_per_point: number | null;
+  earn_category_id: string | null; // PER_ITEM only; must be null for other earn modes (BE rejects with 422)
   points_to_redeem: number;
   reward_type: RewardType;
   reward_value: number | null;
