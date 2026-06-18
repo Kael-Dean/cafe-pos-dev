@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../icons';
 import { useToast, Tag, baht, Select, NumberInput } from '../app-common';
 import { useStagger } from '@/lib/motion';
@@ -1295,6 +1296,8 @@ const ProductImageControl = ({ product }: { product: MenuItem }) => {
   const fileRef = useRef<HTMLInputElement>(null);
   // The picked file waits in the crop modal; only the framed square uploads.
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  // Tapping the thumbnail opens a full-size preview.
+  const [preview, setPreview] = useState(false);
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1320,9 +1323,20 @@ const ProductImageControl = ({ product }: { product: MenuItem }) => {
 
   const busy = uploadImage.isPending || deleteImage.isPending;
 
+  useEffect(() => {
+    if (!preview) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPreview(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [preview]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-      <div style={{ position: 'relative', width: 80, height: 80, borderRadius: 12, overflow: 'hidden', flexShrink: 0 }}>
+      <div
+        onClick={() => product.imageUrl && setPreview(true)}
+        title={product.imageUrl ? 'ดูรูปเต็ม' : undefined}
+        style={{ position: 'relative', width: 80, height: 80, borderRadius: 12, overflow: 'hidden', flexShrink: 0, cursor: product.imageUrl ? 'zoom-in' : 'default' }}
+      >
         {product.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={product.imageUrl} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
@@ -1350,6 +1364,32 @@ const ProductImageControl = ({ product }: { product: MenuItem }) => {
           onCancel={() => setPendingFile(null)}
           onConfirm={onCropConfirm}
         />
+      )}
+      {preview && product.imageUrl && createPortal(
+        <div
+          onClick={() => setPreview(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`รูป ${product.name}`}
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.8)', display: 'grid', placeItems: 'center', padding: 24, cursor: 'zoom-out' }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={product.imageUrl}
+            alt={product.name}
+            onClick={e => e.stopPropagation()}
+            style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12, boxShadow: '0 12px 48px rgba(0,0,0,0.5)' }}
+          />
+          <button
+            type="button"
+            onClick={() => setPreview(false)}
+            aria-label="ปิด"
+            style={{ position: 'absolute', top: 16, right: 16, width: 40, height: 40, borderRadius: 20, border: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: 20, lineHeight: 1, cursor: 'pointer', display: 'grid', placeItems: 'center' }}
+          >
+            ✕
+          </button>
+        </div>,
+        document.body
       )}
     </div>
   );
