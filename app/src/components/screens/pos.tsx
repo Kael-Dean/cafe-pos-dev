@@ -910,10 +910,11 @@ const PayButton = ({ icon, label, onClick, disabled, primary, pending }: { icon:
     <button onClick={onClick} disabled={off} className="hover-raise" aria-busy={pending || undefined}
       style={{
         padding: '14px 12px', borderRadius: 8,
-        background: off ? 'var(--color-surface-2)' : (primary ? 'var(--color-primary)' : 'var(--color-surface)'),
-        color: off ? 'var(--color-text-muted)' : (primary ? 'var(--color-text-inverse)' : 'var(--color-text)'),
-        border: `1px solid ${primary && !off ? 'var(--color-primary)' : 'var(--color-border)'}`,
-        fontWeight: 600, fontSize: 14,
+        background: off ? 'var(--color-surface-2)' : 'var(--color-accent)',
+        color: off ? 'var(--color-text-muted)' : 'var(--color-on-accent)',
+        border: `1px solid ${off ? 'var(--color-border)' : 'var(--color-accent-600)'}`,
+        boxShadow: off ? 'none' : 'var(--shadow-sm)',
+        fontWeight: primary ? 700 : 600, fontSize: 14,
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
         minHeight: 64,
         cursor: off ? 'not-allowed' : 'pointer',
