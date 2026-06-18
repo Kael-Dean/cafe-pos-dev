@@ -105,10 +105,15 @@ export interface ReceiptPoints {
 /**
  * Resolve an order's point movement + resulting balance for a reprint.
  *
- * Prefers the matching point transaction (`balance_after` keyed by `order_id`) —
- * the true balance at that bill. When the order predates the member's last-20
- * transaction window, falls back to the order's own earn/redeem flags (with the
- * programme's `points_to_redeem`) and the member's *current* balance.
+ * A single order can produce BOTH an earn and a redeem transaction (e.g. earn on
+ * the amount paid AND redeem a reward), so we take ALL transactions keyed by
+ * `order_id`: sum the earns/redeems, and read `balance_after` off the LATEST one
+ * (by `created_at`) — that is the true remaining balance once the bill settled.
+ * Picking the first match would surface the pre-redeem balance.
+ *
+ * When the order predates the member's last-20 transaction window, falls back to
+ * the order's own earn/redeem flags (with the programme's `points_to_redeem`) and
+ * the member's *current* balance.
  */
 export function computeOrderPoints(
   o: OrderFull | null | undefined,
@@ -116,14 +121,24 @@ export function computeOrderPoints(
   program: ProgramRead | null | undefined,
 ): ReceiptPoints | undefined {
   if (!o) return undefined;
-  const tx = member?.recent_transactions?.find(t => t.order_id === o.id);
-  const earned = tx
-    ? (tx.delta > 0 ? tx.delta : 0)
-    : (o.points_earned ?? 0);
-  const redeemed = tx
-    ? (tx.delta < 0 ? -tx.delta : 0)
-    : (o.reward_redeemed ? (program?.points_to_redeem ?? 0) : 0);
-  const balanceAfter = tx?.balance_after ?? member?.points_balance;
+  const txns = (member?.recent_transactions ?? []).filter(t => t.order_id === o.id);
+  let earned = 0;
+  let redeemed = 0;
+  let balanceAfter: number | undefined;
+  if (txns.length) {
+    for (const t of txns) {
+      if (t.delta > 0) earned += t.delta;
+      else if (t.delta < 0) redeemed += -t.delta;
+    }
+    const latest = [...txns].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    )[txns.length - 1];
+    balanceAfter = latest.balance_after;
+  } else {
+    earned = o.points_earned ?? 0;
+    redeemed = o.reward_redeemed ? (program?.points_to_redeem ?? 0) : 0;
+    balanceAfter = member?.points_balance;
+  }
   if (!earned && !redeemed && balanceAfter == null) return undefined;
   return {
     ...(earned ? { earned } : {}),
