@@ -8,6 +8,7 @@ import { useToast, baht } from '../app-common';
 import { usePrinter } from '@/hooks/use-printer';
 import { displayOrderNo, useVoidOrder, useSetOrderDate } from '@/hooks/use-orders';
 import { useCustomerDetail, type CustomerDetail } from '@/hooks/use-customers';
+import { useMemberDetail, useMembershipProgram, type MemberRead } from '@/hooks/use-membership';
 import { ApiError, api } from '@/lib/api-client';
 import ReceiptModal from './receipt-modal';
 import CancelOrderModal from './cancel-order-modal';
@@ -15,8 +16,10 @@ import {
   useReceiptCopies,
   mapOrderToReceipt,
   mapOrderToPrintArgs,
+  computeOrderPoints,
   paymentLabel,
   type OrderFull,
+  type ReceiptPoints,
 } from '@/hooks/use-receipt-copies';
 
 function todayISO(): string {
@@ -46,6 +49,15 @@ export default function ReceiptCopies() {
   // no customer_id → nothing to resolve, nothing shown.
   const { data: selCustomer } = useCustomerDetail(selected?.customer_id ?? undefined);
   const selParties = { memberName: selCustomer?.name, salesName: selCustomer?.sales_name ?? undefined };
+  // Points to reprint: pulled from the member's transaction log so the copy shows
+  // the authoritative balance as of this bill (computeOrderPoints falls back to the
+  // current balance for orders older than the last-20 transaction window).
+  const { data: selMember } = useMemberDetail(selected?.member_id ?? null);
+  const { data: program } = useMembershipProgram();
+  const selPoints = useMemo(
+    () => computeOrderPoints(selected, selMember, program),
+    [selected, selMember, program],
+  );
   const rootRef = useFadeRise({ y: 8, duration: 0.22 });
 
   const summary = useMemo(() => {
@@ -70,7 +82,16 @@ export default function ReceiptCopies() {
             parties = { memberName: c.name, salesName: c.sales_name ?? undefined };
           } catch { /* print without parties */ }
         }
-        await printReceipt(mapOrderToPrintArgs(o, parties));
+        // Resolve the member's point balance for this bill (authoritative, from the
+        // transaction log). A lookup failure shouldn't abort the batch.
+        let points: ReceiptPoints | undefined;
+        if (o.member_id) {
+          try {
+            const m = await api.get<MemberRead>(`/api/v1/membership/members/${o.member_id}`);
+            points = computeOrderPoints(o, m, program);
+          } catch { /* print without points */ }
+        }
+        await printReceipt(mapOrderToPrintArgs(o, parties, points));
         done += 1;
       }
       toast({ kind: 'success', title: 'พิมพ์สำเนาครบแล้ว', msg: `${done} ใบ` });
@@ -236,7 +257,7 @@ export default function ReceiptCopies() {
       {selected && (
         <ReceiptModal
           key={selected.id}
-          data={mapOrderToReceipt(selected, selParties)}
+          data={mapOrderToReceipt(selected, selParties, selPoints)}
           issuedAt={new Date(selected.created_at)}
           onCancel={() => { setCancelTarget(selected); setSelected(null); }}
           onSaveDate={async (iso: string) => {
@@ -258,7 +279,7 @@ export default function ReceiptCopies() {
           onClose={() => setSelected(null)}
           onPrint={async () => {
             try {
-              await printReceipt(mapOrderToPrintArgs(selected, selParties));
+              await printReceipt(mapOrderToPrintArgs(selected, selParties, selPoints));
               toast({ kind: 'success', title: 'พิมพ์สำเนาแล้ว', msg: `ออเดอร์ #${selected.order_number}` });
             } catch (e: unknown) {
               toast({ kind: 'danger', title: 'พิมพ์ไม่สำเร็จ', msg: String(e instanceof Error ? e.message : e) });

@@ -293,15 +293,18 @@ export default function POSTerminal() {
       payOrder.mutateAsync({
         orderId: order.id,
         payment_method: methodMap[method ?? 'cash'] ?? 'CASH',
-      }).then(() => {
+      }).then((paid) => {
         // Server is authoritative for discount/total when a member and/or promotions were applied.
+        // Points (earn/redeem) are posted at PAYMENT, so read them off the pay
+        // response — the create response still carries points_earned=0 /
+        // reward_redeemed=false, which would print the pre-redeem balance.
         const hasMember = !!memberSnapshot;
         const serverAuthoritative = hasMember || promoSnapshot.length > 0;
         const serverTotal = order.total != null ? Number(order.total) : totalSnapshot;
         const serverDiscount = order.discount != null ? Number(order.discount) : discountSnapshot;
         const finalTotal = serverAuthoritative ? serverTotal : totalSnapshot;
         const finalDiscount = serverAuthoritative ? serverDiscount : 0;
-        const earned = order.points_earned ?? 0;
+        const earned = paid.points_earned ?? 0;
 
         // ── Discount breakdown (cashier-side estimate; total uses server value) ──
         const discountLines: { label: string; amount: number }[] = [];
@@ -320,12 +323,12 @@ export default function POSTerminal() {
 
         // ── Points (earn OR redeem — mutually exclusive; server is authoritative
         //    for which happened via reward_redeemed / points_earned) ──
-        const redeemed = order.reward_redeemed
+        const redeemed = paid.reward_redeemed
           ? (memberSnapshot?.program?.points_to_redeem ?? program?.points_to_redeem ?? 0)
           : 0;
         const balanceBefore = memberSnapshot?.account.points_balance ?? 0;
         const pointsBalanceAfter = hasMember ? balanceBefore + earned - redeemed : undefined;
-        const rewardLabel = order.reward_redeemed
+        const rewardLabel = paid.reward_redeemed
           ? (memberSnapshot?.rewardProduct?.name ?? undefined)
           : undefined;
         toast({
@@ -351,7 +354,7 @@ export default function POSTerminal() {
           pointsRedeemed: redeemed > 0 ? redeemed : undefined,
           rewardLabel,
           pointsBalanceAfter,
-          rewardRedeemed: order.reward_redeemed,
+          rewardRedeemed: paid.reward_redeemed,
         });
       }).catch((payErr: unknown) => {
         // The order WAS created (it's already in the kitchen) but recording the

@@ -3,6 +3,7 @@ import { api } from '@/lib/api-client';
 import { parseModifiers, displayOrderNo } from '@/hooks/use-orders';
 import type { ReceiptData } from '@/components/screens/receipt-modal';
 import type { PrintReceiptArgs } from '@/hooks/use-printer';
+import type { MemberRead, ProgramRead } from '@/hooks/use-membership';
 
 // ── Backend shapes (full order detail — superset of use-orders.ts OrderRead) ──
 // Matches app/api/v1/schemas/orders.py → OrderRead / OrderItemRead.
@@ -25,6 +26,7 @@ export interface OrderFull {
   receipt_no?: string;
   store_id: string;
   customer_id: string | null;
+  member_id?: string | null;
   status: string;
   channel: string;
   payment_method: string | null;
@@ -34,6 +36,9 @@ export interface OrderFull {
   discount: string | number;
   tax: string | number;
   total: string | number;
+  // ── Membership (present when a member was attached) ──
+  points_earned?: number;
+  reward_redeemed?: boolean;
   created_by_id: string;
   items: OrderItemFull[];
   created_at: string;
@@ -87,8 +92,58 @@ export interface ReceiptParties {
   salesName?: string;
 }
 
+// Points to print on a reprint. Resolved from the member's point-transaction log
+// (authoritative `balance_after`, keyed by order_id) rather than recomputed, so a
+// copy shows the exact remaining balance as of that bill.
+export interface ReceiptPoints {
+  earned?: number;
+  redeemed?: number;
+  balanceAfter?: number;
+  rewardLabel?: string;
+}
+
+/**
+ * Resolve an order's point movement + resulting balance for a reprint.
+ *
+ * Prefers the matching point transaction (`balance_after` keyed by `order_id`) —
+ * the true balance at that bill. When the order predates the member's last-20
+ * transaction window, falls back to the order's own earn/redeem flags (with the
+ * programme's `points_to_redeem`) and the member's *current* balance.
+ */
+export function computeOrderPoints(
+  o: OrderFull | null | undefined,
+  member: MemberRead | null | undefined,
+  program: ProgramRead | null | undefined,
+): ReceiptPoints | undefined {
+  if (!o) return undefined;
+  const tx = member?.recent_transactions?.find(t => t.order_id === o.id);
+  const earned = tx
+    ? (tx.delta > 0 ? tx.delta : 0)
+    : (o.points_earned ?? 0);
+  const redeemed = tx
+    ? (tx.delta < 0 ? -tx.delta : 0)
+    : (o.reward_redeemed ? (program?.points_to_redeem ?? 0) : 0);
+  const balanceAfter = tx?.balance_after ?? member?.points_balance;
+  if (!earned && !redeemed && balanceAfter == null) return undefined;
+  return {
+    ...(earned ? { earned } : {}),
+    ...(redeemed ? { redeemed } : {}),
+    ...(balanceAfter != null ? { balanceAfter } : {}),
+  };
+}
+
+function pointFields(points?: ReceiptPoints) {
+  if (!points) return {};
+  return {
+    ...(points.earned ? { pointsEarned: points.earned } : {}),
+    ...(points.redeemed ? { pointsRedeemed: points.redeemed } : {}),
+    ...(points.balanceAfter != null ? { pointsBalanceAfter: points.balanceAfter } : {}),
+    ...(points.rewardLabel ? { rewardLabel: points.rewardLabel } : {}),
+  };
+}
+
 /** Order → on-screen receipt (ReceiptModal). */
-export function mapOrderToReceipt(o: OrderFull, parties?: ReceiptParties): ReceiptData {
+export function mapOrderToReceipt(o: OrderFull, parties?: ReceiptParties, points?: ReceiptPoints): ReceiptData {
   const discount = Number(o.discount);
   return {
     orderNumber: String(displayOrderNo(o)),
@@ -101,13 +156,14 @@ export function mapOrderToReceipt(o: OrderFull, parties?: ReceiptParties): Recei
     ...(discount > 0 ? { discount } : {}),
     ...(parties?.memberName ? { memberName: parties.memberName } : {}),
     ...(parties?.salesName ? { salesName: parties.salesName } : {}),
+    ...pointFields(points),
   };
 }
 
 /** Order → print job (usePrinter().printReceipt). Reprints are no longer marked
  *  "สำเนา" — they reproduce the original bill exactly, keeping the original
  *  order date so the slip shows when the sale actually happened. */
-export function mapOrderToPrintArgs(o: OrderFull, parties?: ReceiptParties): PrintReceiptArgs {
+export function mapOrderToPrintArgs(o: OrderFull, parties?: ReceiptParties, points?: ReceiptPoints): PrintReceiptArgs {
   const discount = Number(o.discount);
   return {
     orderNumber: String(displayOrderNo(o)),
@@ -119,11 +175,13 @@ export function mapOrderToPrintArgs(o: OrderFull, parties?: ReceiptParties): Pri
     paymentMethod: paymentLabel(o.payment_method),
     issuedAt: new Date(o.created_at),
     ...(o.receipt_no ? { receiptNo: o.receipt_no } : {}),
-    // Historical orders only carry the discount total (no per-promo breakdown
-    // or points), so reprints show a single "ส่วนลด" line — no breakdown/points.
+    // Historical orders only carry the discount total (no per-promo breakdown),
+    // so reprints show a single "ส่วนลด" line. Points (earn/redeem + the balance
+    // after) come from the member's transaction log via computeOrderPoints().
     ...(discount > 0 ? { discount } : {}),
     ...(parties?.memberName ? { memberName: parties.memberName } : {}),
     ...(parties?.salesName ? { salesName: parties.salesName } : {}),
+    ...pointFields(points),
   };
 }
 
