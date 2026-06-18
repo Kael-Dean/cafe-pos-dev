@@ -323,12 +323,17 @@ export default function POSTerminal() {
 
         // ── Points (earn OR redeem — mutually exclusive; server is authoritative
         //    for which happened via reward_redeemed / points_earned) ──
-        const redeemed = paid.reward_redeemed
+        // The pay/create response may omit reward_redeemed entirely; when it does,
+        // fall back to the cashier's own redeem choice (sent as redeem_reward on
+        // the order) so the printed balance still reflects the redemption. Only a
+        // server-supplied `false` overrides the cashier's intent.
+        const didRedeem = paid.reward_redeemed ?? memberSnapshot?.redeemReward ?? false;
+        const redeemed = didRedeem
           ? (memberSnapshot?.program?.points_to_redeem ?? program?.points_to_redeem ?? 0)
           : 0;
         const balanceBefore = memberSnapshot?.account.points_balance ?? 0;
         const pointsBalanceAfter = hasMember ? balanceBefore + earned - redeemed : undefined;
-        const rewardLabel = paid.reward_redeemed
+        const rewardLabel = didRedeem
           ? (memberSnapshot?.rewardProduct?.name ?? undefined)
           : undefined;
         toast({
@@ -354,7 +359,7 @@ export default function POSTerminal() {
           pointsRedeemed: redeemed > 0 ? redeemed : undefined,
           rewardLabel,
           pointsBalanceAfter,
-          rewardRedeemed: paid.reward_redeemed,
+          rewardRedeemed: didRedeem,
         });
       }).catch((payErr: unknown) => {
         // The order WAS created (it's already in the kitchen) but recording the
