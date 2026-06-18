@@ -1010,20 +1010,20 @@ const InventoryLinkFields = ({ inventoryItems, invId, invQty, onInvId, onInvQty,
   const opts = inventoryItems.filter(i => allow.has(i.id) || i.id === invId);
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>หักสต็อก:</span>
+      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>หักสต็อก:</span>
       <Select
         value={invId}
         onChange={onInvId}
         ariaLabel="วัตถุดิบที่หัก"
-        style={{ minWidth: 180 }}
-        triggerStyle={{ padding: '6px 10px', fontSize: 13, borderRadius: 6 }}
+        style={{ minWidth: 200 }}
+        triggerStyle={{ padding: '10px 14px', fontSize: 15, borderRadius: 8 }}
         menuMaxHeight={240}
         options={[{ value: '', label: '— ไม่ผูกวัตถุดิบ —' }, ...opts.map(i => ({ value: i.id, label: i.name }))]}
       />
       {invId && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <input type="number" min={0} step={0.1} placeholder="ปริมาณ" value={invQty} onChange={e => onInvQty(e.target.value)} style={{ width: 84, padding: '6px 10px', fontSize: 13, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
-          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{linked?.unit ?? 'หน่วย'}/แก้ว</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input type="number" min={0} step={0.1} placeholder="ปริมาณ" value={invQty} onChange={e => onInvQty(e.target.value)} style={{ width: 100, padding: '10px 14px', fontSize: 15, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
+          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{linked?.unit ?? 'หน่วย'}/แก้ว</span>
         </div>
       )}
     </div>
@@ -1064,30 +1064,30 @@ const ModifierGroupRow = ({ group, inventoryItems, recipeInvIds }: {
 
   return (
     <div style={{ borderBottom: '1px solid var(--color-border)' }}>
-      <div style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--color-surface-2)' }}>
-        <div style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>{group.name}</div>
+      <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 10, background: 'var(--color-surface-2)' }}>
+        <div style={{ flex: 1, fontSize: 16, fontWeight: 700 }}>{group.name}</div>
         <Tag tone={group.required ? 'danger' : 'warning'}>{group.required ? 'จำเป็น' : 'ตัวเลือก'}</Tag>
         <Tag tone="info">{isRadio ? 'เลือกได้ 1' : 'เลือกได้หลาย'}</Tag>
-        <button onClick={() => setAddOpen(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 12, fontWeight: 600, background: addOpen ? 'var(--color-accent-50)' : 'transparent', color: addOpen ? 'var(--color-primary-700)' : 'var(--color-text-secondary)', border: `1px solid ${addOpen ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)' }}>
-          <Icon name="plus" size={12} /> เพิ่มตัวเลือก
+        <button onClick={() => setAddOpen(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 14, fontWeight: 600, background: addOpen ? 'var(--color-accent-50)' : 'transparent', color: addOpen ? 'var(--color-primary-700)' : 'var(--color-text-secondary)', border: `1px solid ${addOpen ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)' }}>
+          <Icon name="plus" size={15} /> เพิ่มตัวเลือก
         </button>
       </div>
       {group.modifiers.map(modifier => (
         <ModifierOptionRow key={modifier.id} groupId={group.id} modifier={modifier} inventoryItems={inventoryItems} recipeInvIds={recipeInvIds} />
       ))}
       {addOpen && (
-        <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px solid var(--color-border)', background: 'var(--color-accent-50)' }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input type="text" placeholder="ชื่อตัวเลือก..." value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} style={{ flex: 1, padding: '7px 10px', fontSize: 13, border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} autoFocus />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>฿</span>
-              <input type="number" step="1" placeholder="0" value={newDelta} onChange={e => setNewDelta(e.target.value)} title="ส่วนต่างราคา (ติดลบได้)" style={{ width: 72, padding: '7px 10px', fontSize: 13, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--color-border)', background: 'var(--color-accent-50)' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <input type="text" placeholder="ชื่อตัวเลือก..." value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} style={{ flex: 1, padding: '10px 14px', fontSize: 15, border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} autoFocus />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-secondary)' }}>฿</span>
+              <input type="number" step="1" placeholder="0" value={newDelta} onChange={e => setNewDelta(e.target.value)} title="ส่วนต่างราคา (ติดลบได้)" style={{ width: 90, padding: '10px 14px', fontSize: 15, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
             </div>
           </div>
           <InventoryLinkFields inventoryItems={inventoryItems} recipeInvIds={recipeInvIds} invId={newInvId} invQty={newInvQty} onInvId={setNewInvId} onInvQty={setNewInvQty} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button onClick={() => setAddOpen(false)} style={{ padding: '7px 12px', fontSize: 12, fontWeight: 500, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
-            <button onClick={handleAdd} disabled={addModifier.isPending || !newName.trim()} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: (addModifier.isPending || !newName.trim()) ? 'var(--color-surface-2)' : 'var(--color-primary)', color: (addModifier.isPending || !newName.trim()) ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 6, cursor: (addModifier.isPending || !newName.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            <button onClick={() => setAddOpen(false)} style={{ padding: '10px 16px', fontSize: 14, fontWeight: 500, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
+            <button onClick={handleAdd} disabled={addModifier.isPending || !newName.trim()} style={{ padding: '10px 20px', fontSize: 15, fontWeight: 600, background: (addModifier.isPending || !newName.trim()) ? 'var(--color-surface-2)' : 'var(--color-primary)', color: (addModifier.isPending || !newName.trim()) ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 8, cursor: (addModifier.isPending || !newName.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
               {addModifier.isPending ? 'กำลังเพิ่ม…' : 'เพิ่มตัวเลือก'}
             </button>
           </div>
@@ -1156,42 +1156,42 @@ const ModifierOptionRow = ({ groupId, modifier, inventoryItems, recipeInvIds }: 
 
   return (
     <div style={{ borderTop: '1px solid var(--color-border)' }}>
-      <div style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{modifier.name}</div>
+          <div style={{ fontSize: 16, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{modifier.name}</div>
           {linkedInv && (
-            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
+            <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 3 }}>
               หัก {Number(modifier.inventory_qty)} {linkedInv.unit} · {linkedInv.name}
             </div>
           )}
         </div>
-        <div className="num" style={{ fontSize: 12, fontWeight: 600, minWidth: 50, textAlign: 'right', color: deltaNum === 0 ? 'var(--color-text-muted)' : 'var(--color-text)' }}>{fmtDelta(deltaNum)}</div>
-        <button onClick={() => setEditing(v => !v)} title="แก้ไขตัวเลือก" aria-label={`แก้ไข ${modifier.name}`} style={{ display: 'grid', placeItems: 'center', width: 28, height: 28, borderRadius: 6, background: editing ? 'var(--color-accent-50)' : 'transparent', border: 'none', cursor: 'pointer', color: editing ? 'var(--color-accent)' : 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { if (!editing) { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-accent)'; } }} onMouseLeave={e => { if (!editing) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; } }}>
-          <Icon name="pencil" size={13} />
+        <div className="num" style={{ fontSize: 15, fontWeight: 600, minWidth: 56, textAlign: 'right', color: deltaNum === 0 ? 'var(--color-text-muted)' : 'var(--color-text)' }}>{fmtDelta(deltaNum)}</div>
+        <button onClick={() => setEditing(v => !v)} title="แก้ไขตัวเลือก" aria-label={`แก้ไข ${modifier.name}`} style={{ display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 8, background: editing ? 'var(--color-accent-50)' : 'transparent', border: 'none', cursor: 'pointer', color: editing ? 'var(--color-accent)' : 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { if (!editing) { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-accent)'; } }} onMouseLeave={e => { if (!editing) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; } }}>
+          <Icon name="pencil" size={17} />
         </button>
-        <button onClick={handleDelete} disabled={deleteModifier.isPending} title="ลบตัวเลือก" aria-label={`ลบ ${modifier.name}`} style={{ display: 'grid', placeItems: 'center', width: 28, height: 28, borderRadius: 6, background: 'transparent', border: 'none', cursor: deleteModifier.isPending ? 'not-allowed' : 'pointer', color: 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
-          {deleteModifier.isPending ? '…' : <Icon name="trash" size={13} />}
+        <button onClick={handleDelete} disabled={deleteModifier.isPending} title="ลบตัวเลือก" aria-label={`ลบ ${modifier.name}`} style={{ display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 8, background: 'transparent', border: 'none', cursor: deleteModifier.isPending ? 'not-allowed' : 'pointer', color: 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
+          {deleteModifier.isPending ? '…' : <Icon name="trash" size={17} />}
         </button>
       </div>
 
       {editing && (
-        <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--color-surface-2)', borderTop: '1px solid var(--color-border)' }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="ชื่อตัวเลือก" style={{ flex: 1, padding: '7px 10px', fontSize: 13, border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>฿</span>
-              <input type="number" step="1" value={delta} onChange={e => setDelta(e.target.value)} title="ส่วนต่างราคา (ติดลบได้)" style={{ width: 72, padding: '7px 10px', fontSize: 13, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--color-surface-2)', borderTop: '1px solid var(--color-border)' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="ชื่อตัวเลือก" style={{ flex: 1, padding: '10px 14px', fontSize: 15, border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-secondary)' }}>฿</span>
+              <input type="number" step="1" value={delta} onChange={e => setDelta(e.target.value)} title="ส่วนต่างราคา (ติดลบได้)" style={{ width: 90, padding: '10px 14px', fontSize: 15, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
             </div>
           </div>
           <InventoryLinkFields inventoryItems={inventoryItems} recipeInvIds={recipeInvIds} invId={invId} invQty={invQty} onInvId={setInvId} onInvQty={setInvQty} />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-            <button onClick={() => setRecipeOpen(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 12, fontWeight: 600, background: recipeOpen ? 'var(--color-accent-50)' : 'transparent', color: recipeOpen ? 'var(--color-primary-700)' : 'var(--color-text-secondary)', border: `1px solid ${recipeOpen ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>
-              <Icon name="chevronDown" size={12} style={{ transform: recipeOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} /> สูตรขั้นสูง (แทนที่/บวก-ลบ หลายวัตถุดิบ)
+            <button onClick={() => setRecipeOpen(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', fontSize: 14, fontWeight: 600, background: recipeOpen ? 'var(--color-accent-50)' : 'transparent', color: recipeOpen ? 'var(--color-primary-700)' : 'var(--color-text-secondary)', border: `1px solid ${recipeOpen ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <Icon name="chevronDown" size={14} style={{ transform: recipeOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} /> สูตรขั้นสูง (แทนที่/บวก-ลบ หลายวัตถุดิบ)
             </button>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setEditing(false)} style={{ padding: '7px 12px', fontSize: 12, fontWeight: 500, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>ปิด</button>
-              <button onClick={handleSave} disabled={updateModifier.isPending} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: updateModifier.isPending ? 'var(--color-surface-2)' : 'var(--color-primary)', color: updateModifier.isPending ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 6, cursor: updateModifier.isPending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <Icon name="check" size={14} />{updateModifier.isPending ? 'กำลังบันทึก…' : 'บันทึก'}
+              <button onClick={() => setEditing(false)} style={{ padding: '10px 16px', fontSize: 14, fontWeight: 500, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ปิด</button>
+              <button onClick={handleSave} disabled={updateModifier.isPending} style={{ padding: '10px 20px', fontSize: 15, fontWeight: 600, background: updateModifier.isPending ? 'var(--color-surface-2)' : 'var(--color-primary)', color: updateModifier.isPending ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 8, cursor: updateModifier.isPending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Icon name="check" size={16} />{updateModifier.isPending ? 'กำลังบันทึก…' : 'บันทึก'}
               </button>
             </div>
           </div>
