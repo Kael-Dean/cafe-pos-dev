@@ -6,10 +6,11 @@ export interface ModifierRead {
   id: string;
   name: string;
   price_delta: string | number;  // Decimal serialised as string by FastAPI
-  inventory_item_id: string | null;
-  inventory_qty: string | null;
   sort_order: number;
   is_active: boolean;
+  // NOTE: inventory_item_id / inventory_qty were removed — the single global
+  // per-modifier deduction is retired. All modifier ingredient deductions now
+  // go through the per-product recipe-items endpoints (see below).
 }
 
 export interface ModifierGroupRead {
@@ -166,8 +167,6 @@ export function useCreateModifierGroup() {
 interface AddModifierPayload {
   name: string;
   price_delta: string;
-  inventory_item_id?: string | null;
-  inventory_qty?: string | null;
   sort_order?: number;
 }
 
@@ -176,8 +175,6 @@ interface UpdateModifierPayload {
   price_delta?: string;
   is_active?: boolean;
   sort_order?: number;
-  inventory_item_id?: string | null;
-  inventory_qty?: string | null;
 }
 
 export function useAddModifier() {
@@ -211,7 +208,10 @@ export function useDeleteModifier() {
 // A modifier can rewrite the product's base recipe at checkout:
 //   override → replaces the base quantity for that ingredient (0 = skip it)
 //   delta    → adds/subtracts to the base quantity (can introduce a new one)
-// ModifierRead does NOT embed these — fetch per-modifier when editing.
+// Deductions are PER MENU — keyed on (product_id, modifier_id, inventory_item_id),
+// so the same shared modifier can deduct different ingredients/amounts on
+// different products. Endpoints live under /products/{product_id}/modifiers/...
+// (they moved out from under /modifier-groups/...). Fetch per-product+modifier.
 
 export type ModifierRecipeMode = 'override' | 'delta';
 
@@ -228,12 +228,12 @@ export interface ModifierRecipeItemInput {
   mode: ModifierRecipeMode;
 }
 
-export function useModifierRecipeItems(groupId: string, modifierId: string, enabled: boolean) {
+export function useModifierRecipeItems(productId: string, modifierId: string, enabled: boolean) {
   return useQuery<ModifierRecipeItemRead[]>({
-    queryKey: ['modifier-recipe-items', groupId, modifierId],
+    queryKey: ['modifier-recipe-items', productId, modifierId],
     queryFn: () =>
       api.get<ModifierRecipeItemRead[]>(
-        `/api/v1/modifier-groups/${groupId}/modifiers/${modifierId}/recipe-items`,
+        `/api/v1/products/${productId}/modifiers/${modifierId}/recipe-items`,
       ),
     enabled,
   });
@@ -243,12 +243,12 @@ export function useModifierRecipeItems(groupId: string, modifierId: string, enab
 export function useReplaceModifierRecipeItems() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ groupId, modifierId, items }: { groupId: string; modifierId: string; items: ModifierRecipeItemInput[] }) =>
+    mutationFn: ({ productId, modifierId, items }: { productId: string; modifierId: string; items: ModifierRecipeItemInput[] }) =>
       api.put<ModifierRecipeItemRead[]>(
-        `/api/v1/modifier-groups/${groupId}/modifiers/${modifierId}/recipe-items`,
+        `/api/v1/products/${productId}/modifiers/${modifierId}/recipe-items`,
         { items },
       ),
-    onSuccess: (_data, { groupId, modifierId }) =>
-      qc.invalidateQueries({ queryKey: ['modifier-recipe-items', groupId, modifierId] }),
+    onSuccess: (_data, { productId, modifierId }) =>
+      qc.invalidateQueries({ queryKey: ['modifier-recipe-items', productId, modifierId] }),
   });
 }

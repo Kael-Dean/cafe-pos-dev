@@ -778,10 +778,10 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
     </div>
 
     <ModifierSection
+      productId={product.id}
       linkedGroupIds={linkedGroupIds}
       allModifierGroups={allModifierGroups}
       inventoryItems={inventoryItems}
-      recipeInvIds={recipe.map(r => r.invId)}
       onPickerOpen={onModifierGroupPickerOpen}
     />
 
@@ -953,12 +953,12 @@ const SummaryCard = ({ label, value, color, highlight, hint }: { label: string; 
 // ── Modifier Group Management ─────────────────────────────────────────────────
 
 const ModifierSection = ({
-  linkedGroupIds, allModifierGroups, inventoryItems, recipeInvIds, onPickerOpen,
+  productId, linkedGroupIds, allModifierGroups, inventoryItems, onPickerOpen,
 }: {
+  productId: string;
   linkedGroupIds: string[];
   allModifierGroups: ModifierGroupRead[];
   inventoryItems: InventoryItem[];
-  recipeInvIds: string[];
   onPickerOpen: () => void;
 }) => {
   const linkedGroups = linkedGroupIds
@@ -982,9 +982,9 @@ const ModifierSection = ({
         linkedGroups.map(group => (
           <ModifierGroupRow
             key={group.id}
+            productId={productId}
             group={group}
             inventoryItems={inventoryItems}
-            recipeInvIds={recipeInvIds}
           />
         ))
       )}
@@ -994,68 +994,27 @@ const ModifierSection = ({
 
 const fmtDelta = (n: number) => n === 0 ? '—' : n > 0 ? `+฿${n}` : `-฿${Math.abs(n)}`;
 
-// One inventory-link <Select> + qty input, reused by the add form and the edit row.
-// `recipeInvIds` limits the dropdown to ingredients that are in this menu's recipe.
-const InventoryLinkFields = ({ inventoryItems, invId, invQty, onInvId, onInvQty, recipeInvIds }: {
-  inventoryItems: InventoryItem[];
-  invId: string; invQty: string;
-  onInvId: (v: string) => void; onInvQty: (v: string) => void;
-  recipeInvIds: string[];
-}) => {
-  const linked = inventoryItems.find(i => i.id === invId);
-  // Offer only ingredients used in this menu's recipe. Keep the currently-linked
-  // item too (even if it's no longer in the recipe) so an existing link stays
-  // visible and editable.
-  const allow = new Set(recipeInvIds);
-  const opts = inventoryItems.filter(i => allow.has(i.id) || i.id === invId);
-  return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>หักสต็อก:</span>
-      <Select
-        value={invId}
-        onChange={onInvId}
-        ariaLabel="วัตถุดิบที่หัก"
-        style={{ minWidth: 200 }}
-        triggerStyle={{ padding: '10px 14px', fontSize: 15, borderRadius: 8 }}
-        menuMaxHeight={240}
-        options={[{ value: '', label: '— ไม่ผูกวัตถุดิบ —' }, ...opts.map(i => ({ value: i.id, label: i.name }))]}
-      />
-      {invId && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <input type="number" min={0} step={0.1} placeholder="ปริมาณ" value={invQty} onChange={e => onInvQty(e.target.value)} style={{ width: 100, padding: '10px 14px', fontSize: 15, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
-          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{linked?.unit ?? 'หน่วย'}/แก้ว</span>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const ModifierGroupRow = ({ group, inventoryItems, recipeInvIds }: {
+const ModifierGroupRow = ({ productId, group, inventoryItems }: {
+  productId: string;
   group: ModifierGroupRead;
   inventoryItems: InventoryItem[];
-  recipeInvIds: string[];
 }) => {
   const toast = useToast();
   const addModifier = useAddModifier();
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDelta, setNewDelta] = useState('0');
-  const [newInvId, setNewInvId] = useState('');
-  const [newInvQty, setNewInvQty] = useState('');
   const isRadio = group.max_select === 1;
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
-    const hasLink = !!newInvId && !!newInvQty && Number(newInvQty) > 0;
     try {
       await addModifier.mutateAsync({
         groupId: group.id,
         name: newName.trim(),
         price_delta: newDelta || '0',
-        inventory_item_id: hasLink ? newInvId : null,
-        inventory_qty: hasLink ? newInvQty : null,
       });
-      setNewName(''); setNewDelta('0'); setNewInvId(''); setNewInvQty(''); setAddOpen(false);
+      setNewName(''); setNewDelta('0'); setAddOpen(false);
       toast({ kind: 'success', title: 'เพิ่มตัวเลือกแล้ว', msg: newName.trim() });
     } catch (err) {
       toast({ kind: 'danger', title: 'เพิ่มไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
@@ -1073,7 +1032,7 @@ const ModifierGroupRow = ({ group, inventoryItems, recipeInvIds }: {
         </button>
       </div>
       {group.modifiers.map(modifier => (
-        <ModifierOptionRow key={modifier.id} groupId={group.id} modifier={modifier} inventoryItems={inventoryItems} recipeInvIds={recipeInvIds} />
+        <ModifierOptionRow key={modifier.id} productId={productId} groupId={group.id} modifier={modifier} inventoryItems={inventoryItems} />
       ))}
       {addOpen && (
         <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--color-border)', background: 'var(--color-accent-50)' }}>
@@ -1084,7 +1043,6 @@ const ModifierGroupRow = ({ group, inventoryItems, recipeInvIds }: {
               <input type="number" step="1" placeholder="0" value={newDelta} onChange={e => setNewDelta(e.target.value)} title="ส่วนต่างราคา (ติดลบได้)" style={{ width: 90, padding: '10px 14px', fontSize: 15, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
             </div>
           </div>
-          <InventoryLinkFields inventoryItems={inventoryItems} recipeInvIds={recipeInvIds} invId={newInvId} invQty={newInvQty} onInvId={setNewInvId} onInvQty={setNewInvQty} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button onClick={() => setAddOpen(false)} style={{ padding: '10px 16px', fontSize: 14, fontWeight: 500, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
             <button onClick={handleAdd} disabled={addModifier.isPending || !newName.trim()} style={{ padding: '10px 20px', fontSize: 15, fontWeight: 600, background: (addModifier.isPending || !newName.trim()) ? 'var(--color-surface-2)' : 'var(--color-primary)', color: (addModifier.isPending || !newName.trim()) ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 8, cursor: (addModifier.isPending || !newName.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
@@ -1100,11 +1058,11 @@ const ModifierGroupRow = ({ group, inventoryItems, recipeInvIds }: {
 // One option inside a group: shows price delta + inventory link, expands to an
 // inline editor (name / price_delta / single-item deduction) and an optional
 // multi-ingredient recipe-override editor.
-const ModifierOptionRow = ({ groupId, modifier, inventoryItems, recipeInvIds }: {
+const ModifierOptionRow = ({ productId, groupId, modifier, inventoryItems }: {
+  productId: string;
   groupId: string;
   modifier: ModifierRead;
   inventoryItems: InventoryItem[];
-  recipeInvIds: string[];
 }) => {
   const toast = useToast();
   const updateModifier = useUpdateModifier();
@@ -1113,30 +1071,22 @@ const ModifierOptionRow = ({ groupId, modifier, inventoryItems, recipeInvIds }: 
   const [recipeOpen, setRecipeOpen] = useState(false);
   const [name, setName] = useState(modifier.name);
   const [delta, setDelta] = useState(String(modifier.price_delta));
-  const [invId, setInvId] = useState(modifier.inventory_item_id ?? '');
-  const [invQty, setInvQty] = useState(modifier.inventory_qty ?? '');
 
   // Re-sync local edit fields whenever the saved modifier changes (after refetch).
   useEffect(() => {
     setName(modifier.name);
     setDelta(String(modifier.price_delta));
-    setInvId(modifier.inventory_item_id ?? '');
-    setInvQty(modifier.inventory_qty ?? '');
-  }, [modifier.name, modifier.price_delta, modifier.inventory_item_id, modifier.inventory_qty]);
+  }, [modifier.name, modifier.price_delta]);
 
   const deltaNum = Number(modifier.price_delta) || 0;
-  const linkedInv = inventoryItems.find(i => i.id === modifier.inventory_item_id);
 
   const handleSave = async () => {
-    const hasLink = !!invId && !!invQty && Number(invQty) > 0;
     try {
       await updateModifier.mutateAsync({
         groupId,
         modifierId: modifier.id,
         name: name.trim() || modifier.name,
         price_delta: delta || '0',
-        inventory_item_id: hasLink ? invId : null,
-        inventory_qty: hasLink ? invQty : null,
       });
       setEditing(false);
       toast({ kind: 'success', title: 'บันทึกตัวเลือกแล้ว', msg: name.trim() || modifier.name });
@@ -1159,11 +1109,6 @@ const ModifierOptionRow = ({ groupId, modifier, inventoryItems, recipeInvIds }: 
       <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{modifier.name}</div>
-          {linkedInv && (
-            <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 3 }}>
-              หัก {Number(modifier.inventory_qty)} {linkedInv.unit} · {linkedInv.name}
-            </div>
-          )}
         </div>
         <div className="num" style={{ fontSize: 15, fontWeight: 600, minWidth: 56, textAlign: 'right', color: deltaNum === 0 ? 'var(--color-text-muted)' : 'var(--color-text)' }}>{fmtDelta(deltaNum)}</div>
         <button onClick={() => setEditing(v => !v)} title="แก้ไขตัวเลือก" aria-label={`แก้ไข ${modifier.name}`} style={{ display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 8, background: editing ? 'var(--color-accent-50)' : 'transparent', border: 'none', cursor: 'pointer', color: editing ? 'var(--color-accent)' : 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { if (!editing) { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-accent)'; } }} onMouseLeave={e => { if (!editing) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; } }}>
@@ -1183,10 +1128,9 @@ const ModifierOptionRow = ({ groupId, modifier, inventoryItems, recipeInvIds }: 
               <input type="number" step="1" value={delta} onChange={e => setDelta(e.target.value)} title="ส่วนต่างราคา (ติดลบได้)" style={{ width: 90, padding: '10px 14px', fontSize: 15, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
             </div>
           </div>
-          <InventoryLinkFields inventoryItems={inventoryItems} recipeInvIds={recipeInvIds} invId={invId} invQty={invQty} onInvId={setInvId} onInvQty={setInvQty} />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
             <button onClick={() => setRecipeOpen(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', fontSize: 14, fontWeight: 600, background: recipeOpen ? 'var(--color-accent-50)' : 'transparent', color: recipeOpen ? 'var(--color-primary-700)' : 'var(--color-text-secondary)', border: `1px solid ${recipeOpen ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>
-              <Icon name="chevronDown" size={14} style={{ transform: recipeOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} /> สูตรขั้นสูง (แทนที่/บวก-ลบ หลายวัตถุดิบ)
+              <Icon name="chevronDown" size={14} style={{ transform: recipeOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} /> หักวัตถุดิบเมื่อเลือกตัวเลือกนี้ (เฉพาะเมนูนี้)
             </button>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setEditing(false)} style={{ padding: '10px 16px', fontSize: 14, fontWeight: 500, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ปิด</button>
@@ -1196,7 +1140,7 @@ const ModifierOptionRow = ({ groupId, modifier, inventoryItems, recipeInvIds }: 
             </div>
           </div>
           {recipeOpen && (
-            <ModifierRecipeEditor groupId={groupId} modifierId={modifier.id} inventoryItems={inventoryItems} />
+            <ModifierRecipeEditor productId={productId} modifierId={modifier.id} inventoryItems={inventoryItems} />
           )}
         </div>
       )}
@@ -1204,16 +1148,18 @@ const ModifierOptionRow = ({ groupId, modifier, inventoryItems, recipeInvIds }: 
   );
 };
 
-// Phase-2 recipe override editor: a full set of {inventory_item_id, quantity, mode}
-// rows that rewrite the product's base recipe at checkout. Saving does a bulk
-// replace (the complete desired set each call; empty rows are dropped).
-const ModifierRecipeEditor = ({ groupId, modifierId, inventoryItems }: {
-  groupId: string;
+// Per-menu modifier deduction editor: a full set of {inventory_item_id, quantity,
+// mode} rows that rewrite THIS product's base recipe when the modifier is chosen.
+// Keyed on (product_id, modifier_id) — configuring it here has no effect on the
+// same modifier attached to other products. Saving does a bulk replace (the
+// complete desired set each call; empty rows are dropped).
+const ModifierRecipeEditor = ({ productId, modifierId, inventoryItems }: {
+  productId: string;
   modifierId: string;
   inventoryItems: InventoryItem[];
 }) => {
   const toast = useToast();
-  const { data: items, isLoading } = useModifierRecipeItems(groupId, modifierId, true);
+  const { data: items, isLoading } = useModifierRecipeItems(productId, modifierId, true);
   const replace = useReplaceModifierRecipeItems();
   const [rows, setRows] = useState<ModifierRecipeItemInput[]>([]);
 
@@ -1235,7 +1181,7 @@ const ModifierRecipeEditor = ({ groupId, modifierId, inventoryItems }: {
       .filter(r => r.inventory_item_id)
       .map(r => ({ inventory_item_id: r.inventory_item_id, quantity: r.quantity || '0', mode: r.mode }));
     try {
-      await replace.mutateAsync({ groupId, modifierId, items: clean });
+      await replace.mutateAsync({ productId, modifierId, items: clean });
       toast({ kind: 'success', title: 'บันทึกสูตรขั้นสูงแล้ว', msg: `${clean.length} วัตถุดิบ` });
     } catch (err) {
       toast({ kind: 'danger', title: 'บันทึกไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
