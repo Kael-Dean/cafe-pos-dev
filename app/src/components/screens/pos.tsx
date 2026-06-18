@@ -464,7 +464,7 @@ export default function POSTerminal() {
                 />
               </div>
             </div>
-            <div style={{display: 'flex', gap: 6, overflowX: 'auto'}} className="scroll">
+            <div style={{display: 'flex', gap: 6, overflowX: 'auto', overflowY: 'hidden', flexWrap: 'nowrap'}} className="scroll">
               <CategoryTab label={t.pos.catFav} active={category === 'fav'} onClick={() => { setCategory('fav'); setSearch(''); }} highlight />
               <CategoryTab label={t.pos.catAll} active={category === 'all'} onClick={() => { setCategory('all'); setSearch(''); }} />
               {catsLoading && !categories ? (
@@ -810,7 +810,7 @@ const CategoryTab = ({ label, active, onClick, highlight }: { label: string; act
     background: active ? 'var(--color-primary)' : (highlight ? 'var(--color-accent-50)' : 'var(--color-surface)'),
     color: active ? 'var(--color-text-inverse)' : (highlight ? 'var(--color-primary-700)' : 'var(--color-text-secondary)'),
     border: `1px solid ${active ? 'var(--color-primary)' : 'var(--color-border)'}`,
-    fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
+    fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
   }}>{label}</button>
 );
 
