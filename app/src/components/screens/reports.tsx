@@ -986,12 +986,16 @@ function SalespersonDetailCard({ sp, defaultOpen }: { sp: SalespersonKpi; defaul
 }
 
 function SalespersonReport({ onBack }: { onBack: () => void }) {
+  const { data: me } = useCurrentUser();
+  const storeName = me?.store_name ?? 'Kafé OS';
+
   const [mode, setMode] = useState<ReportMode>('range');
   const [day, setDay] = useState(TODAY);
   const [from, setFrom] = useState(MONTH_START);
   const [to, setTo] = useState(TODAY);
 
   const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<SalespersonReportData | null>(null);
 
@@ -1016,6 +1020,19 @@ function SalespersonReport({ onBack }: { onBack: () => void }) {
     }
   }
 
+  async function download() {
+    if (!data) return;
+    setDownloading(true);
+    try {
+      const { downloadSalespersonReportExcel } = await import('@/lib/salesperson-report-xlsx');
+      await downloadSalespersonReportExcel(data, storeName);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'สร้างไฟล์ Excel ไม่สำเร็จ');
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   const periodText = data
     ? data.mode === 'daily'
       ? `รายวัน — ${thaiDate(data.from)}`
@@ -1031,7 +1048,7 @@ function SalespersonReport({ onBack }: { onBack: () => void }) {
       <div style={{ marginBottom: 'var(--space-5)' }}>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 2 }}>รายงาน</div>
         <h1 className="text-balance" style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>รายงานเซลส์</h1>
-        <div className="text-pretty" style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)' }}>ยอดขายและสมาชิกที่แต่ละเซลส์ดูแล — กดที่ชื่อเซลส์เพื่อดูรายละเอียดรายคน</div>
+        <div className="text-pretty" style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)' }}>ยอดขายและสมาชิกที่แต่ละเซลส์ดูแล — กดที่ชื่อเซลส์เพื่อดูรายละเอียดรายคน แล้วดาวน์โหลดเป็น Excel (.xlsx)</div>
       </div>
 
       <Card style={{ marginBottom: 16 }}>
@@ -1078,6 +1095,9 @@ function SalespersonReport({ onBack }: { onBack: () => void }) {
 
           <button className="btn btn-primary" onClick={runReport} disabled={loading}>
             <Icon name="reports" size={14} /> {loading ? 'กำลังเรียก…' : 'เรียกรายงาน'}
+          </button>
+          <button className="btn btn-ghost" onClick={download} disabled={!data || downloading}>
+            <Icon name="download" size={14} /> {downloading ? 'กำลังสร้าง…' : 'ดาวน์โหลด Excel'}
           </button>
         </div>
 
@@ -1137,7 +1157,7 @@ type ReportEntry = { id: string; icon: string; title: string; desc: string };
 const REPORTS: ReportEntry[] = [
   { id: 'sales', icon: 'reports', title: 'รายงานยอดขาย', desc: 'สรุปยอดขายรายวัน/ช่วงวันที่ + ดาวน์โหลด Excel' },
   { id: 'wastage', icon: 'inv', title: 'รายงานของเสีย', desc: 'ของเสียรายวัน/รายเดือน — แยกตามเหตุผล/วัตถุดิบ + ดาวน์โหลด Excel' },
-  { id: 'salesperson', icon: 'user', title: 'รายงานเซลส์', desc: 'ยอดขายและสมาชิกที่แต่ละเซลส์ดูแล — เจาะลึกรายคนและสินค้าที่ซื้อ' },
+  { id: 'salesperson', icon: 'user', title: 'รายงานเซลส์', desc: 'ยอดขายและสมาชิกที่แต่ละเซลส์ดูแล — เจาะลึกรายคนและสินค้าที่ซื้อ + ดาวน์โหลด Excel' },
 ];
 
 function ReportCard({ entry, onOpen }: { entry: ReportEntry; onOpen: (id: string) => void }) {
