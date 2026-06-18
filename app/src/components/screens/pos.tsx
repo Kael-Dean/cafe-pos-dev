@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import Icon from '../icons';
-import { useToast, baht } from '../app-common';
+import { useToast, baht, Select } from '../app-common';
 import { useI18n } from '@/lib/i18n';
 import { useAllProducts, useCategories, type MenuItem } from '@/hooks/use-products';
 import { useProductDetail } from '@/hooks/use-bom';
@@ -150,6 +150,73 @@ export default function POSTerminal() {
   const memberDiscount = estimateMemberDiscount(memberInfo, program, subtotal);
   const discount = Math.min(subtotal, memberDiscount + promoDiscount);
   const total = subtotal - discount;
+
+  // ── Member reward redemption — offered inside the promotions panel ──────────
+  const rewardType = memberInfo?.program?.reward_type ?? null;
+  const isFreeItemReward = rewardType === 'FREE_ITEM';
+
+  // Distinct products currently in the cart — a FREE_ITEM reward targets one product.
+  const cartProducts = useMemo(() => {
+    const seen = new Map<string, { id: string; name: string; price: number }>();
+    for (const l of cart) if (!seen.has(l.menuId)) seen.set(l.menuId, { id: l.menuId, name: l.name, price: l.basePrice });
+    return Array.from(seen.values());
+  }, [cart]);
+
+  // Which cart products may be taken as the free item. Empty eligible list = any item.
+  const redeemableCartProducts = useMemo(() => {
+    if (!memberInfo) return [] as { id: string; name: string; price: number }[];
+    const ids = memberInfo.eligibleRewardProducts.map(p => p.id);
+    return ids.length ? cartProducts.filter(p => ids.includes(p.id)) : cartProducts;
+  }, [memberInfo, cartProducts]);
+
+  // Show the redeem row only when points qualify and the reward can actually apply.
+  const redeemAvailable = !!memberInfo?.rewardRedeemable && cart.length > 0
+    && (!isFreeItemReward || redeemableCartProducts.length > 0);
+
+  const toggleRedeem = (on: boolean) => {
+    setMemberInfo(m => {
+      if (!m) return m;
+      if (!on) return { ...m, redeemReward: false, rewardProduct: null };
+      let rp = m.rewardProduct;
+      if (m.program?.reward_type === 'FREE_ITEM' && !rp) {
+        // Default to the priciest eligible item — best value for the customer.
+        const best = [...redeemableCartProducts].sort((a, b) => b.price - a.price)[0];
+        rp = best ? { id: best.id, name: best.name, price: String(best.price) } : null;
+      }
+      return { ...m, redeemReward: true, rewardProduct: rp };
+    });
+  };
+
+  const pickRewardProduct = (productId: string) => {
+    const p = redeemableCartProducts.find(x => x.id === productId);
+    if (!p) return;
+    setMemberInfo(m => m ? { ...m, rewardProduct: { id: p.id, name: p.name, price: String(p.price) } } : m);
+  };
+
+  // Keep the chosen free item valid as the cart changes (it may be removed).
+  useEffect(() => {
+    if (!memberInfo?.redeemReward || memberInfo.program?.reward_type !== 'FREE_ITEM') return;
+    const ids = redeemableCartProducts.map(p => p.id);
+    if (memberInfo.rewardProduct && ids.includes(memberInfo.rewardProduct.id)) return;
+    const best = [...redeemableCartProducts].sort((a, b) => b.price - a.price)[0];
+    setMemberInfo(m => m ? {
+      ...m,
+      rewardProduct: best ? { id: best.id, name: best.name, price: String(best.price) } : null,
+      redeemReward: best ? m.redeemReward : false,
+    } : m);
+  }, [redeemableCartProducts]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Panel offer / selected counts include the member redeem row alongside promos.
+  const panelOfferCount = eligiblePromos.length + (redeemAvailable ? 1 : 0);
+  const panelSelectedCount = selectedPromoIds.length + (memberInfo?.redeemReward ? 1 : 0);
+
+  const rewardDescLabel =
+    rewardType === 'FREE_ITEM' ? t.pos.rewardFreeItem
+    : rewardType === 'DISCOUNT_FIXED' ? t.pos.rewardDiscountFixed
+    : rewardType === 'DISCOUNT_PERCENT' ? t.pos.rewardDiscountPercent
+    : '';
+  const pointsToRedeem = memberInfo?.program?.points_to_redeem ?? 0;
+  const pointsBalance = memberInfo?.account.points_balance ?? 0;
 
   const onMenuClick = (item: MenuItem) => {
     // Always check product-level modifier groups; cached per-product so repeat taps are instant.
@@ -552,12 +619,12 @@ export default function POSTerminal() {
                 <PayButton icon="line"  label={t.pos.pay.line} onClick={() => cart.length && setPayment('line')} disabled={!cart.length} pending={paying} />
               </div>
               <div style={{display: 'flex', gap: 8, marginTop: 4}}>
-                <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8, minHeight: 44, opacity: eligiblePromos.length ? 1 : 0.5}}
-                  onClick={() => eligiblePromos.length && setShowPromoPanel(true)} disabled={!eligiblePromos.length}>
+                <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8, minHeight: 44, opacity: panelOfferCount ? 1 : 0.5}}
+                  onClick={() => panelOfferCount && setShowPromoPanel(true)} disabled={!panelOfferCount}>
                   <Icon name="discount" size={14}/> {t.pos.promotions}
-                  {eligiblePromos.length > 0 && (
+                  {panelOfferCount > 0 && (
                     <span style={{ marginLeft: 4, background: 'var(--color-accent)', color: 'var(--color-on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>
-                      {selectedPromoIds.length > 0 ? `${selectedPromoIds.length}/${eligiblePromos.length}` : eligiblePromos.length}
+                      {panelSelectedCount > 0 ? `${panelSelectedCount}/${panelOfferCount}` : panelOfferCount}
                     </span>
                   )}
                 </button>
@@ -591,14 +658,47 @@ export default function POSTerminal() {
         />
       )}
       {showPromoPanel && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setShowPromoPanel(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 520, maxHeight: '70vh', overflowY: 'auto', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowPromoPanel(false)}>
+          <div className="fade-in" onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '85vh', overflowY: 'auto', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <div style={{ fontSize: 16, fontWeight: 700 }}>{t.pos.promoPanelTitle}</div>
               <button onClick={() => setShowPromoPanel(false)} aria-label={t.common.close} className="icon-btn hit-44" style={{ width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center' }}><Icon name="x" size={16} /></button>
             </div>
+
+            {/* Member reward redemption — shown alongside promotions when points qualify. */}
+            {redeemAvailable && memberInfo && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 14px', borderRadius: 10, marginBottom: 8, border: `1px solid ${memberInfo.redeemReward ? 'var(--color-accent)' : 'var(--color-border)'}`, background: memberInfo.redeemReward ? 'var(--color-accent-50)' : 'var(--color-surface-2)' }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={memberInfo.redeemReward} onChange={e => toggleRedeem(e.target.checked)} style={{ width: 16, height: 16, marginTop: 3, accentColor: 'var(--color-accent)' }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>{t.pos.redeemTitle}</div>
+                    <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{t.pos.redeemDesc(pointsToRedeem.toLocaleString(), rewardDescLabel)}</div>
+                    <div style={{ fontSize: 11, color: 'var(--color-accent-600)', marginTop: 2 }}>
+                      {t.pos.redeemPointsBalance(pointsBalance.toLocaleString(), Math.max(0, pointsBalance - pointsToRedeem).toLocaleString())}
+                    </div>
+                  </div>
+                  {memberInfo.redeemReward && memberDiscount > 0 && (
+                    <div className="num" style={{ fontWeight: 700, color: 'var(--color-accent-600)' }}>-{baht(memberDiscount)}</div>
+                  )}
+                </label>
+
+                {/* FREE_ITEM: choose which cart item is redeemed. */}
+                {memberInfo.redeemReward && isFreeItemReward && (
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{t.pos.redeemPickItem}</div>
+                    <Select
+                      value={memberInfo.rewardProduct?.id ?? ''}
+                      onChange={pickRewardProduct}
+                      ariaLabel={t.pos.redeemPickItem}
+                      options={redeemableCartProducts.map(p => ({ value: p.id, label: `${p.name} · ${baht(p.price)}` }))}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
             {eligiblePromos.length === 0 ? (
-              <div style={{ padding: 24, textAlign: 'center', color: 'var(--color-text-muted)' }}>{t.pos.noPromos}</div>
+              !redeemAvailable && <div style={{ padding: 24, textAlign: 'center', color: 'var(--color-text-muted)' }}>{t.pos.noPromos}</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {eligiblePromos.map(e => {
@@ -619,7 +719,7 @@ export default function POSTerminal() {
               </div>
             )}
             <button onClick={() => setShowPromoPanel(false)} className="pressable" style={{ marginTop: 16, width: '100%', padding: 12, minHeight: 48, borderRadius: 10, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
-              {t.pos.applyDiscount}{promoDiscount > 0 ? ` (-${baht(promoDiscount)})` : ''}
+              {t.pos.applyDiscount}{discount > 0 ? ` (-${baht(discount)})` : ''}
             </button>
           </div>
         </div>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Icon from '../icons';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useToast, Tag, baht } from '../app-common';
+import { useToast, Tag } from '../app-common';
 import {
   useLookupMember,
   useRegisterMember,
@@ -21,19 +21,27 @@ export interface MemberInfo {
   program: LookupResponse['program'];
   redeemReward: boolean;
   rewardProduct: RewardProductRead | null;
+  // ── Redemption-eligibility context, carried from the lookup so the redeem
+  //    choice happens in the POS "promotions" panel, not in this modal ──
+  rewardRedeemable: boolean;
+  pointsToNextReward: number | null;
+  eligibleRewardProducts: RewardProductRead[];
 }
+
+/** Default redeem context for attach paths that don't carry a points lookup. */
+const NO_REDEEM = {
+  redeemReward: false,
+  rewardProduct: null,
+  rewardRedeemable: false,
+  pointsToNextReward: null,
+  eligibleRewardProducts: [] as RewardProductRead[],
+};
 
 const TIER_LABEL: Record<MembershipTier, string> = {
   NONE: 'สมาชิก', BRONZE: 'Bronze', SILVER: 'Silver', GOLD: 'Gold',
 };
 const TIER_TONE: Record<MembershipTier, 'neutral' | 'success' | 'info' | 'accent'> = {
   NONE: 'neutral', BRONZE: 'success', SILVER: 'info', GOLD: 'accent',
-};
-
-const REWARD_DESC: Record<string, string> = {
-  DISCOUNT_FIXED: 'ส่วนลดเป็นจำนวนเงิน',
-  DISCOUNT_PERCENT: 'ส่วนลดเป็นเปอร์เซ็นต์',
-  FREE_ITEM: 'รับฟรี 1 รายการ',
 };
 
 const IS: React.CSSProperties = {
@@ -106,8 +114,6 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
   const [nameInput, setNameInput] = useState('');
   const [submittedName, setSubmittedName] = useState('');
   const [result, setResult] = useState<LookupResponse | null>(null);
-  const [redeem, setRedeem] = useState(false);
-  const [rewardProduct, setRewardProduct] = useState<RewardProductRead | null>(null);
   // Last phone we auto-looked-up — keeps the effect from re-firing for the same number.
   const lastAutoPhone = useRef('');
 
@@ -121,8 +127,6 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
     if (m === searchMode) return;
     setSearchMode(m);
     setResult(null);
-    setRedeem(false);
-    setRewardProduct(null);
     setSubmittedName('');
     lastAutoPhone.current = '';
   };
@@ -139,7 +143,7 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
   const selectFromNameResult = async (acc: AccountRead) => {
     if (!acc.phone) {
       // No phone on file → can't load redeem context; attach as-is.
-      onSelectMember({ account: acc, program: null, redeemReward: false, rewardProduct: null });
+      onSelectMember({ account: acc, program: null, ...NO_REDEEM });
       return;
     }
     try {
@@ -147,10 +151,8 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
       if (res.found && res.account) {
         setPhone(acc.phone);
         setResult(res);
-        setRedeem(false);
-        setRewardProduct(null);
       } else {
-        onSelectMember({ account: acc, program: null, redeemReward: false, rewardProduct: null });
+        onSelectMember({ account: acc, program: null, ...NO_REDEEM });
       }
     } catch (e: unknown) {
       toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) });
@@ -177,8 +179,6 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
         return;
       }
       setResult(res);
-      setRedeem(false);
-      setRewardProduct(null);
     } catch (e: unknown) {
       toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) });
     }
@@ -218,7 +218,7 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
       });
       toast({ kind: 'success', title: 'สมัครสมาชิกแล้ว', msg: account.customer_name });
       // New member has no points yet → attach without redeem.
-      onSelectMember({ account, program: null, redeemReward: false, rewardProduct: null });
+      onSelectMember({ account, program: null, ...NO_REDEEM });
     } catch (e: unknown) {
       toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) });
     } finally {
@@ -228,16 +228,16 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
 
   const confirmAttach = () => {
     if (!result?.account) return;
-    const wantsFreeItem = redeem && result.program?.reward_type === 'FREE_ITEM';
-    if (wantsFreeItem && !rewardProduct) {
-      toast({ kind: 'warning', title: 'เลือกสินค้าที่จะแลกฟรี' });
-      return;
-    }
+    // Attach the member with the redeem *context* but no redeem decision yet —
+    // the cashier picks the reward (and which cart item) in the POS promo panel.
     onSelectMember({
       account: result.account,
       program: result.program,
-      redeemReward: redeem,
-      rewardProduct: redeem ? rewardProduct : null,
+      redeemReward: false,
+      rewardProduct: null,
+      rewardRedeemable: result.reward_redeemable,
+      pointsToNextReward: result.points_to_next_reward,
+      eligibleRewardProducts: result.eligible_reward_products,
     });
   };
 
@@ -441,45 +441,11 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
                 </div>
               )}
 
-              {/* Redeem section */}
+              {/* Redeem is now offered in the POS "โปรโมชั่นที่ใช้ได้" panel, not here. */}
               {result.program && result.reward_redeemable && (
-                <div style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 14 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={redeem} onChange={(e) => { setRedeem(e.target.checked); if (!e.target.checked) setRewardProduct(null); }} style={{ accentColor: 'var(--color-accent)', width: 18, height: 18 }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700 }}>ใช้สิทธิ์แลกรางวัล</div>
-                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                        ใช้ {result.program.points_to_redeem.toLocaleString()} แต้ม · {REWARD_DESC[result.program.reward_type] ?? result.program.reward_type}
-                      </div>
-                    </div>
-                  </label>
-
-                  {redeem && result.program.reward_type === 'FREE_ITEM' && (
-                    <div style={{ marginTop: 12 }}>
-                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>เลือกสินค้าที่จะแลกฟรี</div>
-                      <div style={{ display: 'grid', gap: 6 }}>
-                        {result.eligible_reward_products.length === 0 ? (
-                          <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>สินค้าที่แลกได้: ทุกชิ้นในบิล (ระบบจะคำนวณตอนบันทึก)</div>
-                        ) : result.eligible_reward_products.map((rp) => {
-                          const selected = rewardProduct?.id === rp.id;
-                          return (
-                            <button key={rp.id} onClick={() => setRewardProduct(rp)}
-                              aria-pressed={selected} className="pressable"
-                              style={{
-                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                padding: '10px var(--space-3)', minHeight: 44, borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 600, textAlign: 'left',
-                                border: `1.5px solid ${selected ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                                background: selected ? 'var(--color-primary)' : 'var(--color-surface)',
-                                color: selected ? 'var(--color-text-inverse)' : 'var(--color-text)', cursor: 'pointer',
-                              }}>
-                              <span>{rp.name}</span>
-                              <span className="num">{baht(Number(rp.price))}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--color-accent-600)', background: 'var(--color-accent-50)', borderRadius: 12, padding: '12px 14px' }}>
+                  <Icon name="discount" size={18} />
+                  <span>แต้มถึงเกณฑ์แลกรางวัลแล้ว — เลือกแลกได้ที่ปุ่ม “โปรโมชั่น” ในบิล</span>
                 </div>
               )}
 
@@ -504,7 +470,7 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
             </>
           ) : result?.found && result.account ? (
             <button onClick={confirmAttach} className="pressable" style={{ flex: 1, padding: '11px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
-              {redeem ? 'แนบสมาชิก + แลกรางวัล' : 'แนบสมาชิกกับบิล'}
+              แนบสมาชิกกับบิล
             </button>
           ) : (
             <button onClick={onClose} className="pressable" style={{ flex: 1, padding: '11px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: 14, cursor: 'pointer' }}>ปิด</button>
