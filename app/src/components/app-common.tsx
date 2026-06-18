@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, createContext, useContext, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from './icons';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { displayNumber, parseNumberInput, clampNumber } from '@/lib/number-input';
@@ -339,20 +340,53 @@ export const Select = ({
 }: SelectProps) => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Menu is portaled to <body> so it can escape any overflow:hidden / clipped
+  // ancestor (e.g. cards). Position is measured from the trigger each time it
+  // opens and on scroll/resize, and flips upward when there's no room below.
+  const [pos, setPos] = useState<{ left: number; top: number; width: number; maxHeight: number; up: boolean } | null>(null);
   const selected = options.find((o) => o.value === value);
   const displayLabel = selected ? selected.label : (placeholder ?? options[0]?.label ?? '');
   const isPlaceholder = !selected;
 
+  const updatePos = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const gap = 4;
+    const spaceBelow = window.innerHeight - r.bottom - 8;
+    const spaceAbove = r.top - 8;
+    const up = spaceBelow < Math.min(menuMaxHeight, 200) && spaceAbove > spaceBelow;
+    setPos({
+      left: r.left,
+      width: r.width,
+      top: up ? r.top - gap : r.bottom + gap,
+      maxHeight: Math.max(120, Math.min(menuMaxHeight, up ? spaceAbove : spaceBelow)),
+      up,
+    });
+  }, [menuMaxHeight]);
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setPos(null); return; }
+    updatePos();
+    const onMove = () => updatePos();
+    window.addEventListener('scroll', onMove, true);
+    window.addEventListener('resize', onMove);
     const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (ref.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', onClick);
     document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('mousedown', onClick); document.removeEventListener('keydown', onKey); };
-  }, [open]);
+    return () => {
+      window.removeEventListener('scroll', onMove, true);
+      window.removeEventListener('resize', onMove);
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, updatePos]);
 
   return (
     <div ref={ref} style={{ position: 'relative', width: '100%', ...style }}>
@@ -380,14 +414,17 @@ export const Select = ({
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayLabel}</span>
         <Icon name="chevronDown" size={14} style={{ color: 'var(--color-text-secondary)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }} />
       </button>
-      {open && (
+      {open && pos && createPortal(
         <div
+          ref={menuRef}
           role="listbox"
           style={{
-            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+            position: 'fixed', left: pos.left, width: pos.width,
+            top: pos.up ? undefined : pos.top,
+            bottom: pos.up ? window.innerHeight - pos.top : undefined,
             background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-            borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 200,
-            overflowY: 'auto', maxHeight: menuMaxHeight, padding: 4,
+            borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 2000,
+            overflowY: 'auto', maxHeight: pos.maxHeight, padding: 4,
           }}
         >
           {options.map((opt) => {
@@ -418,7 +455,8 @@ export const Select = ({
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
