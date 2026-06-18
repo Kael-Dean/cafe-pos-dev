@@ -1296,6 +1296,8 @@ const ProductImageControl = ({ product }: { product: MenuItem }) => {
   const fileRef = useRef<HTMLInputElement>(null);
   // The picked file waits in the crop modal; only the framed square uploads.
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  // True while fetching the *existing* photo so it can be re-framed in the modal.
+  const [loadingExisting, setLoadingExisting] = useState(false);
   // Tapping the thumbnail opens a full-size preview.
   const [preview, setPreview] = useState(false);
 
@@ -1303,7 +1305,27 @@ const ProductImageControl = ({ product }: { product: MenuItem }) => {
     const file = e.target.files?.[0];
     e.target.value = '';  // allow re-picking the same file
     if (!file) return;
-    setPendingFile(file);  // open the crop step; upload happens on confirm
+    setPendingFile(file);  // open the crop step (or swap the source if already open)
+  };
+
+  // Load the current R2 photo through our same-origin proxy so the crop canvas
+  // can read it (a cross-origin image would taint the canvas). On failure, fall
+  // back to picking a fresh file so the user is never stuck.
+  const editExisting = async () => {
+    if (!product.imageUrl) { fileRef.current?.click(); return; }
+    setLoadingExisting(true);
+    try {
+      const res = await fetch(`/api/image-proxy?url=${encodeURIComponent(product.imageUrl)}`);
+      if (!res.ok) throw new Error(String(res.status));
+      const blob = await res.blob();
+      const type = blob.type || 'image/webp';
+      setPendingFile(new File([blob], `current.${type.split('/')[1] || 'webp'}`, { type }));
+    } catch {
+      toast({ kind: 'warning', title: 'แก้ไขรูปเดิมไม่ได้', msg: 'เลือกรูปใหม่แทน' });
+      fileRef.current?.click();
+    } finally {
+      setLoadingExisting(false);
+    }
   };
 
   const onCropConfirm = (file: File) => {
@@ -1315,13 +1337,14 @@ const ProductImageControl = ({ product }: { product: MenuItem }) => {
   };
 
   const onRemove = () => {
+    setPendingFile(null);  // close the crop modal if the delete came from inside it
     deleteImage.mutate(product.id, {
       onSuccess: () => toast({ kind: 'success', title: 'ลบรูปแล้ว', msg: product.name }),
       onError: (err) => toast({ kind: 'danger', title: 'ลบรูปไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' }),
     });
   };
 
-  const busy = uploadImage.isPending || deleteImage.isPending;
+  const busy = uploadImage.isPending || deleteImage.isPending || loadingExisting;
 
   useEffect(() => {
     if (!preview) return;
@@ -1349,7 +1372,7 @@ const ProductImageControl = ({ product }: { product: MenuItem }) => {
       </div>
       <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={onPick} style={{ display: 'none' }} />
       <div style={{ display: 'flex', gap: 4 }}>
-        <button onClick={() => fileRef.current?.click()} disabled={busy} style={{ padding: '4px 8px', fontSize: 11, fontWeight: 600, background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 6, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+        <button onClick={() => (product.imageUrl ? editExisting() : fileRef.current?.click())} disabled={busy} style={{ padding: '4px 8px', fontSize: 11, fontWeight: 600, background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 6, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
           {product.imageUrl ? 'เปลี่ยนรูป' : '＋ รูป'}
         </button>
         {product.imageUrl && (
@@ -1363,6 +1386,8 @@ const ProductImageControl = ({ product }: { product: MenuItem }) => {
           file={pendingFile}
           onCancel={() => setPendingFile(null)}
           onConfirm={onCropConfirm}
+          onPickNew={() => fileRef.current?.click()}
+          {...(product.imageUrl ? { onDelete: onRemove } : {})}
         />
       )}
       {preview && product.imageUrl && createPortal(

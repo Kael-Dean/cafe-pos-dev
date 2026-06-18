@@ -29,6 +29,10 @@ interface Props {
   file: File;
   onCancel: () => void;
   onConfirm: (cropped: File) => void;
+  /** When set, a "ลบรูป" button is shown (used when re-cropping an existing photo). */
+  onDelete?: () => void;
+  /** When set, a "เลือกรูปอื่น" button is shown to swap the source for a new file. */
+  onPickNew?: () => void;
 }
 
 /** Modal a11y: focus into the dialog, Esc to close, restore focus on unmount.
@@ -72,7 +76,7 @@ function useModalA11y(onClose: () => void) {
   return ref;
 }
 
-export default function ImageCropModal({ file, onCancel, onConfirm }: Props) {
+export default function ImageCropModal({ file, onCancel, onConfirm, onDelete, onPickNew }: Props) {
   const dialogRef = useModalA11y(onCancel);
   const stageRef = useRef<HTMLDivElement>(null);
 
@@ -368,6 +372,46 @@ export default function ImageCropModal({ file, onCancel, onConfirm }: Props) {
             <Icon name="plus" size={14} aria-hidden />
           </div>
         </div>
+
+        {/* ── Secondary actions: swap source / delete (only when editing an existing photo) ── */}
+        {(onPickNew || onDelete) && (
+          <div style={{
+            display: 'flex', gap: 'var(--space-2)', padding: '0 var(--space-5) var(--space-4)', flexShrink: 0,
+          }}>
+            {onPickNew && (
+              <button
+                type="button"
+                onClick={onPickNew}
+                disabled={saving}
+                style={{
+                  flex: 1, minHeight: 40, padding: '6px 12px', borderRadius: 'var(--radius-md, 8px)',
+                  fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: saving ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)',
+                  border: '1px solid var(--color-border)',
+                }}
+              >
+                <Icon name="refresh" size={14} aria-hidden /> เลือกรูปอื่น
+              </button>
+            )}
+            {onDelete && (
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={saving}
+                style={{
+                  flex: 1, minHeight: 40, padding: '6px 12px', borderRadius: 'var(--radius-md, 8px)',
+                  fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: saving ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  background: 'transparent', color: 'var(--color-danger, #c0392b)',
+                  border: '1px solid var(--color-border)',
+                }}
+              >
+                <Icon name="trash" size={14} aria-hidden /> ลบรูป
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ── Footer actions ── */}
         <div style={{
