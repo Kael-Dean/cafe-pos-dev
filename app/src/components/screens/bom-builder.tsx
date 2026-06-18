@@ -1002,6 +1002,7 @@ const ModifierGroupRow = ({ productId, group, inventoryItems }: {
   const toast = useToast();
   const addModifier = useAddModifier();
   const [addOpen, setAddOpen] = useState(false);
+  const [addHover, setAddHover] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDelta, setNewDelta] = useState('0');
   const isRadio = group.max_select === 1;
@@ -1027,7 +1028,22 @@ const ModifierGroupRow = ({ productId, group, inventoryItems }: {
         <div style={{ flex: 1, fontSize: 16, fontWeight: 700 }}>{group.name}</div>
         <Tag tone={group.required ? 'danger' : 'warning'}>{group.required ? 'จำเป็น' : 'ตัวเลือก'}</Tag>
         <Tag tone="info">{isRadio ? 'เลือกได้ 1' : 'เลือกได้หลาย'}</Tag>
-        <button onClick={() => setAddOpen(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 14, fontWeight: 600, background: addOpen ? 'var(--color-accent-50)' : 'transparent', color: addOpen ? 'var(--color-primary-700)' : 'var(--color-text-secondary)', border: `1px solid ${addOpen ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)' }}>
+        <button
+          onClick={() => setAddOpen(v => !v)}
+          onMouseEnter={() => setAddHover(true)}
+          onMouseLeave={() => setAddHover(false)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '8px 16px', fontSize: 14, fontWeight: 700,
+            background: addOpen ? 'var(--color-accent-50)' : 'var(--color-primary)',
+            color: addOpen ? 'var(--color-primary-700)' : 'var(--color-text-inverse)',
+            border: `1px solid ${addOpen ? 'var(--color-accent)' : 'var(--color-primary)'}`,
+            borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
+            boxShadow: addOpen ? 'none' : (addHover ? '0 4px 10px rgba(0,0,0,0.16)' : '0 1px 3px rgba(0,0,0,0.12)'),
+            transform: !addOpen && addHover ? 'translateY(-1px)' : 'translateY(0)',
+            transition: 'all 150ms var(--ease-out)',
+          }}
+        >
           <Icon name="plus" size={15} /> เพิ่มตัวเลือก
         </button>
       </div>
