@@ -1,33 +1,56 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import type { ComponentType } from 'react';
+import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
 import { ToastProvider, Sidebar, BottomTabBar } from '@/components/app-common';
 import { getToken, clearToken, subscribeAuth } from '@/lib/token-store';
 import { canLeave } from '@/lib/nav-guard';
+import { Skeleton } from '@/components/ui/skeleton';
+// Login + POS stay static: login is the gate and POS is the default screen, so both
+// belong in the first chunk. Every other screen is code-split below.
 import LoginScreen from '@/components/screens/login';
 import POSTerminal from '@/components/screens/pos';
-import KDS from '@/components/screens/kds';
-import Dashboard from '@/components/screens/dashboard';
-import BOMBuilder from '@/components/screens/bom-builder';
-import Bakery from '@/components/screens/bakery';
-import Inventory from '@/components/screens/inventory';
-import PreOrders from '@/components/screens/pre-orders';
-import ShoppingListScreen from '@/components/screens/shopping-list';
-import CashReconciliation from '@/components/screens/cash-reconciliation';
-import PromotionsScreen from '@/components/screens/promotions';
-import ProtocolsScreen from '@/components/screens/protocols';
-import HRDashboard from '@/components/screens/hr-dashboard';
-import ShiftSchedule from '@/components/screens/shift-schedule';
-import { Customers } from '@/components/screens/placeholders';
-import Settings from '@/components/screens/settings';
-import { Reports } from '@/components/screens/reports';
-import HardwareScreen from '@/components/screens/hardware';
-import CatalogAdmin from '@/components/screens/catalog';
-import StockTakeScreen from '@/components/screens/stock-take';
-import MembersScreen from '@/components/screens/members';
-import SalesScreen from '@/components/screens/sales';
-import ReceiptCopies from '@/components/screens/receipt-copies';
+
+// Brief fallback while a screen's JS chunk downloads. Screens carry their own
+// data-loading skeletons; this only covers the chunk fetch itself.
+function ScreenLoading() {
+  return (
+    <div aria-busy="true" style={{ height: '100%', padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Skeleton height={32} width="40%" radius={8} />
+      <Skeleton height="60%" radius={12} />
+    </div>
+  );
+}
+
+// Code-split every non-default screen so the first paint (login → POS) doesn't ship
+// the JS for 20 other screens. ssr:false is safe — this page is client-only and
+// gates its render on `mounted` (so nothing renders server-side anyway).
+const lazyScreen = (loader: () => Promise<{ default: ComponentType }>) =>
+  dynamic(loader, { ssr: false, loading: ScreenLoading });
+
+const KDS = lazyScreen(() => import('@/components/screens/kds'));
+const Dashboard = lazyScreen(() => import('@/components/screens/dashboard'));
+const BOMBuilder = lazyScreen(() => import('@/components/screens/bom-builder'));
+const Bakery = lazyScreen(() => import('@/components/screens/bakery'));
+const Inventory = lazyScreen(() => import('@/components/screens/inventory'));
+const PreOrders = lazyScreen(() => import('@/components/screens/pre-orders'));
+const ShoppingListScreen = lazyScreen(() => import('@/components/screens/shopping-list'));
+const CashReconciliation = lazyScreen(() => import('@/components/screens/cash-reconciliation'));
+const PromotionsScreen = lazyScreen(() => import('@/components/screens/promotions'));
+const ProtocolsScreen = lazyScreen(() => import('@/components/screens/protocols'));
+const HRDashboard = lazyScreen(() => import('@/components/screens/hr-dashboard'));
+const ShiftSchedule = lazyScreen(() => import('@/components/screens/shift-schedule'));
+const Customers = lazyScreen(() => import('@/components/screens/placeholders').then((m) => ({ default: m.Customers })));
+const Settings = lazyScreen(() => import('@/components/screens/settings'));
+const Reports = lazyScreen(() => import('@/components/screens/reports').then((m) => ({ default: m.Reports })));
+const HardwareScreen = lazyScreen(() => import('@/components/screens/hardware'));
+const CatalogAdmin = lazyScreen(() => import('@/components/screens/catalog'));
+const StockTakeScreen = lazyScreen(() => import('@/components/screens/stock-take'));
+const MembersScreen = lazyScreen(() => import('@/components/screens/members'));
+const SalesScreen = lazyScreen(() => import('@/components/screens/sales'));
+const ReceiptCopies = lazyScreen(() => import('@/components/screens/receipt-copies'));
 
 type Screen =
   | 'pos' | 'kds' | 'dashboard' | 'bom' | 'bakery' | 'inventory'

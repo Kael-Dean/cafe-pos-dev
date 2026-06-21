@@ -82,9 +82,19 @@ function mapCategory(c: CategoryRead): Category {
 }
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
+// Catalog data (categories + products) changes rarely but is fetched on every POS
+// open. Hold it fresh for 5 min and keep it in cache for 30 min so navigating away
+// and back — or reopening the PWA within the window — renders instantly from cache
+// instead of refetching the whole product list each time. Mutations still
+// invalidate these keys, so edits show up immediately.
+const CATALOG_STALE_TIME = 5 * 60_000;
+const CATALOG_GC_TIME = 30 * 60_000;
+
 export function useCategories() {
   return useQuery<Category[]>({
     queryKey: ['categories'],
+    staleTime: CATALOG_STALE_TIME,
+    gcTime: CATALOG_GC_TIME,
     queryFn: async () => {
       const data = await api.get<CategoryRead[]>('/api/v1/categories');
       return data
@@ -98,6 +108,8 @@ export function useCategories() {
 export function useAllProducts() {
   return useQuery<MenuItem[]>({
     queryKey: ['products', 'all'],
+    staleTime: CATALOG_STALE_TIME,
+    gcTime: CATALOG_GC_TIME,
     queryFn: async () => {
       const data = await api.get<ProductRead[]>('/api/v1/products?is_active=true');
       return data.map(mapProduct);

@@ -6,7 +6,11 @@ import Icon from './icons';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { displayNumber, parseNumberInput, clampNumber } from '@/lib/number-input';
 import { useI18n } from '@/lib/i18n';
-import { useCountUp } from '@/lib/motion';
+// Import the gsap-free count-up directly (not via the @/lib/motion barrel, which
+// re-exports the side-effectful gsap engine). app-common is in the shell on every
+// screen, so this keeps the ~71KB gsap engine attributable to the screen chunks
+// that actually animate with it rather than anchoring it into the shared shell.
+import { useCountUp } from '@/lib/motion/use-count-up';
 
 // ---------- Toast ----------
 type ToastKind = 'success' | 'warning' | 'danger' | 'info';

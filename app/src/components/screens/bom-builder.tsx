@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import Image from 'next/image';
 import Icon from '../icons';
 import { useToast, Tag, baht, Select, NumberInput } from '../app-common';
 import { useStagger } from '@/lib/motion';
@@ -347,8 +348,9 @@ export default function BOMBuilder() {
                   background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                 }}>
                   {m.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={m.imageUrl} alt={m.name} style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flexShrink: 0, display: 'block' }} />
+                    // next/image serves a ~40px-optimized thumbnail (not the full R2 original)
+                    // and lazy-loads, so a long product list doesn't fetch every photo upfront.
+                    <Image src={m.imageUrl} alt={m.name} width={40} height={40} style={{ borderRadius: 8, objectFit: 'cover', flexShrink: 0, display: 'block' }} />
                   ) : (
                     <div style={{ width: 40, height: 40, borderRadius: 8, background: m.color, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{m.tag}</div>
                   )}
@@ -1363,10 +1365,13 @@ const ProductImageControl = ({ product }: { product: MenuItem }) => {
           aria-label={`รูป ${product.name}`}
           style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.8)', display: 'grid', placeItems: 'center', padding: 24, cursor: 'zoom-out' }}
         >
+          {/* Full-res zoom view, rendered only when opened — keep a plain <img> so the
+              original is shown unscaled; decode off the main thread. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={product.imageUrl}
             alt={product.name}
+            decoding="async"
             onClick={e => e.stopPropagation()}
             style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12, boxShadow: '0 12px 48px rgba(0,0,0,0.5)' }}
           />

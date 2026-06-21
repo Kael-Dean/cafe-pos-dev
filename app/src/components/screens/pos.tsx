@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
+import Image from 'next/image';
 import Icon from '../icons';
 import { useToast, baht, Select } from '../app-common';
 import { useI18n } from '@/lib/i18n';
@@ -832,10 +833,21 @@ const MenuCard = ({ item, onClick }: { item: MenuItem; onClick: () => void }) =>
     <div style={{
       aspectRatio: '4 / 3',
       background: item.imageUrl
-        ? `center / cover no-repeat url(${item.imageUrl})`
+        ? 'var(--color-surface-2)'
         : `linear-gradient(135deg, ${item.color} 0%, ${item.color}cc 100%)`,
-      position: 'relative', display: 'grid', placeItems: 'center',
+      position: 'relative', display: 'grid', placeItems: 'center', overflow: 'hidden',
     }}>
+      {item.imageUrl && (
+        // next/image optimizes the R2 original (resize to card size, AVIF/WebP) and
+        // lazy-loads by default, so off-screen menu cards don't all fetch on open.
+        <Image
+          src={item.imageUrl}
+          alt={item.name}
+          fill
+          sizes="(max-width: 768px) 50vw, 200px"
+          style={{ objectFit: 'cover' }}
+        />
+      )}
       {!item.imageUrl && (
         <div style={{
           position: 'absolute', inset: 0,
