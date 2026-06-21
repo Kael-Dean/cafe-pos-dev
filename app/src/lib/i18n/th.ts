@@ -372,6 +372,104 @@ export const th = {
     pay: { cash: 'เงินสด', card: 'บัตร', qr: 'QR PromptPay', line: 'LINE Pay' },
     payReceipt: { cash: 'เงินสด', card: 'บัตรเครดิต', qr: 'QR PromptPay', line: 'LINE Pay' },
   },
+
+  // ── Loyalty / rewards program (Promotions → สะสมแต้ม) ──────────────────────
+  loyalty: {
+    // option labels (Select dropdowns)
+    earnModes: {
+      PER_RECEIPT: 'ต่อ 1 บิล (1 แต้ม/บิล)',
+      PER_BAHT: 'ตามยอดเงิน (1 แต้ม/N บาท)',
+      PER_ITEM: 'ตามจำนวนชิ้น (1 แต้ม/ชิ้น)',
+    },
+    rewardTypes: {
+      DISCOUNT_FIXED: 'ส่วนลดเป็นจำนวนเงิน (฿)',
+      DISCOUNT_PERCENT: 'ส่วนลดเป็นเปอร์เซ็นต์ (%)',
+      FREE_ITEM: 'รับสินค้าฟรี 1 รายการ',
+    },
+    rewardScopes: {
+      ALL: 'สินค้าใดก็ได้ในบิล',
+      CATEGORY: 'เฉพาะหมวดหมู่ที่กำหนด',
+      SPECIFIC_PRODUCTS: 'เฉพาะสินค้าที่เลือก',
+    },
+    // banners / read-only
+    notConfigured: 'ยังไม่ได้ตั้งค่าโปรแกรมสะสมแต้ม — กรอกข้อมูลด้านล่างแล้วกดบันทึกเพื่อเริ่มใช้งาน',
+    readOnly: 'เฉพาะเจ้าของร้าน (OWNER) เท่านั้นที่แก้ไขได้ — คุณกำลังดูแบบอ่านอย่างเดียว',
+    loadingAria: 'กำลังโหลดโปรแกรมสะสมแต้ม',
+    // status section
+    statusSection: 'สถานะโปรแกรม',
+    activeLabel: 'เปิดใช้งานสะสมแต้ม',
+    activeHint: 'ปิดเพื่อพักโปรแกรมชั่วคราว (ไม่ลบการตั้งค่า)',
+    // earning section
+    earnSection: 'การได้รับแต้ม',
+    earnModeLabel: 'วิธีคิดแต้ม',
+    bahtPerPointLabel: 'บาทต่อ 1 แต้ม *',
+    earnCategoryLabel: 'หมวดหมู่ที่นับแต้ม',
+    earnCategoryAll: 'ทุกหมวดหมู่ (ทุกชิ้น)',
+    // reward section
+    rewardSection: 'การแลกรางวัล',
+    pointsToRedeemLabel: 'แต้มที่ใช้แลก 1 ครั้ง *',
+    rewardTypeLabel: 'ประเภทรางวัล',
+    discountPercentLabel: 'ส่วนลด (%) *',
+    discountFixedLabel: 'ส่วนลด (฿) *',
+    rewardScopeLabel: 'ขอบเขตสินค้าที่ใช้สิทธิ์',
+    rewardCategoryLabel: 'หมวดหมู่ *',
+    rewardCategoryPlaceholder: '— เลือกหมวดหมู่ —',
+    selectedCount: (n: number) => `เลือกสินค้าที่ใช้แลกได้ (${n} รายการ)`,
+    noProducts: 'ไม่มีสินค้า',
+    // tiers section
+    tierSection: 'ระดับสมาชิก (Tier) — ตามแต้มสะสมตลอดชีพ',
+    tierBronzeLabel: 'เกณฑ์ Bronze',
+    tierSilverLabel: 'เกณฑ์ Silver',
+    tierGoldLabel: 'เกณฑ์ Gold',
+    tierBronzePlaceholder: 'เช่น 50',
+    tierSilverPlaceholder: 'เช่น 200',
+    tierGoldPlaceholder: 'เช่น 500',
+    multiplierBronzeLabel: 'ตัวคูณแต้ม Bronze',
+    multiplierSilverLabel: 'ตัวคูณแต้ม Silver',
+    multiplierGoldLabel: 'ตัวคูณแต้ม Gold',
+    // extra conditions section
+    extraSection: 'เงื่อนไขเพิ่มเติม',
+    minOrderLabel: 'ยอดซื้อขั้นต่ำเพื่อสะสมแต้ม (฿)',
+    minOrderPlaceholder: 'ไม่กำหนด',
+    expireLabel: 'แต้มหมดอายุหลังจาก (วัน)',
+    // save button
+    saveBtn: 'บันทึกโปรแกรมสะสมแต้ม',
+    saving: 'กำลังบันทึก...',
+    // validation / toast
+    validatePoints: 'แต้มที่ใช้แลกต้องมากกว่า 0',
+    validateBaht: 'กรอกจำนวนบาทต่อแต้ม (> 0)',
+    validateDiscount: 'กรอกมูลค่าส่วนลด (> 0)',
+    validatePercentMax: 'ส่วนลดเปอร์เซ็นต์ต้องไม่เกิน 100',
+    validateCategory: 'เลือกหมวดหมู่สำหรับรางวัล',
+    validateSilver: 'เกณฑ์ Silver ต้องมากกว่า Bronze',
+    validateGold: 'เกณฑ์ Gold ต้องมากกว่า Silver',
+    saved: 'บันทึกโปรแกรมสะสมแต้มแล้ว',
+  },
+
+  // ── Modifier recipe deductions (per-menu, in BOM builder) ─────────────────
+  modifierRecipe: {
+    trigger: 'หักวัตถุดิบเมื่อเลือกตัวเลือกนี้ (เฉพาะเมนูนี้)',
+    // help text — kept around <strong> markup in JSX
+    helpOverrideLabel: 'แทนที่',
+    helpOverrideDesc: ' = เขียนทับปริมาณในสูตรหลัก (0 = ไม่หักวัตถุดิบนั้น เช่น “ไม่ใส่วิป”) ·',
+    helpDeltaLabel: ' บวก/ลบ',
+    helpDeltaDesc: ' = บวก/ลบจากสูตรหลัก (ติดลบได้ เช่น “เพิ่มชีส +30g”)',
+    modeOverride: 'แทนที่',
+    modeDelta: 'บวก/ลบ',
+    loading: 'กำลังโหลด…',
+    empty: 'ยังไม่มีสูตรขั้นสูง',
+    selectIngredient: '— เลือกวัตถุดิบ —',
+    ingredientAria: 'วัตถุดิบ',
+    qtyTitle: 'ปริมาณ',
+    removeRow: 'ลบแถว',
+    addIngredient: 'เพิ่มวัตถุดิบ',
+    saveBtn: 'บันทึกสูตรขั้นสูง',
+    saving: 'กำลังบันทึก…',
+    saved: 'บันทึกสูตรขั้นสูงแล้ว',
+    savedCount: (n: number) => `${n} วัตถุดิบ`,
+    saveFailed: 'บันทึกไม่สำเร็จ',
+    tryAgain: 'กรุณาลองใหม่',
+  },
 };
 
 export type Messages = typeof th;

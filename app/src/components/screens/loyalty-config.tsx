@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Icon from '../icons';
 import { useToast, baht, Select } from '../app-common';
 import { SkeletonCard } from '@/components/ui/skeleton';
+import { useI18n } from '@/lib/i18n';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { useCategories } from '@/hooks/use-products';
 import { useProductsAdmin } from '@/hooks/use-products';
@@ -25,21 +26,10 @@ const IS: React.CSSProperties = {
   color: 'var(--color-text)', fontSize: 14,
 };
 
-const EARN_MODES: { v: EarnMode; label: string }[] = [
-  { v: 'PER_RECEIPT', label: 'ต่อ 1 บิล (1 แต้ม/บิล)' },
-  { v: 'PER_BAHT', label: 'ตามยอดเงิน (1 แต้ม/N บาท)' },
-  { v: 'PER_ITEM', label: 'ตามจำนวนชิ้น (1 แต้ม/ชิ้น)' },
-];
-const REWARD_TYPES: { v: RewardType; label: string }[] = [
-  { v: 'DISCOUNT_FIXED', label: 'ส่วนลดเป็นจำนวนเงิน (฿)' },
-  { v: 'DISCOUNT_PERCENT', label: 'ส่วนลดเป็นเปอร์เซ็นต์ (%)' },
-  { v: 'FREE_ITEM', label: 'รับสินค้าฟรี 1 รายการ' },
-];
-const REWARD_SCOPES: { v: RewardScope; label: string }[] = [
-  { v: 'ALL', label: 'สินค้าใดก็ได้ในบิล' },
-  { v: 'CATEGORY', label: 'เฉพาะหมวดหมู่ที่กำหนด' },
-  { v: 'SPECIFIC_PRODUCTS', label: 'เฉพาะสินค้าที่เลือก' },
-];
+// Option values only — labels come from i18n (t.loyalty.*) inside the component.
+const EARN_MODE_VALUES: EarnMode[] = ['PER_RECEIPT', 'PER_BAHT', 'PER_ITEM'];
+const REWARD_TYPE_VALUES: RewardType[] = ['DISCOUNT_FIXED', 'DISCOUNT_PERCENT', 'FREE_ITEM'];
+const REWARD_SCOPE_VALUES: RewardScope[] = ['ALL', 'CATEGORY', 'SPECIFIC_PRODUCTS'];
 
 interface FormState {
   is_active: boolean;
@@ -96,6 +86,7 @@ const numOrNull = (v: string): number | null => (v.trim() === '' ? null : Number
 
 export default function LoyaltyConfig() {
   const toast = useToast();
+  const { t } = useI18n();
   const { data: me } = useCurrentUser();
   const canEdit = me?.role === 'OWNER';
 
@@ -128,16 +119,16 @@ export default function LoyaltyConfig() {
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm(f => ({ ...f, [k]: v }));
 
   const validate = (): string | null => {
-    if (numOrNull(form.points_to_redeem) == null || Number(form.points_to_redeem) <= 0) return 'แต้มที่ใช้แลกต้องมากกว่า 0';
-    if (form.earn_mode === 'PER_BAHT' && (numOrNull(form.baht_per_point) == null || Number(form.baht_per_point) <= 0)) return 'กรอกจำนวนบาทต่อแต้ม (> 0)';
+    if (numOrNull(form.points_to_redeem) == null || Number(form.points_to_redeem) <= 0) return t.loyalty.validatePoints;
+    if (form.earn_mode === 'PER_BAHT' && (numOrNull(form.baht_per_point) == null || Number(form.baht_per_point) <= 0)) return t.loyalty.validateBaht;
     if (form.reward_type === 'DISCOUNT_FIXED' || form.reward_type === 'DISCOUNT_PERCENT') {
-      if (numOrNull(form.reward_value) == null || Number(form.reward_value) <= 0) return 'กรอกมูลค่าส่วนลด (> 0)';
-      if (form.reward_type === 'DISCOUNT_PERCENT' && Number(form.reward_value) > 100) return 'ส่วนลดเปอร์เซ็นต์ต้องไม่เกิน 100';
+      if (numOrNull(form.reward_value) == null || Number(form.reward_value) <= 0) return t.loyalty.validateDiscount;
+      if (form.reward_type === 'DISCOUNT_PERCENT' && Number(form.reward_value) > 100) return t.loyalty.validatePercentMax;
     }
-    if (form.reward_scope === 'CATEGORY' && !form.reward_category_id) return 'เลือกหมวดหมู่สำหรับรางวัล';
+    if (form.reward_scope === 'CATEGORY' && !form.reward_category_id) return t.loyalty.validateCategory;
     const b = numOrNull(form.tier_bronze_threshold), s = numOrNull(form.tier_silver_threshold), g = numOrNull(form.tier_gold_threshold);
-    if (b != null && s != null && s <= b) return 'เกณฑ์ Silver ต้องมากกว่า Bronze';
-    if (s != null && g != null && g <= s) return 'เกณฑ์ Gold ต้องมากกว่า Silver';
+    if (b != null && s != null && s <= b) return t.loyalty.validateSilver;
+    if (s != null && g != null && g <= s) return t.loyalty.validateGold;
     return null;
   };
 
@@ -170,7 +161,7 @@ export default function LoyaltyConfig() {
       if (form.reward_scope === 'SPECIFIC_PRODUCTS') {
         await saveRewardProducts.mutateAsync(selectedProductIds);
       }
-      toast({ kind: 'success', title: 'บันทึกโปรแกรมสะสมแต้มแล้ว' });
+      toast({ kind: 'success', title: t.loyalty.saved });
     } catch (e: unknown) {
       toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) });
     }
@@ -178,7 +169,7 @@ export default function LoyaltyConfig() {
 
   if (isLoading) return (
     <div style={{ display: 'grid', gap: 18, maxWidth: 760 }} aria-busy="true">
-      <span className="sr-only">กำลังโหลดโปรแกรมสะสมแต้ม</span>
+      <span className="sr-only">{t.loyalty.loadingAria}</span>
       <SkeletonCard lines={1} style={{ borderRadius: 12, padding: 18 }} />
       <SkeletonCard lines={2} style={{ borderRadius: 12, padding: 18 }} />
       <SkeletonCard lines={3} style={{ borderRadius: 12, padding: 18 }} />
@@ -193,71 +184,71 @@ export default function LoyaltyConfig() {
       {!program && (
         <div style={{ background: 'var(--color-accent-50)', border: '1px solid var(--color-accent)', borderRadius: 10, padding: '14px 16px', display: 'flex', gap: 10, alignItems: 'center' }}>
           <Icon name="gift" size={20} color="var(--color-accent-600)" />
-          <div style={{ fontSize: 13, color: 'var(--color-primary-700)' }}>ยังไม่ได้ตั้งค่าโปรแกรมสะสมแต้ม — กรอกข้อมูลด้านล่างแล้วกดบันทึกเพื่อเริ่มใช้งาน</div>
+          <div style={{ fontSize: 13, color: 'var(--color-primary-700)' }}>{t.loyalty.notConfigured}</div>
         </div>
       )}
       {!canEdit && (
-        <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>เฉพาะเจ้าของร้าน (OWNER) เท่านั้นที่แก้ไขได้ — คุณกำลังดูแบบอ่านอย่างเดียว</div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{t.loyalty.readOnly}</div>
       )}
 
       {/* Status */}
-      <Section title="สถานะโปรแกรม">
+      <Section title={t.loyalty.statusSection}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: dis ? 'default' : 'pointer' }}>
           <input type="checkbox" checked={form.is_active} disabled={dis} onChange={e => set('is_active', e.target.checked)} style={{ accentColor: 'var(--color-accent)', width: 18, height: 18 }} />
           <div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>เปิดใช้งานสะสมแต้ม</div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>ปิดเพื่อพักโปรแกรมชั่วคราว (ไม่ลบการตั้งค่า)</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{t.loyalty.activeLabel}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{t.loyalty.activeHint}</div>
           </div>
         </label>
       </Section>
 
       {/* Earning */}
-      <Section title="การได้รับแต้ม">
+      <Section title={t.loyalty.earnSection}>
         <Grid>
-          <Field label="วิธีคิดแต้ม">
-            <Select value={form.earn_mode} disabled={dis} onChange={v => set('earn_mode', v as EarnMode)} ariaLabel="วิธีคิดแต้ม" options={EARN_MODES.map(m => ({ value: m.v, label: m.label }))} />
+          <Field label={t.loyalty.earnModeLabel}>
+            <Select value={form.earn_mode} disabled={dis} onChange={v => set('earn_mode', v as EarnMode)} ariaLabel={t.loyalty.earnModeLabel} options={EARN_MODE_VALUES.map(v => ({ value: v, label: t.loyalty.earnModes[v] }))} />
           </Field>
           {form.earn_mode === 'PER_BAHT' && (
-            <Field label="บาทต่อ 1 แต้ม *">
+            <Field label={t.loyalty.bahtPerPointLabel}>
               <input type="number" value={form.baht_per_point} disabled={dis} onChange={e => set('baht_per_point', e.target.value)} style={IS} placeholder="50" />
             </Field>
           )}
           {form.earn_mode === 'PER_ITEM' && (
-            <Field label="หมวดหมู่ที่นับแต้ม">
-              <Select value={form.earn_category_id} disabled={dis} onChange={v => set('earn_category_id', v)} ariaLabel="หมวดหมู่ที่นับแต้ม"
-                options={[{ value: '', label: 'ทุกหมวดหมู่ (ทุกชิ้น)' }, ...(categories ?? []).map(c => ({ value: c.id, label: c.label }))]} />
+            <Field label={t.loyalty.earnCategoryLabel}>
+              <Select value={form.earn_category_id} disabled={dis} onChange={v => set('earn_category_id', v)} ariaLabel={t.loyalty.earnCategoryLabel}
+                options={[{ value: '', label: t.loyalty.earnCategoryAll }, ...(categories ?? []).map(c => ({ value: c.id, label: c.label }))]} />
             </Field>
           )}
         </Grid>
       </Section>
 
       {/* Reward */}
-      <Section title="การแลกรางวัล">
+      <Section title={t.loyalty.rewardSection}>
         <Grid>
-          <Field label="แต้มที่ใช้แลก 1 ครั้ง *">
+          <Field label={t.loyalty.pointsToRedeemLabel}>
             <input type="number" value={form.points_to_redeem} disabled={dis} onChange={e => set('points_to_redeem', e.target.value)} style={IS} placeholder="100" />
           </Field>
-          <Field label="ประเภทรางวัล">
-            <Select value={form.reward_type} disabled={dis} onChange={v => set('reward_type', v as RewardType)} ariaLabel="ประเภทรางวัล" options={REWARD_TYPES.map(m => ({ value: m.v, label: m.label }))} />
+          <Field label={t.loyalty.rewardTypeLabel}>
+            <Select value={form.reward_type} disabled={dis} onChange={v => set('reward_type', v as RewardType)} ariaLabel={t.loyalty.rewardTypeLabel} options={REWARD_TYPE_VALUES.map(v => ({ value: v, label: t.loyalty.rewardTypes[v] }))} />
           </Field>
           {form.reward_type !== 'FREE_ITEM' && (
-            <Field label={form.reward_type === 'DISCOUNT_PERCENT' ? 'ส่วนลด (%) *' : 'ส่วนลด (฿) *'}>
+            <Field label={form.reward_type === 'DISCOUNT_PERCENT' ? t.loyalty.discountPercentLabel : t.loyalty.discountFixedLabel}>
               <input type="number" value={form.reward_value} disabled={dis} onChange={e => set('reward_value', e.target.value)} style={IS} placeholder={form.reward_type === 'DISCOUNT_PERCENT' ? '10' : '50'} />
             </Field>
           )}
-          <Field label="ขอบเขตสินค้าที่ใช้สิทธิ์">
-            <Select value={form.reward_scope} disabled={dis} onChange={v => set('reward_scope', v as RewardScope)} ariaLabel="ขอบเขตสินค้าที่ใช้สิทธิ์" options={REWARD_SCOPES.map(m => ({ value: m.v, label: m.label }))} />
+          <Field label={t.loyalty.rewardScopeLabel}>
+            <Select value={form.reward_scope} disabled={dis} onChange={v => set('reward_scope', v as RewardScope)} ariaLabel={t.loyalty.rewardScopeLabel} options={REWARD_SCOPE_VALUES.map(v => ({ value: v, label: t.loyalty.rewardScopes[v] }))} />
           </Field>
           {form.reward_scope === 'CATEGORY' && (
-            <Field label="หมวดหมู่ *">
-              <Select value={form.reward_category_id} disabled={dis} onChange={v => set('reward_category_id', v)} ariaLabel="หมวดหมู่" placeholder="— เลือกหมวดหมู่ —" options={(categories ?? []).map(c => ({ value: c.id, label: c.label }))} />
+            <Field label={t.loyalty.rewardCategoryLabel}>
+              <Select value={form.reward_category_id} disabled={dis} onChange={v => set('reward_category_id', v)} ariaLabel={t.loyalty.rewardCategoryLabel} placeholder={t.loyalty.rewardCategoryPlaceholder} options={(categories ?? []).map(c => ({ value: c.id, label: c.label }))} />
             </Field>
           )}
         </Grid>
 
         {form.reward_scope === 'SPECIFIC_PRODUCTS' && (
           <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>เลือกสินค้าที่ใช้แลกได้ ({selectedProductIds.length} รายการ)</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{t.loyalty.selectedCount(selectedProductIds.length)}</div>
             <div className="scroll" style={{ maxHeight: 220, overflow: 'auto', border: '1px solid var(--color-border)', borderRadius: 8, padding: 8, display: 'grid', gap: 4 }}>
               {(products ?? []).map(p => {
                 const checked = selectedProductIds.includes(p.id);
@@ -271,29 +262,29 @@ export default function LoyaltyConfig() {
                   </label>
                 );
               })}
-              {(products ?? []).length === 0 && <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: 8 }}>ไม่มีสินค้า</div>}
+              {(products ?? []).length === 0 && <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: 8 }}>{t.loyalty.noProducts}</div>}
             </div>
           </div>
         )}
       </Section>
 
       {/* Tiers */}
-      <Section title="ระดับสมาชิก (Tier) — ตามแต้มสะสมตลอดชีพ">
+      <Section title={t.loyalty.tierSection}>
         <Grid cols={3}>
-          <Field label="เกณฑ์ Bronze"><input type="number" value={form.tier_bronze_threshold} disabled={dis} onChange={e => set('tier_bronze_threshold', e.target.value)} style={IS} placeholder="เช่น 50" /></Field>
-          <Field label="เกณฑ์ Silver"><input type="number" value={form.tier_silver_threshold} disabled={dis} onChange={e => set('tier_silver_threshold', e.target.value)} style={IS} placeholder="เช่น 200" /></Field>
-          <Field label="เกณฑ์ Gold"><input type="number" value={form.tier_gold_threshold} disabled={dis} onChange={e => set('tier_gold_threshold', e.target.value)} style={IS} placeholder="เช่น 500" /></Field>
-          <Field label="ตัวคูณแต้ม Bronze"><input type="number" value={form.bronze_earn_multiplier} disabled={dis} onChange={e => set('bronze_earn_multiplier', e.target.value)} style={IS} placeholder="1.0" /></Field>
-          <Field label="ตัวคูณแต้ม Silver"><input type="number" value={form.silver_earn_multiplier} disabled={dis} onChange={e => set('silver_earn_multiplier', e.target.value)} style={IS} placeholder="1.5" /></Field>
-          <Field label="ตัวคูณแต้ม Gold"><input type="number" value={form.gold_earn_multiplier} disabled={dis} onChange={e => set('gold_earn_multiplier', e.target.value)} style={IS} placeholder="2.0" /></Field>
+          <Field label={t.loyalty.tierBronzeLabel}><input type="number" value={form.tier_bronze_threshold} disabled={dis} onChange={e => set('tier_bronze_threshold', e.target.value)} style={IS} placeholder={t.loyalty.tierBronzePlaceholder} /></Field>
+          <Field label={t.loyalty.tierSilverLabel}><input type="number" value={form.tier_silver_threshold} disabled={dis} onChange={e => set('tier_silver_threshold', e.target.value)} style={IS} placeholder={t.loyalty.tierSilverPlaceholder} /></Field>
+          <Field label={t.loyalty.tierGoldLabel}><input type="number" value={form.tier_gold_threshold} disabled={dis} onChange={e => set('tier_gold_threshold', e.target.value)} style={IS} placeholder={t.loyalty.tierGoldPlaceholder} /></Field>
+          <Field label={t.loyalty.multiplierBronzeLabel}><input type="number" value={form.bronze_earn_multiplier} disabled={dis} onChange={e => set('bronze_earn_multiplier', e.target.value)} style={IS} placeholder="1.0" /></Field>
+          <Field label={t.loyalty.multiplierSilverLabel}><input type="number" value={form.silver_earn_multiplier} disabled={dis} onChange={e => set('silver_earn_multiplier', e.target.value)} style={IS} placeholder="1.5" /></Field>
+          <Field label={t.loyalty.multiplierGoldLabel}><input type="number" value={form.gold_earn_multiplier} disabled={dis} onChange={e => set('gold_earn_multiplier', e.target.value)} style={IS} placeholder="2.0" /></Field>
         </Grid>
       </Section>
 
       {/* Extra conditions */}
-      <Section title="เงื่อนไขเพิ่มเติม">
+      <Section title={t.loyalty.extraSection}>
         <Grid>
-          <Field label="ยอดซื้อขั้นต่ำเพื่อสะสมแต้ม (฿)"><input type="number" value={form.min_order_baht} disabled={dis} onChange={e => set('min_order_baht', e.target.value)} style={IS} placeholder="ไม่กำหนด" /></Field>
-          <Field label="แต้มหมดอายุหลังจาก (วัน)"><input type="number" value={form.points_expire_after_days} disabled={dis} onChange={e => set('points_expire_after_days', e.target.value)} style={IS} placeholder="365" /></Field>
+          <Field label={t.loyalty.minOrderLabel}><input type="number" value={form.min_order_baht} disabled={dis} onChange={e => set('min_order_baht', e.target.value)} style={IS} placeholder={t.loyalty.minOrderPlaceholder} /></Field>
+          <Field label={t.loyalty.expireLabel}><input type="number" value={form.points_expire_after_days} disabled={dis} onChange={e => set('points_expire_after_days', e.target.value)} style={IS} placeholder="365" /></Field>
         </Grid>
       </Section>
 
@@ -301,7 +292,7 @@ export default function LoyaltyConfig() {
         <div>
           <button onClick={handleSave} disabled={saveProgram.isPending}
             style={{ padding: '11px 26px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
-            {saveProgram.isPending ? 'กำลังบันทึก...' : 'บันทึกโปรแกรมสะสมแต้ม'}
+            {saveProgram.isPending ? t.loyalty.saving : t.loyalty.saveBtn}
           </button>
         </div>
       )}

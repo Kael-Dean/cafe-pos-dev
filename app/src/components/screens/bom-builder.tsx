@@ -12,6 +12,7 @@ import { useProductDetail, useUpdateRecipe, useLinkModifierGroups, type RecipeIt
 import { useModifierGroups, useModifierGroupsAdmin, useAddModifier, useUpdateModifier, useDeleteModifier, useModifierRecipeItems, useReplaceModifierRecipeItems, type ModifierGroup, type ModifierGroupRead, type ModifierRead, type ModifierRecipeItemInput } from '@/hooks/use-modifier-groups';
 import { useCookingSteps, useReplaceCookingSteps, type CookingStepRead } from '@/hooks/use-cooking-steps';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
+import { useI18n } from '@/lib/i18n';
 import { api } from '@/lib/api-client';
 import { setNavGuard } from '@/lib/nav-guard';
 import ImageCropModal from './image-crop-modal';
@@ -1081,6 +1082,7 @@ const ModifierOptionRow = ({ productId, groupId, modifier, inventoryItems }: {
   inventoryItems: InventoryItem[];
 }) => {
   const toast = useToast();
+  const { t } = useI18n();
   const updateModifier = useUpdateModifier();
   const deleteModifier = useDeleteModifier();
   const [editing, setEditing] = useState(false);
@@ -1146,7 +1148,7 @@ const ModifierOptionRow = ({ productId, groupId, modifier, inventoryItems }: {
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
             <button onClick={() => setRecipeOpen(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', fontSize: 14, fontWeight: 600, background: recipeOpen ? 'var(--color-accent-50)' : 'transparent', color: recipeOpen ? 'var(--color-primary-700)' : 'var(--color-text-secondary)', border: `1px solid ${recipeOpen ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>
-              <Icon name="chevronDown" size={14} style={{ transform: recipeOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} /> หักวัตถุดิบเมื่อเลือกตัวเลือกนี้ (เฉพาะเมนูนี้)
+              <Icon name="chevronDown" size={14} style={{ transform: recipeOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }} /> {t.modifierRecipe.trigger}
             </button>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setEditing(false)} style={{ padding: '10px 16px', fontSize: 14, fontWeight: 500, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ปิด</button>
@@ -1175,6 +1177,7 @@ const ModifierRecipeEditor = ({ productId, modifierId, inventoryItems }: {
   inventoryItems: InventoryItem[];
 }) => {
   const toast = useToast();
+  const { t } = useI18n();
   const { data: items, isLoading } = useModifierRecipeItems(productId, modifierId, true);
   const replace = useReplaceModifierRecipeItems();
   const [rows, setRows] = useState<ModifierRecipeItemInput[]>([]);
@@ -1198,52 +1201,52 @@ const ModifierRecipeEditor = ({ productId, modifierId, inventoryItems }: {
       .map(r => ({ inventory_item_id: r.inventory_item_id, quantity: r.quantity || '0', mode: r.mode }));
     try {
       await replace.mutateAsync({ productId, modifierId, items: clean });
-      toast({ kind: 'success', title: 'บันทึกสูตรขั้นสูงแล้ว', msg: `${clean.length} วัตถุดิบ` });
+      toast({ kind: 'success', title: t.modifierRecipe.saved, msg: t.modifierRecipe.savedCount(clean.length) });
     } catch (err) {
-      toast({ kind: 'danger', title: 'บันทึกไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+      toast({ kind: 'danger', title: t.modifierRecipe.saveFailed, msg: err instanceof Error ? err.message : t.modifierRecipe.tryAgain });
     }
   };
 
   return (
     <div style={{ padding: 12, border: '1px dashed var(--color-border)', borderRadius: 8, background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ fontSize: 11, color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
-        <strong>แทนที่</strong> = เขียนทับปริมาณในสูตรหลัก (0 = ไม่หักวัตถุดิบนั้น เช่น “ไม่ใส่วิป”) ·
-        <strong> บวก/ลบ</strong> = บวก/ลบจากสูตรหลัก (ติดลบได้ เช่น “เพิ่มชีส +30g”)
+        <strong>{t.modifierRecipe.helpOverrideLabel}</strong>{t.modifierRecipe.helpOverrideDesc}
+        <strong>{t.modifierRecipe.helpDeltaLabel}</strong>{t.modifierRecipe.helpDeltaDesc}
       </div>
       {isLoading ? (
-        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: 8 }}>กำลังโหลด…</div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: 8 }}>{t.modifierRecipe.loading}</div>
       ) : rows.length === 0 ? (
-        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: 8 }}>ยังไม่มีสูตรขั้นสูง</div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: 8 }}>{t.modifierRecipe.empty}</div>
       ) : rows.map((row, idx) => (
         <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <Select
             value={row.inventory_item_id}
             onChange={v => updateRow(idx, { inventory_item_id: v })}
-            ariaLabel="วัตถุดิบ"
+            ariaLabel={t.modifierRecipe.ingredientAria}
             style={{ minWidth: 170 }}
             triggerStyle={{ padding: '6px 10px', fontSize: 13, borderRadius: 6 }}
             menuMaxHeight={240}
-            options={[{ value: '', label: '— เลือกวัตถุดิบ —' }, ...inventoryItems.map(i => ({ value: i.id, label: i.name }))]}
+            options={[{ value: '', label: t.modifierRecipe.selectIngredient }, ...inventoryItems.map(i => ({ value: i.id, label: i.name }))]}
           />
-          <input type="number" step={0.1} value={row.quantity} onChange={e => updateRow(idx, { quantity: e.target.value })} title="ปริมาณ" style={{ width: 84, padding: '6px 10px', fontSize: 13, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
+          <input type="number" step={0.1} value={row.quantity} onChange={e => updateRow(idx, { quantity: e.target.value })} title={t.modifierRecipe.qtyTitle} style={{ width: 84, padding: '6px 10px', fontSize: 13, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
           <div style={{ display: 'flex', border: '1px solid var(--color-border)', borderRadius: 6, overflow: 'hidden' }}>
             {(['override', 'delta'] as const).map(m => (
               <button key={m} onClick={() => updateRow(idx, { mode: m })} style={{ padding: '6px 10px', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: row.mode === m ? 'var(--color-primary)' : 'var(--color-surface)', color: row.mode === m ? 'var(--color-text-inverse)' : 'var(--color-text-secondary)' }}>
-                {m === 'override' ? 'แทนที่' : 'บวก/ลบ'}
+                {m === 'override' ? t.modifierRecipe.modeOverride : t.modifierRecipe.modeDelta}
               </button>
             ))}
           </div>
-          <button onClick={() => removeRow(idx)} title="ลบแถว" style={{ display: 'grid', placeItems: 'center', width: 28, height: 28, borderRadius: 6, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
+          <button onClick={() => removeRow(idx)} title={t.modifierRecipe.removeRow} style={{ display: 'grid', placeItems: 'center', width: 28, height: 28, borderRadius: 6, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
             <Icon name="trash" size={13} />
           </button>
         </div>
       ))}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
         <button onClick={addRow} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 12px', fontSize: 12, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>
-          <Icon name="plus" size={12} /> เพิ่มวัตถุดิบ
+          <Icon name="plus" size={12} /> {t.modifierRecipe.addIngredient}
         </button>
         <button onClick={handleSave} disabled={replace.isPending} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, background: replace.isPending ? 'var(--color-surface-2)' : 'var(--color-primary)', color: replace.isPending ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 6, cursor: replace.isPending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Icon name="check" size={14} />{replace.isPending ? 'กำลังบันทึก…' : 'บันทึกสูตรขั้นสูง'}
+          <Icon name="check" size={14} />{replace.isPending ? t.modifierRecipe.saving : t.modifierRecipe.saveBtn}
         </button>
       </div>
     </div>
