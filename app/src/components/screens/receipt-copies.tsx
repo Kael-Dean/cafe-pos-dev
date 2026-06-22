@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueries } from '@tanstack/react-query';
 import Icon from '../icons';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useFadeRise } from '@/lib/motion';
@@ -30,6 +31,10 @@ function todayISO(): string {
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 }
+
+// Shared column template for the order table (header, rows, skeleton must match):
+// ออเดอร์ · เวลา · รายการ · ลูกค้า · ยอดรวม · วิธีจ่าย
+const GRID_COLS = '84px 72px 1fr 150px 112px 96px';
 
 export default function ReceiptCopies() {
   const toast = useToast();
@@ -65,6 +70,26 @@ export default function ReceiptCopies() {
     const revenue = list.reduce((sum, o) => sum + Number(o.total), 0);
     return { count: list.length, revenue };
   }, [orders]);
+
+  // Resolve the buyer name for every bill in the table. Names live on the linked
+  // customer (not the order), so we fan out a cheap GET per unique customer_id —
+  // same query key as useCustomerDetail, so opening a receipt reuses the cache.
+  const customerIds = useMemo(
+    () => [...new Set((orders ?? []).map(o => o.customer_id).filter((id): id is string => !!id))],
+    [orders],
+  );
+  const customerQueries = useQueries({
+    queries: customerIds.map(id => ({
+      queryKey: ['customers', 'detail', id],
+      queryFn: () => api.get<CustomerDetail>(`/api/v1/customers/${id}`),
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
+  const customerNames = useMemo(() => {
+    const map = new Map<string, string>();
+    customerQueries.forEach((q, i) => { if (q.data) map.set(customerIds[i], q.data.name); });
+    return map;
+  }, [customerQueries, customerIds]);
 
   const printAll = async () => {
     setConfirmAll(false);
@@ -212,7 +237,7 @@ export default function ReceiptCopies() {
         }}>
           {/* Header row */}
           <div style={{
-            display: 'grid', gridTemplateColumns: '90px 80px 1fr 130px 120px',
+            display: 'grid', gridTemplateColumns: GRID_COLS,
             gap: 12, padding: '12px 16px', fontSize: 12, fontWeight: 700,
             color: 'var(--color-text-secondary)', borderBottom: '1px solid var(--color-border)',
             background: 'var(--color-surface-2)',
@@ -220,18 +245,20 @@ export default function ReceiptCopies() {
             <div>ออเดอร์</div>
             <div>เวลา</div>
             <div>รายการ</div>
+            <div>ลูกค้า</div>
             <div style={{ textAlign: 'right' }}>ยอดรวม</div>
             <div>วิธีจ่าย</div>
           </div>
           {orders.map(o => {
             const itemCount = o.items.reduce((n, it) => n + it.quantity, 0);
             const preview = o.items.map(it => it.product_name).join(', ');
+            const customerName = o.customer_id ? customerNames.get(o.customer_id) : undefined;
             return (
               <button
                 key={o.id}
                 onClick={() => setSelected(o)}
                 style={{
-                  display: 'grid', gridTemplateColumns: '90px 80px 1fr 130px 120px',
+                  display: 'grid', gridTemplateColumns: GRID_COLS,
                   gap: 12, padding: '12px 16px', width: '100%', textAlign: 'left',
                   alignItems: 'center', fontSize: 13, color: 'var(--color-text)',
                   borderBottom: '1px solid var(--color-border)', cursor: 'pointer',
@@ -244,6 +271,9 @@ export default function ReceiptCopies() {
                 <div style={{ color: 'var(--color-text-secondary)', fontVariantNumeric: 'tabular-nums' }}>{formatTime(o.created_at)}</div>
                 <div style={{ color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {preview} <span style={{ opacity: 0.6 }}>({itemCount})</span>
+                </div>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {customerName ?? <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
                 </div>
                 <div style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{baht(Number(o.total))}</div>
                 <div style={{ color: 'var(--color-text-secondary)' }}>{paymentLabel(o.payment_method)}</div>
@@ -311,7 +341,6 @@ export default function ReceiptCopies() {
 
 /** Skeleton mirroring the order table (header row + several order rows). */
 function ReceiptListSkeleton() {
-  const cols = '90px 80px 1fr 130px 120px';
   return (
     <div
       aria-busy="true"
@@ -319,19 +348,20 @@ function ReceiptListSkeleton() {
     >
       <span className="sr-only">กำลังโหลดสำเนาใบเสร็จ</span>
       <div style={{
-        display: 'grid', gridTemplateColumns: cols, gap: 'var(--space-3)', padding: '12px var(--space-4)',
+        display: 'grid', gridTemplateColumns: GRID_COLS, gap: 'var(--space-3)', padding: '12px var(--space-4)',
         borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
       }}>
-        {Array.from({ length: 5 }).map((_, c) => <Skeleton key={c} width="60%" height="var(--space-3)" />)}
+        {Array.from({ length: 6 }).map((_, c) => <Skeleton key={c} width="60%" height="var(--space-3)" />)}
       </div>
       {Array.from({ length: 7 }).map((_, r) => (
         <div key={r} style={{
-          display: 'grid', gridTemplateColumns: cols, gap: 'var(--space-3)', padding: '14px var(--space-4)',
+          display: 'grid', gridTemplateColumns: GRID_COLS, gap: 'var(--space-3)', padding: '14px var(--space-4)',
           alignItems: 'center', borderBottom: '1px solid var(--color-border)',
         }}>
           <Skeleton width="70%" height="var(--space-3)" />
           <Skeleton width="60%" height="var(--space-3)" />
           <Skeleton width="85%" height="var(--space-3)" />
+          <Skeleton width="65%" height="var(--space-3)" />
           <Skeleton width="50%" height="var(--space-3)" style={{ justifySelf: 'end' }} />
           <Skeleton width="55%" height="var(--space-3)" />
         </div>
