@@ -767,7 +767,15 @@ export default function POSTerminal() {
               try {
                 const updated = await setOrderDate.mutateAsync({ orderId: receiptOrderId, businessDate: iso });
                 setReceiptIssuedAt(new Date(updated.created_at));
-                setReceiptData(prev => prev ? { ...prev, receiptNo: updated.receipt_no } : prev);
+                // Backdating re-sequences the order for the target day, so refresh
+                // BOTH the running order number (daily_number) and the receipt no.
+                // — not just the receipt no — so the slip shows the real number of
+                // the day it moved to, not the day it was keyed in.
+                setReceiptData(prev => prev ? {
+                  ...prev,
+                  orderNumber: String(displayOrderNo(updated)),
+                  receiptNo: updated.receipt_no,
+                } : prev);
                 toast({ kind: 'success', title: 'บันทึกวันที่ใบเสร็จแล้ว', msg: `เลขที่ ${updated.receipt_no}` });
               } catch (e: unknown) {
                 toast({ kind: 'danger', title: 'บันทึกวันที่ไม่สำเร็จ', msg: String(e instanceof Error ? e.message : e) });
