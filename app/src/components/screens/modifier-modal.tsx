@@ -140,7 +140,7 @@ export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props)
         const o = g.options.find((x) => x.id === sel[g.id]);
         if (o) d += o.diff;
       } else {
-        (sel[g.id] as string[]).forEach((oid) => {
+        ((sel[g.id] as string[]) ?? []).forEach((oid) => {
           const o = g.options.find((x) => x.id === oid);
           if (o) d += o.diff;
         });
@@ -153,7 +153,7 @@ export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props)
 
   const toggleCheck = (groupId: string, optionId: string) => {
     setSel((cur) => {
-      const list = cur[groupId] as string[];
+      const list = (cur[groupId] as string[]) ?? [];
       return { ...cur, [groupId]: list.includes(optionId) ? list.filter((x) => x !== optionId) : [...list, optionId] };
     });
   };
@@ -174,7 +174,7 @@ export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props)
           modIds.push(o.id);
         }
       } else {
-        (sel[g.id] as string[]).forEach((oid) => {
+        ((sel[g.id] as string[]) ?? []).forEach((oid) => {
           const o = g.options.find((x) => x.id === oid);
           if (o) {
             labels.push(`+ ${o.label}`);
@@ -247,7 +247,7 @@ export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props)
               </div>
               <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8}}>
                 {g.options.map((o) => {
-                  const isSelected = g.type === 'radio' ? sel[g.id] === o.id : (sel[g.id] as string[]).includes(o.id);
+                  const isSelected = g.type === 'radio' ? sel[g.id] === o.id : ((sel[g.id] as string[]) ?? []).includes(o.id);
                   const onPick = () => g.type === 'radio'
                     ? setSel((c) => ({ ...c, [g.id]: o.id }))
                     : toggleCheck(g.id, o.id);
