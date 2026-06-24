@@ -31,8 +31,9 @@ export default function Bakery() {
   const { data: products, isLoading: productsLoading } = useAllProducts();
   const { data: inventoryItems } = useInventory();
 
+  // ผลิตได้ทั้ง PRODUCED (ของขายที่ผลิตล่วงหน้า) และ COMPONENT (ส่วนผสมทำเอง)
   const producedProducts = useMemo(
-    () => (products ?? []).filter(p => p.productType === 'PRODUCED'),
+    () => (products ?? []).filter(p => p.productType === 'PRODUCED' || p.productType === 'COMPONENT'),
     [products],
   );
 

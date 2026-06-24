@@ -28,6 +28,7 @@ interface ProductDetailRead {
   servings_per_batch: number;
   recipe: RecipeItemRead[];
   modifier_groups: ModifierGroupSummary[];
+  estimated_unit_cost?: string | number; // Decimal — per-unit ingredient cost (COMPONENT/PRODUCED)
 }
 
 // ── Frontend shapes ───────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ export interface ProductDetail {
   hasModifiers: boolean;
   modifierGroupIds: string[];
   recipe: RecipeItem[];
+  estimatedUnitCost: number;  // backend-computed per-unit ingredient cost
 }
 
 function mapDetail(p: ProductDetailRead): ProductDetail {
@@ -63,6 +65,7 @@ function mapDetail(p: ProductDetailRead): ProductDetail {
       qty: Number(r.quantity),   // "quantity" in backend, "qty" in frontend
       costPerUnit: Number(r.cost_per_unit ?? 0),
     })),
+    estimatedUnitCost: Number(p.estimated_unit_cost ?? 0),
   };
 }
 

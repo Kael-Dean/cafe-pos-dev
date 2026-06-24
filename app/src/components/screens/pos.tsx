@@ -92,16 +92,18 @@ export default function POSTerminal() {
 
   const filtered = useMemo(() => {
     if (!products) return [];
+    // COMPONENT = ส่วนผสมทำเอง (ไม่ขาย) — กันไม่ให้โผล่ในหน้าขาย (BE ก็ block 422 อีกชั้น)
+    const sellable = products.filter(m => m.productType !== 'COMPONENT');
     if (search.trim()) {
       const s = search.toLowerCase();
-      return products.filter(m => m.name.toLowerCase().includes(s) || m.nameEn.toLowerCase().includes(s));
+      return sellable.filter(m => m.name.toLowerCase().includes(s) || m.nameEn.toLowerCase().includes(s));
     }
     if (category === 'fav') {
-      const favs = products.filter(m => m.hot);
-      return favs.length > 0 ? favs : products;
+      const favs = sellable.filter(m => m.hot);
+      return favs.length > 0 ? favs : sellable;
     }
-    if (category === 'all') return products;
-    return products.filter(m => m.cat === category);
+    if (category === 'all') return sellable;
+    return sellable.filter(m => m.cat === category);
   }, [products, category, search]);
 
   // ── Promotions: evaluate eligible promos whenever the cart changes (debounced 300ms) ──

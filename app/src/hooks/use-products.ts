@@ -19,7 +19,7 @@ interface ProductRead {
   description: string | null;
   price: string | number;  // Decimal serialised as string
   is_active: boolean;
-  product_type: 'MADE_TO_ORDER' | 'PRODUCED';
+  product_type: 'MADE_TO_ORDER' | 'PRODUCED' | 'COMPONENT';
   servings_per_batch: number;
   finished_goods_item_id: string | null;
   image_url: string | null;   // R2 public URL, or null when no photo uploaded
@@ -36,7 +36,7 @@ export interface MenuItem {
   color: string;        // generated from id
   tag: string;          // first 2 chars of name
   needsModifier: boolean; // set to true in POS when modifier groups exist
-  productType: 'MADE_TO_ORDER' | 'PRODUCED';
+  productType: 'MADE_TO_ORDER' | 'PRODUCED' | 'COMPONENT';
   servingsPerBatch: number;
   finishedGoodsItemId: string | null;
   imageUrl: string | null;  // product.image_url — card background when present
@@ -136,9 +136,9 @@ interface ProductCreatePayload {
   name: string;
   category_id?: string;
   description?: string;
-  price: number;
+  price?: number;   // omit for COMPONENT — server forces 0
   is_active?: boolean;
-  product_type?: 'MADE_TO_ORDER' | 'PRODUCED';
+  product_type?: 'MADE_TO_ORDER' | 'PRODUCED' | 'COMPONENT';
   servings_per_batch?: number;
 }
 
@@ -169,7 +169,7 @@ interface ProductUpdatePayload {
   price?: number;
   category_id?: string | null;
   name?: string;
-  product_type?: 'MADE_TO_ORDER' | 'PRODUCED';
+  product_type?: 'MADE_TO_ORDER' | 'PRODUCED' | 'COMPONENT';
   servings_per_batch?: number;
 }
 

@@ -465,7 +465,7 @@ export default function PreOrders() {
       {/* ── Modals ── */}
       {createOpen && (
         <CreateModal
-          allProducts={allProducts}
+          allProducts={allProducts.filter(p => p.productType !== 'COMPONENT')}
           cName={cName} onNameChange={setCName}
           cPhone={cPhone} onPhoneChange={setCPhone}
           cOrderDate={cOrderDate} onOrderDateChange={setCOrderDate}
@@ -602,9 +602,11 @@ function DetailPanel({
   const [addSearchFocused, setAddSearchFocused] = useState(false);
   const isPending = detail.status === 'PENDING';
   const totalStr = detail.items.reduce((s, it) => s + Number(it.lineTotal), 0).toFixed(2);
+  // COMPONENT = ส่วนผสมทำเอง (ไม่ขาย) — ห้ามเพิ่มเข้า pre-order
+  const sellableProducts = allProducts.filter(p => p.productType !== 'COMPONENT');
   const filteredProducts = addItemProductSearch
-    ? allProducts.filter(p => p.name.toLowerCase().includes(addItemProductSearch.toLowerCase()))
-    : allProducts;
+    ? sellableProducts.filter(p => p.name.toLowerCase().includes(addItemProductSearch.toLowerCase()))
+    : sellableProducts;
   const showAddDropdown = addSearchFocused && filteredProducts.length > 0;
 
   return (
@@ -970,6 +972,7 @@ function CreateModal({
   onConfirm: () => void; onClose: () => void; isPending: boolean;
 }) {
   const [searchFocused, setSearchFocused] = useState(false);
+  // allProducts ถูกกรอง COMPONENT ออกแล้วจาก call site (component ไม่ขาย)
   const filtered = cItemProductSearch
     ? allProducts.filter(p => p.name.toLowerCase().includes(cItemProductSearch.toLowerCase()))
     : allProducts;

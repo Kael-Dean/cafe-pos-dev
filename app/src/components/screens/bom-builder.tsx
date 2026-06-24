@@ -18,8 +18,8 @@ import { api } from '@/lib/api-client';
 import { setNavGuard } from '@/lib/nav-guard';
 import ImageCropModal from './image-crop-modal';
 
-type ProductType = 'MENU' | 'INGREDIENT';
-type ApiProductType = 'MADE_TO_ORDER' | 'PRODUCED';
+type ProductType = 'MENU' | 'COMPONENT';
+type ApiProductType = 'MADE_TO_ORDER' | 'PRODUCED' | 'COMPONENT';
 
 // VAT 7% (frontend-only). ราคาขายที่เก็บ/ส่ง BE เป็นราคารวม VAT แล้ว (เลขกลม เช่น 60, 100);
 // exVat() ถอดฐานก่อน VAT ออกมา เพื่อแสดง breakdown ใต้ช่องราคา และคิด margin จากรายได้จริง (ไม่รวม VAT).
@@ -41,7 +41,6 @@ export default function BOMBuilder() {
   const [editedServingsPerBatch, setEditedServingsPerBatch] = useState(1);
   const [editedCategoryId, setEditedCategoryId] = useState('');
   const [isDirty, setIsDirty] = useState(false);
-  const [productType, setProductType] = useState<ProductType>('MENU');
   const [modifierGroupPickerOpen, setModifierGroupPickerOpen] = useState(false);
 
   const { data: products, isLoading: productsLoading } = useAllProducts();
@@ -136,11 +135,13 @@ export default function BOMBuilder() {
   }, [selectedId, selectedProduct?.servingsPerBatch]);
 
   const totalCost = computeCost(editedRecipe);
-  const isProduced = selectedProduct?.productType === 'PRODUCED';
-  const batchSize = isProduced ? Math.max(1, editedServingsPerBatch) : 1;
+  // COMPONENT = ส่วนผสมทำเอง (ผลิตเอง ไม่ขาย). PRODUCED & COMPONENT ผลิตเป็นแบทช์ → ต้นทุนหารด้วย servings/แบทช์.
+  const isComponent = selectedProduct?.productType === 'COMPONENT';
+  const isBatchProduced = selectedProduct?.productType === 'PRODUCED' || isComponent;
+  const batchSize = isBatchProduced ? Math.max(1, editedServingsPerBatch) : 1;
   const costPerUnit = totalCost / batchSize;
-  // เมนูขาย: ราคาเป็นราคารวม VAT → คิด margin จากฐานก่อน VAT (รายได้จริง). อื่นๆ คงเดิม.
-  const revenueBasis = productType === 'MENU' ? exVat(editedPrice) : editedPrice;
+  // เมนูขาย: ราคาเป็นราคารวม VAT → คิด margin จากฐานก่อน VAT (รายได้จริง). component ไม่แสดง margin.
+  const revenueBasis = exVat(editedPrice);
   const margin = revenueBasis - costPerUnit;
   const marginPct = revenueBasis > 0 ? (margin / revenueBasis) * 100 : 0;
 
@@ -185,13 +186,13 @@ export default function BOMBuilder() {
         updateRecipe.mutateAsync({ productId: selectedId, items: editedRecipe }),
         updateProduct.mutateAsync({
           productId: selectedId,
-          price: editedPrice,
-          category_id: editedCategoryId || null,
-          ...(isProduced ? { servings_per_batch: Math.max(1, editedServingsPerBatch) } : {}),
+          // COMPONENT: ไม่มีราคาขาย/หมวดหมู่ (server บังคับ price=0); ส่งเฉพาะ servings/แบทช์
+          ...(isComponent ? {} : { price: editedPrice, category_id: editedCategoryId || null }),
+          ...(isBatchProduced ? { servings_per_batch: Math.max(1, editedServingsPerBatch) } : {}),
         }),
       ]);
       setIsDirty(false);
-      toast({ kind: 'success', title: 'บันทึกสูตรแล้ว', msg: `${selectedProduct?.name ?? ''} • ${editedRecipe.length} วัตถุดิบ • ต้นทุน${isProduced ? '/ชิ้น' : ''} ฿${costPerUnit.toFixed(2)} • Margin ${marginPct.toFixed(1)}%` });
+      toast({ kind: 'success', title: 'บันทึกสูตรแล้ว', msg: `${selectedProduct?.name ?? ''} • ${editedRecipe.length} วัตถุดิบ • ต้นทุน${isBatchProduced ? '/ชิ้น' : ''} ฿${costPerUnit.toFixed(2)}${isComponent ? '' : ` • Margin ${marginPct.toFixed(1)}%`}` });
     } catch (err) {
       toast({ kind: 'warning', title: 'บันทึกไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
     }
@@ -199,10 +200,17 @@ export default function BOMBuilder() {
 
   const submitAddMenu = async ({ name, categoryId, price, description, type, apiProductType, servingsPerBatch }: { name: string; categoryId: string; price: number; description: string; type: ProductType; apiProductType: ApiProductType; servingsPerBatch: number }) => {
     try {
-      const newProduct = await createProduct.mutateAsync({ name, category_id: categoryId || undefined, price, description: description || undefined, product_type: type === 'MENU' ? apiProductType : undefined, servings_per_batch: (type === 'MENU' && apiProductType === 'PRODUCED') ? servingsPerBatch : undefined });
+      const isComp = type === 'COMPONENT';
+      const newProduct = await createProduct.mutateAsync({
+        name,
+        category_id: isComp ? undefined : (categoryId || undefined),
+        price: isComp ? undefined : price,         // omit for COMPONENT — server forces 0
+        description: description || undefined,
+        product_type: isComp ? 'COMPONENT' : apiProductType,
+        servings_per_batch: (isComp || apiProductType === 'PRODUCED') ? servingsPerBatch : undefined,
+      });
       setAddMenuOpen(false);
       setSelectedId(newProduct.id);
-      setProductType(type);
       toast({ kind: 'success', title: 'เพิ่มรายการแล้ว', msg: name });
     } catch (err) {
       toast({ kind: 'warning', title: 'เกิดข้อผิดพลาด', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
@@ -246,17 +254,18 @@ export default function BOMBuilder() {
     setDuplicating(true);
     setDuplicatingId(target.id);
     try {
-      const apiType = target.productType; // 'MADE_TO_ORDER' | 'PRODUCED'
+      const apiType = target.productType; // 'MADE_TO_ORDER' | 'PRODUCED' | 'COMPONENT'
+      const isComp = apiType === 'COMPONENT';
       const [detail, steps] = await Promise.all([
         api.get<{ recipe: { inventory_item_id: string; quantity: string | number }[]; modifier_groups: { id: string }[] }>(`/api/v1/products/${target.id}`),
         api.get<CookingStepRead[]>(`/api/v1/products/${target.id}/steps`).catch(() => [] as CookingStepRead[]),
       ]);
       const newProduct = await createProduct.mutateAsync({
         name: makeUniqueCopyName(target.name),
-        category_id: target.cat || undefined,
-        price: target.price,
+        category_id: isComp ? undefined : (target.cat || undefined),
+        price: isComp ? undefined : target.price,
         product_type: apiType,
-        servings_per_batch: apiType === 'PRODUCED' ? Math.max(1, target.servingsPerBatch) : undefined,
+        servings_per_batch: (isComp || apiType === 'PRODUCED') ? Math.max(1, target.servingsPerBatch) : undefined,
       });
       const recipeItems = (detail.recipe ?? []).map(r => ({ invId: r.inventory_item_id, qty: Number(r.quantity) }));
       const groupIds = (detail.modifier_groups ?? []).map(g => g.id);
@@ -422,14 +431,14 @@ export default function BOMBuilder() {
           <>
           <RightPanel
             product={selectedProduct}
-            productType={productType}
+            isComponent={isComponent}
             recipe={editedRecipe}
             editedPrice={editedPrice}
             editedCategoryId={editedCategoryId}
             categories={categories ?? []}
             inventoryItems={inventoryItems ?? []}
             totalCost={totalCost}
-            isProduced={isProduced}
+            isProduced={isBatchProduced}
             batchSize={batchSize}
             editedServingsPerBatch={editedServingsPerBatch}
             onServingsPerBatchChange={changeServingsPerBatch}
@@ -518,7 +527,7 @@ export default function BOMBuilder() {
 
 interface RightPanelProps {
   product: MenuItem;
-  productType: ProductType;
+  isComponent: boolean;
   recipe: RecipeItem[];
   editedPrice: number;
   editedCategoryId: string;
@@ -632,7 +641,7 @@ const StepButtons = ({ value, step, min, max, onChange }: { value: number; step:
   );
 };
 
-const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryId, categories, inventoryItems, totalCost, isProduced, batchSize, editedServingsPerBatch, onServingsPerBatchChange, costPerUnit, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onCategoryChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, onDuplicate, onRename, duplicating, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen }: RightPanelProps) => (
+const RightPanel = ({ product, isComponent, recipe, editedPrice, editedCategoryId, categories, inventoryItems, totalCost, isProduced, batchSize, editedServingsPerBatch, onServingsPerBatchChange, costPerUnit, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onCategoryChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, onDuplicate, onRename, duplicating, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen }: RightPanelProps) => (
   <>
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
       <ProductImageControl product={product} />
@@ -640,10 +649,10 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500 }}>{product.nameEn}</div>
         <EditableMenuName name={product.name} onRename={onRename} />
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Tag tone={productType === 'MENU' ? 'info' : 'accent'}>{productType === 'MENU' ? 'เมนูขาย' : 'ส่วนผสม'}</Tag>
+          <Tag tone={isComponent ? 'accent' : 'info'}>{isComponent ? 'ส่วนผสมทำเอง' : 'เมนูขาย'}</Tag>
           {product.productType === 'PRODUCED' && <Tag tone="accent">ผลิตล่วงหน้า</Tag>}
           <Tag tone={recipe.length > 0 ? 'success' : 'warning'}>{recipe.length > 0 ? `${recipe.length} วัตถุดิบ` : 'ยังไม่มีสูตร'}</Tag>
-          {productType === 'MENU' && (
+          {!isComponent && (
             <CategorySelector value={editedCategoryId} categories={categories} onChange={onCategoryChange} />
           )}
         </div>
@@ -651,23 +660,31 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
         <div>
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>
-            {productType === 'MENU' ? 'ราคาขาย' : 'ต้นทุนผลิต'}
+            {isComponent ? 'ต้นทุน/หน่วย (ประมาณ)' : 'ราคาขาย'}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+          {isComponent ? (
+            // COMPONENT ไม่มีราคาขาย — แสดงต้นทุน/หน่วยที่คำนวณสดจากสูตร (อ่านอย่างเดียว)
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, padding: '4px 0' }}>
               <span style={{ fontSize: 18, color: 'var(--color-text-secondary)' }}>฿</span>
-              <NumberInput min={0} step={5} value={editedPrice}
-                onChange={onPriceChange}
-                className="num no-spin"
-                style={{ width: 78, fontSize: 30, fontWeight: 700, textAlign: 'right', border: 'none', borderBottom: '2px solid var(--color-border)', outline: 'none', padding: '4px 0', background: 'transparent', fontFamily: 'inherit', letterSpacing: '-0.02em' }}
-                onFocus={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
-                onBlur={e => e.target.style.borderBottomColor = 'var(--color-border)'}
-              />
+              <span className="num" style={{ fontSize: 30, fontWeight: 700, letterSpacing: '-0.02em' }}>{costPerUnit.toFixed(2)}</span>
             </div>
-            <StepButtons value={editedPrice} step={5} min={0} onChange={onPriceChange} />
-          </div>
-          {productType === 'MENU' && (
-            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--color-text-muted)' }}>รวม VAT 7%</div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                  <span style={{ fontSize: 18, color: 'var(--color-text-secondary)' }}>฿</span>
+                  <NumberInput min={0} step={5} value={editedPrice}
+                    onChange={onPriceChange}
+                    className="num no-spin"
+                    style={{ width: 78, fontSize: 30, fontWeight: 700, textAlign: 'right', border: 'none', borderBottom: '2px solid var(--color-border)', outline: 'none', padding: '4px 0', background: 'transparent', fontFamily: 'inherit', letterSpacing: '-0.02em' }}
+                    onFocus={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
+                    onBlur={e => e.target.style.borderBottomColor = 'var(--color-border)'}
+                  />
+                </div>
+                <StepButtons value={editedPrice} step={5} min={0} onChange={onPriceChange} />
+              </div>
+              <div style={{ marginTop: 6, fontSize: 11, color: 'var(--color-text-muted)' }}>รวม VAT 7%</div>
+            </>
           )}
         </div>
         {isProduced && (
@@ -695,13 +712,13 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
       </div>
     </div>
 
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${productType === 'MENU' ? 4 : 3}, minmax(0, 1fr))`, gap: 12, marginBottom: 16 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${isComponent ? 2 : 4}, minmax(0, 1fr))`, gap: 12, marginBottom: 16 }}>
       <SummaryCard
         label={isProduced ? 'ต้นทุนวัตถุดิบ/ชิ้น' : 'ต้นทุนวัตถุดิบ'}
         value={`฿${costPerUnit.toFixed(2)}`}
         hint={isProduced ? `฿${totalCost.toFixed(2)} / ${batchSize} ชิ้น` : undefined}
       />
-      {productType === 'MENU' && (
+      {!isComponent && (
         <SummaryCard
           label="ก่อน VAT (ฐาน)"
           value={`฿${exVat(editedPrice).toFixed(2)}`}
@@ -709,10 +726,12 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
           hint={`VAT 7% · ฿${(editedPrice - exVat(editedPrice)).toFixed(2)}`}
         />
       )}
-      <SummaryCard label="ส่วนต่าง (Contribution)" value={`฿${margin.toFixed(2)}`} color={margin >= 0 ? 'var(--color-text)' : 'var(--color-danger)'} hint={productType === 'MENU' ? 'คิดจากฐานก่อน VAT' : undefined} />
-      {productType === 'MENU'
-        ? <SummaryCard label="Margin" value={`${marginPct.toFixed(1)}%`} highlight={marginToneOf(marginPct)} />
-        : <SummaryCard label="ต้นทุน/หน่วย" value={`฿${costPerUnit.toFixed(2)}`} highlight="info" />
+      {!isComponent && (
+        <SummaryCard label="ส่วนต่าง (Contribution)" value={`฿${margin.toFixed(2)}`} color={margin >= 0 ? 'var(--color-text)' : 'var(--color-danger)'} hint="คิดจากฐานก่อน VAT" />
+      )}
+      {isComponent
+        ? <SummaryCard label="ต้นทุน/หน่วย" value={`฿${costPerUnit.toFixed(2)}`} highlight="info" />
+        : <SummaryCard label="Margin" value={`${marginPct.toFixed(1)}%`} highlight={marginToneOf(marginPct)} />
       }
     </div>
 
@@ -788,7 +807,7 @@ const RightPanel = ({ product, productType, recipe, editedPrice, editedCategoryI
       onPickerOpen={onModifierGroupPickerOpen}
     />
 
-    {productType === 'MENU' && (
+    {!isComponent && (
       <div style={{ marginTop: 24, padding: 16, background: 'var(--color-info-50)', borderRadius: 12, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
         <Icon name="info" size={20} color="var(--color-info)" />
         <div>
@@ -1620,7 +1639,11 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
   const [categoryId, setCategoryId] = useState('');
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
-  const canSubmit = name.trim().length > 0 && price !== '' && Number(price) >= 0 && (type !== 'MENU' || apiProductType !== 'PRODUCED' || (servingsPerBatch !== '' && Number(servingsPerBatch) >= 1));
+  const isComp = type === 'COMPONENT';
+  const needsServings = isComp || (type === 'MENU' && apiProductType === 'PRODUCED');
+  const canSubmit = name.trim().length > 0
+    && (isComp || (price !== '' && Number(price) >= 0))
+    && (!needsServings || (servingsPerBatch !== '' && Number(servingsPerBatch) >= 1));
   const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), categoryId, price: Number(price), description: description.trim(), type, apiProductType, servingsPerBatch: Math.max(1, Math.floor(Number(servingsPerBatch) || 1)) }); };
 
   return (
@@ -1628,11 +1651,11 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
       {/* Type toggle */}
       <BomFormField label="ประเภท *">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          {(['MENU', 'INGREDIENT'] as ProductType[]).map(t => (
+          {(['MENU', 'COMPONENT'] as ProductType[]).map(t => (
             <button key={t} onClick={() => setType(t)} style={{ padding: '10px 12px', borderRadius: 8, border: `2px solid ${type === t ? 'var(--color-accent)' : 'var(--color-border)'}`, background: type === t ? 'var(--color-accent-50)' : 'transparent', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: type === t ? 'var(--color-primary-700)' : 'var(--color-text-secondary)', transition: 'all 150ms var(--ease-out)' }}>
-              {t === 'MENU' ? '🍵 เมนูขาย' : '🧪 ส่วนผสม'}
+              {t === 'MENU' ? '🍵 เมนูขาย' : '🧪 ส่วนผสมทำเอง'}
               <div style={{ fontSize: 11, fontWeight: 400, marginTop: 2, color: type === t ? 'var(--color-text-secondary)' : 'var(--color-text-muted)' }}>
-                {t === 'MENU' ? 'จำหน่ายให้ลูกค้า' : 'ใช้ในสูตรอื่น'}
+                {t === 'MENU' ? 'จำหน่ายให้ลูกค้า' : 'ผลิตเอง · ไม่ขาย · ใช้ในสูตรอื่น'}
               </div>
             </button>
           ))}
@@ -1654,7 +1677,7 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
         </BomFormField>
       )}
 
-      {type === 'MENU' && apiProductType === 'PRODUCED' && (
+      {needsServings && (
         <BomFormField label="จำนวนหน่วย/แบทช์ *">
           <input type="number" min={1} step={1} inputMode="numeric" value={servingsPerBatch} onChange={e => setServingsPerBatch(e.target.value)} placeholder="เช่น 24" style={bomInputStyle()} />
         </BomFormField>
@@ -1678,9 +1701,11 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
         </BomFormField>
       )}
 
-      <BomFormField label={type === 'MENU' ? 'ราคาขาย (฿) *' : 'ต้นทุนผลิต/หน่วย (฿) *'}>
-        <input type="number" min={0} step={5} value={price} onChange={e => setPrice(e.target.value)} placeholder="0" style={bomInputStyle()} />
-      </BomFormField>
+      {!isComp && (
+        <BomFormField label="ราคาขาย (฿) *">
+          <input type="number" min={0} step={5} value={price} onChange={e => setPrice(e.target.value)} placeholder="0" style={bomInputStyle()} />
+        </BomFormField>
+      )}
 
       <BomFormField label="รายละเอียด">
         <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} placeholder="ไม่บังคับ" style={{ ...bomInputStyle(), resize: 'vertical', fontFamily: 'inherit' }} />
