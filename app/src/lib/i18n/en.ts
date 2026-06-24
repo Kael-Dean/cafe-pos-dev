@@ -55,6 +55,7 @@ export const en: Messages = {
     customers: 'Customers (CRM)',
     reports: 'Reports',
     catalog: 'Catalog',
+    'recycle-bin': 'Recycle Bin',
     settings: 'Settings',
   },
 
@@ -439,5 +440,27 @@ export const en: Messages = {
     savedCount: (n: number) => `${n} ingredients`,
     saveFailed: 'Save failed',
     tryAgain: 'Please try again',
+  },
+
+  // ── Recycle bin (deleted-items listing + restore) — OWNER/MANAGER only ─────
+  recycleBin: {
+    title: 'Recycle Bin',
+    subtitle: 'Deleted items — restore them back into use',
+    tabProducts: 'Products',
+    tabInventory: 'Ingredients',
+    restore: 'Restore',
+    restoring: 'Restoring...',
+    restoreConfirmTitle: 'Restore this item?',
+    restoreConfirm: (name: string) => `Restore "${name}" back into use?`,
+    restored: (name: string) => `"${name}" restored`,
+    restoreFailed: 'Restore failed',
+    notFound: 'Item not found (it may already be restored)',
+    emptyProducts: 'No deleted products',
+    emptyInventory: 'No deleted ingredients',
+    colName: 'Name',
+    colPrice: 'Price',
+    colUnit: 'Unit',
+    colStock: 'On hand',
+    noAccess: 'You do not have access to this page',
   },
 };

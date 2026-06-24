@@ -214,6 +214,28 @@ export function useProductsAdmin() {
   });
 }
 
+// ── Recycle bin (soft-deleted products) ───────────────────────────────────────
+// "Delete" in this POS sets is_active=false; these list/restore those rows.
+// OWNER/MANAGER only (backend enforces; the screen is gated too).
+export function useDeletedProducts() {
+  return useQuery<ProductReadAdmin[]>({
+    queryKey: ['products', 'deleted'],
+    queryFn: () => api.get<ProductReadAdmin[]>('/api/v1/products/deleted'),
+  });
+}
+
+export function useRestoreProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    // Idempotent on the backend — restoring an already-active product is a 200.
+    mutationFn: (productId: string) =>
+      api.post<ProductReadAdmin>(`/api/v1/products/${productId}/restore`, {}),
+    // ['products'] prefix covers ['products','deleted'] (row leaves) and the
+    // active lists ['products','all'] / ['products','admin'] (item reappears).
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['products'] }),
+  });
+}
+
 export function useUpdateProductAdmin() {
   const qc = useQueryClient();
   return useMutation({

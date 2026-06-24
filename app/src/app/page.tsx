@@ -47,6 +47,7 @@ const Settings = lazyScreen(() => import('@/components/screens/settings'));
 const Reports = lazyScreen(() => import('@/components/screens/reports').then((m) => ({ default: m.Reports })));
 const HardwareScreen = lazyScreen(() => import('@/components/screens/hardware'));
 const CatalogAdmin = lazyScreen(() => import('@/components/screens/catalog'));
+const RecycleBin = lazyScreen(() => import('@/components/screens/recycle-bin'));
 const StockTakeScreen = lazyScreen(() => import('@/components/screens/stock-take'));
 const MembersScreen = lazyScreen(() => import('@/components/screens/members'));
 const SalesScreen = lazyScreen(() => import('@/components/screens/sales'));
@@ -56,7 +57,7 @@ type Screen =
   | 'pos' | 'kds' | 'dashboard' | 'bom' | 'bakery' | 'inventory'
   | 'pre-orders' | 'shopping-list' | 'stock-take'
   | 'cash' | 'receipt-copies' | 'promotions' | 'members' | 'sales' | 'protocols' | 'hr' | 'shifts'
-  | 'hardware' | 'customers' | 'reports' | 'catalog' | 'settings';
+  | 'hardware' | 'customers' | 'reports' | 'catalog' | 'recycle-bin' | 'settings';
 
 export default function POS() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -122,6 +123,7 @@ export default function POS() {
     customers:  <Customers />,
     reports:    <Reports />,
     catalog:    <CatalogAdmin />,
+    'recycle-bin': <RecycleBin />,
     settings:   <Settings />,
   };
 

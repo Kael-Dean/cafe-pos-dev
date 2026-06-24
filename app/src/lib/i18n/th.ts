@@ -60,6 +60,7 @@ export const th = {
     customers: 'ลูกค้า (CRM)',
     reports: 'รายงาน',
     catalog: 'แคตตาล็อกสินค้า',
+    'recycle-bin': 'ถังขยะ',
     settings: 'ตั้งค่า',
   },
 
@@ -469,6 +470,28 @@ export const th = {
     savedCount: (n: number) => `${n} วัตถุดิบ`,
     saveFailed: 'บันทึกไม่สำเร็จ',
     tryAgain: 'กรุณาลองใหม่',
+  },
+
+  // ── Recycle bin (deleted-items listing + restore) — OWNER/MANAGER only ─────
+  recycleBin: {
+    title: 'ถังขยะ',
+    subtitle: 'รายการที่ถูกลบ — กู้คืนกลับมาใช้งานได้',
+    tabProducts: 'สินค้า',
+    tabInventory: 'วัตถุดิบ',
+    restore: 'กู้คืน',
+    restoring: 'กำลังกู้คืน...',
+    restoreConfirmTitle: 'กู้คืนรายการนี้?',
+    restoreConfirm: (name: string) => `กู้คืน "${name}" กลับมาใช้งาน?`,
+    restored: (name: string) => `กู้คืน "${name}" แล้ว`,
+    restoreFailed: 'กู้คืนไม่สำเร็จ',
+    notFound: 'ไม่พบรายการ (อาจถูกกู้คืนไปแล้ว)',
+    emptyProducts: 'ไม่มีสินค้าที่ถูกลบ',
+    emptyInventory: 'ไม่มีวัตถุดิบที่ถูกลบ',
+    colName: 'ชื่อ',
+    colPrice: 'ราคา',
+    colUnit: 'หน่วย',
+    colStock: 'คงเหลือ',
+    noAccess: 'ไม่มีสิทธิ์เข้าถึงหน้านี้',
   },
 };
 

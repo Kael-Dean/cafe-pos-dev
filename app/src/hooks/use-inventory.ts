@@ -322,6 +322,34 @@ export function useDeleteInventoryItem() {
   });
 }
 
+// ── Recycle bin (soft-deleted inventory items) ────────────────────────────────
+// "Delete" sets is_active=false; these list/restore those rows. OWNER/MANAGER
+// only (backend enforces; the screen is gated too).
+export function useDeletedInventory() {
+  return useQuery<InventoryItem[]>({
+    queryKey: ['inventory', 'deleted'],
+    queryFn: async () => {
+      const data = await api.get<InventoryItemRead[]>('/api/v1/inventory/deleted');
+      return data.map(mapItem);
+    },
+  });
+}
+
+export function useRestoreInventoryItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    // Idempotent on the backend — restoring an already-active item is a 200.
+    mutationFn: (itemId: string) =>
+      api.post<InventoryItemRead>(`/api/v1/inventory/${itemId}/restore`, {}),
+    onSuccess: () => {
+      // ['inventory'] prefix covers ['inventory','deleted'] (row leaves) and the
+      // active lists ['inventory', search] (item reappears).
+      qc.invalidateQueries({ queryKey: ['inventory'] });
+      qc.invalidateQueries({ queryKey: ['inventory-expired'] });
+    },
+  });
+}
+
 export function useExpiredInventory() {
   return useQuery<ExpiredLotRead[]>({
     queryKey: ['inventory-expired'],

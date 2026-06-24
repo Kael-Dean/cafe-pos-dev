@@ -82,6 +82,7 @@ export const NAV: NavItem[] = [
   { id: 'customers', icon: 'customers', soft: true },
   { id: 'reports',   icon: 'reports',  soft: true },
   { id: 'catalog',   icon: 'inv',      ownerOnly: true },
+  { id: 'recycle-bin', icon: 'trash',  adminOnly: true },
   { id: 'settings',  icon: 'settings', soft: true },
 ];
 
