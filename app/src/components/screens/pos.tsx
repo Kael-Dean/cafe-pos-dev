@@ -6,6 +6,7 @@ import Icon from '../icons';
 import { useToast, baht, Select } from '../app-common';
 import { useI18n } from '@/lib/i18n';
 import { useAllProducts, useCategories, type MenuItem } from '@/hooks/use-products';
+import { useBestSellerNames } from '@/hooks/use-best-sellers';
 import { useProductDetail } from '@/hooks/use-bom';
 import { useCreateOrder, usePayOrder, useSetOrderDate, displayOrderNo } from '@/hooks/use-orders';
 import { ApiError } from '@/lib/api-client';
@@ -56,7 +57,15 @@ export default function POSTerminal() {
   const [showPromoPanel, setShowPromoPanel] = useState(false);
 
   const { data: categories, isLoading: catsLoading } = useCategories();
-  const { data: products, isLoading: prodLoading, isError } = useAllProducts();
+  const { data: rawProducts, isLoading: prodLoading, isError } = useAllProducts();
+  const { data: bestSellers } = useBestSellerNames();
+
+  // Overlay real best-sellers (last 30 days) onto the catalog — drives the
+  // ★ ขายดี tab + the best-seller badge. mapProduct keeps hot:false as default.
+  const products = useMemo(
+    () => (rawProducts ?? []).map(m => ({ ...m, hot: bestSellers?.has(m.name) ?? false })),
+    [rawProducts, bestSellers],
+  );
   const { data: program } = useMembershipProgram();
   const createOrder = useCreateOrder();
   const payOrder = usePayOrder();

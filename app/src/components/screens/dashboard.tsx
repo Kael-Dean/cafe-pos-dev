@@ -1,23 +1,67 @@
 'use client';
 
+import { useState, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import Icon from '../icons';
-import { KPICard, Tag, baht } from '../app-common';
+import { KPICard, Tag, baht, Select } from '../app-common';
 import { useI18n } from '@/lib/i18n';
 import { DASHBOARD } from '../data/mock-data';
 import { useKDSOrders, type KDSTicket } from '@/hooks/use-orders';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
-import { useDashboardToday, useSalesHourly, useCashierShiftsToday, type StaffShiftFE } from '@/hooks/use-dashboard';
+import {
+  useDashboardToday,
+  useRangeKpis,
+  useRangeTopItems,
+  useTrendChart,
+  useCashierShifts,
+  resolveRange,
+  type DashboardPreset,
+  type StaffShiftFE,
+} from '@/hooks/use-dashboard';
 import { useFadeRise, useStagger, useCountUp } from '@/lib/motion';
 import { Skeleton } from '@/components/ui/skeleton';
+
+// Preset date-range options for the header dropdown (labels inline, app convention).
+const PRESET_OPTIONS: { value: DashboardPreset; label: string }[] = [
+  { value: 'today',     label: 'วันนี้' },
+  { value: 'yesterday', label: 'เมื่อวาน' },
+  { value: 'last7',     label: '7 วันล่าสุด' },
+  { value: 'last30',    label: '30 วันล่าสุด' },
+];
 
 export default function Dashboard() {
   const { t } = useI18n();
   const d = DASHBOARD;
+  const qc = useQueryClient();
+
+  const [preset, setPreset] = useState<DashboardPreset>('today');
+  const range = useMemo(() => resolveRange(preset), [preset]);
+  const isToday = preset === 'today';
+
   const { data: liveTickets } = useKDSOrders();
   const { data: inventoryItems } = useInventory();
-  const { data: todayData, isLoading: kpiLoading } = useDashboardToday();
-  const hourly = useSalesHourly();
-  const { data: staffShifts } = useCashierShiftsToday();
+
+  // KPIs + top items: the live /dashboard/today path for "today" (richer + realtime),
+  // otherwise derived from /reports/sales over the selected range.
+  const { data: todayData, isLoading: todayLoading } = useDashboardToday(isToday);
+  const { data: rangeKpis, isLoading: rangeKpiLoading } = useRangeKpis(range, !isToday);
+  const { data: rangeTop } = useRangeTopItems(range, !isToday);
+
+  const trend = useTrendChart(range);
+  const { data: staffShifts } = useCashierShifts(range);
+
+  const kpiLoading = isToday ? todayLoading : rangeKpiLoading;
+
+  const refresh = () => {
+    // Invalidate every dashboard/report query — the active preset's keys refetch.
+    qc.invalidateQueries({ queryKey: ['dashboard-today'] });
+    qc.invalidateQueries({ queryKey: ['dashboard-range-kpis'] });
+    qc.invalidateQueries({ queryKey: ['dashboard-range-top'] });
+    qc.invalidateQueries({ queryKey: ['dashboard-trend-hourly'] });
+    qc.invalidateQueries({ queryKey: ['dashboard-trend-hourly-prev'] });
+    qc.invalidateQueries({ queryKey: ['dashboard-trend-daily'] });
+    qc.invalidateQueries({ queryKey: ['cashier-shifts'] });
+  };
 
   // Header fades+rises once on mount; the KPI grid + panel row stagger their
   // children in. Subtle and one-shot — the dashboard loads into a glance, not a show.
@@ -35,24 +79,25 @@ export default function Dashboard() {
     .sort((a, b) => (a.stock / a.parLevel) - (b.stock / b.parLevel))
     .slice(0, 5);
 
+  // Resolve revenue / orders / atv from the active source (live today vs range totals).
+  const revenue = isToday ? (todayData ? Number(todayData.revenue) : null) : (rangeKpis?.revenue ?? null);
+  const orders  = isToday ? (todayData ? todayData.order_count : null)     : (rangeKpis?.orderCount ?? null);
+  const atv     = isToday ? (todayData ? Number(todayData.avg_ticket) : null) : (rangeKpis?.avgTicket ?? null);
+
   // Merge real KPI values over mock defaults (GP% kept as mock — no backend source yet)
   const kpis = d.kpis.map(k => {
-    if (!todayData) return k;
-    if (k.id === 'revenue') return { ...k, value: Number(todayData.revenue) };
-    if (k.id === 'orders')  return { ...k, value: todayData.order_count };
-    if (k.id === 'atv')     return { ...k, value: Number(todayData.avg_ticket) };
+    if (k.id === 'revenue' && revenue !== null) return { ...k, value: revenue };
+    if (k.id === 'orders'  && orders  !== null) return { ...k, value: orders };
+    if (k.id === 'atv'     && atv     !== null) return { ...k, value: atv };
     return k;
   });
 
-  // Top items from real data; fall back to mock when API hasn't responded
-  const topItems = todayData?.top_items?.length
-    ? todayData.top_items.map(it => ({ name: it.product_name, qty: it.quantity, rev: Number(it.revenue) }))
-    : d.topItems;
-
-  // Hourly chart: use real data when available, otherwise mock
-  const chartHours   = hourly.hours;
-  const chartToday   = hourly.today    ?? d.today;
-  const chartLastWk  = hourly.lastWeek ?? d.lastWeek;
+  // Top items: live today payload, or range product breakdown; fall back to mock.
+  const topItems = isToday
+    ? (todayData?.top_items?.length
+        ? todayData.top_items.map(it => ({ name: it.product_name, qty: it.quantity, rev: Number(it.revenue) }))
+        : d.topItems)
+    : (rangeTop?.length ? rangeTop : d.topItems);
 
   const kpiText = t.dashboard.kpi as Record<string, { label: string; vsLabel: string; suffix: string }>;
 
@@ -63,9 +108,18 @@ export default function Dashboard() {
           <div style={{fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 2}}>{t.dashboard.overline}</div>
           <h1 className="text-balance" style={{margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em'}}>{t.dashboard.title}</h1>
         </div>
-        <div style={{display: 'flex', gap: 'var(--space-2)'}}>
-          <button className="btn btn-ghost"><Icon name="refresh" size={14}/> {t.dashboard.refresh}</button>
-          <button className="btn btn-ghost">{t.dashboard.today} <Icon name="chevronDown" size={14}/></button>
+        <div style={{display: 'flex', gap: 'var(--space-2)', alignItems: 'center'}}>
+          <button className="btn btn-ghost" onClick={refresh}><Icon name="refresh" size={14}/> {t.dashboard.refresh}</button>
+          <Select
+            value={preset}
+            onChange={(v) => setPreset(v as DashboardPreset)}
+            ariaLabel="ช่วงเวลา"
+            options={PRESET_OPTIONS}
+            triggerStyle={{
+              height: 34, padding: '0 12px', background: 'transparent',
+              border: '1px solid var(--color-border)', fontWeight: 500,
+            }}
+          />
           <button className="btn btn-primary"><Icon name="reports" size={14}/> {t.dashboard.makeReport}</button>
         </div>
       </div>
@@ -92,16 +146,32 @@ export default function Dashboard() {
 
       <div style={{display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 'var(--space-4)', marginBottom: 'var(--space-4)'}}>
         <Card>
-          <CardHeader title={t.dashboard.hourlyTitle} sub={t.dashboard.hourlySub}>
-            <div style={{display: 'flex', gap: 'var(--space-3)', fontSize: 12}}>
-              <Legend color="var(--color-primary)" label={t.dashboard.legendToday} />
-              <Legend color="var(--color-accent)" label={t.dashboard.legendLastWeek} dashed />
-            </div>
+          <CardHeader
+            title={range.isSingleDay ? t.dashboard.hourlyTitle : 'ยอดขายรายวัน'}
+            sub={range.isSingleDay ? t.dashboard.hourlySub : 'รายวันตามช่วงที่เลือก'}
+          >
+            {range.isSingleDay && (
+              <div style={{display: 'flex', gap: 'var(--space-3)', fontSize: 12}}>
+                <Legend color="var(--color-primary)" label={preset === 'yesterday' ? 'เมื่อวาน' : t.dashboard.legendToday} />
+                <Legend color="var(--color-accent)" label={t.dashboard.legendLastWeek} dashed />
+              </div>
+            )}
           </CardHeader>
-          {hourly.isLoading ? <LineChartSkeleton /> : <LineChart hours={chartHours} today={chartToday} prev={chartLastWk} />}
+          {trend.isLoading ? <LineChartSkeleton /> : (
+            <LineChart
+              labels={trend.labels}
+              series={trend.series}
+              compare={trend.compare}
+              total={trend.total}
+              totalLabel={range.isSingleDay ? t.dashboard.dayTotalApprox : 'รวมช่วง (โดยประมาณ)'}
+            />
+          )}
         </Card>
         <Card>
-          <CardHeader title={t.dashboard.topTitle} sub={t.dashboard.topSub} />
+          <CardHeader
+            title={t.dashboard.topTitle}
+            sub={isToday ? t.dashboard.topSub : `${PRESET_OPTIONS.find(o => o.value === preset)?.label} • เรียงตามยอดขาย`}
+          />
           <BarList items={topItems} />
         </Card>
       </div>
@@ -201,22 +271,32 @@ const Legend = ({ color, label, dashed }: { color: string; label: string; dashed
   </div>
 );
 
-const LineChart = ({ hours, today, prev }: { hours: string[]; today: number[]; prev: number[] }) => {
-  const { t } = useI18n();
+const LineChart = ({
+  labels, series, compare, total, totalLabel,
+}: {
+  labels: string[];
+  series: number[];
+  compare: number[] | null;
+  total: number;
+  totalLabel: string;
+}) => {
   const W = 600, H = 220, P = 28;
-  const max = Math.max(...today, ...prev) * 1.1;
-  const x = (i: number) => P + (i * (W - P * 2)) / (hours.length - 1);
+  const n = Math.max(1, labels.length);
+  // Label every point when sparse, but thin out dense per-day axes to avoid overlap.
+  const labelStep = Math.max(1, Math.ceil(n / 12));
+  const max = (Math.max(0, ...series, ...(compare ?? [])) || 1) * 1.1;
+  const x = (i: number) => (n > 1 ? P + (i * (W - P * 2)) / (n - 1) : W / 2);
   const y = (v: number) => H - P - (v / max) * (H - P * 2);
   const path = (data: number[]) => data.map((v, i) => `${i ? 'L' : 'M'} ${x(i)} ${y(v)}`).join(' ');
-  const area = (data: number[]) => `${path(data)} L ${x(data.length - 1)} ${H - P} L ${x(0)} ${H - P} Z`;
-  const total = today.reduce((s, v) => s + v, 0);
-  const totalRef = useCountUp(total, { format: (n) => `฿${Math.round(n).toLocaleString('en-US')}` });
+  const area = (data: number[]) =>
+    data.length ? `${path(data)} L ${x(data.length - 1)} ${H - P} L ${x(0)} ${H - P} Z` : '';
+  const totalRef = useCountUp(total, { format: (v) => `฿${Math.round(v).toLocaleString('en-US')}` });
 
   return (
     <div>
-      <div style={{fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 4}}>{t.dashboard.dayTotalApprox}</div>
+      <div style={{fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 4}}>{totalLabel}</div>
       <div className="num" style={{fontSize: 28, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 12}}>
-        <span ref={totalRef}>฿{total.toLocaleString('en-US')}</span>
+        <span ref={totalRef}>฿{Math.round(total).toLocaleString('en-US')}</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
         <defs>
@@ -228,13 +308,13 @@ const LineChart = ({ hours, today, prev }: { hours: string[]; today: number[]; p
         {[0, 0.25, 0.5, 0.75, 1].map((tick, i) => (
           <line key={i} x1={P} x2={W - P} y1={P + tick * (H - 2 * P)} y2={P + tick * (H - 2 * P)} stroke="var(--color-border)" strokeDasharray="2 4"/>
         ))}
-        {hours.map((h, i) => i % 2 === 0 && (
-          <text key={h} x={x(i)} y={H - 8} fontSize="10" textAnchor="middle" fill="var(--color-text-muted)">{h}</text>
+        {labels.map((h, i) => i % labelStep === 0 && (
+          <text key={`${h}-${i}`} x={x(i)} y={H - 8} fontSize="10" textAnchor="middle" fill="var(--color-text-muted)">{h}</text>
         ))}
-        <path d={path(prev)} fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeDasharray="4 4"/>
-        <path d={area(today)} fill="url(#todayFill)"/>
-        <path d={path(today)} fill="none" stroke="var(--color-primary)" strokeWidth="2.5"/>
-        {today.map((v, i) => <circle key={i} cx={x(i)} cy={y(v)} r="3" fill="var(--color-primary)"/>)}
+        {compare && <path d={path(compare)} fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeDasharray="4 4"/>}
+        <path d={area(series)} fill="url(#todayFill)"/>
+        <path d={path(series)} fill="none" stroke="var(--color-primary)" strokeWidth="2.5"/>
+        {series.map((v, i) => <circle key={i} cx={x(i)} cy={y(v)} r="3" fill="var(--color-primary)"/>)}
       </svg>
     </div>
   );
