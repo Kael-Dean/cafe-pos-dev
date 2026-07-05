@@ -64,6 +64,15 @@ export const th = {
     settings: 'ตั้งค่า',
   },
 
+  // ── Sidebar section headers (desktop nav, grouped by working mode) ─────────
+  navSection: {
+    'sec-service': 'หน้าร้าน',
+    'sec-kitchen': 'ครัว & สต็อก',
+    'sec-crm': 'ลูกค้า & การตลาด',
+    'sec-manage': 'จัดการ & รายงาน',
+    'sec-setup': 'ตั้งค่าระบบ',
+  },
+
   // ── Bottom tab bar (mobile) ───────────────────────────────────────────────
   tabs: {
     pos: 'POS',

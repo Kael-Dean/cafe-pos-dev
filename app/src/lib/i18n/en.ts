@@ -59,6 +59,14 @@ export const en: Messages = {
     settings: 'Settings',
   },
 
+  navSection: {
+    'sec-service': 'Service',
+    'sec-kitchen': 'Kitchen & Stock',
+    'sec-crm': 'Customers & Marketing',
+    'sec-manage': 'Manage & Reports',
+    'sec-setup': 'System Setup',
+  },
+
   tabs: {
     pos: 'POS',
     kds: 'KDS',

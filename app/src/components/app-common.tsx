@@ -56,32 +56,48 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
 // ---------- Sidebar ----------
 // Labels are resolved at render time from the active language (`t.nav[id]`); the array
 // holds only structural metadata (id, icon, visibility flags).
-export type NavItem = { id: string; icon?: string; soft?: boolean; adminOnly?: boolean; ownerOnly?: boolean; divider?: boolean; };
+export type NavItem = { id: string; icon?: string; soft?: boolean; adminOnly?: boolean; ownerOnly?: boolean; divider?: boolean; header?: boolean; };
 
+// Grouped by working mode so each job (taking orders, kitchen/stock, CRM, running
+// the shop, one-time setup) sits together and is quick to find. `header` rows are
+// section titles (label from `t.navSection[id]`) — rendered as a heading when the
+// sidebar is expanded, as a plain divider when it's collapsed.
 export const NAV: NavItem[] = [
+  // Front-of-house — everything a cashier touches during a shift.
+  { id: 'sec-service', header: true },
   { id: 'pos',       icon: 'pos' },
   { id: 'kds',       icon: 'kds' },
-  { id: 'dashboard', icon: 'chart' },
-  { id: 'bom',       icon: 'inv' },
+  { id: 'pre-orders',    icon: 'calendar' },
+  { id: 'receipt-copies', icon: 'reports', adminOnly: true },
+  { id: 'cash',      icon: 'cash',     adminOnly: true },
+
+  // Kitchen & stock — recipes, ingredients, counts, purchasing.
+  { id: 'sec-kitchen', header: true },
   { id: 'bakery',    icon: 'cake' },
   { id: 'inventory', icon: 'inv',      soft: true },
-  { id: 'pre-orders',    icon: 'calendar' },
-  { id: 'shopping-list', icon: 'cart' },
   { id: 'stock-take',    icon: 'check' },
-  { id: 'cash',      icon: 'cash',     adminOnly: true },
-  { id: 'receipt-copies', icon: 'reports', adminOnly: true },
-  { id: 'div1',      divider: true },
+  { id: 'shopping-list', icon: 'cart' },
+
+  // Customers & marketing.
+  { id: 'sec-crm', header: true },
   { id: 'promotions', icon: 'tag' },
   { id: 'members',   icon: 'customers', adminOnly: true },
+  { id: 'customers', icon: 'customers', soft: true },
   { id: 'sales',     icon: 'staff',    adminOnly: true },
+
+  // Manage & reports — the manager's overview of the shop.
+  { id: 'sec-manage', header: true },
+  { id: 'dashboard', icon: 'chart' },
+  { id: 'reports',   icon: 'reports',  soft: true },
   { id: 'protocols', icon: 'check' },
   { id: 'shifts',    icon: 'calendar' },
   { id: 'hr',        icon: 'staff',    adminOnly: true },
-  { id: 'div2',      divider: true },
-  { id: 'hardware',  icon: 'printer' },
-  { id: 'customers', icon: 'customers', soft: true },
-  { id: 'reports',   icon: 'reports',  soft: true },
+
+  // System setup — configured once, rarely touched day to day.
+  { id: 'sec-setup', header: true },
+  { id: 'bom',       icon: 'inv' },
   { id: 'catalog',   icon: 'inv',      ownerOnly: true },
+  { id: 'hardware',  icon: 'printer' },
   { id: 'recycle-bin', icon: 'trash',  adminOnly: true },
   { id: 'settings',  icon: 'settings', soft: true },
 ];
@@ -91,15 +107,23 @@ interface SidebarProps { current: string; onNavigate: (id: string) => void; onLo
 export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit 49', collapsed = false, onToggle }: SidebarProps) => {
   const { t } = useI18n();
   const navLabel = (id: string) => (t.nav as Record<string, string>)[id] ?? id;
+  const sectionLabel = (id: string) => (t.navSection as Record<string, string>)[id] ?? id;
   const { data: me } = useCurrentUser();
   const role = me?.role;
   const isAdmin = role === 'OWNER' || role === 'MANAGER';
   const initial = me?.name ? me.name.charAt(0).toUpperCase() : '?';
-  const visibleNav = NAV.filter((n) => {
-    if (n.divider) return true;
+  const roleVisible = NAV.filter((n) => {
+    if (n.divider || n.header) return true;
     if (n.adminOnly && !isAdmin) return false;
     if (n.ownerOnly && role !== 'OWNER') return false;
     return true;
+  });
+  // Drop any section header (or divider) left with no navigable item under it —
+  // e.g. a group whose every child is admin-only, seen through a cashier's role.
+  const visibleNav = roleVisible.filter((n, i) => {
+    if (!n.header && !n.divider) return true;
+    const next = roleVisible[i + 1];
+    return !!next && !next.header && !next.divider;
   });
 
   return (
@@ -156,7 +180,23 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
       </div>
 
       <nav aria-label="เมนูหลัก" style={{padding: collapsed ? '8px 8px' : '8px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', overflowX: 'hidden', transition: 'padding var(--dur-slow) var(--ease-out)'}}>
-        {visibleNav.map((n) => {
+        {visibleNav.map((n, i) => {
+          if (n.header) {
+            // Collapsed rail can't fit a text heading, so a section reads as a hairline
+            // divider instead (skipped on the very first group so the rail doesn't open
+            // with a stray line).
+            if (collapsed) {
+              return i === 0 ? null : <div key={n.id} style={{height: 1, background: 'var(--sb-divider)', margin: '8px 6px 4px'}} />;
+            }
+            return (
+              <div key={n.id} className="sb-fade" style={{
+                padding: i === 0 ? '4px 12px 4px' : '16px 12px 4px',
+                fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
+                textTransform: 'uppercase', color: 'var(--sb-text-muted)',
+                whiteSpace: 'nowrap', userSelect: 'none',
+              }}>{sectionLabel(n.id)}</div>
+            );
+          }
           if (n.divider) {
             return <div key={n.id} style={{height: 1, background: 'var(--sb-divider)', margin: '6px 2px'}} />;
           }
