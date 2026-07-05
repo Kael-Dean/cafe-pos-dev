@@ -14,7 +14,7 @@
   --color-accent-600: #B8895A;
   --color-accent-50: #FBF3E8;
 
-  --color-bg: #FAF7F2;            /* Cream */
+  --color-bg: #F7F3EC;            /* Cream (warm) */
   --color-surface: #FFFFFF;
   --color-surface-2: #F5F1E9;
 
@@ -60,6 +60,33 @@
      so light mode uses a deep amber (≥5:1 on every light surface). Dark mode and
      the always-dark .surface-inverse override it back to caramel (≥7:1 there). */
   --color-focus-ring: #8A5A14;
+
+  /* ---------- Sidebar (theme-aware) ----------
+     The left nav is a LIGHT greige panel in light mode (matches the app's warm
+     cream) and flips to the espresso dark surface in dark mode. All sidebar
+     chrome reads these --sb-* tokens so both themes stay contrast-safe (AA).
+     Light-mode text pairs verified ≥4.8:1 on the #ECE5D8 panel. */
+  --sb-bg: #ECE5D8;
+  --sb-border: #DAD1BF;
+  --sb-text: #4E4030;                /* nav labels (8.2:1) */
+  --sb-text-strong: #2A1A0F;         /* logo title, user name */
+  --sb-text-muted: #70614A;          /* store name, role, P1 (4.8:1) */
+  --sb-hover: rgba(61,40,23,0.06);
+  --sb-press: rgba(61,40,23,0.12);
+  --sb-active-bg: #2A1A0F;            /* solid espresso pill (matches ref) */
+  --sb-active-text: #F5EFE7;
+  --sb-divider: rgba(61,40,23,0.09);
+  --sb-card-bg: rgba(61,40,23,0.05);
+  --sb-avatar-fg: #2A1A0F;            /* ink on caramel avatar (both themes) */
+  --sb-icon-soft-bg: rgba(61,40,23,0.06);
+  --sb-icon-soft-fg: #6B5B47;
+  --sb-icon-soft-hover-bg: rgba(61,40,23,0.12);
+  --sb-icon-soft-hover-fg: #2A1A0F;
+  --sb-logout-border: rgba(61,40,23,0.16);
+  --sb-logout-fg: #6B5B47;
+  --sb-logout-hover-bg: rgba(194,69,69,0.12);
+  --sb-logout-hover-fg: #A83232;
+  --sb-logout-hover-border: rgba(194,69,69,0.38);
 
   /* ---------- Typography ---------- */
   --font-sans: "Inter", "Sukhumvit Set", "IBM Plex Sans Thai", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -167,6 +194,30 @@
   --color-focus-ring: #D4A574;
   /* --color-on-accent stays #1C140D: accent fill is the same caramel in both
      themes, so the espresso ink keeps its ≥8:1 contrast. */
+
+  /* Sidebar stays the espresso dark surface in dark mode (identical to before
+     the light-mode redesign) — light-on-dark chrome, caramel-tinted active. */
+  --sb-bg: #2A1A0F;
+  --sb-border: rgba(0,0,0,0.15);
+  --sb-text: rgba(255,255,255,0.78);
+  --sb-text-strong: rgba(255,255,255,0.95);
+  --sb-text-muted: rgba(255,255,255,0.55);
+  --sb-hover: rgba(255,255,255,0.06);
+  --sb-press: rgba(255,255,255,0.12);
+  --sb-active-bg: rgba(212,165,116,0.18);
+  --sb-active-text: var(--color-accent);
+  --sb-divider: rgba(255,255,255,0.07);
+  --sb-card-bg: rgba(255,255,255,0.05);
+  --sb-avatar-fg: #2A1A0F;
+  --sb-icon-soft-bg: rgba(255,255,255,0.08);
+  --sb-icon-soft-fg: rgba(255,255,255,0.65);
+  --sb-icon-soft-hover-bg: rgba(255,255,255,0.16);
+  --sb-icon-soft-hover-fg: #ffffff;
+  --sb-logout-border: rgba(255,255,255,0.15);
+  --sb-logout-fg: rgba(255,255,255,0.65);
+  --sb-logout-hover-bg: rgba(239,68,68,0.18);
+  --sb-logout-hover-fg: #fca5a5;
+  --sb-logout-hover-border: rgba(239,68,68,0.4);
 
   /* Shadows — deeper/darker so elevation reads against dark surfaces */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.40);
@@ -463,23 +514,32 @@ label:focus-visible {
 .help-badge:hover { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
 
 /* ---------- Sidebar ---------- */
+/* Theme-aware surface: light greige in light mode, espresso dark in dark mode.
+   All colours flow from --sb-* tokens (see :root / [data-theme='dark']). */
+.sidebar-surface { background: var(--sb-bg); color: var(--sb-text); }
+
+/* Collapse/expand toggle — scoped override so the always-dark KDS
+   .icon-btn-soft keeps its light-on-dark styling untouched. */
+.sidebar-surface .icon-btn-soft { background: var(--sb-icon-soft-bg); color: var(--sb-icon-soft-fg); }
+.sidebar-surface .icon-btn-soft:hover { background: var(--sb-icon-soft-hover-bg); color: var(--sb-icon-soft-hover-fg); }
+
 .sb-item {
   background: transparent;
-  color: rgba(255,255,255,0.78);
+  color: var(--sb-text);
   font-weight: 500;
   transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
-.sb-item.active { background: rgba(212,165,116,0.18); color: var(--color-accent); font-weight: 600; }
-.sb-item:not(.active):hover { background: rgba(255,255,255,0.06); }
-.sb-item:active { background: rgba(255,255,255,0.12); }
+.sb-item.active { background: var(--sb-active-bg); color: var(--sb-active-text); font-weight: 600; }
+.sb-item:not(.active):hover { background: var(--sb-hover); }
+.sb-item:active { background: var(--sb-press); }
 
 .sb-logout {
   background: transparent;
-  border: 1px solid rgba(255,255,255,0.15);
-  color: rgba(255,255,255,0.65);
+  border: 1px solid var(--sb-logout-border);
+  color: var(--sb-logout-fg);
   transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
 }
-.sb-logout:hover { background: rgba(239,68,68,0.18); color: #fca5a5; border-color: rgba(239,68,68,0.4); }
+.sb-logout:hover { background: var(--sb-logout-hover-bg); color: var(--sb-logout-hover-fg); border-color: var(--sb-logout-hover-border); }
 
 /* Sidebar labels fade in on expand — same beat as the width transition */
 .sb-fade { animation: fade-in var(--dur-slow) var(--ease-out) both; }

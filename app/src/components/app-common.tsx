@@ -107,11 +107,11 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
     // sidebar is hidden to avoid a duplicate nav landmark and to free the full
     // width for content on phones.
     <div className="hidden md:block" style={{ position: 'relative', flexShrink: 0 }}>
-    <aside className="surface-inverse" style={{
+    <aside className="sidebar-surface" style={{
       width: collapsed ? 64 : 240,
       height: '100dvh',
       display: 'flex', flexDirection: 'column',
-      borderRight: '1px solid rgba(0,0,0,0.15)',
+      borderRight: '1px solid var(--sb-border)',
       transition: 'width var(--dur-slow) var(--ease-out)',
       overflow: 'hidden',
     }}>
@@ -125,13 +125,13 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
       }}>
         <div style={{
           width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-          background: 'var(--color-accent)', color: 'var(--color-primary-700)',
+          background: 'var(--color-accent)', color: 'var(--sb-avatar-fg)',
           display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 18,
         }}>K</div>
         {!collapsed && (
           <div className="sb-fade" style={{flex: 1, minWidth: 0}}>
-            <div style={{fontWeight: 700, fontSize: 15, letterSpacing: '-0.01em', whiteSpace: 'nowrap'}}>Kafé OS</div>
-            <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)', whiteSpace: 'nowrap'}}>{me?.store_name ?? branchName}</div>
+            <div style={{fontWeight: 700, fontSize: 15, letterSpacing: '-0.01em', whiteSpace: 'nowrap', color: 'var(--sb-text-strong)'}}>Kafé OS</div>
+            <div style={{fontSize: 11, color: 'var(--sb-text-muted)', whiteSpace: 'nowrap'}}>{me?.store_name ?? branchName}</div>
           </div>
         )}
         {onToggle && (
@@ -158,7 +158,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
       <nav aria-label="เมนูหลัก" style={{padding: collapsed ? '8px 8px' : '8px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', overflowX: 'hidden', transition: 'padding var(--dur-slow) var(--ease-out)'}}>
         {visibleNav.map((n) => {
           if (n.divider) {
-            return <div key={n.id} style={{height: 1, background: 'rgba(255,255,255,0.07)', margin: '6px 2px'}} />;
+            return <div key={n.id} style={{height: 1, background: 'var(--sb-divider)', margin: '6px 2px'}} />;
           }
           const active = current === n.id;
           return (
@@ -177,7 +177,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
             >
               {n.icon && <Icon name={n.icon} size={18} />}
               {!collapsed && <span className="sb-fade" style={{flex: 1, whiteSpace: 'nowrap'}}>{navLabel(n.id)}</span>}
-              {!collapsed && n.soft && <span className="sb-fade" style={{fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 500}}>P1</span>}
+              {!collapsed && n.soft && <span className="sb-fade" style={{fontSize: 10, color: 'currentColor', opacity: 0.55, fontWeight: 500}}>P1</span>}
             </button>
           );
         })}
@@ -186,7 +186,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
       <div style={{ padding: collapsed ? '8px 8px' : '8px 12px', marginBottom: 4, transition: 'padding var(--dur-slow) var(--ease-out)' }}>
         <div style={{
           padding: collapsed ? '8px 0' : 12,
-          background: 'rgba(255,255,255,0.05)',
+          background: 'var(--sb-card-bg)',
           borderRadius: 10,
           display: 'flex', alignItems: 'center', gap: 10,
           justifyContent: collapsed ? 'center' : 'flex-start',
@@ -195,14 +195,14 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
         }}>
           <div style={{
             width: 32, height: 32, borderRadius: 999,
-            background: 'var(--color-accent)', color: 'var(--color-primary-700)',
+            background: 'var(--color-accent)', color: 'var(--sb-avatar-fg)',
             display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13,
             flexShrink: 0,
           }}>{initial}</div>
           {!collapsed && (
             <div className="sb-fade" style={{flex: 1, minWidth: 0}}>
-              <div style={{fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{me?.name ?? '...'}</div>
-              <div style={{fontSize: 11, color: 'rgba(255,255,255,0.55)'}}>{role ? (t.roles as Record<string, string>)[role] ?? role : ''}</div>
+              <div style={{fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--sb-text-strong)'}}>{me?.name ?? '...'}</div>
+              <div style={{fontSize: 11, color: 'var(--sb-text-muted)'}}>{role ? (t.roles as Record<string, string>)[role] ?? role : ''}</div>
             </div>
           )}
         </div>
