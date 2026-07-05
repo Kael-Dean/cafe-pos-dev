@@ -90,7 +90,10 @@
   --sb-logout-hover-border: rgba(194,69,69,0.38);
 
   /* ---------- Typography ---------- */
-  --font-sans: "Inter", "Sukhumvit Set", "IBM Plex Sans Thai", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  /* Anuphan (loaded via next/font in layout.tsx) leads the UI stack; the rest stay
+     as fallbacks for the flash before it swaps in. Numbers keep Inter/mono for
+     tabular alignment in price columns and receipts. */
+  --font-sans: var(--font-anuphan), "Inter", "Sukhumvit Set", "IBM Plex Sans Thai", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-num: "Inter", "SF Mono", ui-monospace, monospace;
 
   --fs-12: 12px;

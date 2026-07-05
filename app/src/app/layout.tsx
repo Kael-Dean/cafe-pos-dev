@@ -1,7 +1,17 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import { Anuphan } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+
+// Anuphan (Cadson Demak) — self-hosted via next/font, exposed as --font-anuphan
+// so globals.css can slot it in front of the sans stack. Variable font, so no
+// explicit weight; Thai + Latin subsets cover the whole UI.
+const anuphan = Anuphan({
+  subsets: ["latin", "thai"],
+  display: "swap",
+  variable: "--font-anuphan",
+});
 
 export const metadata: Metadata = {
   title: "Kafé OS",
@@ -23,7 +33,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="th" className="h-full">
+    <html lang="th" className={`h-full ${anuphan.variable}`}>
       <head>
         {/* No-flash theme: runs before first paint, so the page never renders in
             the wrong theme. Reads the saved preference, falling back to the OS
