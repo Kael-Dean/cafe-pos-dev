@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, createContext, useContext, useRef, useEffect } from 'react';
+import { useState, useCallback, createContext, useContext, useRef, useEffect, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from './icons';
 import { useCurrentUser } from '@/hooks/use-current-user';
@@ -112,19 +112,51 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
   const role = me?.role;
   const isAdmin = role === 'OWNER' || role === 'MANAGER';
   const initial = me?.name ? me.name.charAt(0).toUpperCase() : '?';
-  const roleVisible = NAV.filter((n) => {
-    if (n.divider || n.header) return true;
-    if (n.adminOnly && !isAdmin) return false;
-    if (n.ownerOnly && role !== 'OWNER') return false;
-    return true;
-  });
-  // Drop any section header (or divider) left with no navigable item under it —
-  // e.g. a group whose every child is admin-only, seen through a cashier's role.
-  const visibleNav = roleVisible.filter((n, i) => {
-    if (!n.header && !n.divider) return true;
-    const next = roleVisible[i + 1];
-    return !!next && !next.header && !next.divider;
-  });
+
+  // Group the flat NAV into { header, items } sections, dropping items the current
+  // role can't see (and any section left empty as a result).
+  const sections: { id: string; items: NavItem[] }[] = [];
+  for (const n of NAV) {
+    if (n.header) { sections.push({ id: n.id, items: [] }); continue; }
+    if (n.divider) continue;
+    if (n.adminOnly && !isAdmin) continue;
+    if (n.ownerOnly && role !== 'OWNER') continue;
+    sections[sections.length - 1]?.items.push(n);
+  }
+  const visibleSections = sections.filter((s) => s.items.length > 0);
+  const activeSectionId = visibleSections.find((s) => s.items.some((it) => it.id === current))?.id;
+
+  // Each section is a collapsible dropdown. By default only the group holding the
+  // active screen is open; `openOverride` records explicit user toggles either way,
+  // so opening/closing any group sticks while still auto-opening wherever you are.
+  const [openOverride, setOpenOverride] = useState<Record<string, boolean>>({});
+  const isSectionOpen = (id: string) => openOverride[id] ?? id === activeSectionId;
+  const toggleSection = (id: string) =>
+    setOpenOverride((prev) => ({ ...prev, [id]: !(prev[id] ?? id === activeSectionId) }));
+
+  // Item row shared by both layouts (accordion when expanded, flat rail when collapsed).
+  const renderItem = (n: NavItem) => {
+    const active = current === n.id;
+    return (
+      <button key={n.id} onClick={() => onNavigate(n.id)}
+        className={`sb-item${active ? ' active' : ''}`}
+        title={collapsed ? navLabel(n.id) : undefined}
+        aria-current={active ? 'page' : undefined}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: collapsed ? '10px 0' : '10px 12px', borderRadius: 8,
+          justifyContent: collapsed ? 'center' : 'flex-start',
+          fontSize: 14, minHeight: 44,
+          textAlign: 'left', width: '100%',
+          position: 'relative',
+        }}
+      >
+        {n.icon && <Icon name={n.icon} size={18} />}
+        {!collapsed && <span className="sb-fade" style={{flex: 1, whiteSpace: 'nowrap'}}>{navLabel(n.id)}</span>}
+        {!collapsed && n.soft && <span className="sb-fade" style={{fontSize: 10, color: 'currentColor', opacity: 0.55, fontWeight: 500}}>P1</span>}
+      </button>
+    );
+  };
 
   return (
     // Desktop/tablet only: below 768px the BottomTabBar is the nav, so the
@@ -180,47 +212,47 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
       </div>
 
       <nav aria-label="เมนูหลัก" style={{padding: collapsed ? '8px 8px' : '8px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', overflowX: 'hidden', transition: 'padding var(--dur-slow) var(--ease-out)'}}>
-        {visibleNav.map((n, i) => {
-          if (n.header) {
-            // Collapsed rail can't fit a text heading, so a section reads as a hairline
-            // divider instead (skipped on the very first group so the rail doesn't open
-            // with a stray line).
-            if (collapsed) {
-              return i === 0 ? null : <div key={n.id} style={{height: 1, background: 'var(--sb-divider)', margin: '8px 6px 4px'}} />;
-            }
-            return (
-              <div key={n.id} className="sb-fade" style={{
-                padding: i === 0 ? '4px 12px 4px' : '16px 12px 4px',
-                fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
-                textTransform: 'uppercase', color: 'var(--sb-text-muted)',
-                whiteSpace: 'nowrap', userSelect: 'none',
-              }}>{sectionLabel(n.id)}</div>
-            );
-          }
-          if (n.divider) {
-            return <div key={n.id} style={{height: 1, background: 'var(--sb-divider)', margin: '6px 2px'}} />;
-          }
-          const active = current === n.id;
-          return (
-            <button key={n.id} onClick={() => onNavigate(n.id)}
-              className={`sb-item${active ? ' active' : ''}`}
-              title={collapsed ? navLabel(n.id) : undefined}
-              aria-current={active ? 'page' : undefined}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: collapsed ? '10px 0' : '10px 12px', borderRadius: 8,
-                justifyContent: collapsed ? 'center' : 'flex-start',
-                fontSize: 14, minHeight: 44,
-                textAlign: 'left', width: '100%',
-                position: 'relative',
-              }}
-            >
-              {n.icon && <Icon name={n.icon} size={18} />}
-              {!collapsed && <span className="sb-fade" style={{flex: 1, whiteSpace: 'nowrap'}}>{navLabel(n.id)}</span>}
-              {!collapsed && n.soft && <span className="sb-fade" style={{fontSize: 10, color: 'currentColor', opacity: 0.55, fontWeight: 500}}>P1</span>}
-            </button>
-          );
-        })}
+        {collapsed
+          ? // Icon-only rail: no room for group headings, so show every item and
+            // separate the groups with a hairline divider (none before the first).
+            visibleSections.map((s, si) => (
+              <Fragment key={s.id}>
+                {si > 0 && <div style={{height: 1, background: 'var(--sb-divider)', margin: '8px 6px 4px'}} />}
+                {s.items.map(renderItem)}
+              </Fragment>
+            ))
+          : // Expanded: each group is a collapsible dropdown — click the heading to
+            // open/close it, so only the functions you need are on screen at once.
+            visibleSections.map((s) => {
+              const open = isSectionOpen(s.id);
+              return (
+                <div key={s.id} style={{display: 'flex', flexDirection: 'column', gap: 2}}>
+                  <button
+                    onClick={() => toggleSection(s.id)}
+                    className="sb-section-btn"
+                    aria-expanded={open}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      width: '100%', marginTop: 4, padding: '9px 12px',
+                      borderRadius: 8, border: 'none', cursor: 'pointer',
+                      fontFamily: 'inherit', minHeight: 36,
+                    }}
+                  >
+                    <span className="sb-fade" style={{
+                      flex: 1, textAlign: 'left', fontSize: 11, fontWeight: 700,
+                      letterSpacing: '0.06em', textTransform: 'uppercase',
+                      color: 'var(--sb-text-muted)', whiteSpace: 'nowrap',
+                    }}>{sectionLabel(s.id)}</span>
+                    <Icon name="chevronDown" size={14} style={{
+                      color: 'var(--sb-text-muted)', flexShrink: 0,
+                      transform: open ? 'none' : 'rotate(-90deg)',
+                      transition: 'transform var(--dur-slow) var(--ease-out)',
+                    }} />
+                  </button>
+                  {open && s.items.map(renderItem)}
+                </div>
+              );
+            })}
       </nav>
 
       <div style={{ padding: collapsed ? '8px 8px' : '8px 12px', marginBottom: 4, transition: 'padding var(--dur-slow) var(--ease-out)' }}>

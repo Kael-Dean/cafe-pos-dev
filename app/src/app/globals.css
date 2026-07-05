@@ -535,6 +535,13 @@ label:focus-visible {
 .sb-item:not(.active):hover { background: var(--sb-hover); }
 .sb-item:active { background: var(--sb-press); }
 
+/* Collapsible section header (dropdown toggle) in the expanded sidebar */
+.sb-section-btn {
+  background: transparent;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.sb-section-btn:hover { background: var(--sb-hover); }
+
 .sb-logout {
   background: transparent;
   border: 1px solid var(--sb-logout-border);
