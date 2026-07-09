@@ -541,12 +541,17 @@ label:focus-visible {
 .sb-item:not(.active):hover { background: var(--sb-hover); }
 .sb-item:active { background: var(--sb-press); }
 
-/* Collapsible section header (dropdown toggle) in the expanded sidebar */
+/* Collapsible section header (dropdown toggle) in the expanded sidebar.
+   Label + chevron inherit `color` from here so hover/press strengthen both at
+   once. Base color is the full nav-label ink (readable), not muted — the header
+   reads as a heading via its uppercase/weight/spacing + the gap above it. */
 .sb-section-btn {
   background: transparent;
-  transition: background var(--dur-fast) var(--ease-out);
+  color: var(--sb-text);
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
-.sb-section-btn:hover { background: var(--sb-hover); }
+.sb-section-btn:hover { background: var(--sb-hover); color: var(--sb-text-strong); }
+.sb-section-btn:active { background: var(--sb-press); }
 
 .sb-logout {
   background: transparent;
