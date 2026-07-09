@@ -40,7 +40,14 @@ export function useFadeRise(
         gsap.fromTo(
           el,
           { autoAlpha: 0, y },
-          { autoAlpha: 1, y: 0, duration, delay, ease: 'power2.out' },
+          {
+            autoAlpha: 1, y: 0, duration, delay, ease: 'power2.out',
+            // Strip the leftover inline transform once settled: a transformed
+            // element becomes the containing block for position:fixed
+            // descendants, which would trap any fixed overlay rendered inside
+            // the screen. (Same rationale as use-stagger.)
+            clearProps: 'transform',
+          },
         );
       });
 

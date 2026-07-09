@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react
 import { createPortal } from 'react-dom';
 import Icon from '../icons';
 import { cropImageToSquare, type CropState } from '@/lib/image-crop';
+import { useModalA11y } from '@/hooks/use-modal-a11y';
 
 /**
  * Square (1:1) image-crop step inserted before a menu photo uploads. The user
@@ -33,47 +34,6 @@ interface Props {
   onDelete?: () => void;
   /** When set, a "เลือกรูปอื่น" button is shown to swap the source for a new file. */
   onPickNew?: () => void;
-}
-
-/** Modal a11y: focus into the dialog, Esc to close, restore focus on unmount.
- *  Mirrors the role="dialog"/aria-modal convention used by sibling modals. */
-function useModalA11y(onClose: () => void) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    const node = ref.current;
-
-    const focusables = () =>
-      Array.from(
-        node?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      ).filter((el) => el.offsetParent !== null);
-
-    focusables()[0]?.focus({ preventScroll: true });
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
-      if (e.key !== 'Tab') return;
-      const items = focusables();
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      opener?.focus?.();
-    };
-    // Runs once for the modal's lifetime.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return ref;
 }
 
 export default function ImageCropModal({ file, onCancel, onConfirm, onDelete, onPickNew }: Props) {

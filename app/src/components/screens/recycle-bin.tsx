@@ -115,6 +115,7 @@ function ProductsTab() {
   return (
     <>
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
             <tr style={{ textAlign: 'left', color: 'var(--color-text-secondary)', fontSize: 12, fontWeight: 600 }}>
@@ -142,6 +143,7 @@ function ProductsTab() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
       {target && (
         <RestoreConfirmModal
@@ -194,6 +196,7 @@ function InventoryTab() {
   return (
     <>
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
             <tr style={{ textAlign: 'left', color: 'var(--color-text-secondary)', fontSize: 12, fontWeight: 600 }}>
@@ -223,6 +226,7 @@ function InventoryTab() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
       {target && (
         <RestoreConfirmModal

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useToast, Select, NumberInput } from '../app-common';
 import { useFadeRise } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
@@ -24,6 +25,37 @@ import {
   type ProductUpdateAdminPayload,
 } from '@/hooks/use-products';
 import { ApiError } from '@/lib/api-client';
+import { useModalA11y } from '@/hooks/use-modal-a11y';
+
+/**
+ * Fixed-position modal shell, portalled to <body>. The screen root animates in
+ * via GSAP (useFadeRise), which leaves an inline `transform` on an ancestor —
+ * a non-none transform becomes the containing block for `position: fixed`,
+ * trapping the overlay inside the scrolling column instead of the viewport.
+ * Portalling to document.body sidesteps that; the a11y hook adds the focus
+ * trap, Esc-to-close and focus restore used by the app's other modals.
+ */
+function Overlay({ onClose, label, cardStyle, children }: {
+  onClose: () => void;
+  label: string;
+  cardStyle?: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  const dialogRef = useModalA11y(onClose);
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 50 }}
+      onClick={onClose}
+    >
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={label} onClick={e => e.stopPropagation()}
+        style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, boxShadow: 'var(--shadow-lg)', ...cardStyle }}>
+        {children}
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 // ── Shared style helpers ──────────────────────────────────────────────────────
 
@@ -33,8 +65,12 @@ const btnSm = (variant: 'primary' | 'ghost' | 'danger'): React.CSSProperties => 
   border: variant === 'ghost' ? '1px solid var(--color-border-strong)' : 'none',
   background:
     variant === 'primary' ? 'var(--color-primary)' :
-    variant === 'danger'  ? 'var(--color-danger)'  : 'transparent',
-  color: variant === 'ghost' ? 'var(--color-text)' : 'var(--color-text-inverse)',
+    variant === 'danger'  ? 'var(--color-danger-strong)' : 'transparent',
+  // danger-strong stays deep red in both themes, so it needs literal white —
+  // text-inverse flips to dark ink in dark mode and would fail AA on red.
+  color:
+    variant === 'ghost'  ? 'var(--color-text)' :
+    variant === 'danger' ? '#fff' : 'var(--color-text-inverse)',
 });
 
 const btnIcon = (): React.CSSProperties => ({
@@ -171,6 +207,7 @@ function ProductsTab() {
         <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)' }}>
           <span style={{ fontWeight: 600, fontSize: 14 }}>สินค้าทั้งหมด ({products?.length ?? 0})</span>
         </div>
+        <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
             <tr style={{ background: 'var(--color-surface-2)' }}>
@@ -217,12 +254,12 @@ function ProductsTab() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Edit modal */}
       {editTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
-          <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 460, maxWidth: '90vw', boxShadow: 'var(--shadow-lg)' }}>
+        <Overlay onClose={() => setEditTarget(null)} label="แก้ไขสินค้า" cardStyle={{ width: 460, maxWidth: '90vw' }}>
             <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700 }}>แก้ไขสินค้า</h3>
             <div style={{ display: 'grid', gap: 14, marginBottom: 20 }}>
               <div>
@@ -284,8 +321,7 @@ function ProductsTab() {
                 {updateProduct.isPending ? 'กำลังบันทึก…' : 'บันทึก'}
               </button>
             </div>
-          </div>
-        </div>
+        </Overlay>
       )}
     </>
   );
@@ -393,6 +429,7 @@ function CategoriesTab() {
         </div>
 
         {/* Table */}
+        <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
             <tr style={{ background: 'var(--color-surface-2)' }}>
@@ -467,12 +504,12 @@ function CategoriesTab() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Delete confirm */}
       {deleteTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
-          <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 360, boxShadow: 'var(--shadow-lg)' }}>
+        <Overlay onClose={() => setDeleteTarget(null)} label="ลบหมวดหมู่" cardStyle={{ width: 360 }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700 }}>ลบหมวดหมู่</h3>
             <p style={{ margin: '0 0 20px', fontSize: 14, color: 'var(--color-text-secondary)' }}>
               ลบ <strong>{deleteTarget.name}</strong>? ไม่สามารถเลิกทำได้
@@ -481,8 +518,7 @@ function CategoriesTab() {
               <button onClick={() => setDeleteTarget(null)} style={btnSm('ghost')}>ยกเลิก</button>
               <button onClick={handleDelete} disabled={deleteCategory.isPending} style={btnSm('danger')}>ลบ</button>
             </div>
-          </div>
-        </div>
+        </Overlay>
       )}
     </>
   );
@@ -730,6 +766,7 @@ function ModifierGroupsTab() {
               {/* Modifiers table */}
               <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>ตัวเลือก</div>
               {formModifiers.length > 0 && (
+                <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 8 }}>
                   <thead>
                     <tr style={{ background: 'var(--color-surface-2)' }}>
@@ -757,6 +794,7 @@ function ModifierGroupsTab() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
               <button onClick={addModifierRow} style={{ ...btnSm('ghost'), fontSize: 13, marginBottom: 24 }}>
                 + เพิ่มตัวเลือก
@@ -788,8 +826,7 @@ function ModifierGroupsTab() {
 
       {/* Delete confirm */}
       {deleteTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
-          <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 360, boxShadow: 'var(--shadow-lg)' }}>
+        <Overlay onClose={() => setDeleteTarget(null)} label="ลบกลุ่มตัวเลือก" cardStyle={{ width: 360 }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700 }}>ลบกลุ่มตัวเลือก</h3>
             <p style={{ margin: '0 0 20px', fontSize: 14, color: 'var(--color-text-secondary)' }}>
               ลบ <strong>{deleteTarget.name}</strong>? ตัวเลือกทั้งหมดในกลุ่มนี้จะถูกลบด้วย
@@ -798,8 +835,7 @@ function ModifierGroupsTab() {
               <button onClick={() => setDeleteTarget(null)} style={btnSm('ghost')}>ยกเลิก</button>
               <button onClick={handleDeleteGroup} disabled={deleteGroup.isPending} style={btnSm('danger')}>ลบ</button>
             </div>
-          </div>
-        </div>
+        </Overlay>
       )}
     </>
   );

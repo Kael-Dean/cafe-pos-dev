@@ -19,6 +19,7 @@ import {
 import { useAddToShoppingList } from '@/hooks/use-shopping-list';
 import { useAllProducts, type MenuItem } from '@/hooks/use-products';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
+import { useModalA11y } from '@/hooks/use-modal-a11y';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const STATUS_LABELS: Record<PreOrderStatus, string> = {
@@ -773,7 +774,7 @@ function DetailPanel({
             )}
             {detail.status === 'IN_PROGRESS' && (
               <button onClick={onComplete} disabled={completePending} className="pressable"
-                style={{ minHeight: 44, padding: '13px 36px', borderRadius: 'var(--radius-lg)', border: 'none', background: 'var(--color-success)', color: 'white', fontSize: 15, fontWeight: 700, cursor: 'pointer', opacity: completePending ? 0.7 : 1 }}>
+                style={{ minHeight: 44, padding: '13px 36px', borderRadius: 'var(--radius-lg)', border: 'none', background: 'var(--color-success)', color: 'var(--color-text-inverse)', fontSize: 15, fontWeight: 700, cursor: 'pointer', opacity: completePending ? 0.7 : 1 }}>
                 {completePending ? 'กำลังบันทึก...' : '✓ ส่งมอบแล้ว'}
               </button>
             )}
@@ -1002,9 +1003,12 @@ function CreateModal({
     return () => { cancelled = true; clearTimeout(t); };
   }, [cPhone]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Esc-to-close must honour the same guard as the ✕ button (disabled while saving).
+  const dialogRef = useModalA11y(() => { if (!isPending) onClose(); });
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
-      <div style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-xl)', width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: 'var(--shadow-lg)' }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="สร้าง Pre-Order ใหม่" style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-xl)', width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div style={{ fontSize: 18, fontWeight: 700 }}>สร้าง Pre-Order ใหม่</div>
           <button onClick={onClose} disabled={isPending} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
@@ -1137,9 +1141,11 @@ function EditModal({
   eNotes: string; onNotesChange: (s: string) => void;
   onConfirm: () => void; onClose: () => void; isPending: boolean;
 }) {
+  // Esc-to-close must honour the same guard as the ✕ button (disabled while saving).
+  const dialogRef = useModalA11y(() => { if (!isPending) onClose(); });
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
-      <div style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-xl)', width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' as const, boxShadow: 'var(--shadow-lg)' }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="แก้ไข Pre-Order" style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-xl)', width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' as const, boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div style={{ fontSize: 18, fontWeight: 700 }}>แก้ไข Pre-Order</div>
           <button onClick={onClose} disabled={isPending} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
@@ -1175,9 +1181,10 @@ function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel, dang
   title: string; message: string; confirmLabel: string;
   onConfirm: () => void; onCancel: () => void; dangerous?: boolean;
 }) {
+  const dialogRef = useModalA11y(onCancel);
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
-      <div style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-xl)', width: '100%', maxWidth: 400, padding: 28, boxShadow: 'var(--shadow-lg)' }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-xl)', width: '100%', maxWidth: 400, padding: 28, boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 10 }}>{title}</div>
         <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: 24 }}>{message}</div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>

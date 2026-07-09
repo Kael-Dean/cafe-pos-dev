@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import Icon from '../icons';
 import { useFadeRise, useCountUp } from '@/lib/motion';
+import { useModalA11y } from '@/hooks/use-modal-a11y';
 
 interface Props { method: string; total: number; billNo: number; onClose: () => void; onPaid: () => void; }
 
@@ -15,57 +16,34 @@ interface Props { method: string; total: number; billNo: number; onClose: () => 
 const QR_PAPER = '#FBFAF7';
 const QR_INK = '#1C140D';
 
-/**
- * Modal a11y: trap focus inside the dialog, close on Esc, restore focus to the
- * element that opened it. Mirrors the role="dialog"/aria-modal convention used
- * elsewhere in the app. The visual open/close stays on the CSS .modal-in /
- * .backdrop-in classes — this only wires keyboard + focus behaviour.
- */
-function useModalA11y(onClose: () => void) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    const node = ref.current;
-
-    // Move focus into the dialog on open (first focusable, else the shell).
-    const focusables = () =>
-      Array.from(
-        node?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      ).filter((el) => el.offsetParent !== null);
-
-    focusables()[0]?.focus();
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
-      if (e.key !== 'Tab') return;
-      const items = focusables();
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      opener?.focus?.();
-    };
-    // onClose identity is stable for the modal's lifetime in practice; we only
-    // want this to run once on mount/unmount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return ref;
-}
-
 export default function PaymentModal({ method, total, billNo, onClose, onPaid }: Props) {
   const [phase, setPhase] = useState<'await' | 'processing' | 'paid'>('await');
   const [cashGiven, setCashGiven] = useState('');
-  const dialogRef = useModalA11y(onClose);
+
+  // Re-entrancy guard: a fast double-tap can fire this twice in the same frame
+  // (before React re-renders and hides the button), which would create two
+  // orders. The ref blocks every call after the first.
+  const confirmed = useRef(false);
+  // The success-beat timers must die with the modal: if the dialog unmounts
+  // while they're pending, a stray onPaid() would create the order anyway.
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
+  const onConfirmPay = () => {
+    if (confirmed.current) return;
+    confirmed.current = true;
+    // Brief processing beat so the cashier sees the action was registered, then
+    // settle into the success state. Kept short — this fires dozens of times/hr.
+    setPhase('processing');
+    timers.current.push(setTimeout(() => setPhase('paid'), 280));
+    timers.current.push(setTimeout(() => onPaid(), 1100));
+  };
+  // Once payment is confirmed the modal must not be dismissible — closing during
+  // the processing/paid beat would look like a cancel while the order still goes
+  // through. Reads confirmed.current at call time, so the mount-once a11y hook
+  // stays correct.
+  const safeClose = () => { if (confirmed.current) return; onClose(); };
+
+  const dialogRef = useModalA11y(safeClose);
 
   useEffect(() => {
     if (method === 'qr' || method === 'line') {
@@ -79,24 +57,10 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
 
   const titleMap: Record<string, string> = { cash: 'รับเงินสด', card: 'รูดบัตร', qr: 'QR PromptPay', line: 'LINE Pay' };
 
-  // Re-entrancy guard: a fast double-tap can fire this twice in the same frame
-  // (before React re-renders and hides the button), which would create two
-  // orders. The ref blocks every call after the first.
-  const confirmed = useRef(false);
-  const onConfirmPay = () => {
-    if (confirmed.current) return;
-    confirmed.current = true;
-    // Brief processing beat so the cashier sees the action was registered, then
-    // settle into the success state. Kept short — this fires dozens of times/hr.
-    setPhase('processing');
-    setTimeout(() => setPhase('paid'), 280);
-    setTimeout(() => onPaid(), 1100);
-  };
-
   const busy = phase !== 'await';
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onClick={safeClose}>
       <div
         ref={dialogRef}
         role="dialog"
@@ -119,9 +83,9 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
           </div>
           <div style={{flex: 1}}>
             <div style={{fontSize: 16, fontWeight: 700}}>{titleMap[method]}</div>
-            <div style={{fontSize: 12, color: 'var(--color-text-secondary)'}}>บิล A0{billNo}</div>
+            <div style={{fontSize: 12, color: 'var(--color-text-secondary)'}}>บิล {'A' + String(billNo).padStart(3, '0')}</div>
           </div>
-          <button onClick={onClose} aria-label="ปิด" className="icon-btn hit-44" style={{
+          <button onClick={safeClose} aria-label="ปิด" className="icon-btn hit-44" style={{
             width: 32, height: 32, borderRadius: 'var(--radius-md)', display: 'grid', placeItems: 'center',
             color: 'var(--color-text-secondary)',
           }}>
@@ -147,7 +111,7 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
 
         {phase === 'await' && method === 'cash' && (
           <div style={{padding: '0 var(--space-6) var(--space-5)', display: 'flex', gap: 'var(--space-2)'}}>
-            <button onClick={onClose} className="btn btn-ghost btn-lg" style={{flex: 1, minHeight: 44}}>ยกเลิก</button>
+            <button onClick={safeClose} className="btn btn-ghost btn-lg" style={{flex: 1, minHeight: 44}}>ยกเลิก</button>
             <button onClick={onConfirmPay} disabled={!cashEnough} className="btn btn-primary btn-lg" style={{flex: 2, minHeight: 44, opacity: cashEnough ? 1 : 0.5}}>
               <Icon name="check" size={16}/> ยืนยันรับเงิน
             </button>
@@ -193,9 +157,6 @@ const QRView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () => 
       </div>
       <button onClick={onSimulatePay} disabled={generating} className="btn btn-primary btn-block btn-lg" style={{marginTop: 'var(--space-5)', minHeight: 44, opacity: generating ? 0.5 : 1}}>
         <Icon name="check" size={16}/> จำลอง: ลูกค้าชำระแล้ว
-      </button>
-      <button className="btn btn-ghost btn-block" style={{marginTop: 'var(--space-2)', minHeight: 44}}>
-        <Icon name="print" size={14}/> พิมพ์ใบเสร็จ
       </button>
       <style>{`@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }`}</style>
     </div>

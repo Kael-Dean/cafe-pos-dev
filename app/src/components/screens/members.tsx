@@ -60,6 +60,12 @@ export default function MembersScreen() {
     return () => clearTimeout(id);
   }, [searchInput]);
 
+  // Rows fade+rise in once per result set. Re-keyed on page/query so a fresh
+  // search replays the entrance; subtle (8px, 40ms apart), honors reduced-motion.
+  // Must be called before the admin early-return: `me` starts undefined and the
+  // guard flips once /me resolves — a hook after the return crashes React.
+  const rowsRef = useStagger({ selector: 'tbody tr', each: 0.03 });
+
   if (!isAdmin(me?.role)) {
     return <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>{t.members.adminOnly}</div>;
   }
@@ -67,10 +73,6 @@ export default function MembersScreen() {
   const members = data?.items ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / limit));
-
-  // Rows fade+rise in once per result set. Re-keyed on page/query so a fresh
-  // search replays the entrance; subtle (8px, 40ms apart), honors reduced-motion.
-  const rowsRef = useStagger({ selector: 'tbody tr', each: 0.03 });
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
@@ -112,6 +114,7 @@ export default function MembersScreen() {
         </div>
       ) : (
         <div key={`${page}-${query.name ?? ''}-${query.phone ?? ''}`} ref={rowsRef} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: 'var(--color-surface-2)', textAlign: 'left' }}>
@@ -147,6 +150,7 @@ export default function MembersScreen() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -198,7 +202,7 @@ function DeleteMemberModal({ member, onClose }: { member: AccountRead; onClose: 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} className="pressable" style={{ padding: '9px 18px', minHeight: 44, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>{t.common.cancel}</button>
           <button onClick={submit} disabled={del.isPending} className="pressable"
-            style={{ padding: '9px 18px', minHeight: 44, borderRadius: 8, background: 'var(--color-danger)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: del.isPending ? 'not-allowed' : 'pointer', opacity: del.isPending ? 0.6 : 1 }}>
+            style={{ padding: '9px 18px', minHeight: 44, borderRadius: 8, background: 'var(--color-danger-strong)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: del.isPending ? 'not-allowed' : 'pointer', opacity: del.isPending ? 0.6 : 1 }}>
             {t.common.delete}
           </button>
         </div>

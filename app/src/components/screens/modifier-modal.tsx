@@ -4,50 +4,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import Icon from '../icons';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useModifierGroups, type ModifierGroup } from '@/hooks/use-modifier-groups';
-
-/**
- * Modal a11y: trap focus inside the dialog, close on Esc, restore focus to the
- * element that opened it. Mirrors the role="dialog"/aria-modal convention used
- * in payment-modal / receipt-modal. Visual open/close stays on the CSS
- * .modal-in / .backdrop-in classes — this only wires keyboard + focus.
- */
-function useModalA11y(onClose: () => void) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    const node = ref.current;
-
-    const focusables = () =>
-      Array.from(
-        node?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      ).filter((el) => el.offsetParent !== null);
-
-    focusables()[0]?.focus();
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
-      if (e.key !== 'Tab') return;
-      const items = focusables();
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      opener?.focus?.();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return ref;
-}
+import { useModalA11y } from '@/hooks/use-modal-a11y';
 
 // Fallback shown when the backend has no modifier groups configured
 const FALLBACK_MODIFIERS: ModifierGroup[] = [

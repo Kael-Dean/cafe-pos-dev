@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Icon from '../icons';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useFadeRise } from '@/lib/motion';
@@ -8,6 +8,7 @@ import { useToast } from '../app-common';
 import { ReceiptPaper, type ReceiptData, type StoreInfo } from './receipt-modal';
 import { fetchStatus, fetchConfig, saveConfig, listPrinters } from '@/lib/printer-bridge';
 import { usePrinter } from '@/hooks/use-printer';
+import { useModalA11y } from '@/hooks/use-modal-a11y';
 
 type PrinterStatus = 'online' | 'offline' | 'checking';
 
@@ -323,28 +324,7 @@ export default function HardwareScreen() {
  * modals. Scrolls internally for the (potentially tall) receipt paper.
  */
 function PreviewModal({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    const node = ref.current;
-    const focusables = () =>
-      Array.from(node?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? [])
-        .filter(el => el.offsetParent !== null);
-    focusables()[0]?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
-      if (e.key !== 'Tab') return;
-      const items = focusables();
-      if (items.length === 0) return;
-      const first = items[0]; const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('keydown', onKey); opener?.focus?.(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const ref = useModalA11y(onClose);
 
   return (
     <div

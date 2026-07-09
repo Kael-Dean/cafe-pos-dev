@@ -321,6 +321,7 @@ function SalespersonCard({
               <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', padding: '6px 8px 10px' }}>
                 มาซื้อ {buyers.toLocaleString()} จาก {memberCount.toLocaleString()} คน
               </div>
+              <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ textAlign: 'left', color: 'var(--color-text-secondary)' }}>
@@ -337,6 +338,7 @@ function SalespersonCard({
                   ))}
                 </tbody>
               </table>
+              </div>
             </>
           )}
         </div>
@@ -409,6 +411,6 @@ function btnSm(variant: 'primary' | 'ghost' | 'danger'): React.CSSProperties {
     border: '1px solid transparent',
   };
   if (variant === 'primary') return { ...base, background: 'var(--color-primary)', color: 'var(--color-text-inverse)' };
-  if (variant === 'danger') return { ...base, background: 'var(--color-danger)', color: '#fff' };
+  if (variant === 'danger') return { ...base, background: 'var(--color-danger-strong)', color: '#fff' };
   return { ...base, background: 'var(--color-surface)', color: 'var(--color-text)', borderColor: 'var(--color-border)' };
 }

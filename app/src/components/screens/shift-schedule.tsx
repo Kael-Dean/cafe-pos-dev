@@ -8,6 +8,7 @@ import { useCountUp } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { useStaffList, useWeeklySchedule, useAssignShift, type ShiftAssignment } from '@/hooks/use-hr';
 import { usePreOrders, usePreOrder, type PreOrderStatus, type PreOrderListItem } from '@/hooks/use-pre-orders';
+import { useModalA11y } from '@/hooks/use-modal-a11y';
 
 /** Small whole-number stat that counts up on mount (header KPI chips). */
 function StatNum({ value, color }: { value: number; color: string }) {
@@ -204,6 +205,7 @@ export default function ShiftSchedule() {
 
       {/* Grid */}
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+        <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: 'var(--color-surface-2)' }}>
@@ -311,6 +313,7 @@ export default function ShiftSchedule() {
             </tr>
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Shift notes by day */}
@@ -395,12 +398,13 @@ export default function ShiftSchedule() {
 // Read-only pre-order detail shown when a calendar badge is clicked.
 function PreOrderDetailModal({ id, onClose }: { id: string; onClose: () => void }) {
   const { data: po, isLoading } = usePreOrder(id);
+  const dialogRef = useModalA11y(onClose);
   const fmtMoney = (v: string | null) =>
     v == null ? '—' : `฿${Number(v).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', width: 560, maxWidth: '90vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: 'var(--shadow-lg)' }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="รายละเอียดพรีออเดอร์" onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', width: 560, maxWidth: '90vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: 'var(--shadow-lg)' }}>
         {isLoading || !po ? (
           <div style={{ padding: 'var(--space-10)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }} aria-busy="true">
             <span className="sr-only">กำลังโหลดรายละเอียดพรีออเดอร์…</span>
@@ -443,6 +447,7 @@ function PreOrderDetailModal({ id, onClose }: { id: string; onClose: () => void 
             </div>
 
             <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: 'var(--color-surface-2)' }}>
@@ -471,6 +476,7 @@ function PreOrderDetailModal({ id, onClose }: { id: string; onClose: () => void 
                   </tr>
                 </tfoot>
               </table>
+              </div>
             </div>
           </div>
         )}

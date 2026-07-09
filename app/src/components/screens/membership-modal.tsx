@@ -14,6 +14,7 @@ import {
   type RewardProductRead,
   type MembershipTier,
 } from '@/hooks/use-membership';
+import { useModalA11y } from '@/hooks/use-modal-a11y';
 
 /** What the POS keeps once a member is attached to the bill. */
 export interface MemberInfo {
@@ -49,48 +50,6 @@ const IS: React.CSSProperties = {
   border: '1px solid var(--color-border)', background: 'var(--color-surface)',
   color: 'var(--color-text)', fontSize: 14, outline: 'none',
 };
-
-/**
- * Modal a11y: focus trap, Esc to close, restore focus to the opener. Mirrors the
- * role="dialog"/aria-modal pattern used in payment-modal / receipt-modal.
- */
-function useModalA11y(onClose: () => void) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    const node = ref.current;
-
-    const focusables = () =>
-      Array.from(
-        node?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      ).filter((el) => el.offsetParent !== null);
-
-    focusables()[0]?.focus();
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
-      if (e.key !== 'Tab') return;
-      const items = focusables();
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      opener?.focus?.();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return ref;
-}
 
 interface Props {
   onClose: () => void;

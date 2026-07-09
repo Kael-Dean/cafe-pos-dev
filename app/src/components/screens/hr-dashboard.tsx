@@ -14,6 +14,29 @@ import {
   type StaffRead, type StaffRole, type StaffPosition,
 } from '@/hooks/use-hr';
 import { ApiError } from '@/lib/api-client';
+import { useModalA11y } from '@/hooks/use-modal-a11y';
+
+/**
+ * Overlay shell for the staff modals — hosts the modal a11y hook (focus trap,
+ * Esc to close, focus restore) so the modal content can stay inline in the tab
+ * component without calling hooks inside conditional JSX.
+ */
+function HrOverlay({ onClose, label, cardStyle, children }: {
+  onClose: () => void;
+  label: string;
+  cardStyle?: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  const dialogRef = useModalA11y(onClose);
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={label}
+        style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, boxShadow: 'var(--shadow-lg)', ...cardStyle }}>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 /** Overview KPI figure: counts up on mount (whole number). */
 function OverviewStat({ value }: { value: number }) {
@@ -277,6 +300,7 @@ function StaffTab({ admin }: { admin: boolean }) {
 
       {/* Staff table */}
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
             <tr style={{ background: 'var(--color-surface-2)' }}>
@@ -330,12 +354,12 @@ function StaffTab({ admin }: { admin: boolean }) {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Create modal */}
       {showCreate && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
-          <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 500, maxWidth: '90vw', boxShadow: 'var(--shadow-lg)', maxHeight: '90vh', overflowY: 'auto' }}>
+        <HrOverlay onClose={() => setShowCreate(false)} label="เพิ่มพนักงานใหม่" cardStyle={{ width: 500, maxWidth: '90vw', maxHeight: '90vh', overflowY: 'auto' }}>
             <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700 }}>เพิ่มพนักงานใหม่</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
               <div style={{ gridColumn: '1 / -1' }}>
@@ -374,14 +398,12 @@ function StaffTab({ admin }: { admin: boolean }) {
                 {createStaff.isPending ? 'กำลังเพิ่ม…' : 'เพิ่ม'}
               </button>
             </div>
-          </div>
-        </div>
+        </HrOverlay>
       )}
 
       {/* Edit modal */}
       {editTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
-          <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 500, maxWidth: '90vw', boxShadow: 'var(--shadow-lg)', maxHeight: '90vh', overflowY: 'auto' }}>
+        <HrOverlay onClose={() => setEditTarget(null)} label={`แก้ไขพนักงาน — ${editTarget.name}`} cardStyle={{ width: 500, maxWidth: '90vw', maxHeight: '90vh', overflowY: 'auto' }}>
             <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700 }}>แก้ไขพนักงาน — {editTarget.name}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
               <div style={{ gridColumn: '1 / -1' }}>
@@ -420,14 +442,12 @@ function StaffTab({ admin }: { admin: boolean }) {
                 {updateStaff.isPending ? 'กำลังบันทึก…' : 'บันทึก'}
               </button>
             </div>
-          </div>
-        </div>
+        </HrOverlay>
       )}
 
       {/* Deactivate confirm */}
       {deactivateTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
-          <div style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, width: 360, boxShadow: 'var(--shadow-lg)' }}>
+        <HrOverlay onClose={() => setDeactivateTarget(null)} label="ยืนยันการลาออก" cardStyle={{ width: 360 }}>
             <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700 }}>ยืนยันการลาออก</h3>
             <p style={{ margin: '0 0 20px', fontSize: 14, color: 'var(--color-text-secondary)' }}>
               <strong>{deactivateTarget.name}</strong> จะถูกปิดการใช้งาน ไม่สามารถล็อกอินได้อีก แต่ประวัติการทำงานยังคงอยู่
@@ -435,12 +455,11 @@ function StaffTab({ admin }: { admin: boolean }) {
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={() => setDeactivateTarget(null)} className="pressable" style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
               <button onClick={handleDeactivate} disabled={deactivateStaff.isPending}
-                className="pressable" style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-danger)', color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
+                className="pressable" style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-danger-strong)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
                 {deactivateStaff.isPending ? 'กำลังดำเนินการ…' : 'ยืนยัน'}
               </button>
             </div>
-          </div>
-        </div>
+        </HrOverlay>
       )}
     </>
   );

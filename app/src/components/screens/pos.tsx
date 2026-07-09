@@ -19,6 +19,7 @@ import { useMembershipProgram, type ProgramRead } from '@/hooks/use-membership';
 import { useCustomerDetail } from '@/hooks/use-customers';
 import { usePrinter } from '@/hooks/use-printer';
 import { useStagger } from '@/lib/motion';
+import { useModalA11y } from '@/hooks/use-modal-a11y';
 
 interface CartLine { menuId: string; name: string; basePrice: number; unitPrice: number; qty: number; mods: string[]; modIds: string[]; modKey: string; }
 
@@ -563,7 +564,7 @@ export default function POSTerminal() {
           <div style={{padding: '20px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
             <div>
               <div style={{fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500}}>{t.pos.currentBill}</div>
-              <div style={{fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em'}} className="num">A0{billNo}</div>
+              <div style={{fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em'}} className="num">{'A' + String(billNo).padStart(3, '0')}</div>
             </div>
             <div style={{display: 'flex', gap: 6, alignItems: 'center'}}>
               {memberInfo ? (
@@ -611,7 +612,9 @@ export default function POSTerminal() {
                 <div style={{fontSize: 13}}>{t.pos.emptyCartHint}</div>
               </div>
             ) : cart.map((l, i) => (
-              <CartLine key={i} line={l} onInc={() => updateQty(i, +1)} onDec={() => updateQty(i, -1)} onRemove={() => removeLine(i)} />
+              // addLine merges on exactly (menuId, modKey), so the pair is unique
+              // per line — index keys would misattach rows when a middle line is removed.
+              <CartLine key={`${l.menuId}|${l.modKey}`} line={l} onInc={() => updateQty(i, +1)} onDec={() => updateQty(i, -1)} onRemove={() => removeLine(i)} />
             ))}
           </div>
 
@@ -678,8 +681,7 @@ export default function POSTerminal() {
         />
       )}
       {showPromoPanel && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowPromoPanel(false)}>
-          <div className="fade-in" onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '85vh', overflowY: 'auto', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+        <PromoPanel onClose={() => setShowPromoPanel(false)} label={t.pos.promoPanelTitle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <div style={{ fontSize: 16, fontWeight: 700 }}>{t.pos.promoPanelTitle}</div>
               <button onClick={() => setShowPromoPanel(false)} aria-label={t.common.close} className="icon-btn hit-44" style={{ width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center' }}><Icon name="x" size={16} /></button>
@@ -741,8 +743,7 @@ export default function POSTerminal() {
             <button onClick={() => setShowPromoPanel(false)} className="pressable" style={{ marginTop: 16, width: '100%', padding: 12, minHeight: 48, borderRadius: 10, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
               {t.pos.applyDiscount}{discount > 0 ? ` (-${baht(discount)})` : ''}
             </button>
-          </div>
-        </div>
+        </PromoPanel>
       )}
       {payment && (
         <PaymentModal method={payment} total={total} billNo={billNo} onClose={() => setPayment(null)} onPaid={onPaid} />
@@ -897,7 +898,10 @@ const MenuCard = ({ item, onClick }: { item: MenuItem; onClick: () => void }) =>
       }}>{item.tag}</div>
     </div>
     <div style={{padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: 4}}>
-      <div style={{fontSize: 13, fontWeight: 600, color: 'var(--color-text)', lineHeight: 1.3, minHeight: 34}}>{item.name}</div>
+      <div style={{
+        fontSize: 13, fontWeight: 600, color: 'var(--color-text)', lineHeight: 1.3, minHeight: 34,
+        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+      }}>{item.name}</div>
       <div className="num" style={{fontSize: 15, fontWeight: 700, color: 'var(--color-primary)'}}>฿{item.price}</div>
     </div>
   </button>
@@ -962,5 +966,21 @@ const PayButton = ({ icon, label, onClick, disabled, primary, pending }: { icon:
       {pending ? <span className="spinner" style={{width: 18, height: 18}} aria-hidden /> : <Icon name={icon} size={20}/>}
       <span style={{fontSize: 12}}>{pending ? t.common.saving : label}</span>
     </button>
+  );
+};
+
+/**
+ * Promo/redeem overlay shell — hosts the modal a11y hook (focus trap, Esc to
+ * close, focus restore) so the panel content can stay inline in POSTerminal
+ * without calling hooks inside conditional JSX.
+ */
+const PromoPanel = ({ onClose, label, children }: { onClose: () => void; label: string; children: React.ReactNode }) => {
+  const dialogRef = useModalA11y(onClose);
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={label} className="fade-in" onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '85vh', overflowY: 'auto', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
+        {children}
+      </div>
+    </div>
   );
 };

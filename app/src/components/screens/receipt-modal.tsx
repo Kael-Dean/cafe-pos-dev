@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../icons';
 import { bahtText } from '@/lib/baht-text';
 import { makeInvoiceNo } from '@/lib/receipt-number';
+import { useModalA11y } from '@/hooks/use-modal-a11y';
 
 /**
  * The preview reproduces a physical 80mm thermal slip, which is light paper
@@ -103,55 +104,14 @@ export const DEFAULT_STORE: StoreInfo = {
   phone: '062-334-5526',
 };
 
-/**
- * Modal a11y: trap focus inside the dialog, close on Esc, restore focus to the
- * opener on unmount. The visual open/close stays on the existing modal-in CSS
- * animation — this only wires keyboard + focus behaviour.
- */
-function useModalA11y(onClose: () => void) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    const node = ref.current;
-
-    const focusables = () =>
-      Array.from(
-        node?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      ).filter((el) => el.offsetParent !== null);
-
-    focusables()[0]?.focus({ preventScroll: true });
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
-      if (e.key !== 'Tab') return;
-      const items = focusables();
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      opener?.focus?.();
-    };
-    // Runs once for the modal's lifetime.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return ref;
-}
-
 export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, onCancel, onSaveDate }: Props) {
   const [isPrinting, setIsPrinting] = useState(false);
   const dialogRef = useModalA11y(onClose);
 
-  const now = issuedAt ?? new Date();
+  // Fallback timestamp must be stable across re-renders — a bare new Date()
+  // here would regenerate the fallback invoice no. and header date every render.
+  const [mountedAt] = useState(() => new Date());
+  const now = issuedAt ?? mountedAt;
   const invoiceNo = data.receiptNo ?? makeInvoiceNo(String(data.orderNumber), now);
 
   // ── Backdating: pick a day, persist to the server (for past-sale entry) ──

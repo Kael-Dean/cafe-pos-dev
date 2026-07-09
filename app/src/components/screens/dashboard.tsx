@@ -321,7 +321,9 @@ const LineChart = ({
 };
 
 const BarList = ({ items }: { items: typeof DASHBOARD['topItems'] }) => {
-  const max = Math.max(...items.map((x) => x.qty));
+  // Floor at 1: an all-zero (or empty) top-items list would otherwise divide by
+  // zero below and render NaN% bar widths.
+  const max = Math.max(1, ...items.map((x) => x.qty));
   return (
     <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
       {items.map((it, i) => (

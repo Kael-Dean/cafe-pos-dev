@@ -1,61 +1,15 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import Icon from '../icons';
 import { useI18n } from '@/lib/i18n';
+import { useModalA11y } from '@/hooks/use-modal-a11y';
 
 interface Props {
   /** Number shown in the header/warning, e.g. the KDS queue or the order no. */
   orderLabel: string;
   onClose: () => void;
   onConfirm: (reason: string, restock: boolean) => Promise<void>;
-}
-
-/**
- * Modal a11y: trap focus inside the dialog, close on Esc, restore focus to the
- * element that opened it. Mirrors the role="dialog"/aria-modal convention used
- * elsewhere in the app. The visual open/close stays on the CSS .modal-in /
- * .backdrop-in classes — this only wires keyboard + focus behaviour.
- */
-function useModalA11y(onClose: () => void) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    const node = ref.current;
-
-    // Move focus into the dialog on open (first focusable, else the shell).
-    const focusables = () =>
-      Array.from(
-        node?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      ).filter((el) => el.offsetParent !== null);
-
-    focusables()[0]?.focus();
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
-      if (e.key !== 'Tab') return;
-      const items = focusables();
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      opener?.focus?.();
-    };
-    // onClose identity is stable for the modal's lifetime in practice; we only
-    // want this to run once on mount/unmount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return ref;
 }
 
 export default function CancelOrderModal({ orderLabel, onClose, onConfirm }: Props) {
@@ -150,7 +104,7 @@ export default function CancelOrderModal({ orderLabel, onClose, onConfirm }: Pro
                 width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)',
                 padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 600,
                 background: alreadyMade ? 'var(--color-primary)' : 'var(--color-surface-2)',
-                color: alreadyMade ? '#fff' : 'var(--color-text)',
+                color: alreadyMade ? 'var(--color-text-inverse)' : 'var(--color-text)',
                 border: `1px solid ${alreadyMade ? 'var(--color-primary)' : 'var(--color-border)'}`,
               }}
             >

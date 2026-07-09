@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import Icon from '../icons';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useFadeRise } from '@/lib/motion';
 import { useToast, baht } from '../app-common';
 import { usePrinter } from '@/hooks/use-printer';
+import { useModalA11y } from '@/hooks/use-modal-a11y';
 import { displayOrderNo, useVoidOrder, useSetOrderDate } from '@/hooks/use-orders';
 import { useCustomerDetail, type CustomerDetail } from '@/hooks/use-customers';
 import { useMemberDetail, useMembershipProgram, type MemberRead } from '@/hooks/use-membership';
@@ -376,28 +377,7 @@ function ReceiptListSkeleton() {
  * matches the keyboard behaviour of the other modals.
  */
 function ConfirmPrintAll({ count, onCancel, onConfirm }: { count: number; onCancel: () => void; onConfirm: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    const node = ref.current;
-    const focusables = () =>
-      Array.from(node?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? [])
-        .filter(el => el.offsetParent !== null);
-    focusables()[0]?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onCancel(); return; }
-      if (e.key !== 'Tab') return;
-      const items = focusables();
-      if (items.length === 0) return;
-      const first = items[0]; const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('keydown', onKey); opener?.focus?.(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const ref = useModalA11y(onCancel);
 
   return (
     <div className="modal-backdrop" style={{ zIndex: 320 }} onClick={onCancel}>

@@ -199,7 +199,7 @@ export default function CashReconciliation() {
               )}
               <div style={{ marginTop: 'var(--space-4)' }}>
                 <button onClick={handleClose} disabled={closeSession.isPending} className="pressable"
-                  style={{ minHeight: 44, padding: '10px 20px', borderRadius: 'var(--radius-md)', background: 'var(--color-danger)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 14, cursor: 'pointer', border: 'none' }}>
+                  style={{ minHeight: 44, padding: '10px 20px', borderRadius: 'var(--radius-md)', background: 'var(--color-danger-strong)', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', border: 'none' }}>
                   {closeSession.isPending ? 'กำลังปิด...' : 'ปิดกะ'}
                 </button>
               </div>

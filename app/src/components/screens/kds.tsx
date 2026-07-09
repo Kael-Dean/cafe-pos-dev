@@ -10,6 +10,7 @@ import { useAllProducts } from '@/hooks/use-products';
 import { useModifierGroups } from '@/hooks/use-modifier-groups';
 import { useCookingSteps } from '@/hooks/use-cooking-steps';
 import CancelOrderModal from './cancel-order-modal';
+import { useModalA11y } from '@/hooks/use-modal-a11y';
 
 const STATUS_RANK: Record<KDSTicket['status'], number> = { new: 0, progress: 1, ready: 2 };
 const ACTION_COOLDOWN_MS = 600;
@@ -335,7 +336,7 @@ const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, modGroup, onB
   const statusStyle = {
     new:      { bg: 'var(--color-warning)', color: 'var(--color-on-accent)' },
     progress: { bg: 'var(--color-accent)',  color: 'var(--color-on-accent)' },
-    ready:    { bg: 'var(--color-success)', color: 'white' },
+    ready:    { bg: 'var(--color-success)', color: 'var(--color-on-accent)' },
   }[ticket.status] || { bg: '', color: '' };
   const statusLabel = t.kds.badge[ticket.status];
   const typeLabel = (t.kds.orderType as Record<string, string>)[ticket.type] ?? ticket.type;
@@ -432,6 +433,7 @@ const CookingStepsModal = ({ productId, productName, onClose }: {
 }) => {
   const { t } = useI18n();
   const { data: steps, isLoading } = useCookingSteps(productId);
+  const dialogRef = useModalA11y(onClose);
 
   return (
     <div
@@ -439,6 +441,10 @@ const CookingStepsModal = ({ productId, productName, onClose }: {
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${t.kds.howTo} ${productName}`}
         onClick={e => e.stopPropagation()}
         className="surface-inverse"
         style={{ borderRadius: 16, width: '100%', maxWidth: 420, maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', animation: 'modal-in var(--dur-slow) var(--ease-out)' }}
