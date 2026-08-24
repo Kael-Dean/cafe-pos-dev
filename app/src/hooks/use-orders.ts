@@ -29,6 +29,8 @@ export interface CreateOrderPayload {
   reward_product_id?: string | null; // required when reward_type = FREE_ITEM
   // ── Promotions (optional; defaults to [] server-side) ──
   promotion_ids?: string[];      // selected eligible promotion ids; re-validated at checkout
+  // ── Board-game table tab (optional) ──
+  session_id?: string;           // open TableSession.id — puts the order on that table's tab
 }
 
 // ── Backend shapes ────────────────────────────────────────────────────────────
@@ -54,6 +56,8 @@ interface OrderRead {
   member_id?: string | null;
   points_earned?: number;
   reward_redeemed?: boolean;
+  // ── Board-game table tab (null on ordinary orders) ──
+  session_id?: string | null;
 }
 
 interface OrdersPage {
@@ -148,7 +152,7 @@ export function useCreateOrder() {
 export function usePayOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ orderId, payment_method, payment_ref }: { orderId: string; payment_method: 'CASH' | 'CARD' | 'QR_PROMPTPAY' | 'LINE_PAY'; payment_ref?: string }) =>
+    mutationFn: ({ orderId, payment_method, payment_ref }: { orderId: string; payment_method: 'CASH' | 'CARD' | 'QR_PROMPTPAY' | 'LINE_PAY' | 'TRUEMONEY' | 'OTHER'; payment_ref?: string }) =>
       api.patch<OrderRead>(`/api/v1/orders/${orderId}/pay`, { payment_method, payment_ref }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kds-orders'] });

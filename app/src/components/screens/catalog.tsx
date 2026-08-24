@@ -6,6 +6,7 @@ import { useToast, Select, NumberInput } from '../app-common';
 import { useFadeRise } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
+import { TABLE_TIME_PRODUCT_NAME } from '@/hooks/use-features';
 import {
   useCategoriesAdmin,
   useCreateCategory,
@@ -221,9 +222,24 @@ function ProductsTab() {
           <tbody>
             {(products ?? []).map(p => {
               const cat = categories?.find(c => c.id === p.category_id);
+              // The table-time charge is looked up by this exact name every time a
+              // board-game session closes: renaming or retiring it silently breaks
+              // time billing (a fresh product gets created instead), so it is shown
+              // but never editable here.
+              const systemManaged = p.name === TABLE_TIME_PRODUCT_NAME;
               return (
                 <tr key={p.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                  <td style={{ padding: '10px 16px', fontWeight: 500 }}>{p.name}</td>
+                  <td style={{ padding: '10px 16px', fontWeight: 500 }}>
+                    {p.name}
+                    {systemManaged && (
+                      <span style={{
+                        marginLeft: 8, padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600,
+                        background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)',
+                      }}>
+                        สินค้าระบบ
+                      </span>
+                    )}
+                  </td>
                   <td style={{ padding: '10px 16px', color: 'var(--color-text-secondary)', fontSize: 13 }}>
                     {cat?.name ?? <em style={{ color: 'var(--color-text-muted)' }}>ไม่มีหมวดหมู่</em>}
                   </td>
@@ -240,7 +256,16 @@ function ProductsTab() {
                     </span>
                   </td>
                   <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                    <button onClick={() => openEdit(p)} style={btnSm('ghost')}>แก้ไข</button>
+                    {systemManaged ? (
+                      <span
+                        title="ระบบใช้ชื่อนี้ตอนคิดค่าเวลาโต๊ะ — เปลี่ยนชื่อหรือปิดใช้งานจะทำให้การคิดเงินพัง"
+                        style={{ fontSize: 12, color: 'var(--color-text-muted)' }}
+                      >
+                        แก้ไขไม่ได้
+                      </span>
+                    ) : (
+                      <button onClick={() => openEdit(p)} style={btnSm('ghost')}>แก้ไข</button>
+                    )}
                   </td>
                 </tr>
               );

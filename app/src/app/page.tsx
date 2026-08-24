@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 // belong in the first chunk. Every other screen is code-split below.
 import LoginScreen from '@/components/screens/login';
 import POSTerminal from '@/components/screens/pos';
+import type { ActiveTableSession } from '@/components/screens/floor';
 
 // Brief fallback while a screen's JS chunk downloads. Screens carry their own
 // data-loading skeletons; this only covers the chunk fetch itself.
@@ -29,6 +30,11 @@ function ScreenLoading() {
 // gates its render on `mounted` (so nothing renders server-side anyway).
 const lazyScreen = (loader: () => Promise<{ default: ComponentType }>) =>
   dynamic(loader, { ssr: false, loading: ScreenLoading });
+
+// Floor takes props, so it is declared with `dynamic` directly — `lazyScreen`
+// erases prop types to the no-prop ComponentType the registry below expects.
+const Floor = dynamic(() => import('@/components/screens/floor'), { ssr: false, loading: ScreenLoading });
+const TableSetup = lazyScreen(() => import('@/components/screens/table-setup'));
 
 const KDS = lazyScreen(() => import('@/components/screens/kds'));
 const Dashboard = lazyScreen(() => import('@/components/screens/dashboard'));
@@ -55,6 +61,7 @@ const ReceiptCopies = lazyScreen(() => import('@/components/screens/receipt-copi
 
 type Screen =
   | 'pos' | 'kds' | 'dashboard' | 'bom' | 'bakery' | 'inventory'
+  | 'floor' | 'table-setup'
   | 'pre-orders' | 'shopping-list' | 'stock-take'
   | 'cash' | 'receipt-copies' | 'promotions' | 'members' | 'sales' | 'protocols' | 'hr' | 'shifts'
   | 'hardware' | 'customers' | 'reports' | 'catalog' | 'recycle-bin' | 'settings';
@@ -64,6 +71,9 @@ export default function POS() {
   const [mounted, setMounted] = useState(false);
   const [screen, setScreen] = useState<Screen>('pos');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // The board-game tab: while set, POS puts every order it creates on this table's
+  // session instead of taking payment at the counter.
+  const [tableSession, setTableSession] = useState<ActiveTableSession | null>(null);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -99,10 +109,19 @@ export default function POS() {
     clearToken();
     queryClient.clear();
     setIsLoggedIn(false);
+    setTableSession(null);
+  };
+
+  // "สั่งอาหาร" from a table hands the tab to POS and switches screens.
+  const startTableOrder = (s: ActiveTableSession) => {
+    setTableSession(s);
+    void navigate('pos');
   };
 
   const screens: Record<Screen, React.ReactNode> = {
-    pos:        <POSTerminal />,
+    pos:        <POSTerminal session={tableSession} onClearSession={() => setTableSession(null)} />,
+    floor:      <Floor onOrderForSession={startTableOrder} onNavigate={(s) => { void navigate(s as Screen); }} />,
+    'table-setup': <TableSetup />,
     kds:        <KDS />,
     dashboard:  <Dashboard />,
     bom:        <BOMBuilder />,

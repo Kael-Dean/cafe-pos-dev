@@ -4,6 +4,7 @@ import { useState, useCallback, createContext, useContext, useRef, useEffect, Fr
 import { createPortal } from 'react-dom';
 import Icon from './icons';
 import { useCurrentUser } from '@/hooks/use-current-user';
+import { useFeatures, FEATURE_BOARDGAME } from '@/hooks/use-features';
 import { displayNumber, parseNumberInput, clampNumber } from '@/lib/number-input';
 import { useI18n } from '@/lib/i18n';
 // Import the gsap-free count-up directly (not via the @/lib/motion barrel, which
@@ -56,7 +57,12 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
 // ---------- Sidebar ----------
 // Labels are resolved at render time from the active language (`t.nav[id]`); the array
 // holds only structural metadata (id, icon, visibility flags).
-export type NavItem = { id: string; icon?: string; soft?: boolean; adminOnly?: boolean; ownerOnly?: boolean; divider?: boolean; header?: boolean; };
+export type NavItem = {
+  id: string; icon?: string; soft?: boolean; adminOnly?: boolean; ownerOnly?: boolean;
+  divider?: boolean; header?: boolean;
+  /** Store entitlement required to see this item — hidden when the add-on isn't sold. */
+  feature?: string;
+};
 
 // Grouped by working mode so each job (taking orders, kitchen/stock, CRM, running
 // the shop, one-time setup) sits together and is quick to find. `header` rows are
@@ -70,6 +76,12 @@ export const NAV: NavItem[] = [
   { id: 'pre-orders',    icon: 'calendar' },
   { id: 'receipt-copies', icon: 'reports', adminOnly: true },
   { id: 'cash',      icon: 'cash',     adminOnly: true },
+
+  // Board-game add-on — the whole group disappears for stores without the
+  // `vertical.boardgame` entitlement (its endpoints answer 404 there).
+  { id: 'sec-boardgame', header: true },
+  { id: 'floor',       icon: 'park',     feature: FEATURE_BOARDGAME },
+  { id: 'table-setup', icon: 'settings', feature: FEATURE_BOARDGAME, adminOnly: true },
 
   // Kitchen & stock — recipes, ingredients, counts, purchasing.
   { id: 'sec-kitchen', header: true },
@@ -109,6 +121,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
   const navLabel = (id: string) => (t.nav as Record<string, string>)[id] ?? id;
   const sectionLabel = (id: string) => (t.navSection as Record<string, string>)[id] ?? id;
   const { data: me } = useCurrentUser();
+  const { data: features } = useFeatures();
   const role = me?.role;
   const isAdmin = role === 'OWNER' || role === 'MANAGER';
   const initial = me?.name ? me.name.charAt(0).toUpperCase() : '?';
@@ -121,6 +134,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
     if (n.divider) continue;
     if (n.adminOnly && !isAdmin) continue;
     if (n.ownerOnly && role !== 'OWNER') continue;
+    if (n.feature && !features?.includes(n.feature)) continue;
     sections[sections.length - 1]?.items.push(n);
   }
   const visibleSections = sections.filter((s) => s.items.length > 0);
@@ -557,7 +571,8 @@ const MAIN_TABS = [
   { id: 'dashboard', icon: 'chart' },
 ] as const;
 
-const MORE_ITEMS = [
+const MORE_ITEMS: { id: string; icon: string; feature?: string }[] = [
+  { id: 'floor',        icon: 'park', feature: FEATURE_BOARDGAME },
   { id: 'bom',          icon: 'inv' },
   { id: 'pre-orders',   icon: 'calendar' },
   { id: 'catalog',      icon: 'tag' },
@@ -568,12 +583,14 @@ const MORE_ITEMS = [
   { id: 'cash',         icon: 'cash' },
   { id: 'shopping-list',icon: 'cart' },
   { id: 'hardware',     icon: 'printer' },
-] as const;
+];
 
 const MAIN_TAB_IDS = new Set<string>(MAIN_TABS.map((t) => t.id));
 
 export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) => {
   const { t } = useI18n();
+  const { data: features } = useFeatures();
+  const moreItems = MORE_ITEMS.filter((item) => !item.feature || features?.includes(item.feature));
   const tabLabel = (id: string) => (t.tabs as Record<string, string>)[id] ?? id;
   const navLabel = (id: string) => (t.nav as Record<string, string>)[id] ?? id;
   const [moreOpen, setMoreOpen] = useState(false);
@@ -643,7 +660,7 @@ export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) =
               padding: '12px 8px',
               gap: 4,
             }}>
-              {MORE_ITEMS.map((item) => {
+              {moreItems.map((item) => {
                 const active = currentScreen === item.id;
                 return (
                   <button

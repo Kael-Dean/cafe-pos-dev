@@ -45,6 +45,8 @@ export const en: Messages = {
     'stock-take': 'Stock Take',
     cash: 'Cash / Reconciliation',
     'receipt-copies': 'Receipt Copies',
+    floor: 'Floor Plan',
+    'table-setup': 'Tables & Rates',
     promotions: 'Promotions / Loyalty',
     members: 'Members',
     sales: 'Salespeople',
@@ -61,6 +63,7 @@ export const en: Messages = {
 
   navSection: {
     'sec-service': 'Service',
+    'sec-boardgame': 'Tables & Board Games',
     'sec-kitchen': 'Kitchen & Stock',
     'sec-crm': 'Customers & Marketing',
     'sec-manage': 'Manage & Reports',
@@ -301,6 +304,14 @@ export const en: Messages = {
   },
 
   pos: {
+    // ── Board-game table tab ────────────────────────────────────────────────
+    tableBanner: (name: string) => `Adding to table ${name}`,
+    tableBannerHint: 'Orders go on the table tab and are paid together at close-out',
+    tableExit: 'Leave table mode',
+    tableAddToTab: 'Add to table tab',
+    tableAdded: (name: string) => `Added to table ${name}`,
+    tableAddedMsg: 'Settle everything from the floor plan when the table closes',
+
     menuTitle: 'Menu',
     searchPlaceholder: 'Search menu, name or hotkey...',
     tabMenu: 'Menu',

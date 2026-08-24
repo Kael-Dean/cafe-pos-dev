@@ -8,6 +8,7 @@ import { useToast, Tag, baht, Select, NumberInput } from '../app-common';
 import { useStagger } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, useUpdateProduct, useUploadProductImage, useDeleteProductImage, type MenuItem, type Category } from '@/hooks/use-products';
+import { TABLE_TIME_PRODUCT_NAME } from '@/hooks/use-features';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
 import { useProductDetail, useUpdateRecipe, useLinkModifierGroups, type RecipeItem } from '@/hooks/use-bom';
 import { useModifierGroups, useModifierGroupsAdmin, useAddModifier, useUpdateModifier, useDeleteModifier, useModifierRecipeItems, useReplaceModifierRecipeItems, type ModifierGroup, type ModifierGroupRead, type ModifierRead, type ModifierRecipeItemInput } from '@/hooks/use-modifier-groups';
@@ -301,7 +302,10 @@ export default function BOMBuilder() {
   const listRef = useStagger({ selector: ':scope > *', each: 0.02 });
 
   const filteredProducts = (products ?? []).filter(m =>
-    !search || m.name.includes(search) || m.nameEn.toLowerCase().includes(search.toLowerCase())
+    // The board-game table-time charge is a pure service line: giving it a recipe
+    // would deduct stock every time a table settles, so it never appears here.
+    m.name !== TABLE_TIME_PRODUCT_NAME &&
+    (!search || m.name.includes(search) || m.nameEn.toLowerCase().includes(search.toLowerCase()))
   );
   const marginColorOf = (pct: number) => pct >= 65 ? 'var(--color-success)' : pct >= 50 ? 'var(--color-warning)' : 'var(--color-danger)';
   const marginToneOf = (pct: number): 'success' | 'warning' | 'danger' => pct >= 65 ? 'success' : pct >= 50 ? 'warning' : 'danger';

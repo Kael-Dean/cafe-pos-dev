@@ -9,6 +9,7 @@ import { useAllProducts, useCategories, type MenuItem } from '@/hooks/use-produc
 import { useBestSellerNames } from '@/hooks/use-best-sellers';
 import { useProductDetail } from '@/hooks/use-bom';
 import { useCreateOrder, usePayOrder, useSetOrderDate, displayOrderNo } from '@/hooks/use-orders';
+import { TABLE_TIME_PRODUCT_NAME } from '@/hooks/use-features';
 import { ApiError } from '@/lib/api-client';
 import { useEvaluatePromotions, type EligiblePromotion } from '@/hooks/use-promotions';
 import ModifierModal from './modifier-modal';
@@ -34,7 +35,22 @@ function estimateMemberDiscount(member: MemberInfo | null, program: ProgramRead 
   return 0;
 }
 
-export default function POSTerminal() {
+export interface POSTableSession {
+  sessionId: string;
+  tableName: string;
+}
+
+interface POSTerminalProps {
+  /**
+   * Board-game table tab. While set, checkout creates the order with `session_id`
+   * and takes NO payment — the table's food, drinks and time charge are settled
+   * together from the floor plan when the session closes.
+   */
+  session?: POSTableSession | null;
+  onClearSession?: () => void;
+}
+
+export default function POSTerminal({ session = null, onClearSession }: POSTerminalProps = {}) {
   const toast = useToast();
   const { t } = useI18n();
   const [category, setCategory] = useState('all');
@@ -103,7 +119,8 @@ export default function POSTerminal() {
   const filtered = useMemo(() => {
     if (!products) return [];
     // COMPONENT = ส่วนผสมทำเอง (ไม่ขาย) — กันไม่ให้โผล่ในหน้าขาย (BE ก็ block 422 อีกชั้น)
-    const sellable = products.filter(m => m.productType !== 'COMPONENT');
+    // ค่าโต๊ะ = สินค้าระบบที่ backend สร้าง/คิดเงินเองตอนปิดโต๊ะ — ห้ามให้พนักงานหยิบใส่ตะกร้าเอง
+    const sellable = products.filter(m => m.productType !== 'COMPONENT' && m.name !== TABLE_TIME_PRODUCT_NAME);
     if (search.trim()) {
       const s = search.toLowerCase();
       return sellable.filter(m => m.name.toLowerCase().includes(s) || m.nameEn.toLowerCase().includes(s));
@@ -261,6 +278,51 @@ export default function POSTerminal() {
   const removeLine = (i: number) => setCart((cur) => cur.filter((_, k) => k !== i));
   const clearCart = () => { setCart([]); setBillNo((b) => b + 1); setMemberInfo(null); setSelectedPromoIds([]); setEligiblePromos([]); setShowPromoPanel(false); };
 
+  /**
+   * Board-game tab: create the order against the open table session and stop
+   * there. No payment is taken — the order stays PENDING on the table's tab and
+   * is settled together with the time charge when the session closes.
+   */
+  const addToTab = () => {
+    if (!session || createOrder.isPending || !cart.length) return;
+    const cartSnapshot = [...cart];
+    const memberSnapshot = memberInfo;
+    const promoSnapshot = selectedPromoIds;
+    clearCart();
+    createOrder.mutateAsync({
+      idempotency_key: crypto.randomUUID(),
+      channel: 'DINE_IN',
+      session_id: session.sessionId,
+      items: cartSnapshot.map(l => ({
+        product_id: l.menuId,
+        quantity: l.qty,
+        modifier_ids: l.modIds,
+      })),
+      ...(memberSnapshot ? {
+        customer_id: memberSnapshot.account.customer_id,
+        member_id: memberSnapshot.account.id,
+        redeem_reward: memberSnapshot.redeemReward,
+        reward_product_id: memberSnapshot.rewardProduct?.id ?? null,
+      } : {}),
+      ...(promoSnapshot.length ? { promotion_ids: promoSnapshot } : {}),
+    }).then(() => {
+      toast({
+        kind: 'success',
+        title: t.pos.tableAdded(session.tableName),
+        msg: t.pos.tableAddedMsg,
+        duration: 3000,
+      });
+    }).catch((err: unknown) => {
+      // The order was NOT created, so restoring the cart is safe — and it re-runs
+      // promotion evaluation before the cashier tries again.
+      const msg = err instanceof Error ? err.message : t.pos.contactManager;
+      setCart(cartSnapshot);
+      setMemberInfo(memberSnapshot);
+      setSelectedPromoIds(promoSnapshot);
+      toast({ kind: 'warning', title: t.pos.orderSaveFailed, msg: t.pos.cartRestoredMsg(msg), duration: 4500 });
+    });
+  };
+
   const onPaid = () => {
     // Re-entrancy guard: ignore the call if an order/payment is already being
     // created, so a double-submit can't produce a duplicate (or empty) order.
@@ -414,6 +476,30 @@ export default function POSTerminal() {
 
   return (
     <div style={{display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--color-bg)'}}>
+      {/* Table-tab banner — the cashier must always be able to see that this sale
+          is going on a table's bill instead of being paid now. */}
+      {session && (
+        <div role="status" className="shrink-0" style={{
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          padding: '10px 20px', background: 'var(--color-primary)', color: 'var(--color-text-inverse)',
+        }}>
+          <Icon name="park" size={18} />
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{t.pos.tableBanner(session.tableName)}</div>
+            <div style={{ fontSize: 12, opacity: 0.85 }}>{t.pos.tableBannerHint}</div>
+          </div>
+          {onClearSession && (
+            <button
+              onClick={onClearSession}
+              className="btn btn-ghost"
+              style={{ minHeight: 40, color: 'var(--color-text-inverse)', borderColor: 'currentColor' }}
+            >
+              {t.pos.tableExit}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Mobile tab strip — hidden on md+ */}
       <div role="tablist" aria-label="POS sections" className="flex md:hidden shrink-0" style={{
         height: 44,
@@ -635,12 +721,18 @@ export default function POSTerminal() {
             </div>
 
             <div style={{padding: '16px 20px 20px', display: 'grid', gap: 8}}>
-              <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8}}>
-                <PayButton icon="cash"  label={t.pos.pay.cash} onClick={() => cart.length && setPayment('cash')} disabled={!cart.length} pending={paying} />
-                <PayButton icon="card"  label={t.pos.pay.card} onClick={() => cart.length && setPayment('card')} disabled={!cart.length} pending={paying} />
-                <PayButton icon="qr"    label={t.pos.pay.qr}   onClick={() => cart.length && setPayment('qr')}   disabled={!cart.length} pending={paying} primary />
-                <PayButton icon="line"  label={t.pos.pay.line} onClick={() => cart.length && setPayment('line')} disabled={!cart.length} pending={paying} />
-              </div>
+              {session ? (
+                // Table mode: one action, and it takes no money. Payment happens
+                // once, at close-out, for the whole tab plus the time charge.
+                <PayButton icon="park" label={t.pos.tableAddToTab} onClick={addToTab} disabled={!cart.length} pending={paying} primary />
+              ) : (
+                <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8}}>
+                  <PayButton icon="cash"  label={t.pos.pay.cash} onClick={() => cart.length && setPayment('cash')} disabled={!cart.length} pending={paying} />
+                  <PayButton icon="card"  label={t.pos.pay.card} onClick={() => cart.length && setPayment('card')} disabled={!cart.length} pending={paying} />
+                  <PayButton icon="qr"    label={t.pos.pay.qr}   onClick={() => cart.length && setPayment('qr')}   disabled={!cart.length} pending={paying} primary />
+                  <PayButton icon="line"  label={t.pos.pay.line} onClick={() => cart.length && setPayment('line')} disabled={!cart.length} pending={paying} />
+                </div>
+              )}
               <div style={{display: 'flex', gap: 8, marginTop: 4}}>
                 <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8, minHeight: 44, opacity: panelOfferCount ? 1 : 0.5}}
                   onClick={() => panelOfferCount && setShowPromoPanel(true)} disabled={!panelOfferCount}>

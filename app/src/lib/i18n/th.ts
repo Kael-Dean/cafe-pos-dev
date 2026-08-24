@@ -50,6 +50,8 @@ export const th = {
     'stock-take': 'ตรวจนับสต็อก',
     cash: 'เงินสด / กระทบยอด',
     'receipt-copies': 'สำเนาใบเสร็จ',
+    floor: 'ผังโต๊ะ',
+    'table-setup': 'ตั้งค่าโต๊ะ & ค่าเวลา',
     promotions: 'โปรโมชัน / สะสมแต้ม',
     members: 'สมาชิก',
     sales: 'เซลส์',
@@ -67,6 +69,7 @@ export const th = {
   // ── Sidebar section headers (desktop nav, grouped by working mode) ─────────
   navSection: {
     'sec-service': 'หน้าร้าน',
+    'sec-boardgame': 'โต๊ะ & บอร์ดเกม',
     'sec-kitchen': 'ครัว & สต็อก',
     'sec-crm': 'ลูกค้า & การตลาด',
     'sec-manage': 'จัดการ & รายงาน',
@@ -320,6 +323,14 @@ export const th = {
 
   // ── POS Terminal ──────────────────────────────────────────────────────────
   pos: {
+    // ── Board-game table tab ────────────────────────────────────────────────
+    tableBanner: (name: string) => `กำลังลงบิลเข้าโต๊ะ ${name}`,
+    tableBannerHint: 'ออร์เดอร์จะไปรวมที่โต๊ะ แล้วจ่ายทีเดียวตอนปิดโต๊ะ',
+    tableExit: 'ออกจากโหมดโต๊ะ',
+    tableAddToTab: 'ลงบิลโต๊ะ',
+    tableAdded: (name: string) => `ลงบิลโต๊ะ ${name} แล้ว`,
+    tableAddedMsg: 'ไปเก็บเงินรวมที่หน้าผังโต๊ะตอนปิดโต๊ะ',
+
     menuTitle: 'เมนู',
     searchPlaceholder: 'ค้นหาเมนู ชื่อ หรือ hotkey...',
     tabMenu: 'เมนู',
