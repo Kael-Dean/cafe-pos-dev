@@ -1,3 +1,6 @@
-allowBuilds:
-  sharp: set this to true or false
-  unrs-resolver: set this to true or false
+# Mirrors app/pnpm-workspace.yaml: skip these postinstall builds. Vercel supplies
+# its own sharp for image optimization, and unrs-resolver is only used by ESLint,
+# so neither needs to compile during install.
+ignoredBuiltDependencies:
+  - sharp
+  - unrs-resolver
