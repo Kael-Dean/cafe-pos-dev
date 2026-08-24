@@ -7,9 +7,22 @@ import type { NextConfig } from "next";
 //
 // Phase 1 of the admin API is deployed to staging only; production does not
 // serve /api/v1/admin/* yet. Point ADMIN_API_URL at production once it does.
-const ADMIN_API =
-  process.env.ADMIN_API_URL ??
-  "https://caf-pos-repo-staging.up.railway.app";
+const FALLBACK_API = "https://caf-pos-repo-staging.up.railway.app";
+
+// A rewrite destination that isn't an absolute http(s) URL fails the build
+// outright ("Invalid rewrite found"), and an env var can easily arrive with a
+// stray BOM, quotes or a trailing slash from whatever shell set it. Sanitise
+// first and fall back rather than shipping a broken build.
+function resolveApiOrigin(raw: string | undefined): string {
+  const cleaned = raw?.replace(/^﻿/, "").trim().replace(/^["']|["']$/g, "").replace(/\/+$/, "");
+  if (cleaned && /^https?:\/\/\S+$/.test(cleaned)) return cleaned;
+  if (raw) {
+    console.warn(`[next.config] ADMIN_API_URL is not an absolute http(s) URL — falling back to ${FALLBACK_API}`);
+  }
+  return FALLBACK_API;
+}
+
+const ADMIN_API = resolveApiOrigin(process.env.ADMIN_API_URL);
 
 const nextConfig: NextConfig = {
   async rewrites() {
