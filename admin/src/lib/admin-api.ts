@@ -11,15 +11,43 @@ export interface ApiFieldError {
   type?: string;
 }
 
+/** Extras carried off the error envelope and the response headers. */
+export interface ApiErrorMeta {
+  /** `error.code` from the envelope (e.g. 'TOO_MANY_REQUESTS'). null when absent. */
+  code?: string | null;
+  /** `Retry-After` in whole seconds. null when the header is absent or unparseable. */
+  retryAfter?: number | null;
+}
+
+/**
+ * RFC-7231 allows either a number of seconds or an HTTP-date. slowapi sends
+ * seconds, but the Next rewrite in front of the API may rewrite it, so handle both.
+ */
+export function parseRetryAfter(res: Response): number | null {
+  const raw = res.headers.get('Retry-After');
+  if (!raw) return null;
+  const secs = Number(raw);
+  if (Number.isFinite(secs) && secs >= 0) return Math.ceil(secs);
+  const when = Date.parse(raw);
+  return Number.isNaN(when) ? null : Math.max(0, Math.ceil((when - Date.now()) / 1000));
+}
+
 export class ApiError extends Error {
+  readonly code: string | null;
+  readonly retryAfter: number | null;
+
   constructor(
     public status: number,
     message: string,
     /** Present on 422 — Pydantic's per-field errors, for mapping back onto the form. */
     public details?: ApiFieldError[],
+    // Fourth, not third: `details` is already passed positionally below.
+    meta?: ApiErrorMeta,
   ) {
     super(message);
     this.name = 'ApiError';
+    this.code = meta?.code ?? null;
+    this.retryAfter = meta?.retryAfter ?? null;
   }
 }
 
@@ -60,7 +88,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     const raw = body?.error?.message ?? body?.detail ?? `HTTP ${res.status}`;
     const msg = typeof raw === 'string' ? raw : JSON.stringify(raw);
     const details = Array.isArray(body?.error?.details) ? (body.error.details as ApiFieldError[]) : undefined;
-    throw new ApiError(res.status, msg, details);
+    const code = body?.error?.code;
+    throw new ApiError(res.status, msg, details, {
+      code: typeof code === 'string' ? code : null,
+      retryAfter: parseRetryAfter(res),
+    });
   }
 
   if (res.status === 204) return undefined as T;
