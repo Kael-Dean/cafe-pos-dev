@@ -371,10 +371,10 @@ export function useRestoreInventoryItem() {
 }
 
 // Lots whose expiry_date has passed and still have stock, oldest expiry first.
-// Note: the backend evaluates "expired" here against the SERVER calendar date while
-// POST /inventory/expired/waste uses Bangkok, so between 00:00-07:00 Bangkok a lot may
-// be accepted by the confirm call before it shows up here. Harmless — nothing listed is
-// ever wrongly skipped, and we only ever submit ids taken from this list.
+// Both this and POST /inventory/expired/waste evaluate "expired" against the Bangkok
+// calendar date, and lots on inactive (soft-deleted) items are excluded here — so a
+// skip reason of `inactive_item` only comes back when an item was deactivated between
+// this fetch and the confirm.
 export function useExpiredInventory() {
   return useQuery<ExpiredLot[]>({
     queryKey: ['inventory-expired'],
@@ -389,7 +389,7 @@ export function useExpiredInventory() {
 // Confirms a batch of expired lots as wasted: one WASTE movement per accepted lot for
 // its full remaining quantity, reason EXPIRED. Always 200 — per-lot problems come back
 // in `skipped`, never as 404/409. The whole batch is one transaction.
-export type ExpiredWasteSkipReason = 'not_found' | 'not_expired' | 'empty';
+export type ExpiredWasteSkipReason = 'not_found' | 'not_expired' | 'empty' | 'inactive_item';
 
 interface ExpiredWasteSkipRead {
   lot_id: string;

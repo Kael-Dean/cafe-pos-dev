@@ -35,10 +35,12 @@ const WASTAGE_REASON_LABELS: Record<string, string> = {
 // not_found = the lot is gone or belongs to another store (deliberately the same reason)
 // not_expired = expiry is null or still in the future (Bangkok date)
 // empty = already at 0, i.e. someone else confirmed it first — safe, not an error
+// inactive_item = the ingredient was soft-deleted between the list and the confirm
 const EXPIRED_SKIP_LABELS: Record<string, string> = {
-  not_found:   'ไม่พบล็อต',
-  not_expired: 'ยังไม่หมดอายุ',
-  empty:       'บันทึกแล้ว',
+  not_found:     'ไม่พบล็อต',
+  not_expired:   'ยังไม่หมดอายุ',
+  empty:         'บันทึกแล้ว',
+  inactive_item: 'รายการวัตถุดิบถูกลบแล้ว',
 };
 
 // The backend may add reasons (e.g. `inactive_item`) — show the raw value, never throw.
@@ -167,7 +169,14 @@ export default function Inventory() {
       const reasonLabel = WASTAGE_REASONS.find(r => r.id === reason)?.label || reason;
       toast({ kind: 'warning', title: 'บันทึก Wastage แล้ว', msg: `${inv?.name} -${qty.toLocaleString()} ${inv?.unit} • ${reasonLabel}` });
     } catch (err) {
-      toast({ kind: 'warning', title: 'เกิดข้อผิดพลาด', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+      // 409 = the ingredient was soft-deleted; the backend's own message is English.
+      const msg = err instanceof Error ? err.message : 'กรุณาลองใหม่';
+      const inactive = msg.toLowerCase().includes('not active');
+      toast({
+        kind: 'warning',
+        title: inactive ? 'วัตถุดิบนี้ถูกลบไปแล้ว' : 'เกิดข้อผิดพลาด',
+        msg: inactive ? 'กู้คืนวัตถุดิบจากถังขยะก่อน จึงจะบันทึก Wastage ได้' : msg,
+      });
     }
   };
 
