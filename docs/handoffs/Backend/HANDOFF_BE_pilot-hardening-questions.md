@@ -85,11 +85,21 @@ form).
 
 ## Frontend status
 
+All six items are built and typechecked as of **2026-08-29**. None has been exercised against a deployed
+backend — PR #2 was still unmerged — so treat this as "ready for staging", not "verified".
+
 | Train B item | FE status |
 |---|---|
-| `POST /inventory/expired/waste` | **Built and typechecked** — confirm-and-waste modal with select-all, the 200-id cap, per-lot skip report, and idempotent re-post. Waiting on the merge to exercise it against staging. |
+| `POST /inventory/expired/waste` | Confirm-and-waste modal: select-all, the 200-id cap, per-lot skip report, idempotent re-post. |
 | Wastage report Bangkok buckets | **No change needed** — we never compensated for the UTC shift. Verified and commented. |
-| 429 envelope / `RATE_LIMITED` | Not started, **no regression**: neither app ever matched on `RATE_LIMITED`, and both discard `error.code` at the parse boundary today. We'll wire `code` + `Retry-After` through `ApiError` next. |
-| `PATCH /admin/tenants/{id}` | Not started. |
-| `feature_keys` picker | Not started — still a free-text textarea. |
-| `customer_id` store scoping | Not started. Note for you: our POS currently **restores the member (and its `customer_id`) into the cart on any order failure**, so once this lands, a dead id would be resent on every retry until we ship the 404 branch. Contained on our side; flagging it in case you see repeated 404s from one till in the staging logs. |
+| 429 envelope / `RATE_LIMITED` | `ApiError` now carries `error.code` and a parsed `Retry-After`. We separate your two limiters by header first, message second (`/rate limit exceeded/i`), and default an unclassifiable 429 to the 15-minute account lockout. **One thing we'd like confirmed:** that `Retry-After` and `X-RateLimit-*` survive to the client on the deployed setup — see the ask below. |
+| `PATCH /admin/tenants/{id}` | Edit modal sending only the changed keys (`''` → `null` = clear, unchanged = omitted). `billing_address` is now read back too — it was write-only before. |
+| `feature_keys` picker | Checkbox group over the hard-coded registry, union'd with the package's existing keys (see §4). |
+| `customer_id` store scoping | Fixed. A 404 with a member attached now clears the member instead of restoring it, so the dead-id retry loop described below can no longer happen. |
+
+### One small ask
+
+We now read `Retry-After` off the 429. Both our apps reach the API through a Next.js rewrite, so if that
+proxy drops the header we lose it silently. If it is cheap on your side, confirming that the header is set
+on the per-IP 429 (and deliberately absent on the per-email lockout, as documented) would let us stop
+guessing. Our fallbacks are non-null either way, so this is a nice-to-have, not a blocker.

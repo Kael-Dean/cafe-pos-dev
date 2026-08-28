@@ -265,13 +265,18 @@ Answers: [HANDOFF_BE_pilot-hardening-questions.md](../Backend/HANDOFF_BE_pilot-h
 
 ---
 
-## Frontend status (2026-08-28)
+## Frontend status (2026-08-29 — all six items built)
 
 | Item | Status |
 |---|---|
-| `POST /inventory/expired/waste` confirm flow | **Built** — `ExpiredWasteModal` in `app/src/components/screens/inventory.tsx`, `useExpiredWaste()` in `app/src/hooks/use-inventory.ts` |
-| Wastage report Bangkok buckets | **No change needed** — the frontend never compensated; a comment now pins that |
-| 429 envelope / `RATE_LIMITED` removal | Not started. Nothing in either app matched on `RATE_LIMITED`, so there is no regression — `ApiError` currently discards `error.code` entirely |
-| Admin `PATCH /admin/tenants/{id}` | Not started |
-| Admin `feature_keys` picker | Not started — still a free-text textarea |
-| `customer_id` 404 handling in POS | Not started — a dead id is currently re-injected on retry |
+| `POST /inventory/expired/waste` confirm flow | `ExpiredWasteModal` + `useExpiredWaste()` — `app/src/components/screens/inventory.tsx`, `app/src/hooks/use-inventory.ts` |
+| Wastage report Bangkok buckets | **No code change** — the frontend never compensated; a comment now pins that |
+| 429 envelope / `RATE_LIMITED` removal | `ApiError` carries `code` + `retryAfter` in both apps; `rateLimitKind()` in `admin/src/lib/error-copy.ts` separates the IP limiter from the per-email lockout for copy and cooldown. Nothing ever matched `RATE_LIMITED`, so its removal was a no-op |
+| Admin `PATCH /admin/tenants/{id}` | `TenantEditModal` + `useUpdateTenant()`; `billing_address` added to `TenantRead` and to the detail view |
+| Admin `feature_keys` picker | Checkbox group over a hard-coded registry (`admin/src/lib/feature-registry.ts`), union'd with the package's current keys so an unknown key is never silently dropped |
+| `customer_id` 404 handling in POS | A 404 with a member attached now clears the member instead of restoring it |
+
+**Not verified yet:** whether the Next rewrite proxy preserves the `Retry-After` header end to end.
+Every consumer has a non-null fallback, so a stripped header degrades the countdown rather than breaking
+it — but the check is still owed. Nothing here has been exercised against a deployed backend; PR #2 was
+not merged when this was built.
