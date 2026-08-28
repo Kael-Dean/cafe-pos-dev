@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/lib/admin-api';
-import { errorMessage } from '@/lib/error-copy';
+import { errorMessage, rateLimitKind } from '@/lib/error-copy';
 import { getAdminToken, setAdminToken } from '@/lib/admin-token';
 import { loginAdmin } from '@/hooks/use-admin-auth';
 import { useSessionExpired } from '@/hooks/use-session-expired';
@@ -16,8 +16,16 @@ import { Button } from '@/components/ui/button';
 import { Note } from '@/components/ui/layout-bits';
 import Icon from '@/components/ui/icon';
 
-/** The API allows 5 attempts per minute per IP; wait out the whole window. */
-const RATE_LIMIT_SECONDS = 60;
+/** The per-IP limiter allows 5 attempts per minute; wait out the whole window. */
+const IP_COOLDOWN_SECONDS = 60;
+/** The per-email throttle locks an account for 15 min and sends no Retry-After. */
+const ACCOUNT_COOLDOWN_SECONDS = 15 * 60;
+
+/** "45 วินาที" / "14:03 นาที" — 899 seconds is not a readable countdown. */
+function formatCooldown(secs: number): string {
+  if (secs < 60) return `${secs} วินาที`;
+  return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')} นาที`;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -56,7 +64,13 @@ export default function LoginPage() {
       qc.clear();
       router.replace('/tenants');
     } catch (err) {
-      if (err instanceof ApiError && err.status === 429) setCooldown(RATE_LIMIT_SECONDS);
+      if (err instanceof ApiError && err.status === 429) {
+        // Default an unclassifiable 429 to the account lockout: over-estimating
+        // costs an impatient wait, under-estimating tells a locked-out founder
+        // "60 seconds" and sends them into 14 more attempts against a 15-min wall.
+        const kind = rateLimitKind(err);
+        setCooldown(err.retryAfter ?? (kind === 'account' ? ACCOUNT_COOLDOWN_SECONDS : IP_COOLDOWN_SECONDS));
+      }
       setFormError(errorMessage(err, 'login'));
     }
   });
@@ -141,15 +155,24 @@ export default function LoginPage() {
                 {blocked && (
                   <>
                     {' '}
-                    <span className="num">(รออีก {cooldown} วินาที)</span>
+                    <span className="num">(รออีก {formatCooldown(cooldown)})</span>
                   </>
                 )}
               </span>
             </div>
           )}
 
+          {blocked && (
+            // Which limiter fired is a heuristic, so never let a wrong guess lock
+            // the only login screen for 15 minutes. The server is still the
+            // authority — clicking this just earns another 429 if we guessed right.
+            <Button type="button" variant="quiet" size="sm" onClick={() => setCooldown(0)}>
+              ลองใหม่เลย
+            </Button>
+          )}
+
           <Button type="submit" variant="primary" size="lg" block loading={isSubmitting} disabled={blocked}>
-            {blocked ? `รออีก ${cooldown} วินาที` : 'เข้าสู่ระบบ'}
+            {blocked ? `รออีก ${formatCooldown(cooldown)}` : 'เข้าสู่ระบบ'}
           </Button>
         </form>
 

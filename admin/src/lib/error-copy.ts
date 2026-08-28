@@ -11,11 +11,26 @@ import { ApiError } from './admin-api';
 export type ErrorContext =
   | 'login'
   | 'tenant-create'
+  | 'tenant-update'
   | 'store-create'
   | 'assign-package'
   | 'store-resume'
   | 'package-create'
   | 'generic';
+
+export type RateLimitKind = 'ip' | 'account';
+
+/**
+ * A 429 comes from one of two limiters that share the code TOO_MANY_REQUESTS:
+ * the per-IP limiter (5/min, sends Retry-After) and the per-email login throttle
+ * (5 failures / 15 min, sends none). Trust the header first because that is the
+ * documented difference; fall back to the message in case a proxy strips it.
+ */
+export function rateLimitKind(err: ApiError): RateLimitKind {
+  if (err.retryAfter != null) return 'ip';
+  if (/rate limit exceeded/i.test(err.message)) return 'ip';
+  return 'account';
+}
 
 export function errorMessage(err: unknown, context: ErrorContext = 'generic'): string {
   if (!(err instanceof ApiError)) {
@@ -24,9 +39,16 @@ export function errorMessage(err: unknown, context: ErrorContext = 'generic'): s
   }
 
   if (err.status === 429) {
-    return context === 'login'
-      ? 'ลองเข้าสู่ระบบผิดหลายครั้งเกินไป รอ 1 นาทีแล้วลองใหม่'
-      : 'ส่งคำขอถี่เกินไป รอสักครู่แล้วลองใหม่';
+    if (context !== 'login') {
+      return err.retryAfter != null
+        ? `ส่งคำขอถี่เกินไป รออีก ${err.retryAfter} วินาทีแล้วลองใหม่`
+        : 'ส่งคำขอถี่เกินไป รอสักครู่แล้วลองใหม่';
+    }
+    // The per-email lockout blocks the CORRECT password too — say so, or the
+    // founder assumes they mistyped again and burns the whole 15 minutes.
+    return rateLimitKind(err) === 'account'
+      ? 'ใส่รหัสผ่านผิดหลายครั้งเกินไป บัญชีนี้ถูกล็อกชั่วคราว 15 นาที — ระหว่างนี้ต่อให้รหัสถูกก็เข้าไม่ได้'
+      : 'ส่งคำขอเข้าสู่ระบบถี่เกินไปจากเครือข่ายนี้ รอสักครู่แล้วลองใหม่';
   }
 
   if (err.status === 401) {
@@ -37,10 +59,18 @@ export function errorMessage(err: unknown, context: ErrorContext = 'generic'): s
       : 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่';
   }
 
+  if (err.status === 404 && context === 'tenant-update') {
+    return 'ไม่พบลูกค้ารายนี้ — อาจถูกลบไปแล้ว ลองรีเฟรชหน้า';
+  }
+
   if (err.status === 409) {
     switch (context) {
       case 'tenant-create':
         return 'slug นี้มีลูกค้ารายอื่นใช้แล้ว ลองใช้ slug อื่น';
+      // PATCH /admin/tenants/{id} answers `name: null` with a 409 today and will
+      // switch it to a 422 — both mean the same thing, so both land here.
+      case 'tenant-update':
+        return 'บันทึกไม่สำเร็จ — ชื่อบริษัทเว้นว่างไม่ได้';
       case 'store-create':
         return 'slug นี้ถูกใช้ไปแล้ว — slug ของสาขาไม่ซ้ำกันทั้งระบบ ไม่ใช่แค่ในลูกค้ารายนี้ ลองเติมชื่อลูกค้านำหน้า';
       case 'assign-package':
@@ -55,6 +85,13 @@ export function errorMessage(err: unknown, context: ErrorContext = 'generic'): s
   }
 
   if (err.status === 422) {
+    // Only reachable on a race — the edit form disables save when nothing changed.
+    if (context === 'tenant-update' && /no fields to update/i.test(err.message)) {
+      return 'ไม่มีการเปลี่ยนแปลง — แก้ไขข้อมูลอย่างน้อยหนึ่งช่องก่อนบันทึก';
+    }
+    if (context === 'tenant-update' && /name/i.test(err.message)) {
+      return 'บันทึกไม่สำเร็จ — ชื่อบริษัทเว้นว่างไม่ได้';
+    }
     return err.message || 'ข้อมูลที่กรอกไม่ถูกต้อง ตรวจอีกครั้ง';
   }
 

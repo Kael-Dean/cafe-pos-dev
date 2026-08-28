@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { setTokens } from '@/lib/token-store';
 import { readAndClearLogoutReason } from '@/lib/auth';
+import { parseRetryAfter } from '@/lib/api-client';
 import { useFadeRise } from '@/lib/motion';
 import Icon from '../icons';
 
@@ -35,6 +36,7 @@ export default function LoginScreen({ onLogin }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [expiredNotice, setExpiredNotice] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
 
   // First screen the client sees — a single calm fade-rise on the whole card is
   // a tasteful entrance here (one-time, not a repeated interaction). Honors
@@ -45,7 +47,15 @@ export default function LoginScreen({ onLogin }: Props) {
     if (readAndClearLogoutReason() === 'expired') setExpiredNotice(true);
   }, []);
 
-  const canSubmit = storeSlug.trim().length > 0 && pin.length >= 4;
+  // Rate-limit countdown, so a locked-out shift sees how long is left instead of
+  // hammering a button that cannot work yet.
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setTimeout(() => setCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(id);
+  }, [cooldown]);
+
+  const canSubmit = storeSlug.trim().length > 0 && pin.length >= 4 && cooldown === 0;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -60,8 +70,18 @@ export default function LoginScreen({ onLogin }: Props) {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        const msg = body?.detail ?? 'เข้าสู่ระบบไม่สำเร็จ';
-        throw new Error(typeof msg === 'string' ? msg : 'รหัส PIN หรือ Store ID ไม่ถูกต้อง');
+        // This screen predates the shared client, so it parses the envelope
+        // itself: {"error": {"code", "message"}} first, FastAPI's bare "detail"
+        // second. Without the first branch every backend message renders as the
+        // generic fallback below.
+        const raw = body?.error?.message ?? body?.detail;
+        const msg = typeof raw === 'string' && raw ? raw : 'รหัส PIN หรือ Store ID ไม่ถูกต้อง';
+        if (res.status === 429) {
+          const secs = parseRetryAfter(res) ?? 60;
+          setCooldown(secs);
+          throw new Error(`พยายามเข้าสู่ระบบถี่เกินไป รออีก ${secs} วินาทีแล้วลองใหม่`);
+        }
+        throw new Error(msg);
       }
       const data: TokenPair = await res.json();
       setTokens({ access: data.access_token, refresh: data.refresh_token });
@@ -189,7 +209,7 @@ export default function LoginScreen({ onLogin }: Props) {
                 <span className="spinner" aria-hidden style={{ width: 16, height: 16 }} />
                 กำลังเข้าสู่ระบบ...
               </>
-            ) : 'เข้าสู่ระบบ'}
+            ) : cooldown > 0 ? `รออีก ${cooldown} วินาที` : 'เข้าสู่ระบบ'}
           </button>
         </form>
       </div>
