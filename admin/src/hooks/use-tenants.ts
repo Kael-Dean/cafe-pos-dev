@@ -11,6 +11,7 @@ export interface TenantRead {
   legal_name: string | null;
   tax_id: string | null;
   billing_email: string | null;
+  billing_address: string | null;
   package_key: string | null;   // null = no package = no features
   is_active: boolean;           // false = switched to read-only
   suspended_at: string | null;
@@ -26,6 +27,59 @@ export interface TenantCreatePayload {
   tax_id?: string;
   billing_email?: string;
   billing_address?: string;
+}
+
+/**
+ * PATCH body. Every field is optional and the two absences mean different
+ * things: an omitted key leaves the value alone, an explicit `null` clears it.
+ * `slug` is immutable and `package_key` moves via PUT .../package — sending
+ * either here is a 422.
+ */
+export interface TenantUpdatePayload {
+  name?: string;                    // 1..120, never null
+  legal_name?: string | null;
+  tax_id?: string | null;
+  billing_email?: string | null;
+  billing_address?: string | null;
+}
+
+/** The five editable fields as the form holds them — all strings, '' = empty. */
+export interface TenantUpdateFields {
+  name: string;
+  legal_name: string;
+  tax_id: string;
+  billing_email: string;
+  billing_address: string;
+}
+
+/**
+ * Diff the form against the loaded tenant so the request carries only what
+ * actually changed — which is also what keeps the audit row honest, since the
+ * backend records before/after for the submitted keys only.
+ */
+export function toTenantUpdatePayload(v: TenantUpdateFields, cur: TenantRead): TenantUpdatePayload {
+  const out: TenantUpdatePayload = {};
+
+  const name = v.name.trim();
+  if (name !== cur.name) out.name = name;
+
+  const optional = (
+    key: 'legal_name' | 'tax_id' | 'billing_email' | 'billing_address',
+    next: string,
+  ) => {
+    const trimmed = next.trim();
+    const value = trimmed.length > 0 ? trimmed : null;
+    // `?? null` matters: an older deploy omits billing_address entirely, and an
+    // untouched empty field must stay omitted rather than send a pointless null.
+    if (value !== (cur[key] ?? null)) out[key] = value;
+  };
+
+  optional('legal_name', v.legal_name);
+  optional('tax_id', v.tax_id);
+  optional('billing_email', v.billing_email);
+  optional('billing_address', v.billing_address);
+
+  return out;
 }
 
 export const TENANTS_KEY = ['tenants'] as const;
@@ -70,6 +124,20 @@ export function useCreateTenant() {
       qc.setQueryData(tenantKey(tenant.id), tenant);
       qc.invalidateQueries({ queryKey: TENANTS_KEY });
     },
+  });
+}
+
+/**
+ * Correct a tenant's legal/billing details. Billing fields don't feed
+ * entitlements, so unlike the package mutations this deliberately does NOT
+ * invalidate the store list.
+ */
+export function useUpdateTenant(tenantId: string) {
+  const writeBack = useTenantWriteBack();
+  return useMutation({
+    mutationFn: (payload: TenantUpdatePayload) =>
+      api.patch<TenantRead>(`/api/v1/admin/tenants/${tenantId}`, payload),
+    onSuccess: writeBack,
   });
 }
 

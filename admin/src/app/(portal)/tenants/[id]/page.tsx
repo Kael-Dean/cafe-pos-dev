@@ -15,6 +15,7 @@ import { Select } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { TenantStores } from '@/components/tenant-stores';
+import { TenantEditModal } from '@/components/tenant-edit-modal';
 import { useToast } from '@/components/ui/toast';
 import Icon from '@/components/ui/icon';
 
@@ -52,7 +53,7 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
 
 /* ------------------------------------------------------------------------- */
 
-type TenantAction = 'suspend' | 'resume' | 'clear-package' | null;
+type TenantAction = 'suspend' | 'resume' | 'clear-package' | 'edit' | null;
 
 function TenantDetail({ tenant }: { tenant: TenantRead }) {
   const toast = useToast();
@@ -140,7 +141,10 @@ function TenantDetail({ tenant }: { tenant: TenantRead }) {
 
         <Section
           title="ข้อมูลบริษัท"
-          description="เฟสนี้ยังไม่มี endpoint แก้ไขข้อมูลบิล ถ้าพิมพ์ผิดต้องให้ทีมหลังบ้านแก้ที่ฐานข้อมูล"
+          description="แก้ไขได้ทุกช่องยกเว้น slug — slug เป็นค่าถาวรเพราะผูกกับลิงก์และความไม่ซ้ำของระบบ"
+          actions={
+            <Button variant="ghost" icon="pencil" onClick={() => setAction('edit')}>แก้ไข</Button>
+          }
         >
           <div className="card" style={{ padding: 'var(--space-5)' }}>
             <dl style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', margin: 0 }}>
@@ -149,6 +153,7 @@ function TenantDetail({ tenant }: { tenant: TenantRead }) {
                 {tenant.tax_id ? <span className="num">{tenant.tax_id}</span> : <Muted>ไม่ได้ระบุ</Muted>}
               </DetailRow>
               <DetailRow label="อีเมลวางบิล">{tenant.billing_email ?? <Muted>ไม่ได้ระบุ</Muted>}</DetailRow>
+              <DetailRow label="ที่อยู่วางบิล">{tenant.billing_address ?? <Muted>ไม่ได้ระบุ</Muted>}</DetailRow>
               <DetailRow label="สาขาที่เปิดอยู่">
                 <span className="num">{tenant.store_count}</span>
                 <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--fs-12)', marginInlineStart: 6 }}>
@@ -167,6 +172,10 @@ function TenantDetail({ tenant }: { tenant: TenantRead }) {
 
         <TenantStores tenant={tenant} />
       </div>
+
+      {action === 'edit' && (
+        <TenantEditModal tenant={tenant} onClose={() => setAction(null)} />
+      )}
 
       {action === 'suspend' && (
         <ConfirmDialog

@@ -48,6 +48,15 @@ export const tenantCreateSchema = z.object({
 });
 export type TenantCreateForm = z.infer<typeof tenantCreateSchema>;
 
+/**
+ * Same rules as create, minus the immutable slug. Deliberately not `.partial()`:
+ * the form always holds all five fields as strings, and which of them reach the
+ * API is decided by the diff (see toTenantUpdatePayload), not by the schema —
+ * which keeps react-hook-form's input and output types identical.
+ */
+export const tenantUpdateSchema = tenantCreateSchema.omit({ slug: true });
+export type TenantUpdateForm = z.infer<typeof tenantUpdateSchema>;
+
 /** Drop the empty optional fields — the API wants them absent, not "". */
 export function toTenantPayload(v: TenantCreateForm) {
   const trimmed = (s: string) => {

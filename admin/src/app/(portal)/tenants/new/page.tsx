@@ -160,8 +160,8 @@ function TenantStep({ onCreated }: { onCreated: (t: TenantRead) => void }) {
       description="ชื่อและ slug บังคับ ที่เหลือเว้นว่างได้"
     >
       <Note tone="info">
-        ข้อมูลบิล (ชื่อจดทะเบียน เลขผู้เสียภาษี อีเมล ที่อยู่) กรอกได้เฉพาะตอนสร้างเท่านั้น
-        เฟสนี้ยังไม่มี endpoint แก้ไข ถ้าพิมพ์ผิดต้องให้ทีมหลังบ้านแก้ที่ฐานข้อมูล
+        ข้อมูลบิล (ชื่อจดทะเบียน เลขผู้เสียภาษี อีเมล ที่อยู่) แก้ทีหลังได้ที่หน้าลูกค้า
+        แต่ <strong>slug เปลี่ยนไม่ได้</strong> — ตั้งให้ดีตั้งแต่แรก
       </Note>
 
       <form onSubmit={submit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
