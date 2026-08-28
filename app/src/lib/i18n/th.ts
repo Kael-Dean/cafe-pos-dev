@@ -390,6 +390,8 @@ export const th = {
     orderSaveFailed: 'บิลบันทึกไม่สำเร็จ',
     promoRefreshedMsg: (reason: string) => `${reason} — รีเฟรชโปรโมชั่นให้แล้ว กรุณาตรวจสอบแล้วลองใหม่`,
     cartRestoredMsg: (reason: string) => `${reason} — กู้คืนตะกร้าให้แล้ว ลองใหม่อีกครั้ง`,
+    memberCleared: 'ข้อมูลสมาชิกใช้ไม่ได้แล้ว',
+    memberClearedMsg: 'นำสมาชิกออกจากบิลและกู้คืนตะกร้าให้แล้ว — สแกนสมาชิกใหม่แล้วลองอีกครั้ง',
     pay: { cash: 'เงินสด', card: 'บัตร', qr: 'QR PromptPay', line: 'LINE Pay' },
     payReceipt: { cash: 'เงินสด', card: 'บัตรเครดิต', qr: 'QR PromptPay', line: 'LINE Pay' },
   },

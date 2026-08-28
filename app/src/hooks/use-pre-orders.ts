@@ -246,6 +246,10 @@ export interface CreatePreOrderPayload {
   due_date: string;
   customer_name?: string;
   customer_phone?: string;
+  // Store-scoped by the backend: an id from another store (or a deleted customer)
+  // is a 404 "Customer not found". The pre-order form never populates this today —
+  // whoever wires up the member lookup must also clear the selection on a 404, the
+  // way pos.tsx does.
   customer_id?: string;
   deposit_amount?: string;
   deposit_paid?: boolean;

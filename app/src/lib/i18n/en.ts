@@ -371,6 +371,8 @@ export const en: Messages = {
     orderSaveFailed: 'Could not save the bill',
     promoRefreshedMsg: (reason: string) => `${reason} — promotions refreshed, please review and try again`,
     cartRestoredMsg: (reason: string) => `${reason} — cart restored, please try again`,
+    memberCleared: 'Member no longer available',
+    memberClearedMsg: 'The member was removed from this bill and the cart restored — scan the member again and retry.',
     pay: { cash: 'Cash', card: 'Card', qr: 'QR PromptPay', line: 'LINE Pay' },
     payReceipt: { cash: 'Cash', card: 'Credit card', qr: 'QR PromptPay', line: 'LINE Pay' },
   },

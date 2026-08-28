@@ -316,10 +316,21 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
       // The order was NOT created, so restoring the cart is safe — and it re-runs
       // promotion evaluation before the cashier tries again.
       const msg = err instanceof Error ? err.message : t.pos.contactManager;
+      // A 404 with a member attached means the customer no longer exists for this
+      // store (the backend scopes customer_id per store and hides the difference).
+      // Restoring the member would resend the same dead id on every retry, so drop
+      // it and keep the cart. Gated on the snapshot, not on the message: with no
+      // member attached customer_id was never sent, so nothing changes there.
+      const memberGone = err instanceof ApiError && err.status === 404 && !!memberSnapshot;
       setCart(cartSnapshot);
-      setMemberInfo(memberSnapshot);
+      setMemberInfo(memberGone ? null : memberSnapshot);
       setSelectedPromoIds(promoSnapshot);
-      toast({ kind: 'warning', title: t.pos.orderSaveFailed, msg: t.pos.cartRestoredMsg(msg), duration: 4500 });
+      toast({
+        kind: 'warning',
+        title: memberGone ? t.pos.memberCleared : t.pos.orderSaveFailed,
+        msg: memberGone ? t.pos.memberClearedMsg : t.pos.cartRestoredMsg(msg),
+        duration: 4500,
+      });
     });
   };
 
@@ -455,16 +466,20 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
       // membership at checkout — e.g. a HAPPY_HOUR that just expired), refreshing
       // eligibility so the cashier sees the current promos before trying again.
       const msg = err instanceof Error ? err.message : t.pos.contactManager;
+      // See addToTab: a 404 while a member is attached means that customer is gone
+      // for this store — clearing it is the only way out of an otherwise endless
+      // retry with the same dead customer_id.
+      const memberGone = err instanceof ApiError && err.status === 404 && !!memberSnapshot;
       setCart(cartSnapshot);
-      setMemberInfo(memberSnapshot);
+      setMemberInfo(memberGone ? null : memberSnapshot);
       setSelectedPromoIds(promoSnapshot);
       // 422 = checkout re-validation rejected the order (stale promo/membership state).
       const isValidation = err instanceof ApiError && err.status === 422;
       const promoIssue = isValidation && promoSnapshot.length > 0;
       toast({
         kind: 'warning',
-        title: promoIssue ? t.pos.promoUnusable : t.pos.orderSaveFailed,
-        msg: promoIssue ? t.pos.promoRefreshedMsg(msg) : t.pos.cartRestoredMsg(msg),
+        title: memberGone ? t.pos.memberCleared : promoIssue ? t.pos.promoUnusable : t.pos.orderSaveFailed,
+        msg: memberGone ? t.pos.memberClearedMsg : promoIssue ? t.pos.promoRefreshedMsg(msg) : t.pos.cartRestoredMsg(msg),
         duration: 4500,
       });
     });
