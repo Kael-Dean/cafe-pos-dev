@@ -8,10 +8,11 @@ import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import {
   useInventory, useInventoryMovements, useWasteStock,
   useCreateInventoryItem, useDeleteInventoryItem, useSupplierHistory,
-  useExpiredInventory, useItemLots, useReceipts, useReceipt,
+  useExpiredInventory, useExpiredWaste, useItemLots, useReceipts, useReceipt,
   useCreateReceipt, useAddLot, useDeleteLot, useConfirmReceipt,
+  EXPIRED_WASTE_MAX,
   type InventoryItem, type Movement, type WastageReason, type SupplierHistoryItem,
-  type StockLot, type ReceiptListItem,
+  type StockLot, type ReceiptListItem, type ExpiredLot, type ExpiredWasteResult,
 } from '@/hooks/use-inventory';
 
 const WASTAGE_REASONS = [
@@ -29,6 +30,23 @@ const WASTAGE_REASON_LABELS: Record<string, string> = {
   ...Object.fromEntries(WASTAGE_REASONS.map(r => [r.id, r.label])),
   CANCELED: 'ยกเลิกออเดอร์',
 };
+
+// Why a lot was skipped by POST /inventory/expired/waste.
+// not_found = the lot is gone or belongs to another store (deliberately the same reason)
+// not_expired = expiry is null or still in the future (Bangkok date)
+// empty = already at 0, i.e. someone else confirmed it first — safe, not an error
+const EXPIRED_SKIP_LABELS: Record<string, string> = {
+  not_found:   'ไม่พบล็อต',
+  not_expired: 'ยังไม่หมดอายุ',
+  empty:       'บันทึกแล้ว',
+};
+
+// The backend may add reasons (e.g. `inactive_item`) — show the raw value, never throw.
+const skipLabel = (reason: string) => EXPIRED_SKIP_LABELS[reason] ?? `ข้ามไว้ (${reason})`;
+const skipColor = (reason: string) =>
+  reason === 'empty' ? 'var(--color-text-secondary)'
+  : reason in EXPIRED_SKIP_LABELS ? 'var(--color-warning)'
+  : 'var(--color-text-muted)';
 
 const stockStatusOf = (it: InventoryItem) => {
   if (it.stock < it.parLevel * 0.5) return { tone: 'danger' as const,  label: 'Critical' };
@@ -84,6 +102,7 @@ export default function Inventory() {
   const [supplierHistoryItem, setSupplierHistoryItem] = useState<InventoryItem | null>(null);
   const [lotsItem, setLotsItem] = useState<InventoryItem | null>(null);
   const [viewReceiptId, setViewReceiptId] = useState<string | null>(null);
+  const [expiredWasteOpen, setExpiredWasteOpen] = useState(false);
 
   const { data: inventoryItems, isLoading: invLoading } = useInventory();
   const { data: movementsData } = useInventoryMovements();
@@ -214,7 +233,13 @@ export default function Inventory() {
             <KPISmall label="วัตถุดิบทั้งหมด"          value={`${counts.total} รายการ`} />
             <KPISmall label="ใกล้หมด (Low)"            value={`${counts.low} รายการ`} />
             <KPISmall label="ต่ำกว่าครึ่ง par (Critical)" value={`${counts.critical} รายการ`} />
-            <KPISmall label="ล็อตหมดอายุ (มีสต็อก)"   value={`${counts.expiring} ล็อต`} highlight={counts.expiring > 0 ? 'warning' : undefined} />
+            <KPISmall
+              label="ล็อตหมดอายุ (มีสต็อก)"
+              value={`${counts.expiring} ล็อต`}
+              highlight={counts.expiring > 0 ? 'warning' : undefined}
+              onClick={counts.expiring > 0 ? () => setExpiredWasteOpen(true) : undefined}
+              actionLabel={`ล็อตหมดอายุ ${counts.expiring} ล็อต — เปิดหน้าตัดจ่าย`}
+            />
           </div>
 
           <div className="overflow-x-auto" style={{ marginBottom: 16 }}>
@@ -235,7 +260,7 @@ export default function Inventory() {
           {tab === 'items'   && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onWaste={openWastage} onAddIngredient={() => setAddIngredientOpen(true)} onDelete={setDeleteConfirmItem} onSupplierHistory={setSupplierHistoryItem} onLots={setLotsItem} />}
           {tab === 'usage'   && <UsageTab stats={usageStats} movements={saleMovements} />}
           {tab === 'receive' && <ReceiveTab onNewReceipt={openNewReceipt} onContinueDraft={openDraftReceipt} onViewReceipt={setViewReceiptId} onAddIngredient={() => setAddIngredientOpen(true)} />}
-          {tab === 'waste'   && <WastageTab items={inventoryItems ?? []} movements={recentWastage} totalCost={wastageThisMonth} onAdd={() => openWastage()} />}
+          {tab === 'waste'   && <WastageTab items={inventoryItems ?? []} movements={recentWastage} totalCost={wastageThisMonth} onAdd={() => openWastage()} expiredCount={counts.expiring} onExpiredWaste={() => setExpiredWasteOpen(true)} />}
         </>
       )}
 
@@ -270,6 +295,9 @@ export default function Inventory() {
       {lotsItem && (
         <LotsModal item={lotsItem} onClose={() => setLotsItem(null)} />
       )}
+      {expiredWasteOpen && (
+        <ExpiredWasteModal onClose={() => setExpiredWasteOpen(false)} />
+      )}
       {viewReceiptId && (
         <ReceiptDetailModal id={viewReceiptId} onClose={() => setViewReceiptId(null)} />
       )}
@@ -277,17 +305,40 @@ export default function Inventory() {
   );
 }
 
-const KPISmall = ({ label, value, highlight }: { label: string; value: string; highlight?: 'warning' | 'danger' }) => {
+// `onClick` turns the tile into a button; `actionLabel` is then its accessible name,
+// since the visible label+value alone don't say what the tap does.
+const KPISmall = ({ label, value, highlight, onClick, actionLabel }: {
+  label: string; value: string; highlight?: 'warning' | 'danger';
+  onClick?: () => void; actionLabel?: string;
+}) => {
   const tones = {
     warning: { bg: 'var(--color-warning-50)', border: 'var(--color-warning)', fg: 'var(--color-warning)' },
     danger:  { bg: 'var(--color-danger-50)',  border: 'var(--color-danger)',  fg: 'var(--color-danger)' },
   };
   const t = highlight ? tones[highlight] : null;
-  return (
-    <div style={{ background: t ? t.bg : 'var(--color-surface)', border: t ? `1px solid ${t.border}` : '1px solid var(--color-border)', borderRadius: 12, padding: 16 }}>
+  const style: React.CSSProperties = {
+    background: t ? t.bg : 'var(--color-surface)',
+    border: t ? `1px solid ${t.border}` : '1px solid var(--color-border)',
+    borderRadius: 12, padding: 16,
+  };
+  const body = (
+    <>
       <div style={{ fontSize: 13, color: t ? t.fg : 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 8 }}>{label}</div>
       <div className="num" style={{ fontSize: 24, fontWeight: 700, color: t ? t.fg : 'var(--color-text)' }}>{value}</div>
-    </div>
+    </>
+  );
+
+  if (!onClick) return <div style={style}>{body}</div>;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={actionLabel}
+      style={{ ...style, width: '100%', textAlign: 'left', font: 'inherit', cursor: 'pointer' }}
+    >
+      {body}
+    </button>
   );
 };
 
@@ -663,7 +714,10 @@ const ReceiveTab = ({ onNewReceipt, onContinueDraft, onViewReceipt, onAddIngredi
 };
 
 // ── Wastage Tab ───────────────────────────────────────────────────────────────
-const WastageTab = ({ items, movements, totalCost, onAdd }: { items: InventoryItem[]; movements: Movement[]; totalCost: number; onAdd: () => void }) => (
+const WastageTab = ({ items, movements, totalCost, onAdd, expiredCount, onExpiredWaste }: {
+  items: InventoryItem[]; movements: Movement[]; totalCost: number; onAdd: () => void;
+  expiredCount: number; onExpiredWaste: () => void;
+}) => (
   <>
     <div style={{ background: 'var(--color-warning-50)', border: '1px solid var(--color-warning)', borderRadius: 12, padding: 20, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
@@ -675,7 +729,12 @@ const WastageTab = ({ items, movements, totalCost, onAdd }: { items: InventoryIt
           <div className="num" style={{ fontSize: 28, fontWeight: 800, color: 'var(--color-text)', letterSpacing: '-0.02em', marginTop: 2 }}>{baht(totalCost)}</div>
         </div>
       </div>
-      <button onClick={onAdd} style={primaryBtnStyle()} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={14} /> บันทึก Wastage</button>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        {expiredCount > 0 && (
+          <button onClick={onExpiredWaste} style={{ ...ghostBtnStyle(), background: 'var(--color-surface)' }}>ตัดจ่ายล็อตหมดอายุ ({expiredCount})</button>
+        )}
+        <button onClick={onAdd} style={primaryBtnStyle()} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={14} /> บันทึก Wastage</button>
+      </div>
     </div>
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '140px 1.5fr 110px 130px 110px 1fr', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
@@ -1021,6 +1080,172 @@ const LotsModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void
 
       <ModalActions>
         <button onClick={onClose} style={ghostBtnStyle()}>ปิด</button>
+      </ModalActions>
+    </ModalShell>
+  );
+};
+
+// ── Expired Lot Waste Modal (batch confirm expired stock as wasted) ───────────
+// Deliberately NOT optimistic: skips are normal on a list another till may have acted
+// on already, so the result panel — not a guess — is what the user is shown.
+const EXPIRED_GRID = '28px 1.4fr 110px 130px';
+
+const ExpiredWasteModal = ({ onClose }: { onClose: () => void }) => {
+  const toast = useToast();
+  const { data: lots, isLoading } = useExpiredInventory();
+  const expiredWaste = useExpiredWaste();
+
+  // Selection is stored as explicit overrides, not as the selection itself: everything is
+  // checked by default (the handoff's recommended flow) and only what the user actually
+  // touched is remembered. That way a background refetch can neither un-check a lot the
+  // user kept nor silently re-check one they dropped, with no effect to synchronise.
+  const [override, setOverride] = useState<ReadonlyMap<string, boolean>>(new Map());
+  // `byId` is snapshotted at submit time: a successful call invalidates the list, so by
+  // the time this renders the wasted rows are gone and skip lines would show bare ids.
+  const [result, setResult] = useState<{ res: ExpiredWasteResult; byId: Map<string, ExpiredLot> } | null>(null);
+
+  const rows = lots ?? [];
+  // Rows are expiry-ascending, so defaulting to the first EXPIRED_WASTE_MAX picks the
+  // batch that most needs clearing; the rest is a second pass.
+  const isChecked = (lotId: string, idx: number) => override.get(lotId) ?? idx < EXPIRED_WASTE_MAX;
+
+  // Derived from the live list, so a selection made against a stale list is harmless.
+  const selectedIds = useMemo(
+    () => rows.filter((l, idx) => isChecked(l.lotId, idx)).map(l => l.lotId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- isChecked is derived from `override`
+    [rows, override],
+  );
+
+  const allChecked = rows.length > 0 && selectedIds.length === rows.length;
+  const someChecked = selectedIds.length > 0 && !allChecked;
+  const overCap = selectedIds.length > EXPIRED_WASTE_MAX;
+
+  const toggle = (lotId: string, idx: number) =>
+    setOverride(prev => new Map(prev).set(lotId, !isChecked(lotId, idx)));
+
+  const toggleAll = () => setOverride(
+    new Map(rows.map((l, idx) => [l.lotId, allChecked ? false : idx < EXPIRED_WASTE_MAX])),
+  );
+
+  const submit = async () => {
+    if (!selectedIds.length || overCap || expiredWaste.isPending) return;
+    const byId = new Map(rows.map(l => [l.lotId, l]));
+    try {
+      const res = await expiredWaste.mutateAsync(selectedIds);
+      setResult({ res, byId });
+      if (res.skipped.length === 0) {
+        toast({ kind: 'success', title: 'ตัดจ่ายล็อตหมดอายุแล้ว', msg: `${res.wasted.length} ล็อต` });
+      } else {
+        toast({ kind: 'warning', title: `ตัดจ่าย ${res.wasted.length} ล็อต`, msg: `ข้าม ${res.skipped.length} ล็อต — ดูรายละเอียดในหน้าต่าง` });
+      }
+    } catch (err) {
+      toast({ kind: 'warning', title: 'เกิดข้อผิดพลาด', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+    }
+  };
+
+  if (result) {
+    const groups = result.res.skipped.reduce<Record<string, string[]>>((acc, s) => {
+      (acc[s.reason] ??= []).push(result.byId.get(s.lotId)?.itemName ?? s.lotId);
+      return acc;
+    }, {});
+    return (
+      <ModalShell title="ผลการตัดจ่าย" subtitle="สต็อกถูกหักออกแล้ว และบันทึกเป็น Wastage สาเหตุ หมดอายุ" onClose={onClose} maxWidth={640}>
+        <div style={{ background: 'var(--color-surface-2)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ตัดจ่ายสำเร็จ</div>
+          <div className="num" style={{ fontSize: 28, fontWeight: 800, marginTop: 2 }}>{result.res.wasted.length} ล็อต</div>
+        </div>
+
+        {Object.entries(groups).map(([reason, names]) => (
+          <div key={reason} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: skipColor(reason), marginBottom: 6 }}>
+              {skipLabel(reason)} · {names.length} ล็อต
+            </div>
+            <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden' }}>
+              {names.map((name, idx) => (
+                <div key={`${reason}-${idx}`} style={{ padding: '8px 12px', fontSize: 13, borderBottom: idx === names.length - 1 ? 'none' : '1px solid var(--color-border)' }}>{name}</div>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        <ModalActions>
+          <button onClick={() => { setResult(null); setOverride(new Map()); }} style={ghostBtnStyle()}>ดูรายการที่เหลือ</button>
+          <button onClick={onClose} style={primaryBtnStyle()}>ปิด</button>
+        </ModalActions>
+      </ModalShell>
+    );
+  }
+
+  return (
+    <ModalShell
+      title="ตัดจ่ายล็อตหมดอายุ"
+      subtitle="ยืนยันแล้วระบบจะหักสต็อกที่เหลือทั้งล็อต และบันทึกเป็น Wastage สาเหตุ หมดอายุ"
+      onClose={onClose}
+      maxWidth={640}
+    >
+      <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: EXPIRED_GRID, gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)', alignItems: 'center' }}>
+          <input
+            type="checkbox"
+            checked={allChecked}
+            ref={el => { if (el) el.indeterminate = someChecked; }}
+            onChange={toggleAll}
+            disabled={rows.length === 0}
+            aria-label="เลือกทั้งหมด"
+            style={{ width: 16, height: 16, cursor: rows.length === 0 ? 'default' : 'pointer' }}
+          />
+          <div>วัตถุดิบ</div>
+          <div style={{ textAlign: 'right' }}>คงเหลือ</div>
+          <div>หมดอายุ</div>
+        </div>
+
+        {isLoading ? (
+          <div style={{ padding: 'var(--space-3) var(--space-4)' }}>
+            <SkeletonTable rows={4} cols={4} header={false} label="กำลังโหลดล็อตหมดอายุ" />
+          </div>
+        ) : rows.length === 0 ? (
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>ไม่มีล็อตหมดอายุที่มีสต็อกเหลือ</div>
+        ) : rows.map((lot, idx) => {
+          const badge = expiryBadge(lot.expiryDate);
+          return (
+            <label key={lot.lotId} style={{ display: 'grid', gridTemplateColumns: EXPIRED_GRID, gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === rows.length - 1 ? 'none' : '1px solid var(--color-border)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={isChecked(lot.lotId, idx)}
+                onChange={() => toggle(lot.lotId, idx)}
+                style={{ width: 16, height: 16, cursor: 'pointer' }}
+              />
+              <div style={{ fontSize: 14, fontWeight: 500 }}>{lot.itemName}</div>
+              <div className="num" style={{ fontSize: 13, fontWeight: 700, textAlign: 'right' }}>{lot.qtyRemaining.toLocaleString()} {lot.unit}</div>
+              <div style={{ fontSize: 12 }}>
+                <div style={{ color: badge ? badge.color : 'var(--color-text-secondary)', fontWeight: badge ? 600 : 400 }}>{formatDate(lot.expiryDate)}</div>
+                {badge && <div style={{ fontSize: 10, marginTop: 2, color: badge.color, fontWeight: 600 }}>⚠ {badge.label}</div>}
+              </div>
+            </label>
+          );
+        })}
+      </div>
+
+      {rows.length > EXPIRED_WASTE_MAX && (
+        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 10 }}>
+          ตัดจ่ายได้ครั้งละ {EXPIRED_WASTE_MAX} ล็อต — เลือกไว้ให้แล้ว {EXPIRED_WASTE_MAX} ล็อตที่หมดอายุก่อน ที่เหลือทำรอบถัดไปได้
+        </div>
+      )}
+      {overCap && (
+        <div role="alert" style={{ fontSize: 12, color: 'var(--color-danger)', fontWeight: 600, marginTop: 10 }}>
+          เลือกได้สูงสุด {EXPIRED_WASTE_MAX} ล็อตต่อครั้ง
+        </div>
+      )}
+
+      <ModalActions>
+        <button onClick={onClose} style={ghostBtnStyle()}>ยกเลิก</button>
+        <button
+          onClick={submit}
+          disabled={!selectedIds.length || overCap || expiredWaste.isPending}
+          style={{ ...primaryBtnStyle(), opacity: !selectedIds.length || overCap || expiredWaste.isPending ? 0.5 : 1, cursor: !selectedIds.length || overCap || expiredWaste.isPending ? 'not-allowed' : 'pointer' }}
+        >
+          {expiredWaste.isPending ? 'กำลังบันทึก…' : `ตัดจ่าย ${selectedIds.length} ล็อต`}
+        </button>
       </ModalActions>
     </ModalShell>
   );

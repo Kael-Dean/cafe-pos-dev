@@ -161,6 +161,15 @@ export interface ExpiredLotRead {
   expiry_date: string;
 }
 
+export interface ExpiredLot {
+  lotId: string;
+  itemId: string;
+  itemName: string;
+  unit: string;
+  qtyRemaining: number;
+  expiryDate: string;
+}
+
 // ── Mappers ───────────────────────────────────────────────────────────────────
 function mapItem(i: InventoryItemRead): InventoryItem {
   return {
@@ -201,6 +210,17 @@ function mapLot(l: StockLotRead): StockLot {
     costPerUnit: Number(l.cost_per_unit),
     expiryDate: l.expiry_date,
     createdAt: l.created_at,
+  };
+}
+
+function mapExpiredLot(l: ExpiredLotRead): ExpiredLot {
+  return {
+    lotId: l.lot_id,
+    itemId: l.inventory_item_id,
+    itemName: l.inventory_item_name,
+    unit: l.unit,
+    qtyRemaining: Number(l.qty_remaining),
+    expiryDate: l.expiry_date,
   };
 }
 
@@ -350,10 +370,71 @@ export function useRestoreInventoryItem() {
   });
 }
 
+// Lots whose expiry_date has passed and still have stock, oldest expiry first.
+// Note: the backend evaluates "expired" here against the SERVER calendar date while
+// POST /inventory/expired/waste uses Bangkok, so between 00:00-07:00 Bangkok a lot may
+// be accepted by the confirm call before it shows up here. Harmless — nothing listed is
+// ever wrongly skipped, and we only ever submit ids taken from this list.
 export function useExpiredInventory() {
-  return useQuery<ExpiredLotRead[]>({
+  return useQuery<ExpiredLot[]>({
     queryKey: ['inventory-expired'],
-    queryFn: () => api.get<ExpiredLotRead[]>('/api/v1/inventory/expired'),
+    queryFn: async () => {
+      const data = await api.get<ExpiredLotRead[]>('/api/v1/inventory/expired');
+      return data.map(mapExpiredLot);
+    },
+  });
+}
+
+// ── Expired-lot batch waste ───────────────────────────────────────────────────
+// Confirms a batch of expired lots as wasted: one WASTE movement per accepted lot for
+// its full remaining quantity, reason EXPIRED. Always 200 — per-lot problems come back
+// in `skipped`, never as 404/409. The whole batch is one transaction.
+export type ExpiredWasteSkipReason = 'not_found' | 'not_expired' | 'empty';
+
+interface ExpiredWasteSkipRead {
+  lot_id: string;
+  reason: string;
+}
+
+interface ExpiredWasteResultRead {
+  wasted: string[];
+  skipped: ExpiredWasteSkipRead[];
+}
+
+export interface ExpiredWasteSkip {
+  lotId: string;
+  // Widened on purpose — the backend may add reasons (e.g. `inactive_item` is pending a
+  // product decision). Never switch exhaustively on this; always have a fallback label.
+  reason: ExpiredWasteSkipReason | (string & {});
+}
+
+export interface ExpiredWasteResult {
+  wasted: string[];
+  skipped: ExpiredWasteSkip[];
+}
+
+// Max lot_ids the endpoint accepts in one call — beyond it the request is a 422.
+export const EXPIRED_WASTE_MAX = 200;
+
+export function useExpiredWaste() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (lotIds: string[]): Promise<ExpiredWasteResult> => {
+      const r = await api.post<ExpiredWasteResultRead>(
+        '/api/v1/inventory/expired/waste',
+        { lot_ids: lotIds },
+      );
+      return {
+        wasted: r.wasted ?? [],
+        skipped: (r.skipped ?? []).map(s => ({ lotId: s.lot_id, reason: s.reason })),
+      };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['inventory-expired'] });     // the list we just acted on
+      qc.invalidateQueries({ queryKey: ['inventory'] });             // stock_on_hand
+      qc.invalidateQueries({ queryKey: ['inventory-movements'] });   // the new EXPIRED rows
+      qc.invalidateQueries({ queryKey: ['inventory-lots'] });        // qty_remaining in LotsModal
+    },
   });
 }
 

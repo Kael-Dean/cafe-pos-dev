@@ -163,6 +163,8 @@ export async function loadWastageReport(opts: {
     cost: Number(r.estimated_cost),
   }));
 
+  // `bucket` is already a Bangkok calendar day (YYYY-MM-DD) — pass it through as-is.
+  // Do NOT add any UTC offset compensation here; the backend does the bucketing.
   const byDay: WasteDayRow[] = (rep.by_day ?? []).map((r) => ({
     date: r.bucket,
     eventCount: r.event_count,
