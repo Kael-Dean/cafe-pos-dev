@@ -6,6 +6,14 @@
 **Repo:** `FeatureRichDevelopment/caf-pos-repo`
 **Handoff archived at:** `docs/handoffs/Frontend/HANDOFF_FE_pilot-hardening.md`
 
+> **ANSWERED 2026-08-29 — all five actioned in Train B.1.** The reply is archived at
+> [HANDOFF_FE_pilot-hardening-b1.md](../Frontend/HANDOFF_FE_pilot-hardening-b1.md); this file is kept as
+> the record of what was asked. Outcomes: `inactive_item` shipped · the expired list moved to the Bangkok
+> date and now hides inactive-item lots · `name: null` is a 422 and `{}`'s message is pinned by a test ·
+> `GET /admin/feature-keys` exists · `POST /inventory/waste` is documented, `qty` may exceed stock, and
+> `CANCELED` now 422s on input. **Plus a correction:** the `Retry-After` / `X-RateLimit-*` headers we
+> asked about did not exist at all (slowapi needs `headers_enabled=True`) — B.1 adds them.
+
 Nothing here blocks the merge. One request (item 4) and one gap (item 5) are worth a decision.
 
 ---

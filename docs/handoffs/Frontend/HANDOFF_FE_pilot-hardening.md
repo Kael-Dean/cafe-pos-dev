@@ -276,7 +276,15 @@ Answers: [HANDOFF_BE_pilot-hardening-questions.md](../Backend/HANDOFF_BE_pilot-h
 | Admin `feature_keys` picker | Checkbox group over a hard-coded registry (`admin/src/lib/feature-registry.ts`), union'd with the package's current keys so an unknown key is never silently dropped |
 | `customer_id` 404 handling in POS | A 404 with a member attached now clears the member instead of restoring it |
 
-**Not verified yet:** whether the Next rewrite proxy preserves the `Retry-After` header end to end.
-Every consumer has a non-null fallback, so a stripped header degrades the countdown rather than breaking
-it — but the check is still owed. Nothing here has been exercised against a deployed backend; PR #2 was
-not merged when this was built.
+**Superseded in places by [HANDOFF_FE_pilot-hardening-b1.md](HANDOFF_FE_pilot-hardening-b1.md)** (backend
+reply, 2026-08-29): `inactive_item` is now a real skip reason, `GET /inventory/expired` uses the Bangkok
+date and hides inactive-item lots, `name: null` is a 422 rather than a 409, `GET /admin/feature-keys`
+exists, and `POST /inventory/waste` finally has a written contract.
+
+**On the `Retry-After` ask:** the header did not exist at all — this handoff's claim that the per-IP 429
+carried `Retry-After` / `X-RateLimit-*` was wrong (slowapi needs `headers_enabled=True`). B.1 adds them,
+so our header-first classifier now has something to key on. Whether the header survives our own Next
+rewrite is still unverified.
+
+**Nothing has been exercised against a deployed backend** — PR #2 was still unmerged. Staging acceptance:
+[HANDOFF_FE_pilot-hardening-acceptance-checklist.md](HANDOFF_FE_pilot-hardening-acceptance-checklist.md).
