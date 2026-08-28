@@ -7,7 +7,9 @@ import {
   usePackages, useCreatePackage, useUpdatePackage, type PackageRead,
 } from '@/hooks/use-packages';
 import { useTenants } from '@/hooks/use-tenants';
+import { ApiError } from '@/lib/admin-api';
 import { errorMessage, fieldErrors } from '@/lib/error-copy';
+import { featureOptionsFor } from '@/lib/feature-registry';
 import { formatBaht } from '@/lib/format';
 import { normalizePrice, packageFormSchema, parseFeatureKeys, type PackageForm } from '@/lib/schemas';
 import { DataTable, type Column } from '@/components/ui/data-table';
@@ -15,8 +17,13 @@ import { PageHeader, Note, Mono } from '@/components/ui/layout-bits';
 import { Tag, FeatureChip } from '@/components/ui/tag';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
-import { TextField, TextAreaField } from '@/components/ui/field';
+import { TextField } from '@/components/ui/field';
+import { FeaturePicker } from '@/components/feature-picker';
 import { useToast } from '@/components/ui/toast';
+
+/** A 422 naming feature keys belongs on the picker, not on the `key` field. */
+const isUnknownFeatureKeys = (err: unknown) =>
+  err instanceof ApiError && err.status === 422 && /unknown feature keys/i.test(err.message);
 
 export default function PackagesPage() {
   const { data, isLoading, isError, error, refetch } = usePackages();
@@ -160,7 +167,8 @@ function CreatePackageModal({ onClose }: { onClose: () => void }) {
     } catch (err) {
       const msg = errorMessage(err, 'package-create');
       const fields = fieldErrors(err);
-      setServerErrors(Object.keys(fields).length ? fields : { key: msg });
+      const fallbackField = isUnknownFeatureKeys(err) ? 'feature_keys' : 'key';
+      setServerErrors(Object.keys(fields).length ? fields : { [fallbackField]: msg });
       toast({ kind: 'danger', title: 'สร้างแพ็กเกจไม่สำเร็จ', msg });
     }
   });
@@ -196,13 +204,14 @@ function CreatePackageModal({ onClose }: { onClose: () => void }) {
         <TextField label="ชื่อภาษาไทย" required placeholder="แพ็กเกจบอร์ดเกม" error={errors.name_th?.message} {...register('name_th')} />
         <TextField label="ชื่อภาษาอังกฤษ" required placeholder="Board Game" error={errors.name_en?.message} {...register('name_en')} />
 
-        <TextAreaField
-          label="feature keys"
-          hint="บรรทัดละหนึ่ง key เช่น vertical.boardgame"
-          placeholder={'vertical.boardgame'}
-          error={errors.feature_keys?.message}
-          value={features}
-          {...register('feature_keys')}
+        <FeaturePicker
+          legend="ฟีเจอร์"
+          hint="เลือกจากรายการที่ระบบรองรับ — พิมพ์ key เองไม่ได้แล้ว เพราะพิมพ์ผิดจะขายฟีเจอร์ที่ไม่มีอยู่จริง"
+          error={serverErrors.feature_keys ?? errors.feature_keys?.message}
+          value={parseFeatureKeys(features ?? '')}
+          options={featureOptionsFor()}
+          disabled={create.isPending}
+          onChange={(next) => setValue('feature_keys', next.join('\n'), { shouldDirty: true })}
         />
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
@@ -223,8 +232,9 @@ function EditPackageModal({
   const toast = useToast();
   const [phase, setPhase] = useState<'form' | 'confirm'>('form');
   const [pending, setPending] = useState<PackageForm | null>(null);
+  const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<PackageForm>({
+  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<PackageForm>({
     resolver: zodResolver(packageFormSchema),
     defaultValues: {
       key: pkg.key,
@@ -238,20 +248,31 @@ function EditPackageModal({
 
   const features = watch('feature_keys');
   const nextFeatures = parseFeatureKeys(features ?? '');
+  // Compared as sets, not position by position: the picker emits keys in its own
+  // option order while the server returns them in its own, and an order-only
+  // difference would fire the "affects N paying customers" dialog on every edit.
   const featuresChanged =
     nextFeatures.length !== pkg.feature_keys.length ||
-    nextFeatures.some((f, i) => f !== pkg.feature_keys[i]);
+    nextFeatures.some((f) => !pkg.feature_keys.includes(f));
 
   const added = nextFeatures.filter((f) => !pkg.feature_keys.includes(f));
   const removed = pkg.feature_keys.filter((f) => !nextFeatures.includes(f));
 
+  // Registry entries plus whatever this package already carries — a key the
+  // backend knows and this build doesn't stays visible and tickable instead of
+  // silently dropping out of the next save.
+  const featureOptions = useMemo(() => featureOptionsFor(pkg.feature_keys), [pkg.feature_keys]);
+
   const apply = async (v: PackageForm, isActive = pkg.is_active) => {
+    setServerErrors({});
     try {
       await update.mutateAsync({
         key: pkg.key,
         payload: {
           name_th: v.name_th.trim(),
           name_en: v.name_en.trim(),
+          // Always an array — `[]` is the documented "clear". Never send null or
+          // undefined here: PATCH rejects null, and omitting it means "unchanged".
           feature_keys: parseFeatureKeys(v.feature_keys),
           price_monthly: normalizePrice(v.price_monthly),
           price_annual: normalizePrice(v.price_annual),
@@ -261,7 +282,16 @@ function EditPackageModal({
       toast({ kind: 'success', title: 'บันทึกแพ็กเกจแล้ว', msg: pkg.key });
       onClose();
     } catch (err) {
-      toast({ kind: 'danger', title: 'บันทึกแพ็กเกจไม่สำเร็จ', msg: errorMessage(err) });
+      const msg = errorMessage(err);
+      const fields = fieldErrors(err);
+      // A drifted registry ("Unknown feature keys: …") must land on the picker,
+      // not vanish into a toast the admin has already clicked past.
+      setServerErrors(
+        Object.keys(fields).length
+          ? fields
+          : isUnknownFeatureKeys(err) ? { feature_keys: msg } : {},
+      );
+      toast({ kind: 'danger', title: 'บันทึกแพ็กเกจไม่สำเร็จ', msg });
       setPhase('form');
     }
   };
@@ -347,16 +377,18 @@ function EditPackageModal({
         <TextField label="ชื่อภาษาไทย" required error={errors.name_th?.message} {...register('name_th')} />
         <TextField label="ชื่อภาษาอังกฤษ" required error={errors.name_en?.message} {...register('name_en')} />
 
-        <TextAreaField
-          label="feature keys"
+        <FeaturePicker
+          legend="ฟีเจอร์"
           hint={
             affectedTenants > 0
-              ? `บรรทัดละหนึ่ง key — ตอนนี้มีลูกค้า ${affectedTenants} รายใช้แพ็กเกจนี้อยู่ การแก้มีผลทันที`
-              : 'บรรทัดละหนึ่ง key'
+              ? `ตอนนี้มีลูกค้า ${affectedTenants} รายใช้แพ็กเกจนี้อยู่ การแก้มีผลทันที`
+              : 'เลือกจากรายการที่ระบบรองรับ'
           }
-          error={errors.feature_keys?.message}
-          value={features}
-          {...register('feature_keys')}
+          error={serverErrors.feature_keys ?? errors.feature_keys?.message}
+          value={nextFeatures}
+          options={featureOptions}
+          disabled={update.isPending}
+          onChange={(next) => setValue('feature_keys', next.join('\n'), { shouldDirty: true })}
         />
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
