@@ -54,8 +54,8 @@ export function TenantEditModal({ tenant, onClose }: { tenant: TenantRead; onClo
     } catch (err) {
       const msg = errorMessage(err, 'tenant-update');
       const fields = fieldErrors(err);
-      // `name: null` is a 409 today and becomes a 422 later — both mean the same
-      // thing, so both land on the name field.
+      // A null or empty name is a 422 (it was a 409 before Train B.1); both, and
+      // any residual 409, mean the same thing and belong on the name field.
       const nameIssue = err instanceof ApiError && (err.status === 409 || /name/i.test(err.message));
       setServerErrors(
         Object.keys(fields).length ? fields : { [nameIssue ? 'name' : 'billing_email']: msg },

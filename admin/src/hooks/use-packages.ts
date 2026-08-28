@@ -26,7 +26,30 @@ export interface PackageCreatePayload {
 
 export type PackageUpdatePayload = Partial<Omit<PackageCreatePayload, 'key'>> & { is_active?: boolean };
 
+/** One entry of the backend's feature registry. `label` is English — Thai is ours. */
+export interface FeatureKeyRead {
+  key: string;
+  label: string;
+}
+
 export const PACKAGES_KEY = ['packages'] as const;
+export const FEATURE_KEYS_KEY = ['feature-keys'] as const;
+
+/**
+ * The exact set of feature keys POST/PATCH /admin/packages will accept — a backend
+ * test asserts the two cannot drift.
+ *
+ * Effectively static, so it is cached for an hour. A failure is deliberately NOT
+ * fatal: the picker falls back to its local table (see lib/feature-registry), which
+ * is also what keeps it usable against a deploy that predates this endpoint.
+ */
+export function useFeatureKeys() {
+  return useQuery<FeatureKeyRead[]>({
+    queryKey: FEATURE_KEYS_KEY,
+    queryFn: () => api.get<FeatureKeyRead[]>('/api/v1/admin/feature-keys'),
+    staleTime: 60 * 60 * 1000,
+  });
+}
 
 /** All packages, active and retired, sorted by key. */
 export function usePackages() {

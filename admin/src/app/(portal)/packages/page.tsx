@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
-  usePackages, useCreatePackage, useUpdatePackage, type PackageRead,
+  usePackages, useCreatePackage, useUpdatePackage, useFeatureKeys, type PackageRead,
 } from '@/hooks/use-packages';
 import { useTenants } from '@/hooks/use-tenants';
 import { ApiError } from '@/lib/admin-api';
@@ -142,6 +142,8 @@ export default function PackagesPage() {
 function CreatePackageModal({ onClose }: { onClose: () => void }) {
   const create = useCreatePackage();
   const toast = useToast();
+  // Fetched when the modal mounts, i.e. when the picker opens.
+  const { data: registry } = useFeatureKeys();
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<PackageForm>({
@@ -209,7 +211,7 @@ function CreatePackageModal({ onClose }: { onClose: () => void }) {
           hint="เลือกจากรายการที่ระบบรองรับ — พิมพ์ key เองไม่ได้แล้ว เพราะพิมพ์ผิดจะขายฟีเจอร์ที่ไม่มีอยู่จริง"
           error={serverErrors.feature_keys ?? errors.feature_keys?.message}
           value={parseFeatureKeys(features ?? '')}
-          options={featureOptionsFor()}
+          options={featureOptionsFor(registry)}
           disabled={create.isPending}
           onChange={(next) => setValue('feature_keys', next.join('\n'), { shouldDirty: true })}
         />
@@ -230,6 +232,7 @@ function EditPackageModal({
 }: { pkg: PackageRead; affectedTenants: number; onClose: () => void }) {
   const update = useUpdatePackage();
   const toast = useToast();
+  const { data: registry } = useFeatureKeys();
   const [phase, setPhase] = useState<'form' | 'confirm'>('form');
   const [pending, setPending] = useState<PackageForm | null>(null);
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
@@ -258,10 +261,13 @@ function EditPackageModal({
   const added = nextFeatures.filter((f) => !pkg.feature_keys.includes(f));
   const removed = pkg.feature_keys.filter((f) => !nextFeatures.includes(f));
 
-  // Registry entries plus whatever this package already carries — a key the
-  // backend knows and this build doesn't stays visible and tickable instead of
-  // silently dropping out of the next save.
-  const featureOptions = useMemo(() => featureOptionsFor(pkg.feature_keys), [pkg.feature_keys]);
+  // The fetched registry (local table while it loads / if it fails) plus whatever
+  // this package already carries — a key that isn't in the list stays visible and
+  // tickable instead of silently dropping out of the next save.
+  const featureOptions = useMemo(
+    () => featureOptionsFor(registry, pkg.feature_keys),
+    [registry, pkg.feature_keys],
+  );
 
   const apply = async (v: PackageForm, isActive = pkg.is_active) => {
     setServerErrors({});

@@ -1,15 +1,14 @@
 /**
- * Mirror of the backend's feature-key registry.
+ * Local half of the feature-key registry.
  *
- * The API validates `feature_keys` against ITS copy and 422s on anything unknown
- * (`Unknown feature keys: …`), so this list is only the picker's menu — never the
- * authority. Add a key here when the backend adds one.
+ * As of Train B.1 the authority is `GET /api/v1/admin/feature-keys` (see
+ * useFeatureKeys) — the exact set POST/PATCH /admin/packages accepts. This file
+ * keeps the two things that endpoint cannot give us:
  *
- * There is no "list registered keys" endpoint yet; we asked for one in
- * docs/handoffs/Backend/HANDOFF_BE_pilot-hardening-questions.md. Until it exists,
- * a key the backend knows and this file doesn't must still survive an edit — see
- * `featureOptionsFor()` below, which is what stops a save from silently stripping
- * a live entitlement off every tenant on a package.
+ *  1. **Thai labels.** The API's `label` is English by design; display copy is ours.
+ *  2. **A fallback list**, used when the fetch hasn't landed, failed, or is talking
+ *     to a deploy that predates the endpoint. Without it the picker would render
+ *     empty and an admin could save a package with its features silently wiped.
  */
 
 export interface FeatureDef {
@@ -26,31 +25,41 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   },
 ] as const;
 
-export const FEATURE_KEYS: readonly string[] = FEATURE_REGISTRY.map((f) => f.key);
+const LABELS_TH = new Map(FEATURE_REGISTRY.map((f) => [f.key, f.labelTh]));
 
 export interface FeatureOption {
   key: string;
   label: string;
-  /** false = the backend has this key but this build doesn't know it. */
+  /** false = neither the API nor this build described this key; it came off the package. */
   known: boolean;
 }
 
-const KNOWN_OPTIONS: FeatureOption[] = FEATURE_REGISTRY.map((f) => ({
-  key: f.key,
-  label: f.labelTh,
-  known: true,
-}));
+/** Thai first, then whatever English the API gave us, then the raw key. */
+function labelFor(key: string, remoteLabel?: string): string {
+  return LABELS_TH.get(key) ?? remoteLabel ?? key;
+}
 
 /**
- * The picker's options: everything we know, plus anything the package already
- * carries that we don't. Without the second half, a key added to the backend
- * registry after this build shipped would be invisible in the form — and the next
- * save of ANY field would submit feature_keys without it, revoking the feature
- * from every tenant on that package with no error shown.
+ * The picker's options: every key the backend accepts, plus anything this package
+ * already carries that isn't in that list.
+ *
+ * The second half is belt-and-braces the backend explicitly asked us to keep. If a
+ * key is missing from the fetched list — a stale client build, a failed request, a
+ * deploy without the endpoint — it must still render, checked, rather than drop out
+ * of the next save and revoke the feature from every tenant on the package.
  */
-export function featureOptionsFor(currentKeys: readonly string[] = []): FeatureOption[] {
+export function featureOptionsFor(
+  remote: readonly { key: string; label: string }[] | undefined,
+  currentKeys: readonly string[] = [],
+): FeatureOption[] {
+  const source = remote?.length
+    ? remote.map((f) => ({ key: f.key, label: labelFor(f.key, f.label), known: true }))
+    : FEATURE_REGISTRY.map((f) => ({ key: f.key, label: f.labelTh, known: true }));
+
+  const listed = new Set(source.map((o) => o.key));
   const extra = currentKeys
-    .filter((k) => !FEATURE_KEYS.includes(k))
-    .map((k) => ({ key: k, label: k, known: false }));
-  return [...KNOWN_OPTIONS, ...extra];
+    .filter((k) => !listed.has(k))
+    .map((k) => ({ key: k, label: labelFor(k), known: false }));
+
+  return [...source, ...extra];
 }

@@ -67,10 +67,6 @@ export function errorMessage(err: unknown, context: ErrorContext = 'generic'): s
     switch (context) {
       case 'tenant-create':
         return 'slug นี้มีลูกค้ารายอื่นใช้แล้ว ลองใช้ slug อื่น';
-      // PATCH /admin/tenants/{id} answers `name: null` with a 409 today and will
-      // switch it to a 422 — both mean the same thing, so both land here.
-      case 'tenant-update':
-        return 'บันทึกไม่สำเร็จ — ชื่อบริษัทเว้นว่างไม่ได้';
       case 'store-create':
         return 'slug นี้ถูกใช้ไปแล้ว — slug ของสาขาไม่ซ้ำกันทั้งระบบ ไม่ใช่แค่ในลูกค้ารายนี้ ลองเติมชื่อลูกค้านำหน้า';
       case 'assign-package':
@@ -86,9 +82,11 @@ export function errorMessage(err: unknown, context: ErrorContext = 'generic'): s
 
   if (err.status === 422) {
     // Only reachable on a race — the edit form disables save when nothing changed.
+    // The exact message is pinned by a backend test, so matching on it is safe.
     if (context === 'tenant-update' && /no fields to update/i.test(err.message)) {
       return 'ไม่มีการเปลี่ยนแปลง — แก้ไขข้อมูลอย่างน้อยหนึ่งช่องก่อนบันทึก';
     }
+    // Both a null and an empty name land here (they carry different messages).
     if (context === 'tenant-update' && /name/i.test(err.message)) {
       return 'บันทึกไม่สำเร็จ — ชื่อบริษัทเว้นว่างไม่ได้';
     }
