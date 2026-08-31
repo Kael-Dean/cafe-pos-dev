@@ -83,8 +83,9 @@ export const NAV: NavItem[] = [
   { id: 'floor',       icon: 'park',     feature: FEATURE_BOARDGAME },
   { id: 'table-setup', icon: 'settings', feature: FEATURE_BOARDGAME, adminOnly: true },
 
-  // Kitchen & stock — recipes, ingredients, counts, purchasing.
+  // Kitchen & stock — the menu itself, then recipes, ingredients, counts, purchasing.
   { id: 'sec-kitchen', header: true },
+  { id: 'catalog',   icon: 'inv',      ownerOnly: true },
   { id: 'bom',       icon: 'inv' },
   { id: 'bakery',    icon: 'cake' },
   { id: 'inventory', icon: 'inv',      soft: true },
@@ -108,7 +109,6 @@ export const NAV: NavItem[] = [
 
   // System setup — configured once, rarely touched day to day.
   { id: 'sec-setup', header: true },
-  { id: 'catalog',   icon: 'inv',      ownerOnly: true },
   { id: 'hardware',  icon: 'printer' },
   { id: 'recycle-bin', icon: 'trash',  adminOnly: true },
   { id: 'settings',  icon: 'settings', soft: true },
