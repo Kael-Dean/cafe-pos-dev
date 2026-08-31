@@ -552,6 +552,29 @@ label:focus-visible {
 }
 .sb-section-btn:hover { background: var(--sb-hover); color: var(--sb-text-strong); }
 .sb-section-btn:active { background: var(--sb-press); }
+/* Two states the header has to show at a glance in a six-group nav:
+   `.open` — this dropdown is expanded right now (soft fill + stronger ink).
+   `.current` — the screen you're on lives in this group (accent rail on the left),
+   which stays visible even after you collapse the group. */
+.sb-section-btn.open { background: var(--sb-hover); color: var(--sb-text-strong); }
+.sb-section-btn.current { color: var(--sb-text-strong); }
+.sb-section-btn::before {
+  content: '';
+  position: absolute; left: 0; top: 50%;
+  width: 3px; height: 0; border-radius: 999px;
+  background: var(--color-accent);
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: height var(--dur-base) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+}
+.sb-section-btn.current::before { height: 60%; opacity: 1; }
+
+/* Items reveal on open — short, single beat, no layout jump on close. */
+.sb-section-items { animation: sb-section-open var(--dur-base) var(--ease-out) both; }
+@keyframes sb-section-open {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
 
 .sb-logout {
   background: transparent;

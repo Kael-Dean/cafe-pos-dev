@@ -525,7 +525,7 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
             <div className="num hidden lg:block" style={{ fontSize: 13, color: it.costPerUnit === 0 ? 'var(--color-text-muted)' : 'var(--color-text-secondary)', textAlign: 'right' }}>
               {it.costPerUnit === 0 ? '—' : `฿${it.costPerUnit.toFixed(2)}`}
             </div>
-            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
               <button onClick={() => onLots(it)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="list" size={12} /> Lots</button>
               <button onClick={() => onWaste(it.id)} style={miniBtnStyle('ghost')} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-warning-50)'; e.currentTarget.style.color = 'var(--color-warning)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}><Icon name="trash" size={12} /> Waste</button>
               <button onClick={() => onSupplierHistory(it)} style={miniBtnStyle('ghost')} title="ประวัติ Supplier" onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-primary)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>ประวัติ</button>

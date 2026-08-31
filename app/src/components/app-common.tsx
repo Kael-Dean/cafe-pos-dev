@@ -245,13 +245,14 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
                 <div key={s.id} style={{display: 'flex', flexDirection: 'column', gap: 2, marginTop: si === 0 ? 0 : 14}}>
                   <button
                     onClick={() => toggleSection(s.id)}
-                    className="sb-section-btn"
+                    className={`sb-section-btn${open ? ' open' : ''}${s.id === activeSectionId ? ' current' : ''}`}
                     aria-expanded={open}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 8,
                       width: '100%', padding: '9px 12px',
                       borderRadius: 8, border: 'none', cursor: 'pointer',
                       fontFamily: 'inherit', minHeight: 40,
+                      position: 'relative',
                     }}
                   >
                     {/* color:currentColor → label + chevron both track the button's
@@ -267,7 +268,13 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
                       transition: 'transform var(--dur-slow) var(--ease-out)',
                     }} />
                   </button>
-                  {open && s.items.map(renderItem)}
+                  {open && (
+                    // Keyed by open-state so the reveal animation replays each time
+                    // the group is opened, not only on first mount.
+                    <div key={`${s.id}-items`} className="sb-section-items" style={{display: 'flex', flexDirection: 'column', gap: 2}}>
+                      {s.items.map(renderItem)}
+                    </div>
+                  )}
                 </div>
               );
             })}
