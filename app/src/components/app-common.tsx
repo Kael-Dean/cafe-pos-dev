@@ -85,6 +85,7 @@ export const NAV: NavItem[] = [
 
   // Kitchen & stock — recipes, ingredients, counts, purchasing.
   { id: 'sec-kitchen', header: true },
+  { id: 'bom',       icon: 'inv' },
   { id: 'bakery',    icon: 'cake' },
   { id: 'inventory', icon: 'inv',      soft: true },
   { id: 'stock-take',    icon: 'check' },
@@ -107,7 +108,6 @@ export const NAV: NavItem[] = [
 
   // System setup — configured once, rarely touched day to day.
   { id: 'sec-setup', header: true },
-  { id: 'bom',       icon: 'inv' },
   { id: 'catalog',   icon: 'inv',      ownerOnly: true },
   { id: 'hardware',  icon: 'printer' },
   { id: 'recycle-bin', icon: 'trash',  adminOnly: true },
