@@ -554,10 +554,13 @@ label:focus-visible {
 .sb-section-btn:active { background: var(--sb-press); }
 /* Two states the header has to show at a glance in a six-group nav:
    `.open` — this dropdown is expanded right now (soft fill + stronger ink).
-   `.current` — the screen you're on lives in this group (accent rail on the left),
-   which stays visible even after you collapse the group. */
+   `.current` — the screen you're on lives in this group, which stays visible even
+   after you collapse the group.
+   Both carry the left rail; `current` at full strength so it still stands out when
+   several groups are open at once. */
 .sb-section-btn.open { background: var(--sb-hover); color: var(--sb-text-strong); }
 .sb-section-btn.current { color: var(--sb-text-strong); }
+.sb-section-btn.open::before { height: 60%; opacity: 0.5; }
 .sb-section-btn::before {
   content: '';
   position: absolute; left: 0; top: 50%;
