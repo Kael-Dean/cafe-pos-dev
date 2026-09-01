@@ -935,7 +935,11 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
   const handleAddLot = async () => {
     const packs = Number(lotPacks);
     const total = Number(lotTotalPrice);
-    if (!receiptId || !lotPackId || packs <= 0 || total <= 0) return;
+    // ฿0 is a legitimate cost — free samples, supplier freebies, promo stock. Only an
+    // empty or negative field is rejected here, hence the explicit blank check
+    // (Number('') is 0, which would otherwise sail through).
+    if (!receiptId || !lotPackId || packs <= 0) return;
+    if (!hasTotalPrice || total < 0) return;
     // The field collects the TOTAL paid; the API wants the price of one pack.
     const computedPackPrice = (total / packs).toFixed(2);
     if (Number(computedPackPrice) > 99999.99) { setLotError('ราคา/แพ็ค ที่คำนวณได้เกินขีดจำกัด (99,999.99)'); return; }
@@ -952,6 +956,12 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
       });
       resetLotForm();
     } catch (err) {
+      // Older backends constrain pack_price to > 0; say so plainly instead of
+      // surfacing a raw pydantic sentence.
+      if (total === 0 && err instanceof ApiError && err.status === 422) {
+        setLotError('ระบบหลังบ้านยังไม่รับราคา 0 — ใส่ราคาจริง หรือแจ้งให้เปิดรับของแถมก่อน');
+        return;
+      }
       setLotError(errCopy(err, 'เพิ่มรายการไม่สำเร็จ'));
     }
   };
@@ -977,7 +987,9 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
   };
 
   const isConfirmed = receipt?.status === 'CONFIRMED';
-  const canAddLot = !!lotPackId && Number(lotPacks) > 0 && Number(lotTotalPrice) > 0 && !isConfirmed;
+  // Blank ≠ zero: an untouched price field must not read as "free".
+  const hasTotalPrice = lotTotalPrice.trim() !== '' && Number.isFinite(Number(lotTotalPrice));
+  const canAddLot = !!lotPackId && Number(lotPacks) > 0 && hasTotalPrice && Number(lotTotalPrice) >= 0 && !isConfirmed;
   const canConfirm = (receipt?.lots?.length ?? 0) > 0 && !isConfirmed && !confirmReceipt.isPending;
 
   return (
@@ -1093,7 +1105,7 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
                 </div>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ราคารวม (฿) *</div>
-                  <input type="number" min={0.01} step={0.01} value={lotTotalPrice} onChange={e => setLotTotalPrice(e.target.value)} placeholder="0.00" style={smallInputStyle()} />
+                  <input type="number" min={0} step={0.01} value={lotTotalPrice} onChange={e => setLotTotalPrice(e.target.value)} placeholder="0.00" title="ใส่ 0 ได้ถ้าเป็นของแถม" style={smallInputStyle()} />
                 </div>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>วันหมดอายุ</div>
@@ -1103,10 +1115,11 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
                   {addLot.isPending ? '...' : '+ เพิ่ม'}
                 </button>
               </div>
-              {selectedPack && Number(lotPacks) > 0 && Number(lotTotalPrice) > 0 && (
+              {selectedPack && Number(lotPacks) > 0 && hasTotalPrice && Number(lotTotalPrice) >= 0 && (
                 <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--color-accent-50)', borderRadius: 8, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>
                   {selectedPack.label} · {Number(lotPacks).toLocaleString()} แพ็ค × ฿{(Number(lotTotalPrice) / Number(lotPacks)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/แพ็ค{' '}
                   = <strong>฿{Number(lotTotalPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} รวม</strong>
+                  {Number(lotTotalPrice) === 0 && <span style={{ fontWeight: 400 }}> · ของแถม (ต้นทุน ฿0)</span>}
                 </div>
               )}
               {selectedLotItem && itemPacks.length === 0 && !newPackOpen && (
