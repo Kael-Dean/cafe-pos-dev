@@ -9,7 +9,7 @@ import { useStagger } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, useUpdateProduct, useUploadProductImage, useDeleteProductImage, type MenuItem, type Category } from '@/hooks/use-products';
 import { TABLE_TIME_PRODUCT_NAME } from '@/hooks/use-features';
-import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
+import { useInventory, useItemLots, useSetInUseLot, type InventoryItem, type StockLot } from '@/hooks/use-inventory';
 import { useProductDetail, useUpdateRecipe, useLinkModifierGroups, type RecipeItem } from '@/hooks/use-bom';
 import { useModifierGroups, useModifierGroupsAdmin, useAddModifier, useUpdateModifier, useDeleteModifier, useModifierRecipeItems, useReplaceModifierRecipeItems, type ModifierGroup, type ModifierGroupRead, type ModifierRead, type ModifierRecipeItemInput } from '@/hooks/use-modifier-groups';
 import { useCookingSteps, useReplaceCookingSteps, type CookingStepRead } from '@/hooks/use-cooking-steps';
@@ -893,6 +893,119 @@ const CategorySelector = ({ value, categories, onChange }: {
   );
 };
 
+// ── In-use lot picker ─────────────────────────────────────────────────────────
+// Which lot an ingredient is costed against: FIFO's oldest by default, or one a
+// manager pins. The pin belongs to the INGREDIENT, not to this recipe row — every
+// product using it re-costs. The pin clears itself once the lot runs out.
+const lotDate = (d?: string | null) =>
+  d ? new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : null;
+
+const LotPicker = ({ inv }: { inv: InventoryItem }) => {
+  const { data: me } = useCurrentUser();
+  const canPin = isAdmin(me?.role);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const pinned = inv.costSource === 'manual';
+  const summary = pinned ? '📌 ล็อตที่ปักหมุด' : inv.costSource === 'fifo' ? 'FIFO (อัตโนมัติ)' : 'ยังไม่มีล็อต';
+
+  if (!canPin) {
+    return (
+      <span style={{ fontSize: 11, color: pinned ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
+        {summary}
+      </span>
+    );
+  }
+
+  return (
+    <span ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        title="เลือกล็อตที่ใช้คิดต้นทุน (มีผลกับทุกเมนูที่ใช้วัตถุดิบนี้)"
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          padding: '2px 7px', fontSize: 11, fontWeight: 600, borderRadius: 20,
+          background: pinned ? 'var(--color-accent-50)' : 'var(--color-surface-2)',
+          color: pinned ? 'var(--color-primary-700)' : 'var(--color-text-secondary)',
+          border: `1px solid ${pinned ? 'var(--color-accent)' : 'var(--color-border)'}`,
+          cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1.6,
+        }}
+      >
+        {summary}
+        <Icon name="chevronDown" size={10} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }} />
+      </button>
+      {/* Mounting the menu IS the fetch — one call, only when the picker is opened. */}
+      {open && <LotPickerMenu inv={inv} onClose={() => setOpen(false)} />}
+    </span>
+  );
+};
+
+const LotPickerMenu = ({ inv, onClose }: { inv: InventoryItem; onClose: () => void }) => {
+  const { data: lots, isLoading } = useItemLots(inv.id, 'active');
+  const setInUseLot = useSetInUseLot();
+  const [error, setError] = useState('');
+
+  const pick = async (lotId: string | null) => {
+    setError('');
+    try {
+      await setInUseLot.mutateAsync({ itemId: inv.id, lotId });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'เปลี่ยนล็อตไม่สำเร็จ');
+    }
+  };
+
+  const rowStyle = (active: boolean): React.CSSProperties => ({
+    width: '100%', textAlign: 'left', padding: '8px 12px', fontSize: 12,
+    fontFamily: 'inherit', cursor: 'pointer', border: 'none', display: 'block',
+    background: active ? 'var(--color-accent-50)' : 'transparent',
+    color: active ? 'var(--color-primary-700)' : 'var(--color-text)',
+    fontWeight: active ? 600 : 400,
+  });
+
+  return (
+    <div style={{
+      position: 'absolute', top: 'calc(100% + 4px)', left: 0,
+      background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+      borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 200,
+      overflow: 'hidden', minWidth: 280, maxHeight: 300, overflowY: 'auto',
+    }}>
+      <button type="button" onClick={() => pick(null)} style={rowStyle(inv.costSource !== 'manual')}>
+        FIFO (อัตโนมัติ)
+        <div style={{ fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 400 }}>ใช้ล็อตเก่าสุดที่ยังมีของ</div>
+      </button>
+      {isLoading ? (
+        <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--color-text-muted)' }}>กำลังโหลดล็อต...</div>
+      ) : !lots || lots.length === 0 ? (
+        <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--color-text-muted)' }}>ยังไม่มีล็อตที่มีของ</div>
+      ) : lots.map((lot: StockLot) => {
+        const exp = lotDate(lot.expiryDate);
+        return (
+          <button key={lot.id} type="button" onClick={() => pick(lot.id)} style={{ ...rowStyle(lot.isInUse), borderTop: '1px solid var(--color-border)' }}>
+            <div>{lot.packLabel ?? 'ไม่ระบุแพ็ค'}{lot.isHead && !lot.isInUse ? ' · FIFO ถัดไป' : ''}{lot.isInUse ? ' · กำลังใช้' : ''}</div>
+            <div style={{ fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 400 }}>
+              เหลือ {lot.qtyRemaining.toLocaleString()} {inv.unit} · ฿{lot.costPerUnit.toFixed(4)}/{inv.unit}{exp ? ` · หมดอายุ ${exp}` : ''}
+            </div>
+          </button>
+        );
+      })}
+      {error && <div style={{ padding: '8px 12px', fontSize: 11, color: 'var(--color-danger)', fontWeight: 600 }}>{error}</div>}
+      <div style={{ padding: '8px 12px', fontSize: 10, color: 'var(--color-text-muted)', background: 'var(--color-surface-2)', borderTop: '1px solid var(--color-border)' }}>
+        มีผลกับทุกเมนูที่ใช้ {inv.name}
+      </div>
+    </div>
+  );
+};
+
 // ── BOM Row with inline unit converter ───────────────────────────────────────
 const BOMRow = ({ inv, qty, lineCost, stockOk, isLast, onQtyChange, onRemove }: {
   inv: InventoryItem; qty: number; lineCost: number; stockOk: boolean; isLast: boolean;
@@ -931,6 +1044,7 @@ const BOMRow = ({ inv, qty, lineCost, stockOk, isLast, onQtyChange, onRemove }: 
             </button>
           </div>
           <div style={{ fontSize: 11, color: stockOk ? 'var(--color-text-muted)' : 'var(--color-warning)', marginTop: 2 }}>คงเหลือ {inv.stock.toLocaleString()} {inv.unit}{!stockOk && ' · ใกล้หมด'}</div>
+          <div style={{ marginTop: 4 }}><LotPicker inv={inv} /></div>
         </div>
         <NumberInput step={1} min={0} value={qty} onChange={onQtyChange} className="num" style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, border: '1px solid var(--color-border)', borderRadius: 6, padding: '6px 10px', outline: 'none', fontFamily: 'inherit', background: 'var(--color-surface)' }} onFocus={e => e.target.style.borderColor = 'var(--color-accent)'} onBlur={e => e.target.style.borderColor = 'var(--color-border)'} />
         <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{inv.unit}</div>

@@ -2,17 +2,41 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 
 // ── Backend shapes (exact field names from schemas/inventory.py) ──────────────
+
+// A pack is a *way of buying* an ingredient (brand/size combo) — "Meiji 2L",
+// "Dutch Mill 1L". Packs belong to the purchase, not to the ingredient, so the
+// recipe keeps pointing at "Whole Milk" while the cost follows whatever's in stock.
+interface PackRead {
+  id: string;
+  inventory_item_id: string;
+  label: string;
+  pack_size: string;                // Decimal — stock units per pack
+  last_price: string | null;        // UI pre-fill only, not authoritative cost
+  is_default: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Where cost_per_unit came from: a manager's pin, FIFO's oldest lot, or nothing yet.
+export type CostSource = 'manual' | 'fifo' | 'none';
+
 interface InventoryItemRead {
   id: string;
   name: string;
   unit: string;
-  cost_per_unit: string | number;   // Decimal serialised as string
+  cost_per_unit: string | number;   // Decimal — cost of the lot currently consumed
   stock_on_hand: string | number;   // Decimal serialised as string
   par_level: string | number;       // Decimal serialised as string
   is_active: boolean;
   status: 'ok' | 'low' | 'critical';
+  packs: PackRead[];                // active only, default first
+  default_pack_id: string | null;
+  in_use_lot_id: string | null;     // null = FIFO
+  cost_source: CostSource;
+  // Deprecated — read-only mirrors of the default pack, removed next release.
   unit_size: string | null;
-  unit_price: string | null;        // Cost of one purchased package
+  unit_price: string | null;
 }
 
 export interface SupplierHistoryItem {
@@ -52,16 +76,25 @@ interface MovementsPage {
 }
 
 // ── Receipt & Lot backend shapes ───────────────────────────────────────────────
+// A lot freezes the pack it was bought in, so renaming or resizing a pack later
+// never rewrites history. pack_id/pack_label are null for void-restock lots.
 interface StockLotRead {
   id: string;
   inventory_item_id: string;
   inventory_item_name: string;
+  pack_id: string | null;
+  pack_label: string | null;
   qty_packs: string;
   qty_received: string;
   qty_remaining: string;
-  unit_price: string;
+  pack_price: string;
+  unit_price: string;               // deprecated alias of pack_price
   cost_per_unit: string;
   expiry_date: string | null;
+  received_at: string;
+  supplier_name: string | null;
+  is_in_use: boolean;               // the item's manually pinned lot
+  is_head: boolean;                 // pinned if set, else FIFO oldest
   created_at: string;
 }
 
@@ -93,6 +126,16 @@ interface ReceiptsPage {
 }
 
 // ── Frontend shapes (what the screens expect) ─────────────────────────────────
+export interface Pack {
+  id: string;
+  itemId: string;
+  label: string;
+  packSize: number;
+  lastPrice: number | null;
+  isDefault: boolean;
+  isActive: boolean;
+}
+
 export interface InventoryItem {
   id: string;
   name: string;
@@ -100,7 +143,13 @@ export interface InventoryItem {
   costPerUnit: number;
   stock: number;
   parLevel: number;
+  packs: Pack[];
+  defaultPackId: string | null;
+  inUseLotId: string | null;
+  costSource: CostSource;
+  /** @deprecated mirrors the default pack — removed next release */
   unitSize: string | null;
+  /** @deprecated mirrors the default pack — removed next release */
   unitPrice: string | null;
 }
 
@@ -121,12 +170,20 @@ export interface StockLot {
   id: string;
   inventoryItemId: string;
   inventoryItemName: string;
+  packId: string | null;
+  packLabel: string | null;
   qtyPacks: number;
   qtyReceived: number;
   qtyRemaining: number;
+  packPrice: number;
+  /** @deprecated alias of packPrice */
   unitPrice: number;
   costPerUnit: number;
   expiryDate: string | null;
+  receivedAt: string;
+  supplierName: string | null;
+  isInUse: boolean;
+  isHead: boolean;
   createdAt: string;
 }
 
@@ -171,6 +228,18 @@ export interface ExpiredLot {
 }
 
 // ── Mappers ───────────────────────────────────────────────────────────────────
+function mapPack(p: PackRead): Pack {
+  return {
+    id: p.id,
+    itemId: p.inventory_item_id,
+    label: p.label,
+    packSize: Number(p.pack_size),
+    lastPrice: p.last_price === null ? null : Number(p.last_price),
+    isDefault: p.is_default,
+    isActive: p.is_active,
+  };
+}
+
 function mapItem(i: InventoryItemRead): InventoryItem {
   return {
     id: i.id,
@@ -179,6 +248,10 @@ function mapItem(i: InventoryItemRead): InventoryItem {
     costPerUnit: Number(i.cost_per_unit),
     stock: Number(i.stock_on_hand),
     parLevel: Number(i.par_level),
+    packs: (i.packs ?? []).map(mapPack),
+    defaultPackId: i.default_pack_id ?? null,
+    inUseLotId: i.in_use_lot_id ?? null,
+    costSource: i.cost_source ?? 'none',
     unitSize: i.unit_size,
     unitPrice: i.unit_price,
   };
@@ -199,16 +272,26 @@ function mapMovement(m: StockMovementRead): Movement {
 }
 
 function mapLot(l: StockLotRead): StockLot {
+  // pack_price is the new field; unit_price is its deprecated alias. Read either
+  // so a lot from an older payload still prices correctly.
+  const price = Number(l.pack_price ?? l.unit_price);
   return {
     id: l.id,
     inventoryItemId: l.inventory_item_id,
     inventoryItemName: l.inventory_item_name,
+    packId: l.pack_id ?? null,
+    packLabel: l.pack_label ?? null,
     qtyPacks: Number(l.qty_packs),
     qtyReceived: Number(l.qty_received),
     qtyRemaining: Number(l.qty_remaining),
-    unitPrice: Number(l.unit_price),
+    packPrice: price,
+    unitPrice: price,
     costPerUnit: Number(l.cost_per_unit),
     expiryDate: l.expiry_date,
+    receivedAt: l.received_at ?? l.created_at,
+    supplierName: l.supplier_name ?? null,
+    isInUse: l.is_in_use ?? false,
+    isHead: l.is_head ?? false,
     createdAt: l.created_at,
   };
 }
@@ -311,10 +394,18 @@ export function useAdjustStock() {
   });
 }
 
+export interface PackCreatePayload {
+  label: string;
+  pack_size: string;
+  last_price?: string;
+  is_default?: boolean;
+}
+
 interface InventoryItemCreatePayload {
   name: string;
   unit: string;
-  unit_size: string;
+  // The first pack becomes the default unless one is flagged is_default.
+  packs: PackCreatePayload[];
   par_level?: string;
   is_active?: boolean;
 }
@@ -446,6 +537,70 @@ export function useSupplierHistory(itemId: string | null) {
   });
 }
 
+// ── Packs (ways of buying one ingredient) ─────────────────────────────────────
+// Writes are MANAGER/OWNER only (backend enforces; the screen gates too).
+// Labels are unique per ingredient *including deactivated packs* — re-creating a
+// deleted label is a 409 CONFLICT, so the UI offers "reactivate" instead.
+
+/** `includeInactive` drops the is_active filter so deactivated packs are listed too. */
+export function useItemPacks(itemId: string | null, includeInactive = false) {
+  return useQuery<Pack[]>({
+    queryKey: ['inventory-packs', itemId, includeInactive],
+    queryFn: async () => {
+      const qs = includeInactive ? '' : '?is_active=true';
+      const data = await api.get<PackRead[]>(`/api/v1/inventory/${itemId}/packs${qs}`);
+      return data.map(mapPack);
+    },
+    enabled: !!itemId,
+  });
+}
+
+// Packs live on InventoryItemRead too, so every pack write refreshes ['inventory'].
+function invalidatePacks(qc: ReturnType<typeof useQueryClient>, itemId: string) {
+  qc.invalidateQueries({ queryKey: ['inventory'] });
+  qc.invalidateQueries({ queryKey: ['inventory-packs', itemId] });
+}
+
+export function useCreatePack() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ itemId, pack }: { itemId: string; pack: PackCreatePayload }) => {
+      const p = await api.post<PackRead>(`/api/v1/inventory/${itemId}/packs`, pack);
+      return mapPack(p);
+    },
+    onSuccess: (_data, { itemId }) => invalidatePacks(qc, itemId),
+  });
+}
+
+export interface PackUpdatePayload {
+  label?: string;
+  pack_size?: string;   // 409 PACK_HAS_LOTS once any lot has been received on this pack
+  last_price?: string;
+  is_default?: boolean; // only ever send `true` — see PACK_DEFAULT_UNSET_NOT_ALLOWED
+  is_active?: boolean;
+}
+
+export function useUpdatePack() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ itemId, packId, patch }: { itemId: string; packId: string; patch: PackUpdatePayload }) => {
+      const p = await api.patch<PackRead>(`/api/v1/inventory/${itemId}/packs/${packId}`, patch);
+      return mapPack(p);
+    },
+    onSuccess: (_data, { itemId }) => invalidatePacks(qc, itemId),
+  });
+}
+
+/** Soft delete (is_active=false). Refused on the default pack while others are active. */
+export function useDeactivatePack() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, packId }: { itemId: string; packId: string }) =>
+      api.delete<void>(`/api/v1/inventory/${itemId}/packs/${packId}`),
+    onSuccess: (_data, { itemId }) => invalidatePacks(qc, itemId),
+  });
+}
+
 // ── Lot detail per ingredient ─────────────────────────────────────────────────
 export function useItemLots(itemId: string | null, status: 'active' | 'all' = 'active') {
   return useQuery<StockLot[]>({
@@ -458,6 +613,23 @@ export function useItemLots(itemId: string | null, status: 'active' | 'all' = 'a
   });
 }
 
+// Pin the lot an ingredient is costed against, or `null` to return to FIFO. The pin
+// clears itself when the lot empties. Writes no StockMovement — nothing moved.
+// It is a property of the INGREDIENT: every product using it re-costs, hence the
+// blanket ['product-detail'] invalidation.
+export function useSetInUseLot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, lotId }: { itemId: string; lotId: string | null }) =>
+      api.put<InventoryItemRead>(`/api/v1/inventory/${itemId}/in-use-lot`, { lot_id: lotId }),
+    onSuccess: (_data, { itemId }) => {
+      qc.invalidateQueries({ queryKey: ['inventory'] });
+      qc.invalidateQueries({ queryKey: ['inventory-lots', itemId] });
+      qc.invalidateQueries({ queryKey: ['product-detail'] });
+    },
+  });
+}
+
 // ── Receipt hooks ─────────────────────────────────────────────────────────────
 interface CreateReceiptPayload {
   supplier_name?: string;
@@ -467,9 +639,9 @@ interface CreateReceiptPayload {
 }
 
 interface AddLotPayload {
-  inventory_item_id: string;
+  pack_id: string;
   qty_packs: string;
-  unit_price: string;
+  pack_price: string;   // price of ONE pack — the modal divides the total it collects
   expiry_date?: string;
 }
 
@@ -515,6 +687,7 @@ export function useAddLot() {
       api.post<StockReceiptRead>(`/api/v1/receipts/${receiptId}/lots`, lot),
     onSuccess: (_data, { receiptId }) => {
       qc.invalidateQueries({ queryKey: ['receipt', receiptId] });
+      qc.invalidateQueries({ queryKey: ['inventory-lots'] });   // draft lots show in LotsModal
     },
   });
 }
@@ -526,6 +699,7 @@ export function useDeleteLot() {
       api.delete<void>(`/api/v1/receipts/${receiptId}/lots/${lotId}`),
     onSuccess: (_data, { receiptId }) => {
       qc.invalidateQueries({ queryKey: ['receipt', receiptId] });
+      qc.invalidateQueries({ queryKey: ['inventory-lots'] });
     },
   });
 }
@@ -540,6 +714,9 @@ export function useConfirmReceipt() {
       qc.invalidateQueries({ queryKey: ['receipt', receiptId] });
       qc.invalidateQueries({ queryKey: ['inventory'] });
       qc.invalidateQueries({ queryKey: ['inventory-movements'] });
+      // Confirming creates the lots (with expiry) and moves qty_remaining.
+      qc.invalidateQueries({ queryKey: ['inventory-lots'] });
+      qc.invalidateQueries({ queryKey: ['inventory-expired'] });
     },
   });
 }

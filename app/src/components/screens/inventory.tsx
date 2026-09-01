@@ -5,14 +5,18 @@ import Icon from '../icons';
 import { useToast, Tag, baht, Select } from '../app-common';
 import { useStagger } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
+import { ApiError } from '@/lib/api-client';
+import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import {
   useInventory, useInventoryMovements, useWasteStock,
   useCreateInventoryItem, useDeleteInventoryItem, useSupplierHistory,
   useExpiredInventory, useExpiredWaste, useItemLots, useReceipts, useReceipt,
   useCreateReceipt, useAddLot, useDeleteLot, useConfirmReceipt,
+  useItemPacks, useCreatePack, useUpdatePack, useDeactivatePack,
   EXPIRED_WASTE_MAX,
   type InventoryItem, type Movement, type WastageReason, type SupplierHistoryItem,
   type StockLot, type ReceiptListItem, type ExpiredLot, type ExpiredWasteResult,
+  type Pack, type PackCreatePayload,
 } from '@/hooks/use-inventory';
 
 const WASTAGE_REASONS = [
@@ -43,12 +47,53 @@ const EXPIRED_SKIP_LABELS: Record<string, string> = {
   inactive_item: 'รายการวัตถุดิบถูกลบแล้ว',
 };
 
+// ── API error codes → Thai copy ───────────────────────────────────────────────
+// The envelope is {"error": {"code", "message"}} and api-client parses the code onto
+// ApiError.code. Older call sites matched on the message because the backend passes
+// the code *as* the message — errCode() reads the real code and keeps that fallback.
+const API_ERROR_COPY: Record<string, string> = {
+  CONFLICT:                       'มีแพ็คชื่อนี้อยู่แล้ว (อาจถูกปิดใช้ไว้) — เปิดใช้แพ็คเดิมแทนได้',
+  PACK_HAS_LOTS:                  'แพ็คนี้เคยรับของเข้ามาแล้ว เปลี่ยนขนาดไม่ได้ — สร้างแพ็คใหม่แทน',
+  PACK_IS_DEFAULT:                'ปิดใช้แพ็คหลักไม่ได้ — ตั้งแพ็คอื่นเป็นค่าเริ่มต้นก่อน',
+  PACK_DEFAULT_MUST_BE_ACTIVE:    'แพ็คที่ปิดใช้อยู่ ตั้งเป็นค่าเริ่มต้นไม่ได้',
+  PACK_DEFAULT_UNSET_NOT_ALLOWED: 'ยกเลิกค่าเริ่มต้นตรงๆ ไม่ได้ — ตั้งแพ็คอื่นเป็นค่าเริ่มต้นแทน',
+  PACK_OR_ITEM_REQUIRED:          'ต้องเลือกแพ็คก่อน',
+  PACK_ITEM_MISMATCH:             'แพ็คนี้ไม่ใช่ของวัตถุดิบที่เลือก',
+  PACK_INACTIVE:                  'แพ็คนี้ถูกปิดใช้แล้ว — เลือกแพ็คอื่น',
+  ITEM_HAS_NO_PACK:               'วัตถุดิบนี้ยังไม่มีแพ็ค — เพิ่มแพ็คก่อนจึงรับของได้',
+  LOT_EMPTY:                      'ล็อตนี้ของหมดแล้ว เลือกเป็นล็อตที่ใช้อยู่ไม่ได้',
+  RECEIPT_ALREADY_CONFIRMED:      'ใบรับนี้ถูกยืนยันแล้ว ไม่สามารถแก้ไขได้',
+  NO_LOTS:                        'ต้องเพิ่มรายการสินค้าก่อนยืนยัน',
+  FORBIDDEN:                      'ต้องเป็นผู้จัดการขึ้นไปจึงแก้ไขได้',
+};
+
+const errCode = (err: unknown): string => {
+  if (err instanceof ApiError && err.code) return err.code;
+  const msg = err instanceof Error ? err.message : '';
+  return Object.keys(API_ERROR_COPY).find(c => msg.includes(c)) ?? '';
+};
+
+/** Thai copy for a known code, else the raw message, else `fallback`. */
+const errCopy = (err: unknown, fallback: string) =>
+  API_ERROR_COPY[errCode(err)] ?? (err instanceof Error && err.message ? err.message : fallback);
+
 // The backend may add reasons (e.g. `inactive_item`) — show the raw value, never throw.
 const skipLabel = (reason: string) => EXPIRED_SKIP_LABELS[reason] ?? `ข้ามไว้ (${reason})`;
 const skipColor = (reason: string) =>
   reason === 'empty' ? 'var(--color-text-secondary)'
   : reason in EXPIRED_SKIP_LABELS ? 'var(--color-warning)'
   : 'var(--color-text-muted)';
+
+// Ingredient names are clean again ("Whole Milk", not "Whole Milk 2L") — the pack
+// lives in a subtitle under the name instead of inside the name.
+const packSummary = (it: InventoryItem): { label: string; warn: boolean } => {
+  if (it.packs.length === 0) return { label: 'ยังไม่มีแพ็ค', warn: true };
+  const def = it.packs.find(p => p.isDefault) ?? it.packs[0];
+  return {
+    label: it.packs.length > 1 ? `${def.label} · ${it.packs.length} แพ็ค` : def.label,
+    warn: false,
+  };
+};
 
 const stockStatusOf = (it: InventoryItem) => {
   if (it.stock < it.parLevel * 0.5) return { tone: 'danger' as const,  label: 'Critical' };
@@ -90,6 +135,10 @@ const formatRelative = (ts: number) => {
 
 const todayIso = () => new Date().toISOString().split('T')[0];
 
+// Sentinel value for the "+ เพิ่มแพ็คใหม่" row in the pack dropdown. A cuid can never
+// collide with it.
+const NEW_PACK_OPTION = '__new_pack__';
+
 export default function Inventory() {
   const toast = useToast();
   const [tab, setTab] = useState('items');
@@ -103,9 +152,12 @@ export default function Inventory() {
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<InventoryItem | null>(null);
   const [supplierHistoryItem, setSupplierHistoryItem] = useState<InventoryItem | null>(null);
   const [lotsItem, setLotsItem] = useState<InventoryItem | null>(null);
+  const [packsItem, setPacksItem] = useState<InventoryItem | null>(null);
   const [viewReceiptId, setViewReceiptId] = useState<string | null>(null);
   const [expiredWasteOpen, setExpiredWasteOpen] = useState(false);
 
+  const { data: me } = useCurrentUser();
+  const canManagePacks = isAdmin(me?.role);
   const { data: inventoryItems, isLoading: invLoading } = useInventory();
   const { data: movementsData } = useInventoryMovements();
   const { data: expiredLots } = useExpiredInventory();
@@ -180,14 +232,14 @@ export default function Inventory() {
     }
   };
 
-  const submitAddIngredient = async ({ name, unit, unitSize, parLevel }: { name: string; unit: string; unitSize: string; parLevel: string }) => {
+  const submitAddIngredient = async ({ name, unit, packs, parLevel }: { name: string; unit: string; packs: PackCreatePayload[]; parLevel: string }) => {
     try {
-      await createItem.mutateAsync({ name, unit, unit_size: unitSize, par_level: parLevel || undefined });
+      await createItem.mutateAsync({ name, unit, packs, par_level: parLevel || undefined });
       setAddIngredientOpen(false);
-      toast({ kind: 'success', title: 'เพิ่มวัตถุดิบแล้ว', msg: `${name} (${unit}) ถูกเพิ่มในคลังแล้ว` });
+      toast({ kind: 'success', title: 'เพิ่มวัตถุดิบแล้ว', msg: `${name} (${unit}) · ${packs.length} แพ็ค` });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'กรุณาลองใหม่';
-      const isDuplicate = msg.includes('CONFLICT') || msg.toLowerCase().includes('already exists');
+      const isDuplicate = errCode(err) === 'CONFLICT' || msg.toLowerCase().includes('already exists');
       toast({ kind: 'warning', title: isDuplicate ? 'ชื่อซ้ำ' : 'เกิดข้อผิดพลาด', msg: isDuplicate ? `"${name}" มีอยู่ในระบบแล้ว` : msg });
     }
   };
@@ -266,7 +318,7 @@ export default function Inventory() {
             </div>
           </div>
 
-          {tab === 'items'   && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onWaste={openWastage} onAddIngredient={() => setAddIngredientOpen(true)} onDelete={setDeleteConfirmItem} onSupplierHistory={setSupplierHistoryItem} onLots={setLotsItem} />}
+          {tab === 'items'   && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onWaste={openWastage} onAddIngredient={() => setAddIngredientOpen(true)} onDelete={setDeleteConfirmItem} onSupplierHistory={setSupplierHistoryItem} onLots={setLotsItem} onPacks={setPacksItem} />}
           {tab === 'usage'   && <UsageTab stats={usageStats} movements={saleMovements} />}
           {tab === 'receive' && <ReceiveTab onNewReceipt={openNewReceipt} onContinueDraft={openDraftReceipt} onViewReceipt={setViewReceiptId} onAddIngredient={() => setAddIngredientOpen(true)} />}
           {tab === 'waste'   && <WastageTab items={inventoryItems ?? []} movements={recentWastage} totalCost={wastageThisMonth} onAdd={() => openWastage()} expiredCount={counts.expiring} onExpiredWaste={() => setExpiredWasteOpen(true)} />}
@@ -303,6 +355,9 @@ export default function Inventory() {
       )}
       {lotsItem && (
         <LotsModal item={lotsItem} onClose={() => setLotsItem(null)} />
+      )}
+      {packsItem && (
+        <PacksModal item={packsItem} canEdit={canManagePacks} onClose={() => setPacksItem(null)} />
       )}
       {expiredWasteOpen && (
         <ExpiredWasteModal onClose={() => setExpiredWasteOpen(false)} />
@@ -426,7 +481,7 @@ const ItemSelect = ({ items, value, onChange, placeholder }: { items: InventoryI
 );
 
 // ── Items Tab ─────────────────────────────────────────────────────────────────
-const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatusFilter, onWaste, onAddIngredient, onDelete, onSupplierHistory, onLots }: {
+const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatusFilter, onWaste, onAddIngredient, onDelete, onSupplierHistory, onLots, onPacks }: {
   items: (InventoryItem & { status: ReturnType<typeof stockStatusOf> })[];
   totalCount: number; search: string; setSearch: (v: string) => void;
   statusFilter: string; setStatusFilter: (v: string) => void;
@@ -434,6 +489,7 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
   onAddIngredient: () => void; onDelete: (item: InventoryItem) => void;
   onSupplierHistory: (item: InventoryItem) => void;
   onLots: (item: InventoryItem) => void;
+  onPacks: (item: InventoryItem) => void;
 }) => {
   // Rows fade+rise in once, re-keyed on the filtered result so a search/filter
   // change replays the entrance. Skips the sticky header (first child).
@@ -510,10 +566,12 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
         <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>ไม่พบวัตถุดิบที่ตรงเงื่อนไข</div>
       ) : items.map((it, idx) => {
         const ratio = it.parLevel > 0 ? Math.min(100, (it.stock / it.parLevel) * 100) : 100;
+        const pack = packSummary(it);
         return (
           <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 240px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === items.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
             <div>
               <div style={{ fontSize: 14, fontWeight: 600 }}>{it.name}</div>
+              <div style={{ fontSize: 11, marginTop: 2, color: pack.warn ? 'var(--color-warning)' : 'var(--color-text-muted)', fontWeight: pack.warn ? 600 : 400 }}>{pack.label}</div>
               <div style={{ marginTop: 4, height: 4, background: 'var(--color-surface-2)', borderRadius: 999, overflow: 'hidden', maxWidth: 200 }}>
                 <div style={{ height: '100%', width: `${ratio}%`, background: it.status.tone === 'danger' ? 'var(--color-danger)' : it.status.tone === 'warning' ? 'var(--color-warning)' : 'var(--color-success)', transition: 'width 200ms var(--ease-out)' }} />
               </div>
@@ -524,8 +582,10 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
             <div><Tag tone={it.status.tone}>{it.status.label}</Tag></div>
             <div className="num hidden lg:block" style={{ fontSize: 13, color: it.costPerUnit === 0 ? 'var(--color-text-muted)' : 'var(--color-text-secondary)', textAlign: 'right' }}>
               {it.costPerUnit === 0 ? '—' : `฿${it.costPerUnit.toFixed(2)}`}
+              {it.costSource === 'manual' && <span title="ปักหมุดล็อตที่ใช้อยู่ (ไม่ใช่ FIFO)" style={{ marginLeft: 4, color: 'var(--color-accent)' }}>📌</span>}
             </div>
             <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button onClick={() => onPacks(it)} style={miniBtnStyle('ghost')} title="จัดการแพ็ค (ขนาด/ยี่ห้อที่ซื้อ)" onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-primary)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>แพ็ค</button>
               <button onClick={() => onLots(it)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="list" size={12} /> Lots</button>
               <button onClick={() => onWaste(it.id)} style={miniBtnStyle('ghost')} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-warning-50)'; e.currentTarget.style.color = 'var(--color-warning)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}><Icon name="trash" size={12} /> Waste</button>
               <button onClick={() => onSupplierHistory(it)} style={miniBtnStyle('ghost')} title="ประวัติ Supplier" onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-primary)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>ประวัติ</button>
@@ -544,13 +604,14 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
         <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {items.map((it) => {
             const ratio = it.parLevel > 0 ? Math.min(100, (it.stock / it.parLevel) * 100) : 100;
+            const pack = packSummary(it);
             return (
               <div key={it.id} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 10, padding: '12px 14px' }}>
                 {/* Row 1: name + status badge */}
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.3 }}>{it.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>{it.unit}</div>
+                    <div style={{ fontSize: 11, marginTop: 2, color: pack.warn ? 'var(--color-warning)' : 'var(--color-text-muted)', fontWeight: pack.warn ? 600 : 400 }}>{it.unit} · {pack.label}</div>
                   </div>
                   <Tag tone={it.status.tone}>{it.status.label}</Tag>
                 </div>
@@ -574,11 +635,13 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
                     <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ต้นทุน/หน่วย</div>
                     <div className="num" style={{ fontSize: 13, color: it.costPerUnit === 0 ? 'var(--color-text-muted)' : 'var(--color-text-secondary)' }}>
                       {it.costPerUnit === 0 ? '—' : `฿${it.costPerUnit.toFixed(2)}`}
+                      {it.costSource === 'manual' && <span title="ปักหมุดล็อตที่ใช้อยู่" style={{ marginLeft: 3, color: 'var(--color-accent)' }}>📌</span>}
                     </div>
                   </div>
                 </div>
                 {/* Row 3: action buttons */}
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button onClick={() => onPacks(it)} style={miniBtnStyle('ghost')} title="จัดการแพ็ค" onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-primary)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>แพ็ค</button>
                   <button onClick={() => onLots(it)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="list" size={12} /> Lots</button>
                   <button onClick={() => onWaste(it.id)} style={miniBtnStyle('ghost')} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-warning-50)'; e.currentTarget.style.color = 'var(--color-warning)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}><Icon name="trash" size={12} /> Waste</button>
                   <button onClick={() => onSupplierHistory(it)} style={miniBtnStyle('ghost')} title="ประวัติ Supplier" onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-primary)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>ประวัติ</button>
@@ -789,11 +852,18 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
 
   // Add-lot form state
   const [lotItemId, setLotItemId] = useState('');
+  const [lotPackId, setLotPackId] = useState('');
   const [lotPacks, setLotPacks] = useState('');
   const [lotTotalPrice, setLotTotalPrice] = useState('');
   const [lotExpiry, setLotExpiry] = useState('');
   const [ingredientSearch, setIngredientSearch] = useState('');
   const [ingredientOpen, setIngredientOpen] = useState(false);
+
+  // Inline "new pack" form, opened from the pack dropdown's last option
+  const [newPackOpen, setNewPackOpen] = useState(false);
+  const [npLabel, setNpLabel] = useState('');
+  const [npSize, setNpSize] = useState('');
+  const [npPrice, setNpPrice] = useState('');
 
   const [headerError, setHeaderError] = useState('');
   const [lotError, setLotError] = useState('');
@@ -804,14 +874,47 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
   const addLot = useAddLot();
   const deleteLot = useDeleteLot();
   const confirmReceipt = useConfirmReceipt();
+  const createPack = useCreatePack();
 
   const selectedLotItem = items.find(i => i.id === lotItemId);
+  // Active packs already ship with the inventory list — no extra request here.
+  const itemPacks = selectedLotItem?.packs ?? [];
+  const selectedPack = itemPacks.find(p => p.id === lotPackId);
+
+  const closeNewPack = () => { setNewPackOpen(false); setNpLabel(''); setNpSize(''); setNpPrice(''); };
 
   const handleSelectLotItem = (id: string) => {
     setLotItemId(id);
+    // Preselect the default pack so the common case is still one click.
+    const it = items.find(i => i.id === id);
+    const def = it?.packs.find(p => p.id === it.defaultPackId) ?? it?.packs[0];
+    setLotPackId(def?.id ?? '');
+    closeNewPack();
+    setLotError('');
   };
 
-  const resetLotForm = () => { setLotItemId(''); setLotPacks(''); setLotTotalPrice(''); setLotExpiry(''); setLotError(''); setIngredientSearch(''); setIngredientOpen(false); };
+  const handleCreatePack = async () => {
+    const size = Number(npSize);
+    if (!lotItemId || size <= 0) return;
+    setLotError('');
+    try {
+      const pack = await createPack.mutateAsync({
+        itemId: lotItemId,
+        pack: {
+          // Blank label falls back to "2000 ml" so a one-off pack stays quick to add.
+          label: npLabel.trim() || `${npSize} ${selectedLotItem?.unit ?? ''}`.trim(),
+          pack_size: npSize,
+          last_price: npPrice.trim() || undefined,
+        },
+      });
+      setLotPackId(pack.id);
+      closeNewPack();
+    } catch (err) {
+      setLotError(errCopy(err, 'เพิ่มแพ็คไม่สำเร็จ'));
+    }
+  };
+
+  const resetLotForm = () => { setLotItemId(''); setLotPackId(''); setLotPacks(''); setLotTotalPrice(''); setLotExpiry(''); setLotError(''); setIngredientSearch(''); setIngredientOpen(false); closeNewPack(); };
 
   const handleCreateReceipt = async () => {
     setHeaderError('');
@@ -832,26 +935,24 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
   const handleAddLot = async () => {
     const packs = Number(lotPacks);
     const total = Number(lotTotalPrice);
-    if (!receiptId || !lotItemId || packs <= 0 || total <= 0) return;
-    const computedUnitPrice = (total / packs).toFixed(2);
-    if (Number(computedUnitPrice) > 99999.99) { setLotError('ราคา/แพ็ค ที่คำนวณได้เกินขีดจำกัด (99,999.99)'); return; }
+    if (!receiptId || !lotPackId || packs <= 0 || total <= 0) return;
+    // The field collects the TOTAL paid; the API wants the price of one pack.
+    const computedPackPrice = (total / packs).toFixed(2);
+    if (Number(computedPackPrice) > 99999.99) { setLotError('ราคา/แพ็ค ที่คำนวณได้เกินขีดจำกัด (99,999.99)'); return; }
     setLotError('');
     try {
       await addLot.mutateAsync({
         receiptId,
         lot: {
-          inventory_item_id: lotItemId,
+          pack_id: lotPackId,
           qty_packs: lotPacks,
-          unit_price: computedUnitPrice,
+          pack_price: computedPackPrice,
           expiry_date: lotExpiry || undefined,
         },
       });
       resetLotForm();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'เพิ่มรายการไม่สำเร็จ';
-      if (msg.includes('CONFIRMED'))                setLotError('ใบรับนี้ถูกยืนยันแล้ว ไม่สามารถแก้ไขได้');
-      else if (msg.includes('ITEM_MISSING_UNIT_SIZE')) setLotError('วัตถุดิบนี้ยังไม่ได้ตั้งค่าขนาดแพ็ค กรุณาแก้ไขในหน้าวัตถุดิบก่อน');
-      else                                           setLotError(msg);
+      setLotError(errCopy(err, 'เพิ่มรายการไม่สำเร็จ'));
     }
   };
 
@@ -871,13 +972,12 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
       await confirmReceipt.mutateAsync(receiptId);
       onConfirmed();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'ยืนยันไม่สำเร็จ';
-      setConfirmError(msg.includes('NO_LOTS') ? 'ต้องเพิ่มรายการสินค้าก่อนยืนยัน' : msg.includes('CONFIRMED') ? 'ยืนยันไปแล้ว' : msg);
+      setConfirmError(errCopy(err, 'ยืนยันไม่สำเร็จ'));
     }
   };
 
   const isConfirmed = receipt?.status === 'CONFIRMED';
-  const canAddLot = !!lotItemId && Number(lotPacks) > 0 && Number(lotTotalPrice) > 0 && !isConfirmed;
+  const canAddLot = !!lotPackId && Number(lotPacks) > 0 && Number(lotTotalPrice) > 0 && !isConfirmed;
   const canConfirm = (receipt?.lots?.length ?? 0) > 0 && !isConfirmed && !confirmReceipt.isPending;
 
   return (
@@ -929,12 +1029,63 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
                         onMouseDown={() => { handleSelectLotItem(it.id); setIngredientSearch(it.name); setIngredientOpen(false); }}
                         style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', background: it.id === lotItemId ? 'var(--color-accent-50)' : undefined, color: it.id === lotItemId ? 'var(--color-primary)' : undefined, fontWeight: it.id === lotItemId ? 600 : undefined }}
                       >
-                        {it.name} · {it.unit}
+                        <div>{it.name} · {it.unit}</div>
+                        <div style={{ fontSize: 11, color: it.packs.length === 0 ? 'var(--color-warning)' : 'var(--color-text-muted)', marginTop: 1 }}>{packSummary(it).label}</div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
+
+              {/* Step 2 — which pack was bought. Options come from the item we already have. */}
+              {selectedLotItem && !newPackOpen && itemPacks.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>แพ็คที่ซื้อ *</div>
+                  <Select
+                    value={lotPackId}
+                    onChange={v => { if (v === NEW_PACK_OPTION) { setNewPackOpen(true); } else { setLotPackId(v); } }}
+                    ariaLabel="แพ็คที่ซื้อ"
+                    placeholder="— เลือกแพ็ค —"
+                    triggerStyle={{ padding: '8px 10px', fontSize: 13, borderRadius: 8 }}
+                    options={[
+                      ...itemPacks.map(p => ({
+                        value: p.id,
+                        label: `${p.label} · ${p.packSize.toLocaleString()} ${selectedLotItem.unit}${p.lastPrice !== null ? ` · ล่าสุด ฿${p.lastPrice.toFixed(2)}` : ''}`,
+                      })),
+                      { value: NEW_PACK_OPTION, label: '+ เพิ่มแพ็คใหม่' },
+                    ]}
+                  />
+                </div>
+              )}
+
+              {/* Inline new-pack form — also the recovery path when an item has no pack yet */}
+              {selectedLotItem && newPackOpen && (
+                <div style={{ marginBottom: 10, padding: 10, background: 'var(--color-accent-50)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-primary-700)', marginBottom: 8 }}>แพ็คใหม่ของ {selectedLotItem.name}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr auto', gap: 8, alignItems: 'flex-end' }}>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ชื่อแพ็ค</div>
+                      <input type="text" value={npLabel} onChange={e => setNpLabel(e.target.value)} placeholder="เช่น Meiji 2L" style={smallInputStyle()} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ขนาด ({selectedLotItem.unit}/แพ็ค) *</div>
+                      <input type="number" min={0.001} step="any" value={npSize} onChange={e => setNpSize(e.target.value)} placeholder="2000" style={smallInputStyle()} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ราคา/แพ็ค</div>
+                      <input type="number" min={0} step={0.01} value={npPrice} onChange={e => setNpPrice(e.target.value)} placeholder="ไม่บังคับ" style={smallInputStyle()} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={handleCreatePack} disabled={Number(npSize) <= 0 || createPack.isPending} style={{ ...primaryBtnStyle(), padding: '8px 12px', fontSize: 12, opacity: Number(npSize) > 0 ? 1 : 0.4, whiteSpace: 'nowrap' }}>
+                        {createPack.isPending ? '...' : 'บันทึก'}
+                      </button>
+                      {itemPacks.length > 0 && (
+                        <button onClick={closeNewPack} style={{ ...ghostBtnStyle(), padding: '8px 12px', fontSize: 12 }}>ยกเลิก</button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'flex-end' }}>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>จำนวนแพ็ค *</div>
@@ -952,15 +1103,18 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
                   {addLot.isPending ? '...' : '+ เพิ่ม'}
                 </button>
               </div>
-              {selectedLotItem && Number(lotPacks) > 0 && Number(lotTotalPrice) > 0 && (
+              {selectedPack && Number(lotPacks) > 0 && Number(lotTotalPrice) > 0 && (
                 <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--color-accent-50)', borderRadius: 8, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>
-                  {Number(lotPacks).toLocaleString()} แพ็ค × ฿{(Number(lotTotalPrice) / Number(lotPacks)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/แพ็ค{' '}
+                  {selectedPack.label} · {Number(lotPacks).toLocaleString()} แพ็ค × ฿{(Number(lotTotalPrice) / Number(lotPacks)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/แพ็ค{' '}
                   = <strong>฿{Number(lotTotalPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} รวม</strong>
                 </div>
               )}
-              {selectedLotItem && !selectedLotItem.unitSize && (
-                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--color-warning)', fontWeight: 600 }}>
-                  ⚠ วัตถุดิบนี้ยังไม่ได้ตั้งค่าขนาดแพ็ค — ไม่สามารถรับเข้าได้จนกว่าจะแก้ไข
+              {selectedLotItem && itemPacks.length === 0 && !newPackOpen && (
+                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, color: 'var(--color-warning)', fontWeight: 600 }}>⚠ วัตถุดิบนี้ยังไม่มีแพ็ค — เพิ่มแพ็คก่อนจึงรับเข้าได้</span>
+                  <button onClick={() => setNewPackOpen(true)} style={{ ...ghostBtnStyle(), padding: '6px 12px', fontSize: 12 }}>
+                    <Icon name="plus" size={12} /> เพิ่มแพ็ค
+                  </button>
                 </div>
               )}
               {lotError && <div style={{ fontSize: 12, color: 'var(--color-danger)', marginTop: 8, fontWeight: 600 }}>{lotError}</div>}
@@ -983,10 +1137,13 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
                 const badge = expiryBadge(lot.expiryDate);
                 return (
                   <div key={lot.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 70px 80px 90px 100px 36px', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === receipt.lots.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{lot.inventoryItemName}</div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{lot.inventoryItemName}</div>
+                      {lot.packLabel && <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 1 }}>{lot.packLabel}</div>}
+                    </div>
                     <div className="num" style={{ fontSize: 13, textAlign: 'right', color: 'var(--color-text-secondary)' }}>{lot.qtyPacks.toLocaleString()}</div>
                     <div className="num" style={{ fontSize: 13, textAlign: 'right' }}>{lot.qtyReceived.toLocaleString()}</div>
-                    <div className="num" style={{ fontSize: 13, textAlign: 'right', fontWeight: 600 }}>฿{lot.unitPrice.toFixed(2)}</div>
+                    <div className="num" style={{ fontSize: 13, textAlign: 'right', fontWeight: 600 }}>฿{lot.packPrice.toFixed(2)}</div>
                     <div style={{ fontSize: 12 }}>
                       {lot.expiryDate ? (
                         <div>
@@ -1038,7 +1195,7 @@ const LotsModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void
   const { data: lots, isLoading } = useItemLots(item.id, lotStatus);
 
   return (
-    <ModalShell title={`ล็อตสต็อก — ${item.name}`} subtitle="FIFO — ล็อตแรกคือล็อตที่กำลังใช้อยู่" onClose={onClose} maxWidth={640}>
+    <ModalShell title={`ล็อตสต็อก — ${item.name}`} subtitle={item.costSource === 'manual' ? '📌 ปักหมุดล็อตที่ใช้อยู่ไว้ (ไม่ใช่ FIFO)' : 'FIFO — ล็อตที่เก่าที่สุดคือล็อตที่กำลังใช้'} onClose={onClose} maxWidth={680}>
       <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--color-surface-2)', borderRadius: 8, width: 'fit-content', marginBottom: 16 }}>
         {([{ id: 'active', label: 'Active' }, { id: 'all', label: 'ทั้งหมด' }] as const).map(s => (
           <button key={s.id} onClick={() => setLotStatus(s.id)} style={{
@@ -1051,8 +1208,8 @@ const LotsModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void
       </div>
 
       <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '28px 110px 90px 70px 90px 90px 110px', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
-          <div>#</div><div>วันที่รับ</div><div style={{ textAlign: 'right' }}>คงเหลือ</div><div style={{ textAlign: 'right' }}>แพ็ค</div><div style={{ textAlign: 'right' }}>ราคา/แพ็ค</div><div style={{ textAlign: 'right' }}>ต้นทุน/หน่วย</div><div>หมดอายุ</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '28px 150px 90px 70px 90px 90px 110px', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+          <div>#</div><div>แพ็ค / วันที่รับ</div><div style={{ textAlign: 'right' }}>คงเหลือ</div><div style={{ textAlign: 'right' }}>แพ็ค</div><div style={{ textAlign: 'right' }}>ราคา/แพ็ค</div><div style={{ textAlign: 'right' }}>ต้นทุน/หน่วย</div><div>หมดอายุ</div>
         </div>
         {isLoading ? (
           <div style={{ padding: 'var(--space-3) var(--space-4)' }}>
@@ -1062,17 +1219,22 @@ const LotsModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>ไม่มีล็อตสต็อก</div>
         ) : lots.map((lot: StockLot, idx: number) => {
           const badge = expiryBadge(lot.expiryDate);
-          const isFirst = idx === 0;
+          // With a pin the consumed lot is no longer necessarily the first row — the
+          // backend tells us which one is the head.
+          const isHead = lot.isHead;
           return (
-            <div key={lot.id} style={{ display: 'grid', gridTemplateColumns: '28px 110px 90px 70px 90px 90px 110px', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === lots.length - 1 ? 'none' : '1px solid var(--color-border)', background: isFirst ? 'var(--color-accent-50)' : undefined }}>
+            <div key={lot.id} style={{ display: 'grid', gridTemplateColumns: '28px 150px 90px 70px 90px 90px 110px', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === lots.length - 1 ? 'none' : '1px solid var(--color-border)', background: isHead ? 'var(--color-accent-50)' : undefined }}>
               <div className="num" style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 700 }}>{idx + 1}</div>
               <div>
-                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{formatDate(lot.createdAt)}</div>
-                {isFirst && <div style={{ fontSize: 10, color: 'var(--color-primary)', fontWeight: 700, marginTop: 2 }}>● กำลังใช้</div>}
+                <div style={{ fontSize: 12, fontWeight: 600 }}>{lot.packLabel ?? '—'}</div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 1 }}>
+                  {formatDate(lot.receivedAt)}{lot.supplierName ? ` · ${lot.supplierName}` : ''}
+                </div>
+                {isHead && <div style={{ fontSize: 10, color: 'var(--color-primary)', fontWeight: 700, marginTop: 2 }}>● {lot.isInUse ? 'กำลังใช้ (ปักหมุด)' : 'กำลังใช้ (FIFO)'}</div>}
               </div>
               <div className="num" style={{ fontSize: 13, fontWeight: 700, textAlign: 'right' }}>{lot.qtyRemaining.toLocaleString()} {item.unit}</div>
               <div className="num" style={{ fontSize: 12, color: 'var(--color-text-secondary)', textAlign: 'right' }}>{lot.qtyPacks.toLocaleString()} แพ็ค</div>
-              <div className="num" style={{ fontSize: 12, fontWeight: 600, textAlign: 'right' }}>฿{lot.unitPrice.toFixed(2)}</div>
+              <div className="num" style={{ fontSize: 12, fontWeight: 600, textAlign: 'right' }}>฿{lot.packPrice.toFixed(2)}</div>
               <div className="num" style={{ fontSize: 12, color: 'var(--color-text-secondary)', textAlign: 'right' }}>฿{lot.costPerUnit.toFixed(2)}</div>
               <div style={{ fontSize: 12 }}>
                 {lot.expiryDate ? (
@@ -1086,6 +1248,178 @@ const LotsModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void
           );
         })}
       </div>
+
+      <ModalActions>
+        <button onClick={onClose} style={ghostBtnStyle()}>ปิด</button>
+      </ModalActions>
+    </ModalShell>
+  );
+};
+
+// ── Packs Modal (ways of buying one ingredient) ───────────────────────────────
+// A pack is brand + size — "Meiji 2L", "Dutch Mill 1L". Lots freeze the pack they
+// were bought in, so renaming or resizing here never rewrites past receipts.
+const PacksModal = ({ item, canEdit, onClose }: { item: InventoryItem; canEdit: boolean; onClose: () => void }) => {
+  const [includeInactive, setIncludeInactive] = useState(false);
+  const { data: packs, isLoading } = useItemPacks(item.id, includeInactive);
+  const createPack = useCreatePack();
+  const updatePack = useUpdatePack();
+  const deactivatePack = useDeactivatePack();
+
+  const [error, setError] = useState('');
+  // null = no form open, 'new' = the add form, otherwise the pack id being edited.
+  const [editing, setEditing] = useState<string | null>(null);
+  const [form, setForm] = useState({ label: '', size: '', price: '' });
+
+  const busy = createPack.isPending || updatePack.isPending || deactivatePack.isPending;
+
+  const openNew = () => { setEditing('new'); setForm({ label: '', size: '', price: '' }); setError(''); };
+  const openEdit = (p: Pack) => {
+    setEditing(p.id);
+    setForm({ label: p.label, size: String(p.packSize), price: p.lastPrice === null ? '' : String(p.lastPrice) });
+    setError('');
+  };
+  const closeForm = () => { setEditing(null); setError(''); };
+
+  const saveForm = async () => {
+    if (Number(form.size) <= 0) return;
+    setError('');
+    try {
+      if (editing === 'new') {
+        await createPack.mutateAsync({
+          itemId: item.id,
+          pack: {
+            label: form.label.trim() || `${form.size} ${item.unit}`,
+            pack_size: form.size,
+            last_price: form.price.trim() || undefined,
+          },
+        });
+      } else if (editing) {
+        // is_default is never sent here — flipping the default is its own action, and
+        // is_default:false on the current default is a hard 422.
+        await updatePack.mutateAsync({
+          itemId: item.id,
+          packId: editing,
+          patch: {
+            label: form.label.trim() || undefined,
+            pack_size: form.size,
+            last_price: form.price.trim() || undefined,
+          },
+        });
+      }
+      closeForm();
+    } catch (err) {
+      setError(errCopy(err, 'บันทึกแพ็คไม่สำเร็จ'));
+    }
+  };
+
+  const runAction = async (fn: () => Promise<unknown>, fallback: string) => {
+    setError('');
+    try { await fn(); } catch (err) { setError(errCopy(err, fallback)); }
+  };
+
+  const packForm = (
+    <div style={{ padding: '10px 14px', background: 'var(--color-accent-50)', borderTop: '1px solid var(--color-border)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr auto', gap: 8, alignItems: 'flex-end' }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ชื่อแพ็ค</div>
+          <input type="text" value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} placeholder={form.size ? `${form.size} ${item.unit}` : 'เช่น Meiji 2L'} style={smallInputStyle()} autoFocus />
+        </div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ขนาด ({item.unit}/แพ็ค) *</div>
+          <input type="number" min={0.001} step="any" value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} placeholder="2000" style={smallInputStyle()} />
+        </div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ราคา/แพ็ค</div>
+          <input type="number" min={0} step={0.01} value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="ไม่บังคับ" style={smallInputStyle()} />
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={saveForm} disabled={Number(form.size) <= 0 || busy} style={{ ...primaryBtnStyle(), padding: '8px 14px', fontSize: 12, opacity: Number(form.size) > 0 && !busy ? 1 : 0.45, whiteSpace: 'nowrap' }}>บันทึก</button>
+          <button onClick={closeForm} style={{ ...ghostBtnStyle(), padding: '8px 12px', fontSize: 12 }}>ยกเลิก</button>
+        </div>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6 }}>ราคา/แพ็ค ใช้เติมให้อัตโนมัติตอนรับของเท่านั้น — ต้นทุนจริงมาจากล็อตที่รับเข้า</div>
+    </div>
+  );
+
+  return (
+    <ModalShell
+      title={`แพ็ค — ${item.name}`}
+      subtitle="ยี่ห้อ/ขนาดที่ซื้อวัตถุดิบนี้ · สต็อกยังนับรวมเป็นยอดเดียว"
+      onClose={onClose}
+      maxWidth={640}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--color-surface-2)', borderRadius: 8, width: 'fit-content' }}>
+          {([{ id: false, label: 'ใช้งานอยู่' }, { id: true, label: 'ทั้งหมด' }] as const).map(s => (
+            <button key={String(s.id)} onClick={() => setIncludeInactive(s.id)} style={{
+              padding: '6px 14px', fontSize: 12, fontWeight: 600, border: 'none', borderRadius: 6, cursor: 'pointer',
+              background: includeInactive === s.id ? 'var(--color-surface)' : 'transparent',
+              color: includeInactive === s.id ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)',
+            }}>{s.label}</button>
+          ))}
+        </div>
+        {canEdit && editing === null && (
+          <button onClick={openNew} style={{ ...primaryBtnStyle(), padding: '8px 14px', fontSize: 12, marginLeft: 'auto' }}>
+            <Icon name="plus" size={13} /> เพิ่มแพ็ค
+          </button>
+        )}
+      </div>
+
+      {error && <div style={{ padding: '10px 14px', background: 'var(--color-danger-50)', color: 'var(--color-danger)', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>{error}</div>}
+
+      <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 110px 90px 1fr', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+          <div>ชื่อแพ็ค</div><div style={{ textAlign: 'right' }}>ขนาด</div><div style={{ textAlign: 'right' }}>ราคาล่าสุด</div><div></div>
+        </div>
+
+        {isLoading ? (
+          <div style={{ padding: 'var(--space-3) var(--space-4)' }}>
+            <SkeletonTable rows={3} cols={4} header={false} label="กำลังโหลดแพ็ค" />
+          </div>
+        ) : !packs || packs.length === 0 ? (
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>
+            ยังไม่มีแพ็ค — เพิ่มแพ็คก่อนจึงรับของเข้าได้
+          </div>
+        ) : packs.map((p, idx) => (
+          editing === p.id ? <div key={p.id}>{packForm}</div> : (
+            <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 110px 90px 1fr', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === packs.length - 1 ? 'none' : '1px solid var(--color-border)', opacity: p.isActive ? 1 : 0.55 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{p.label}</div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
+                  {p.isDefault && <Tag tone="accent">ค่าเริ่มต้น</Tag>}
+                  {!p.isActive && <Tag tone="neutral">ปิดใช้</Tag>}
+                </div>
+              </div>
+              <div className="num" style={{ fontSize: 13, textAlign: 'right' }}>{p.packSize.toLocaleString()} {item.unit}</div>
+              <div className="num" style={{ fontSize: 13, textAlign: 'right', color: p.lastPrice === null ? 'var(--color-text-muted)' : 'var(--color-text-secondary)' }}>
+                {p.lastPrice === null ? '—' : `฿${p.lastPrice.toFixed(2)}`}
+              </div>
+              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                {canEdit && p.isActive && (
+                  <button onClick={() => openEdit(p)} disabled={busy} style={miniBtnStyle('ghost')}>แก้ไข</button>
+                )}
+                {canEdit && p.isActive && !p.isDefault && (
+                  <button onClick={() => runAction(() => updatePack.mutateAsync({ itemId: item.id, packId: p.id, patch: { is_default: true } }), 'ตั้งค่าเริ่มต้นไม่สำเร็จ')} disabled={busy} style={miniBtnStyle('ghost')} title="ให้แพ็คนี้เป็นค่าเริ่มต้นตอนรับของ">ตั้งเป็นหลัก</button>
+                )}
+                {canEdit && p.isActive && (
+                  <button onClick={() => runAction(() => deactivatePack.mutateAsync({ itemId: item.id, packId: p.id }), 'ปิดใช้ไม่สำเร็จ')} disabled={busy} style={miniBtnStyle('danger')} title="ปิดใช้แพ็คนี้">ปิดใช้</button>
+                )}
+                {canEdit && !p.isActive && (
+                  <button onClick={() => runAction(() => updatePack.mutateAsync({ itemId: item.id, packId: p.id, patch: { is_active: true } }), 'เปิดใช้ไม่สำเร็จ')} disabled={busy} style={miniBtnStyle('primary')}>เปิดใช้</button>
+                )}
+              </div>
+            </div>
+          )
+        ))}
+
+        {editing === 'new' && packForm}
+      </div>
+
+      {!canEdit && (
+        <div style={{ marginTop: 12, fontSize: 12, color: 'var(--color-text-muted)' }}>ดูอย่างเดียว — ต้องเป็นผู้จัดการขึ้นไปจึงแก้ไขแพ็คได้</div>
+      )}
 
       <ModalActions>
         <button onClick={onClose} style={ghostBtnStyle()}>ปิด</button>
@@ -1263,26 +1597,49 @@ const ExpiredWasteModal = ({ onClose }: { onClose: () => void }) => {
 // ── Add Ingredient Modal ───────────────────────────────────────────────────────
 const AddIngredientModal = ({ onClose, onSubmit, isPending }: {
   onClose: () => void;
-  onSubmit: (v: { name: string; unit: string; unitSize: string; parLevel: string }) => void;
+  onSubmit: (v: { name: string; unit: string; packs: PackCreatePayload[]; parLevel: string }) => void;
   isPending?: boolean;
 }) => {
   const [name, setName]         = useState('');
   const [unit, setUnit]         = useState('');
-  const [unitSize, setUnitSize] = useState('');
   const [parLevel, setParLevel] = useState('');
+  // One row per way of buying this ingredient. Most items only ever need the first.
+  const [packRows, setPackRows] = useState([{ label: '', size: '', price: '' }]);
+  const [defaultIdx, setDefaultIdx] = useState(0);
 
-  const sizeNum = parseFloat(unitSize);
-  const canSubmit = name.trim().length > 0 && unit.trim().length > 0 && sizeNum > 0;
+  const setRow = (i: number, patch: Partial<{ label: string; size: string; price: string }>) =>
+    setPackRows(rows => rows.map((r, idx) => idx === i ? { ...r, ...patch } : r));
+  const addRow = () => setPackRows(rows => [...rows, { label: '', size: '', price: '' }]);
+  const removeRow = (i: number) => {
+    setPackRows(rows => rows.filter((_, idx) => idx !== i));
+    setDefaultIdx(d => (d === i ? 0 : d > i ? d - 1 : d));
+  };
+
+  const canSubmit = name.trim().length > 0 && unit.trim().length > 0
+    && packRows.length > 0 && packRows.every(r => Number(r.size) > 0);
 
   const submit = () => {
     if (!canSubmit || isPending) return;
-    onSubmit({ name: name.trim(), unit: unit.trim(), unitSize, parLevel });
+    const u = unit.trim();
+    onSubmit({
+      name: name.trim(),
+      unit: u,
+      packs: packRows.map((r, i) => ({
+        // Blank label falls back to "2000 ml" — the tenant renames it later.
+        label: r.label.trim() || `${r.size} ${u}`,
+        pack_size: r.size,
+        last_price: r.price.trim() || undefined,
+        is_default: i === defaultIdx,
+      })),
+      parLevel,
+    });
   };
 
   return (
     <ModalShell title="เพิ่มวัตถุดิบใหม่" subtitle="ต้นทุนจะอัปเดตอัตโนมัติเมื่อรับสินค้าครั้งแรก" onClose={onClose}>
       <FormField label="ชื่อวัตถุดิบ *">
-        <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="เช่น Whole Milk 2L, กาแฟอาราบิก้า" style={inputStyle()} autoFocus />
+        <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="เช่น Whole Milk, กาแฟอาราบิก้า" style={inputStyle()} autoFocus />
+        <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>ไม่ต้องใส่ขนาดในชื่อ — ขนาด/ยี่ห้ออยู่ที่แพ็คด้านล่าง</div>
       </FormField>
       <FormField label="หน่วยสต็อก (unit) *">
         <input type="text" value={unit} onChange={e => setUnit(e.target.value)} placeholder="เช่น ml, g, kg, pcs" style={inputStyle()} />
@@ -1290,11 +1647,25 @@ const AddIngredientModal = ({ onClose, onSubmit, isPending }: {
       </FormField>
 
       <div style={{ background: 'var(--color-surface-2)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>ข้อมูลการซื้อ *</div>
-        <FormField label={`ขนาดแพ็ค (${unit || 'unit'}/แพ็ค) *`}>
-          <input type="number" min={0.001} step="any" value={unitSize} onChange={e => setUnitSize(e.target.value)} placeholder={`เช่น 2000 (2000 ${unit || 'unit'}/ขวด)`} style={inputStyle()} />
-        </FormField>
-        <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>ราคา/แพ็คจะระบุตอนรับสินค้า — ต้นทุน/หน่วยจะคำนวณให้อัตโนมัติ</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>แพ็คที่ซื้อ *</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '28px 1.4fr 1fr 1fr 28px', gap: 8, fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 6 }}>
+          <div title="แพ็คหลัก">หลัก</div><div>ชื่อแพ็ค</div><div>ขนาด ({unit || 'unit'}) *</div><div>ราคา/แพ็ค</div><div></div>
+        </div>
+        {packRows.map((r, i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '28px 1.4fr 1fr 1fr 28px', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+            <input type="radio" name="default-pack" checked={defaultIdx === i} onChange={() => setDefaultIdx(i)} aria-label={`ตั้งแพ็คแถวที่ ${i + 1} เป็นแพ็คหลัก`} style={{ justifySelf: 'center' }} />
+            <input type="text" value={r.label} onChange={e => setRow(i, { label: e.target.value })} placeholder={r.size ? `${r.size} ${unit || 'unit'}` : 'เช่น Meiji 2L'} style={smallInputStyle()} />
+            <input type="number" min={0.001} step="any" value={r.size} onChange={e => setRow(i, { size: e.target.value })} placeholder="2000" style={smallInputStyle()} />
+            <input type="number" min={0} step={0.01} value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder="ไม่บังคับ" style={smallInputStyle()} />
+            {packRows.length > 1 ? (
+              <button onClick={() => removeRow(i)} title="ลบแพ็คนี้" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', display: 'grid', placeItems: 'center', padding: 2 }}><Icon name="x" size={13} /></button>
+            ) : <div />}
+          </div>
+        ))}
+        <button onClick={addRow} style={{ ...ghostBtnStyle(), padding: '6px 12px', fontSize: 12 }}>
+          <Icon name="plus" size={12} /> เพิ่มแพ็ค
+        </button>
+        <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8 }}>ซื้อยี่ห้อ/ขนาดไหนก็เพิ่มเป็นแพ็คได้ — ราคาจริงระบุตอนรับสินค้า ต้นทุน/หน่วยคำนวณให้อัตโนมัติ</div>
       </div>
 
       <FormField label="Par Level — จุดสั่งซื้อ (ไม่บังคับ)">
@@ -1387,7 +1758,7 @@ const WastageModal = ({ items, presetItemId, onClose, onSubmit }: { items: Inven
 // ── Receipt Detail Modal (confirmed receipt read-only view) ───────────────────
 const ReceiptDetailModal = ({ id, onClose }: { id: string; onClose: () => void }) => {
   const { data: receipt, isLoading } = useReceipt(id);
-  const total = receipt?.lots.reduce((s, lot) => s + lot.qtyPacks * lot.unitPrice, 0) ?? 0;
+  const total = receipt?.lots.reduce((s, lot) => s + lot.qtyPacks * lot.packPrice, 0) ?? 0;
 
   return (
     <ModalShell
@@ -1407,13 +1778,16 @@ const ReceiptDetailModal = ({ id, onClose }: { id: string; onClose: () => void }
             {!receipt?.lots || receipt.lots.length === 0 ? (
               <div style={{ padding: 28, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>ไม่มีรายการ</div>
             ) : receipt.lots.map((lot: StockLot, idx: number) => {
-              const rowTotal = lot.qtyPacks * lot.unitPrice;
+              const rowTotal = lot.qtyPacks * lot.packPrice;
               const badge = expiryBadge(lot.expiryDate);
               return (
                 <div key={lot.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 80px 90px 90px 110px', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === receipt.lots.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{lot.inventoryItemName}</div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{lot.inventoryItemName}</div>
+                    {lot.packLabel && <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 1 }}>{lot.packLabel}</div>}
+                  </div>
                   <div className="num" style={{ fontSize: 13, textAlign: 'right', color: 'var(--color-text-secondary)' }}>{lot.qtyPacks.toLocaleString()}</div>
-                  <div className="num" style={{ fontSize: 13, textAlign: 'right' }}>฿{lot.unitPrice.toFixed(2)}</div>
+                  <div className="num" style={{ fontSize: 13, textAlign: 'right' }}>฿{lot.packPrice.toFixed(2)}</div>
                   <div className="num" style={{ fontSize: 13, fontWeight: 600, textAlign: 'right' }}>฿{rowTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                   <div style={{ fontSize: 12 }}>
                     {lot.expiryDate ? (

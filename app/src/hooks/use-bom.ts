@@ -1,12 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
+import type { CostSource } from './use-inventory';
 
 // ── Backend shapes (schemas/catalog.py) ───────────────────────────────────────
 interface RecipeItemRead {
   id: string;
   inventory_item_id: string;
   quantity: string | number;   // Decimal
-  cost_per_unit: string | number; // Decimal — unit cost of the ingredient (from inventory)
+  cost_per_unit: string | number; // Decimal — cost of the lot currently being consumed
+  // Enrichment — present on GET /products/{id}, but NOT on the PUT recipe response
+  // (that one returns schema defaults). Always re-read the detail after a save.
+  inventory_item_name?: string;
+  unit?: string;
+  stock_on_hand?: string | number;
+  in_use_lot_id?: string | null;   // null = FIFO
+  cost_source?: CostSource;
 }
 
 interface ModifierGroupSummary {
@@ -36,6 +44,8 @@ export interface RecipeItem {
   invId: string;
   qty: number;
   costPerUnit?: number;   // populated from the API; absent on locally-added rows
+  inUseLotId?: string | null;
+  costSource?: CostSource;
 }
 
 export interface ProductDetail {
@@ -64,6 +74,8 @@ function mapDetail(p: ProductDetailRead): ProductDetail {
       invId: r.inventory_item_id,
       qty: Number(r.quantity),   // "quantity" in backend, "qty" in frontend
       costPerUnit: Number(r.cost_per_unit ?? 0),
+      inUseLotId: r.in_use_lot_id ?? null,
+      costSource: r.cost_source,
     })),
     estimatedUnitCost: Number(p.estimated_unit_cost ?? 0),
   };
