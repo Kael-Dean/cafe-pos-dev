@@ -1,22 +1,23 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useId } from 'react';
 import Icon from '../icons';
 import { useToast, Tag, baht, Select } from '../app-common';
+import { RowMenu, type RowMenuItem } from '../row-menu';
 import { useStagger } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api-client';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import {
   useInventory, useInventoryMovements, useWasteStock,
-  useCreateInventoryItem, useDeleteInventoryItem, useSupplierHistory,
+  useCreateInventoryItem, useDeleteInventoryItem, useUpdateInventoryItem, useSupplierHistory,
   useExpiredInventory, useExpiredWaste, useItemLots, useReceipts, useReceipt,
   useCreateReceipt, useAddLot, useDeleteLot, useConfirmReceipt,
   useItemPacks, useCreatePack, useUpdatePack, useDeactivatePack,
   EXPIRED_WASTE_MAX,
   type InventoryItem, type Movement, type WastageReason, type SupplierHistoryItem,
   type StockLot, type ReceiptListItem, type ExpiredLot, type ExpiredWasteResult,
-  type Pack, type PackCreatePayload,
+  type Pack, type PackCreatePayload, type InventoryItemUpdatePayload,
 } from '@/hooks/use-inventory';
 
 const WASTAGE_REASONS = [
@@ -149,6 +150,7 @@ export default function Inventory() {
   const [wastageOpen, setWastageOpen] = useState(false);
   const [wastagePresetId, setWastagePresetId] = useState<string | null>(null);
   const [addIngredientOpen, setAddIngredientOpen] = useState(false);
+  const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<InventoryItem | null>(null);
   const [supplierHistoryItem, setSupplierHistoryItem] = useState<InventoryItem | null>(null);
   const [lotsItem, setLotsItem] = useState<InventoryItem | null>(null);
@@ -157,13 +159,15 @@ export default function Inventory() {
   const [expiredWasteOpen, setExpiredWasteOpen] = useState(false);
 
   const { data: me } = useCurrentUser();
-  const canManagePacks = isAdmin(me?.role);
+  // OWNER/MANAGER: edit the ingredient itself (name/unit/par) and its packs.
+  const canManageItems = isAdmin(me?.role);
   const { data: inventoryItems, isLoading: invLoading } = useInventory();
   const { data: movementsData } = useInventoryMovements();
   const { data: expiredLots } = useExpiredInventory();
   const wasteStock = useWasteStock();
   const createItem = useCreateInventoryItem();
   const deleteItem = useDeleteInventoryItem();
+  const updateItem = useUpdateInventoryItem();
 
   const items = useMemo(() =>
     (inventoryItems ?? []).map(it => ({ ...it, status: stockStatusOf(it) })),
@@ -244,6 +248,24 @@ export default function Inventory() {
     }
   };
 
+  const submitEditIngredient = async (patch: InventoryItemUpdatePayload) => {
+    if (!editItem) return;
+    try {
+      const updated = await updateItem.mutateAsync({ itemId: editItem.id, patch });
+      setEditItem(null);
+      toast({ kind: 'success', title: 'บันทึกแล้ว', msg: `${updated.name} (${updated.unit})` });
+    } catch (err) {
+      const code = errCode(err);
+      const msg = err instanceof Error ? err.message : '';
+      // Branch CONFLICT before errCopy — API_ERROR_COPY.CONFLICT is the pack-name copy.
+      if (code === 'CONFLICT' || msg.toLowerCase().includes('already exists')) {
+        toast({ kind: 'warning', title: 'ชื่อซ้ำ', msg: `"${patch.name ?? editItem.name}" มีอยู่ในระบบแล้ว` });
+        return;
+      }
+      toast({ kind: 'warning', title: code === 'FORBIDDEN' ? 'ไม่มีสิทธิ์แก้ไข' : 'บันทึกไม่สำเร็จ', msg: errCopy(err, 'กรุณาลองใหม่') });
+    }
+  };
+
   const handleDelete = async (item: InventoryItem) => {
     try {
       await deleteItem.mutateAsync(item.id);
@@ -318,7 +340,7 @@ export default function Inventory() {
             </div>
           </div>
 
-          {tab === 'items'   && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onWaste={openWastage} onAddIngredient={() => setAddIngredientOpen(true)} onDelete={setDeleteConfirmItem} onSupplierHistory={setSupplierHistoryItem} onLots={setLotsItem} onPacks={setPacksItem} />}
+          {tab === 'items'   && <ItemsTab items={filteredItems} totalCount={items.length} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onWaste={openWastage} onAddIngredient={() => setAddIngredientOpen(true)} onEdit={setEditItem} canEdit={canManageItems} onDelete={setDeleteConfirmItem} onSupplierHistory={setSupplierHistoryItem} onLots={setLotsItem} onPacks={setPacksItem} />}
           {tab === 'usage'   && <UsageTab stats={usageStats} movements={saleMovements} />}
           {tab === 'receive' && <ReceiveTab onNewReceipt={openNewReceipt} onContinueDraft={openDraftReceipt} onViewReceipt={setViewReceiptId} onAddIngredient={() => setAddIngredientOpen(true)} />}
           {tab === 'waste'   && <WastageTab items={inventoryItems ?? []} movements={recentWastage} totalCost={wastageThisMonth} onAdd={() => openWastage()} expiredCount={counts.expiring} onExpiredWaste={() => setExpiredWasteOpen(true)} />}
@@ -339,6 +361,8 @@ export default function Inventory() {
       )}
       {wastageOpen && <WastageModal items={inventoryItems ?? []} presetItemId={wastagePresetId} onClose={() => setWastageOpen(false)} onSubmit={submitWastage} />}
       {addIngredientOpen && <AddIngredientModal onClose={() => setAddIngredientOpen(false)} onSubmit={submitAddIngredient} isPending={createItem.isPending} />}
+      {/* Keyed on the item so switching rows resets the form instead of carrying over edits. */}
+      {editItem && <EditIngredientModal key={editItem.id} item={editItem} onClose={() => setEditItem(null)} onSubmit={submitEditIngredient} isPending={updateItem.isPending} />}
       {deleteConfirmItem && (
         <DeleteInventoryConfirmModal
           item={deleteConfirmItem}
@@ -357,7 +381,7 @@ export default function Inventory() {
         <LotsModal item={lotsItem} onClose={() => setLotsItem(null)} />
       )}
       {packsItem && (
-        <PacksModal item={packsItem} canEdit={canManagePacks} onClose={() => setPacksItem(null)} />
+        <PacksModal item={packsItem} canEdit={canManageItems} onClose={() => setPacksItem(null)} />
       )}
       {expiredWasteOpen && (
         <ExpiredWasteModal onClose={() => setExpiredWasteOpen(false)} />
@@ -407,7 +431,7 @@ const KPISmall = ({ label, value, highlight, onClick, actionLabel }: {
 };
 
 const miniBtnStyle = (variant: 'primary' | 'ghost' | 'danger'): React.CSSProperties => ({
-  display: 'inline-flex', alignItems: 'center', gap: 4,
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
   padding: '6px 10px', fontSize: 11, fontWeight: 600,
   border: variant === 'danger' ? '1px solid var(--color-danger)' : variant === 'ghost' ? '1px solid var(--color-border)' : 'none',
   borderRadius: 6, cursor: 'pointer',
@@ -444,12 +468,17 @@ const smallInputStyle = (): React.CSSProperties => ({
   boxSizing: 'border-box', background: 'var(--color-surface)',
 });
 
-const FormField = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div style={{ marginBottom: 14 }}>
-    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{label}</div>
-    {children}
-  </div>
-);
+// `htmlFor` turns the caption into a real <label> bound to the control (WCAG 1.3.1 /
+// 3.3.2). Optional so existing call sites are unchanged; new fields should pass it.
+const FormField = ({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) => {
+  const captionStyle: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 6 };
+  return (
+    <div style={{ marginBottom: 14 }}>
+      {htmlFor ? <label htmlFor={htmlFor} style={captionStyle}>{label}</label> : <div style={captionStyle}>{label}</div>}
+      {children}
+    </div>
+  );
+};
 
 const ModalActions = ({ children }: { children: React.ReactNode }) => (
   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid var(--color-border)', marginTop: 8 }}>{children}</div>
@@ -481,12 +510,16 @@ const ItemSelect = ({ items, value, onChange, placeholder }: { items: InventoryI
 );
 
 // ── Items Tab ─────────────────────────────────────────────────────────────────
-const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatusFilter, onWaste, onAddIngredient, onDelete, onSupplierHistory, onLots, onPacks }: {
+const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatusFilter, onWaste, onAddIngredient, onEdit, canEdit, onDelete, onSupplierHistory, onLots, onPacks }: {
   items: (InventoryItem & { status: ReturnType<typeof stockStatusOf> })[];
   totalCount: number; search: string; setSearch: (v: string) => void;
   statusFilter: string; setStatusFilter: (v: string) => void;
   onWaste: (id: string) => void;
-  onAddIngredient: () => void; onDelete: (item: InventoryItem) => void;
+  onAddIngredient: () => void;
+  onEdit: (item: InventoryItem) => void;
+  /** OWNER/MANAGER — the "แก้ไข" entry is hidden from everyone else. */
+  canEdit: boolean;
+  onDelete: (item: InventoryItem) => void;
   onSupplierHistory: (item: InventoryItem) => void;
   onLots: (item: InventoryItem) => void;
   onPacks: (item: InventoryItem) => void;
@@ -495,6 +528,15 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
   // change replays the entrance. Skips the sticky header (first child).
   // Subtle, one-shot, honors reduced-motion.
   const rowsRef = useStagger({ selector: ':scope > div:not(:first-child)', each: 0.025 });
+  // Everyday actions (Lots, Waste) stay as buttons; the rest lives behind "⋯".
+  // Delete sits last, after a separator, so it can't be hit by muscle memory.
+  const rowMenuItems = (it: InventoryItem): RowMenuItem[] => [
+    ...(canEdit ? [{ id: 'edit', label: 'แก้ไข', icon: 'pencil', onSelect: () => onEdit(it) } as RowMenuItem] : []),
+    { id: 'packs',   label: 'แพ็ค',             icon: 'inv',   onSelect: () => onPacks(it) },
+    { id: 'history', label: 'ประวัติ Supplier', icon: 'clock', onSelect: () => onSupplierHistory(it) },
+    { id: 'sep', separator: true },
+    { id: 'delete',  label: 'ลบวัตถุดิบ',       icon: 'trash', tone: 'danger', onSelect: () => onDelete(it) },
+  ];
   return (
   <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
     {/* Filter bar — stacks on mobile, row on desktop */}
@@ -552,7 +594,7 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
 
     {/* Desktop table — hidden on mobile */}
     <div key={`d-${items.length}-${search}-${statusFilter}`} ref={rowsRef} className="hidden md:block">
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 240px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 200px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
         <div>วัตถุดิบ</div>
         <div className="hidden lg:block">หน่วย</div>
         <div style={{ textAlign: 'right' }}>คงเหลือ</div>
@@ -568,7 +610,7 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
         const ratio = it.parLevel > 0 ? Math.min(100, (it.stock / it.parLevel) * 100) : 100;
         const pack = packSummary(it);
         return (
-          <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 240px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === items.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
+          <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 60px 100px 100px 80px 100px 200px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === items.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
             <div>
               <div style={{ fontSize: 14, fontWeight: 600 }}>{it.name}</div>
               <div style={{ fontSize: 11, marginTop: 2, color: pack.warn ? 'var(--color-warning)' : 'var(--color-text-muted)', fontWeight: pack.warn ? 600 : 400 }}>{pack.label}</div>
@@ -584,12 +626,10 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
               {it.costPerUnit === 0 ? '—' : `฿${it.costPerUnit.toFixed(2)}`}
               {it.costSource === 'manual' && <span title="ปักหมุดล็อตที่ใช้อยู่ (ไม่ใช่ FIFO)" style={{ marginLeft: 4, color: 'var(--color-accent)' }}>📌</span>}
             </div>
-            <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <button onClick={() => onPacks(it)} style={miniBtnStyle('ghost')} title="จัดการแพ็ค (ขนาด/ยี่ห้อที่ซื้อ)" onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-primary)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>แพ็ค</button>
-              <button onClick={() => onLots(it)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="list" size={12} /> Lots</button>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'center' }}>
+              <button onClick={() => onLots(it)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="layers" size={12} /> Lots</button>
               <button onClick={() => onWaste(it.id)} style={miniBtnStyle('ghost')} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-warning-50)'; e.currentTarget.style.color = 'var(--color-warning)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}><Icon name="trash" size={12} /> Waste</button>
-              <button onClick={() => onSupplierHistory(it)} style={miniBtnStyle('ghost')} title="ประวัติ Supplier" onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-primary)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>ประวัติ</button>
-              <button onClick={() => onDelete(it)} style={miniBtnStyle('danger')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-danger-50)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'} title="ลบวัตถุดิบ"><Icon name="trash" size={12} /></button>
+              <RowMenu label={`เมนูเพิ่มเติม ${it.name}`} items={rowMenuItems(it)} align="end" />
             </div>
           </div>
         );
@@ -639,13 +679,11 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
                     </div>
                   </div>
                 </div>
-                {/* Row 3: action buttons */}
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <button onClick={() => onPacks(it)} style={miniBtnStyle('ghost')} title="จัดการแพ็ค" onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-primary)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>แพ็ค</button>
-                  <button onClick={() => onLots(it)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="list" size={12} /> Lots</button>
+                {/* Row 3: action buttons — same set as desktop; the "⋯" gets a 44px hit area here only */}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <button onClick={() => onLots(it)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="layers" size={12} /> Lots</button>
                   <button onClick={() => onWaste(it.id)} style={miniBtnStyle('ghost')} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-warning-50)'; e.currentTarget.style.color = 'var(--color-warning)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}><Icon name="trash" size={12} /> Waste</button>
-                  <button onClick={() => onSupplierHistory(it)} style={miniBtnStyle('ghost')} title="ประวัติ Supplier" onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-primary)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>ประวัติ</button>
-                  <button onClick={() => onDelete(it)} style={miniBtnStyle('danger')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-danger-50)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'} title="ลบวัตถุดิบ"><Icon name="trash" size={12} /></button>
+                  <RowMenu label={`เมนูเพิ่มเติม ${it.name}`} items={rowMenuItems(it)} size={36} className="hit-44" />
                 </div>
               </div>
             );
@@ -1690,6 +1728,78 @@ const AddIngredientModal = ({ onClose, onSubmit, isPending }: {
         <button onClick={onClose} style={ghostBtnStyle()}>ยกเลิก</button>
         <button onClick={submit} disabled={!canSubmit || isPending} style={{ ...primaryBtnStyle(), opacity: (canSubmit && !isPending) ? 1 : 0.45, cursor: (canSubmit && !isPending) ? 'pointer' : 'not-allowed' }}>
           <Icon name="plus" size={14} /> {isPending ? 'กำลังเพิ่ม...' : 'เพิ่มวัตถุดิบ'}
+        </button>
+      </ModalActions>
+    </ModalShell>
+  );
+};
+
+// ── Edit Ingredient Modal ──────────────────────────────────────────────────────
+// Only name / unit / par level. Packs (size, brand, price) have their own modal
+// and cost_per_unit follows the in-use lot, so neither is editable here.
+const EditIngredientModal = ({ item, onClose, onSubmit, isPending }: {
+  item: InventoryItem;
+  onClose: () => void;
+  onSubmit: (patch: InventoryItemUpdatePayload) => void;
+  isPending?: boolean;
+}) => {
+  const [name, setName]         = useState(item.name);
+  const [unit, setUnit]         = useState(item.unit);
+  const [parLevel, setParLevel] = useState(String(item.parLevel));
+
+  const n = name.trim(), u = unit.trim(), p = parLevel.trim();
+  const nameChanged = n !== item.name;
+  const unitChanged = u !== item.unit;
+  const parValid = p === '' || (Number.isFinite(Number(p)) && Number(p) >= 0);
+  const parChanged = p !== '' && Number(p) !== item.parLevel;
+  const dirty = nameChanged || unitChanged || parChanged;
+  const canSubmit = n.length > 0 && n.length <= 120 && u.length > 0 && u.length <= 24 && parValid && dirty;
+  // The backend does not rescale stock or pack sizes when the unit changes —
+  // this warning is the only guard, so it only shows when there's something to misread.
+  const unitWarning = unitChanged && (item.stock > 0 || item.packs.length > 0);
+
+  const submit = () => {
+    if (!canSubmit || isPending) return;
+    // Partial PATCH — send only what changed.
+    const patch: InventoryItemUpdatePayload = {};
+    if (nameChanged) patch.name = n;
+    if (unitChanged) patch.unit = u;
+    if (parChanged)  patch.par_level = p;
+    onSubmit(patch);
+  };
+
+  // Stable ids so each <label>, hint and the unit warning are programmatically
+  // tied to their input (screen readers read the hint with the field).
+  const uid = useId();
+  const nameId = `${uid}-name`, nameHintId = `${uid}-name-hint`;
+  const unitId = `${uid}-unit`, unitHintId = `${uid}-unit-hint`, unitWarnId = `${uid}-unit-warn`;
+  const parId  = `${uid}-par`,  parHintId  = `${uid}-par-hint`;
+
+  return (
+    <ModalShell title="แก้ไขวัตถุดิบ" subtitle={item.name} onClose={onClose}>
+      <FormField label="ชื่อวัตถุดิบ *" htmlFor={nameId}>
+        <input id={nameId} type="text" value={name} onChange={e => setName(e.target.value)} maxLength={120} required aria-describedby={nameHintId} className="input-std" style={inputStyle()} autoFocus />
+        <div id={nameHintId} style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>ไม่ต้องใส่ขนาดในชื่อ — ขนาด/ยี่ห้อ/ราคาที่ซื้อ แก้ได้ที่เมนู ⋯ → แพ็ค</div>
+      </FormField>
+      <FormField label="หน่วยสต็อก (unit) *" htmlFor={unitId}>
+        <input id={unitId} type="text" value={unit} onChange={e => setUnit(e.target.value)} maxLength={24} required placeholder="เช่น ml, g, kg, pcs" aria-describedby={unitWarning ? `${unitHintId} ${unitWarnId}` : unitHintId} className="input-std" style={inputStyle()} />
+        <div id={unitHintId} style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>หน่วยที่ครัวใช้นับสต็อก</div>
+        {/* Live region stays mounted (empty) so assistive tech announces the warning when it appears. */}
+        <div id={unitWarnId} role="status" style={unitWarning ? { marginTop: 8, padding: '8px 10px', borderRadius: 8, fontSize: 12, lineHeight: 1.5, background: 'var(--color-warning-50)', color: 'var(--color-warning-fg)', border: '1px solid var(--color-warning)' } : undefined}>
+          {unitWarning && (
+            <>เปลี่ยนหน่วยจาก &quot;{item.unit}&quot; เป็น &quot;{u}&quot; จะไม่แปลงตัวเลขให้อัตโนมัติ — สต็อกคงเหลือ {item.stock.toLocaleString()} {item.unit} และขนาดแพ็ค ({item.packs.length} แพ็ค) จะถูกอ่านเป็น {u} ทันที ตรวจสอบสต็อกและขนาดแพ็คหลังบันทึก</>
+          )}
+        </div>
+      </FormField>
+      <FormField label="Par Level — จุดสั่งซื้อ" htmlFor={parId}>
+        <input id={parId} type="number" min={0} step="any" value={parLevel} onChange={e => setParLevel(e.target.value)} placeholder={`0 ${u || 'หน่วย'}`} aria-invalid={!parValid} aria-describedby={parHintId} className="input-std" style={inputStyle()} />
+        <div id={parHintId} style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>แจ้งเตือนเมื่อสต็อกต่ำกว่าค่านี้</div>
+      </FormField>
+
+      <ModalActions>
+        <button onClick={onClose} style={ghostBtnStyle()}>ยกเลิก</button>
+        <button onClick={submit} disabled={!canSubmit || isPending} style={{ ...primaryBtnStyle(), opacity: (canSubmit && !isPending) ? 1 : 0.45, cursor: (canSubmit && !isPending) ? 'pointer' : 'not-allowed' }}>
+          {isPending ? 'กำลังบันทึก...' : 'บันทึก'}
         </button>
       </ModalActions>
     </ModalShell>

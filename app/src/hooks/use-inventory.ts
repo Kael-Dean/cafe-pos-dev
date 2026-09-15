@@ -433,6 +433,33 @@ export function useDeleteInventoryItem() {
   });
 }
 
+// PATCH /inventory/{id} — every field optional; send only what changed.
+// OWNER/MANAGER only (403 FORBIDDEN); a duplicate name is 409 CONFLICT.
+// cost_per_unit is deliberately not here: it follows the in-use lot, not a form.
+export interface InventoryItemUpdatePayload {
+  name?: string;
+  unit?: string;
+  par_level?: string;
+}
+
+export function useUpdateInventoryItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ itemId, patch }: { itemId: string; patch: InventoryItemUpdatePayload }) =>
+      mapItem(await api.patch<InventoryItemRead>(`/api/v1/inventory/${itemId}`, patch)),
+    onSuccess: (_data, { patch }) => {
+      qc.invalidateQueries({ queryKey: ['inventory'] });
+      if (patch.name !== undefined || patch.unit !== undefined) {
+        // Caches that denormalise the ingredient name/unit into their own rows.
+        // Listed explicitly — the ['inventory'] prefix does not cover 'inventory-*'.
+        for (const key of ['inventory-expired', 'inventory-lots', 'receipt', 'product-detail', 'shopping-list', 'pre-order-ingredients', 'stock-take-preview']) {
+          qc.invalidateQueries({ queryKey: [key] });
+        }
+      }
+    },
+  });
+}
+
 // ── Recycle bin (soft-deleted inventory items) ────────────────────────────────
 // "Delete" sets is_active=false; these list/restore those rows. OWNER/MANAGER
 // only (backend enforces; the screen is gated too).
