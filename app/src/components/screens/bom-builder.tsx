@@ -900,22 +900,62 @@ const CategorySelector = ({ value, categories, onChange }: {
 const lotDate = (d?: string | null) =>
   d ? new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : null;
 
+const LOT_MENU_WIDTH = 280;
+const LOT_MENU_MAX_HEIGHT = 300;
+type LotMenuPos = { left: number; top: number; maxHeight: number; up: boolean };
+
 const LotPicker = ({ inv }: { inv: InventoryItem }) => {
   const { data: me } = useCurrentUser();
   const canPin = isAdmin(me?.role);
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLSpanElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Menu is portaled to <body> so it escapes the BOM card's overflow:hidden (a
+  // plain position:fixed would still be trapped by the GSAP transform on the
+  // screen root). Measured from the trigger on open and on scroll/resize, and
+  // flips upward when there's no room below — same approach as the shared Select.
+  const [pos, setPos] = useState<LotMenuPos | null>(null);
+
+  const updatePos = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const gap = 4;
+    const spaceBelow = window.innerHeight - r.bottom - 8;
+    const spaceAbove = r.top - 8;
+    const up = spaceBelow < Math.min(LOT_MENU_MAX_HEIGHT, 200) && spaceAbove > spaceBelow;
+    setPos({
+      left: Math.max(8, Math.min(r.left, window.innerWidth - LOT_MENU_WIDTH - 8)),
+      top: up ? r.top - gap : r.bottom + gap,
+      maxHeight: Math.max(120, Math.min(LOT_MENU_MAX_HEIGHT, up ? spaceAbove : spaceBelow)),
+      up,
+    });
+  }, []);
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    if (!open) { setPos(null); return; }
+    updatePos();
+    const onMove = () => updatePos();
+    window.addEventListener('scroll', onMove, true);
+    window.addEventListener('resize', onMove);
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (ref.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     };
-    if (open) document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('scroll', onMove, true);
+      window.removeEventListener('resize', onMove);
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, updatePos]);
 
   const pinned = inv.costSource === 'manual';
-  const summary = pinned ? '📌 ล็อตที่ปักหมุด' : inv.costSource === 'fifo' ? 'FIFO (อัตโนมัติ)' : 'ยังไม่มีล็อต';
+  const summary = pinned ? '📌 ล็อตที่ปักหมุด' : inv.costSource === 'fifo' ? 'เลือกแบรนด์ (อัตโนมัติ)' : 'ยังไม่มีล็อต';
 
   if (!canPin) {
     return (
@@ -929,6 +969,8 @@ const LotPicker = ({ inv }: { inv: InventoryItem }) => {
     <span ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
       <button
         type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
         onClick={() => setOpen(v => !v)}
         title="เลือกล็อตที่ใช้คิดต้นทุน (มีผลกับทุกเมนูที่ใช้วัตถุดิบนี้)"
         style={{
@@ -944,12 +986,17 @@ const LotPicker = ({ inv }: { inv: InventoryItem }) => {
         <Icon name="chevronDown" size={10} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }} />
       </button>
       {/* Mounting the menu IS the fetch — one call, only when the picker is opened. */}
-      {open && <LotPickerMenu inv={inv} onClose={() => setOpen(false)} />}
+      {open && pos && createPortal(
+        <LotPickerMenu inv={inv} pos={pos} menuRef={menuRef} onClose={() => setOpen(false)} />,
+        document.body,
+      )}
     </span>
   );
 };
 
-const LotPickerMenu = ({ inv, onClose }: { inv: InventoryItem; onClose: () => void }) => {
+const LotPickerMenu = ({ inv, pos, menuRef, onClose }: {
+  inv: InventoryItem; pos: LotMenuPos; menuRef: React.Ref<HTMLDivElement>; onClose: () => void;
+}) => {
   const { data: lots, isLoading } = useItemLots(inv.id, 'active');
   const setInUseLot = useSetInUseLot();
   const [error, setError] = useState('');
@@ -973,14 +1020,16 @@ const LotPickerMenu = ({ inv, onClose }: { inv: InventoryItem; onClose: () => vo
   });
 
   return (
-    <div style={{
-      position: 'absolute', top: 'calc(100% + 4px)', left: 0,
+    <div ref={menuRef} role="menu" style={{
+      position: 'fixed', left: pos.left,
+      top: pos.up ? undefined : pos.top,
+      bottom: pos.up ? window.innerHeight - pos.top : undefined,
       background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-      borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 200,
-      overflow: 'hidden', minWidth: 280, maxHeight: 300, overflowY: 'auto',
+      borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 2000,
+      overflow: 'hidden', minWidth: LOT_MENU_WIDTH, maxHeight: pos.maxHeight, overflowY: 'auto',
     }}>
       <button type="button" onClick={() => pick(null)} style={rowStyle(inv.costSource !== 'manual')}>
-        FIFO (อัตโนมัติ)
+        เลือกแบรนด์ (อัตโนมัติ)
         <div style={{ fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 400 }}>ใช้ล็อตเก่าสุดที่ยังมีของ</div>
       </button>
       {isLoading ? (
