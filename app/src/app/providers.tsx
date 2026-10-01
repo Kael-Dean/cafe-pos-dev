@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset';
 import { LanguageProvider } from '@/lib/i18n';
 import { ThemeProvider } from '@/lib/theme';
+import { SystemBar } from '@/components/pwa/system-bar';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // Keep centered modals / focused inputs above the on-screen keyboard on
@@ -25,6 +26,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <LanguageProvider>
         <ThemeProvider>
+          {/* Offline banner + service-worker registration / update prompt. Lives
+              here (not in page.tsx) so it also covers the login screen. */}
+          <SystemBar />
           {children}
         </ThemeProvider>
       </LanguageProvider>

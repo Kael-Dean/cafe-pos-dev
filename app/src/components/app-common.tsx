@@ -179,7 +179,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
     <div className="hidden md:block" style={{ position: 'relative', flexShrink: 0 }}>
     <aside className="sidebar-surface" style={{
       width: collapsed ? 64 : 240,
-      height: '100dvh',
+      height: 'var(--app-h, 100dvh)',
       display: 'flex', flexDirection: 'column',
       borderRight: '1px solid var(--sb-border)',
       transition: 'width var(--dur-slow) var(--ease-out)',

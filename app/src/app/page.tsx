@@ -148,7 +148,8 @@ export default function POS() {
 
   return (
     <ToastProvider>
-      <div style={{ display: 'flex', height: '100dvh', width: '100vw', overflow: 'hidden' }}>
+      {/* --app-h = 100dvh minus the system bar (offline / update strip), see globals.css */}
+      <div style={{ display: 'flex', height: 'var(--app-h, 100dvh)', width: '100vw', overflow: 'hidden' }}>
         <Sidebar current={screen} onNavigate={(s) => { void navigate(s as Screen); }} onLogout={() => { void handleLogout(); }} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
         <main className="app-main" style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'auto' }}>
           {/* key={screen} remounts on navigation so the screen fade (.screen-enter,

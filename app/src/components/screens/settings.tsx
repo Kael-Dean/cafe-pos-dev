@@ -2,6 +2,7 @@
 
 import Icon from '../icons';
 import { Tag } from '../app-common';
+import { InstallCard } from '../pwa/install-app';
 import { useFadeRise } from '@/lib/motion';
 import { useI18n, type Lang } from '@/lib/i18n';
 import { useTheme, type Theme } from '@/lib/theme';
@@ -140,6 +141,9 @@ export default function Settings() {
           })}
         </div>
       </div>
+
+      {/* Install as an app (PWA) — action depends on what this browser supports */}
+      <InstallCard />
 
       {/* Everything else — informational, not yet built */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, maxWidth: 1140 }}>

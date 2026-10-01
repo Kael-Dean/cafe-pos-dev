@@ -433,6 +433,62 @@ html[data-kb-open] .modal-card {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* ---------- System bar (offline banner / app-update prompt) ----------
+   components/pwa/system-bar.tsx pins a status strip to the top edge and publishes
+   its measured height as --sys-bar-h on <html>. The body is padded by that height
+   and the shell sizes itself with --app-h instead of 100dvh, so the strip pushes
+   the app down rather than covering POS controls. With no strip showing,
+   --sys-bar-h is 0 and nothing moves. */
+:root {
+  --sys-bar-h: 0px;
+  --app-h: calc(100dvh - var(--sys-bar-h));
+}
+body { padding-top: var(--sys-bar-h); }
+/* Centered modals keep clear of the strip too (0 when nothing is showing). */
+.modal-backdrop { padding-top: var(--sys-bar-h); }
+
+.sys-bars {
+  position: fixed; top: 0; left: 0; right: 0;
+  z-index: 2200; /* above modals and toasts: "offline" matters most mid-payment */
+}
+/* Notch / status-bar inset only while a strip is actually showing. */
+.sys-bars:has(.sys-bar) { padding-top: env(safe-area-inset-top); }
+.sys-bar {
+  display: flex; align-items: center; justify-content: center;
+  gap: 6px 10px;
+  min-height: 32px;
+  padding: 6px max(16px, env(safe-area-inset-right)) 6px max(16px, env(safe-area-inset-left));
+  font-size: 13px; line-height: 1.4;
+  animation: fade-in var(--dur-base) var(--ease-out) both;
+}
+/* 4px + the real space character in the markup (so the title and detail are not
+   read / copied as one run-together word). */
+.sys-bar-detail { margin-left: 4px; color: rgba(255, 255, 255, 0.74); }
+/* The action strip may stack its buttons under the text on a narrow phone; the
+   plain strip keeps icon + text on one row and lets the text itself wrap. */
+.sys-bar-action { flex-wrap: wrap; gap: 8px 16px; padding-top: 4px; padding-bottom: 4px; }
+.sys-bar-buttons { display: inline-flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
+.sys-bar-btn { min-height: 44px; padding: 8px 14px; font-size: 13px; }
+.sys-bar-btn:disabled { opacity: 0.8; cursor: progress; }
+.sys-bar-btn-quiet { color: rgba(255, 255, 255, 0.86); border: 1px solid rgba(255, 255, 255, 0.24); }
+.sys-bar-btn-quiet:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+
+/* Text-style button: install entry on the login screen, steps toggle. */
+.btn-link {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; padding: 8px 12px;
+  border-radius: var(--radius-md);
+  /* Plain --color-text-secondary is only 4.37:1 on the cream --color-bg this
+     button sits on (login screen) — below AA. Nudging it 15% toward --color-text
+     gives ~5.3:1 in light and stays ≥8:1 in dark. Browsers without color-mix()
+     drop the declaration and inherit the body text colour, which is safe. */
+  color: color-mix(in srgb, var(--color-text-secondary) 85%, var(--color-text));
+  font-size: var(--fs-14); font-weight: 600;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.btn-link:hover { background: var(--color-surface-2); color: var(--color-text); }
+.btn-link:disabled { cursor: progress; opacity: 0.7; }
+
 /* ---------- Bottom sheet animation ---------- */
 @keyframes sheet-in {
   from { transform: translateY(100%); opacity: 0; }

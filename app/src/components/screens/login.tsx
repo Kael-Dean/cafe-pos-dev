@@ -6,6 +6,7 @@ import { readAndClearLogoutReason } from '@/lib/auth';
 import { parseRetryAfter } from '@/lib/api-client';
 import { useFadeRise } from '@/lib/motion';
 import Icon from '../icons';
+import { InstallEntry } from '../pwa/install-app';
 
 interface Props { onLogin: () => void; }
 
@@ -95,13 +96,16 @@ export default function LoginScreen({ onLogin }: Props) {
   };
 
   return (
-    <div style={{
-      height: '100dvh', width: '100vw',
+    <main style={{
+      height: 'var(--app-h, 100dvh)', width: '100vw',
       background: 'var(--color-bg)',
-      display: 'grid', placeItems: 'center',
+      // Centred via the child's auto margins (not place-items) so that when the
+      // install steps open on a short phone the column scrolls from the top
+      // instead of being clipped above the fold.
+      display: 'grid', overflowY: 'auto',
     }}>
       <div ref={cardRef} style={{
-        width: '100%', maxWidth: 400, padding: '0 var(--space-6)',
+        width: '100%', maxWidth: 400, margin: 'auto', padding: 'var(--space-6)',
       }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 'var(--space-10)' }}>
@@ -113,7 +117,7 @@ export default function LoginScreen({ onLogin }: Props) {
           }}>
             <Icon name="pos" size={36} color="var(--color-text-inverse)" />
           </div>
-          <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--color-text)' }}>Kafé OS</div>
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--color-text)' }}>Kafé OS</h1>
           <div style={{ fontSize: 'var(--fs-14)', color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)' }}>
             กรุณาเข้าสู่ระบบเพื่อดำเนินการต่อ
           </div>
@@ -128,11 +132,13 @@ export default function LoginScreen({ onLogin }: Props) {
               background: 'var(--color-warning-50)',
               border: '1px solid var(--color-warning)',
               borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-14)',
-              color: 'var(--color-warning)', fontWeight: 500,
+              // --color-warning-fg, not --color-warning: the honey tone is only
+              // ~1.8:1 on its own 50 tint (see the token note in globals.css).
+              color: 'var(--color-warning-fg)', fontWeight: 500,
               display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
             }}
           >
-            <Icon name="warning" size={16} color="var(--color-warning)" />
+            <Icon name="warning" size={16} color="var(--color-warning-fg)" />
             <span>เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่</span>
           </div>
         )}
@@ -177,7 +183,8 @@ export default function LoginScreen({ onLogin }: Props) {
                 background: 'var(--color-danger-50)',
                 border: '1px solid var(--color-danger)',
                 borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-14)',
-                color: 'var(--color-danger)', fontWeight: 500,
+                // --color-danger-fg: plain --color-danger is ~4.1:1 on danger-50 (below AA).
+                color: 'var(--color-danger-fg)', fontWeight: 500,
               }}
             >
               {error}
@@ -212,7 +219,11 @@ export default function LoginScreen({ onLogin }: Props) {
             ) : cooldown > 0 ? `รออีก ${cooldown} วินาที` : 'เข้าสู่ระบบ'}
           </button>
         </form>
+
+        {/* A new tablet lands here first — offer install before anyone logs in.
+            Hidden once the app is already installed. */}
+        <InstallEntry />
       </div>
-    </div>
+    </main>
   );
 }

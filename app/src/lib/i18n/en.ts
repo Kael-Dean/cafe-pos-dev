@@ -118,6 +118,43 @@ export const en: Messages = {
     backupDesc: 'Automatic daily backup, multi-store sync, offline mode',
   },
 
+  pwa: {
+    installTitle: 'Install app',
+    installDesc: 'Add Kafé OS to this device and open it full screen from its icon, without typing the address each time.',
+    installButton: 'Install app',
+    installWaiting: 'Confirm in the browser dialog...',
+    installDismissed: 'Not installed yet. You can follow the steps below any time.',
+    installedTitle: 'Installed on this device',
+    installedDesc: 'Open Kafé OS from its icon on the home screen or taskbar.',
+    loginEntry: 'Install the app on this device',
+    stepsLabel: 'How to install',
+    iosSteps: [
+      'Tap the Share button (a square with an arrow pointing up) in the browser toolbar.',
+      'Scroll down and choose “Add to Home Screen”.',
+      'Tap “Add” in the top-right corner.',
+    ],
+    macSafariSteps: [
+      'Open the “File” menu in the Safari menu bar (macOS Sonoma or later).',
+      'Choose “Add to Dock…”.',
+      'Click “Add” to confirm.',
+    ],
+    browserMenuSteps: [
+      'Open the browser menu (the three-dot or three-line button).',
+      'Choose “Install app” or “Add to Home screen”.',
+      'Press “Install” to confirm.',
+    ],
+    unsupportedTitle: 'This browser cannot install the app',
+    unsupportedDesc: 'Open Kafé OS in Chrome, Edge or Safari, then come back to this page to install. You can keep using it in this browser in the meantime.',
+    offlineTitle: 'You are offline',
+    offlineDetail: 'Orders and changes cannot be saved until the internet is back.',
+    backOnline: 'Back online.',
+    updateTitle: 'A new version is ready',
+    updateDetail: 'Reload when no order is in progress.',
+    updateReload: 'Reload now',
+    updateLater: 'Later',
+    updateReloading: 'Updating...',
+  },
+
   shoppingList: {
     title: 'Shopping List',
     printList: 'Print list',

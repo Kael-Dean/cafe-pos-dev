@@ -16,9 +16,36 @@ const anuphan = Anuphan({
 export const metadata: Metadata = {
   title: "Kafé OS",
   description: "Cafe POS System",
+  applicationName: "Kafé OS",
+  // Installed-app behaviour on iOS/iPadOS (Add to Home Screen). The status bar
+  // stays 'default' (opaque, content starts below it): the shell does not pad for
+  // env(safe-area-inset-top), so a translucent bar would overlap the top row.
+  appleWebApp: {
+    capable: true,
+    title: "Kafé OS",
+    statusBarStyle: "default",
+  },
+  // favicon.ico is picked up from src/app by convention; these add the crisp
+  // PNG for browser UI and the opaque 180px tile iOS uses on the home screen.
+  icons: {
+    icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  // Order numbers / PINs must not turn into tap-to-call links on iOS.
+  formatDetection: { telephone: false },
+  // Next emits the standard `mobile-web-app-capable`; older iPads (common as
+  // counter tablets) only honour Apple's original name for standalone launch.
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 export const viewport: Viewport = {
+  // Browser / installed-app chrome colour = --color-bg per theme. These are the
+  // OS-preference defaults; components/pwa re-syncs them to the in-app theme
+  // (<html data-theme>) when the saved choice differs from the OS setting.
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#F7F3EC' },
+    { media: '(prefers-color-scheme: dark)', color: '#1A140E' },
+  ],
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
