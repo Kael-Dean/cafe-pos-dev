@@ -92,6 +92,7 @@ export const en: Messages = {
     expand: 'Expand sidebar',
     collapse: 'Collapse sidebar',
     logout: 'Log out',
+    navLabel: 'Main menu',
   },
 
   settings: {

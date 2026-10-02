@@ -66,53 +66,84 @@ export type NavItem = {
 
 // Grouped by working mode so each job (taking orders, kitchen/stock, CRM, running
 // the shop, one-time setup) sits together and is quick to find. `header` rows are
-// section titles (label from `t.navSection[id]`) — rendered as a heading when the
-// sidebar is expanded, as a plain divider when it's collapsed.
+// group headings (label from `t.navSection[id]`, glyph from `icon`) — rendered as a
+// collapsible heading when the sidebar is expanded, as a plain divider when it's
+// collapsed. Within a group, items run most-used first.
 export const NAV: NavItem[] = [
-  // Front-of-house — everything a cashier touches during a shift.
-  { id: 'sec-service', header: true },
+  // Front-of-house — everything a cashier touches during a shift. The cash drawer
+  // is opened/closed every day, so it sits above the occasional receipt reprint.
+  { id: 'sec-service', header: true, icon: 'coffee' },
   { id: 'pos',       icon: 'pos' },
   { id: 'kds',       icon: 'kds' },
   { id: 'pre-orders',    icon: 'calendar' },
-  { id: 'receipt-copies', icon: 'reports', adminOnly: true },
   { id: 'cash',      icon: 'cash',     adminOnly: true },
+  { id: 'receipt-copies', icon: 'reports', adminOnly: true },
 
   // Board-game add-on — the whole group disappears for stores without the
   // `vertical.boardgame` entitlement (its endpoints answer 404 there).
-  { id: 'sec-boardgame', header: true },
+  { id: 'sec-boardgame', header: true, icon: 'dice' },
   { id: 'floor',       icon: 'park',     feature: FEATURE_BOARDGAME },
   { id: 'table-setup', icon: 'settings', feature: FEATURE_BOARDGAME, adminOnly: true },
 
-  // Kitchen & stock — the menu itself, then recipes, ingredients, counts, purchasing.
-  { id: 'sec-kitchen', header: true },
-  { id: 'catalog',   icon: 'inv',      ownerOnly: true },
-  { id: 'bom',       icon: 'inv' },
-  { id: 'bakery',    icon: 'cake' },
+  // Kitchen & stock — the daily stock jobs first (check, count, buy), then the
+  // menu-definition screens that are edited now and then (prep, recipes, catalog).
+  { id: 'sec-kitchen', header: true, icon: 'flame' },
   { id: 'inventory', icon: 'inv',      soft: true },
   { id: 'stock-take',    icon: 'check' },
   { id: 'shopping-list', icon: 'cart' },
+  { id: 'bakery',    icon: 'cake' },
+  { id: 'bom',       icon: 'inv' },
+  { id: 'catalog',   icon: 'inv',      ownerOnly: true },
 
   // Customers & marketing.
-  { id: 'sec-crm', header: true },
+  { id: 'sec-crm', header: true, icon: 'user' },
   { id: 'promotions', icon: 'tag' },
   { id: 'members',   icon: 'customers', adminOnly: true },
   { id: 'customers', icon: 'customers', soft: true },
   { id: 'sales',     icon: 'staff',    adminOnly: true },
 
   // Manage & reports — the manager's overview of the shop.
-  { id: 'sec-manage', header: true },
+  { id: 'sec-manage', header: true, icon: 'chart' },
   { id: 'dashboard', icon: 'chart' },
   { id: 'reports',   icon: 'reports',  soft: true },
   { id: 'protocols', icon: 'check' },
   { id: 'shifts',    icon: 'calendar' },
   { id: 'hr',        icon: 'staff',    adminOnly: true },
 
-  // System setup — configured once, rarely touched day to day.
-  { id: 'sec-setup', header: true },
+  // System setup — configured once, rarely touched day to day. General settings
+  // lead; the recycle bin (rare, destructive) goes last.
+  { id: 'sec-setup', header: true, icon: 'settings' },
+  { id: 'settings',  icon: 'settings', soft: true },
   { id: 'hardware',  icon: 'printer' },
   { id: 'recycle-bin', icon: 'trash',  adminOnly: true },
-  { id: 'settings',  icon: 'settings', soft: true },
 ];
+
+/** The group (header id) a screen belongs to — from the raw NAV, independent of role filtering. */
+const groupOfScreen = (screen: string): string | undefined => {
+  let group: string | undefined;
+  for (const n of NAV) {
+    if (n.header) group = n.id;
+    else if (n.id === screen) return group;
+  }
+  return undefined;
+};
+
+// Which sidebar groups are open, remembered per device. Storage can be blocked
+// (private mode, quota) — the sidebar then just falls back to its default.
+const SB_GROUPS_KEY = 'cafe_pos_sidebar_groups';
+const readStoredGroups = (): Record<string, boolean> | null => {
+  try {
+    const raw = window.localStorage.getItem(SB_GROUPS_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const out: Record<string, boolean> = {};
+    for (const [k, v] of Object.entries(parsed)) if (typeof v === 'boolean') out[k] = v;
+    return out;
+  } catch {
+    return null;
+  }
+};
 
 interface SidebarProps { current: string; onNavigate: (id: string) => void; onLogout?: () => void; branchName?: string; collapsed?: boolean; onToggle?: () => void; }
 
@@ -128,9 +159,9 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
 
   // Group the flat NAV into { header, items } sections, dropping items the current
   // role can't see (and any section left empty as a result).
-  const sections: { id: string; items: NavItem[] }[] = [];
+  const sections: { id: string; icon?: string; items: NavItem[] }[] = [];
   for (const n of NAV) {
-    if (n.header) { sections.push({ id: n.id, items: [] }); continue; }
+    if (n.header) { sections.push({ id: n.id, icon: n.icon, items: [] }); continue; }
     if (n.divider) continue;
     if (n.adminOnly && !isAdmin) continue;
     if (n.ownerOnly && role !== 'OWNER') continue;
@@ -138,35 +169,55 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
     sections[sections.length - 1]?.items.push(n);
   }
   const visibleSections = sections.filter((s) => s.items.length > 0);
-  const activeSectionId = visibleSections.find((s) => s.items.some((it) => it.id === current))?.id;
+  const currentGroupId = groupOfScreen(current);
 
-  // Each section is a collapsible dropdown. By default only the group holding the
-  // active screen is open; `openOverride` records explicit user toggles either way,
-  // so opening/closing any group sticks while still auto-opening wherever you are.
-  const [openOverride, setOpenOverride] = useState<Record<string, boolean>>({});
-  const isSectionOpen = (id: string) => openOverride[id] ?? id === activeSectionId;
-  const toggleSection = (id: string) =>
-    setOpenOverride((prev) => ({ ...prev, [id]: !(prev[id] ?? id === activeSectionId) }));
+  // Each group is a collapsible section. The open set is explicit and remembered
+  // per device: first run opens only the group holding the current screen, after
+  // that every group stays exactly as the user left it — nothing closes on its own,
+  // so the list never shifts under a finger mid-tap.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
+    () => readStoredGroups() ?? (currentGroupId ? { [currentGroupId]: true } : {}),
+  );
+  const toggleGroup = (id: string) => setOpenGroups((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  // Arriving on a screen from elsewhere (rail, in-app link, bottom tabs) reveals
+  // its group. Adjusted during render, keyed on the screen, so it runs once per
+  // navigation and never fights a manual close made afterwards.
+  const [revealedFor, setRevealedFor] = useState(current);
+  if (revealedFor !== current) {
+    setRevealedFor(current);
+    if (currentGroupId && !openGroups[currentGroupId]) {
+      setOpenGroups({ ...openGroups, [currentGroupId]: true });
+    }
+  }
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SB_GROUPS_KEY, JSON.stringify(openGroups));
+    } catch {
+      // Storage unavailable — the open set simply lasts for this session only.
+    }
+  }, [openGroups]);
 
   // Item row shared by both layouts (accordion when expanded, flat rail when collapsed).
   const renderItem = (n: NavItem) => {
     const active = current === n.id;
     return (
-      <button key={n.id} onClick={() => onNavigate(n.id)}
+      <button key={n.id} type="button" onClick={() => onNavigate(n.id)}
         className={`sb-item${active ? ' active' : ''}`}
         title={collapsed ? navLabel(n.id) : undefined}
         aria-current={active ? 'page' : undefined}
         style={{
-          display: 'flex', alignItems: 'center', gap: 12,
-          padding: collapsed ? '10px 0' : '10px 12px', borderRadius: 8,
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: collapsed ? '10px 0' : '10px 10px', borderRadius: 8,
           justifyContent: collapsed ? 'center' : 'flex-start',
           fontSize: 14, minHeight: 44,
           textAlign: 'left', width: '100%',
           position: 'relative',
         }}
       >
-        {n.icon && <Icon name={n.icon} size={18} />}
-        {!collapsed && <span className="sb-fade" style={{flex: 1, whiteSpace: 'nowrap'}}>{navLabel(n.id)}</span>}
+        {n.icon && <Icon name={n.icon} size={18} style={{flexShrink: 0}} />}
+        {!collapsed && <span className="sb-fade sb-item-label">{navLabel(n.id)}</span>}
         {!collapsed && n.soft && <span className="sb-fade" style={{fontSize: 10, color: 'currentColor', opacity: 0.55, fontWeight: 500}}>P1</span>}
       </button>
     );
@@ -186,7 +237,8 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
       overflow: 'hidden',
     }}>
       <div style={{
-        padding: collapsed ? '16px 0 12px' : '20px 20px 16px',
+        // Expanded: left edge lines up with the group-heading icon tiles below.
+        padding: collapsed ? '16px 0 12px' : '16px 14px 12px',
         display: 'flex',
         flexDirection: collapsed ? 'column' : 'row',
         alignItems: 'center',
@@ -225,56 +277,50 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
         )}
       </div>
 
-      <nav aria-label="เมนูหลัก" style={{padding: collapsed ? '8px 8px' : '8px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', overflowX: 'hidden', transition: 'padding var(--dur-slow) var(--ease-out)'}}>
+      <nav aria-label={t.sidebar.navLabel} style={{padding: collapsed ? '8px 8px' : '4px 8px 8px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', overflowX: 'hidden', transition: 'padding var(--dur-slow) var(--ease-out)'}}>
         {collapsed
           ? // Icon-only rail: no room for group headings, so show every item and
             // separate the groups with a hairline divider (none before the first).
             visibleSections.map((s, si) => (
               <Fragment key={s.id}>
-                {si > 0 && <div style={{height: 1, background: 'var(--sb-divider)', margin: '8px 6px 4px'}} />}
+                {si > 0 && <div className="sb-rail-divider" />}
                 {s.items.map(renderItem)}
               </Fragment>
             ))
-          : // Expanded: each group is a collapsible dropdown — click the heading to
-            // open/close it, so only the functions you need are on screen at once.
-            visibleSections.map((s, si) => {
-              const open = isSectionOpen(s.id);
+          : // Expanded: each group is a collapsible section — the whole heading row
+            // toggles it, so only the functions you need are on screen at once.
+            visibleSections.map((s) => {
+              const open = !!openGroups[s.id];
+              const isCurrent = s.id === currentGroupId;
+              const btnId = `sb-group-${s.id}`;
+              const panelId = `sb-panel-${s.id}`;
               return (
-                // marginTop opens a clear gap above each group heading (none before
-                // the first) so a section reads as its own block, not a run-on list.
-                <div key={s.id} style={{display: 'flex', flexDirection: 'column', gap: 2, marginTop: si === 0 ? 0 : 14}}>
+                <div key={s.id} className="sb-group">
                   <button
-                    onClick={() => toggleSection(s.id)}
-                    className={`sb-section-btn${open ? ' open' : ''}${s.id === activeSectionId ? ' current' : ''}`}
+                    type="button"
+                    id={btnId}
+                    onClick={() => toggleGroup(s.id)}
+                    className={`sb-group-btn${open ? ' open' : ''}${isCurrent ? ' current' : ''}`}
                     aria-expanded={open}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      width: '100%', padding: '9px 12px',
-                      borderRadius: 8, border: 'none', cursor: 'pointer',
-                      fontFamily: 'inherit', minHeight: 40,
-                      position: 'relative',
-                    }}
+                    aria-controls={panelId}
                   >
-                    {/* color:currentColor → label + chevron both track the button's
-                        hover/press color shift (set in .sb-section-btn CSS). */}
-                    <span className="sb-fade" style={{
-                      flex: 1, textAlign: 'left', fontSize: 11, fontWeight: 700,
-                      letterSpacing: '0.06em', textTransform: 'uppercase',
-                      color: 'currentColor', whiteSpace: 'nowrap',
-                    }}>{sectionLabel(s.id)}</span>
-                    <Icon name="chevronDown" size={14} style={{
-                      color: 'currentColor', flexShrink: 0,
-                      transform: open ? 'none' : 'rotate(-90deg)',
-                      transition: 'transform var(--dur-slow) var(--ease-out)',
-                    }} />
+                    <span className="sb-group-icon"><Icon name={s.icon ?? 'list'} size={18} strokeWidth={1.75} /></span>
+                    <span className="sb-fade sb-group-text">
+                      <span className="sb-group-label">{sectionLabel(s.id)}</span>
+                      {/* Closed group that holds the current screen: name the screen
+                          under the heading so "where am I" survives collapsing it. */}
+                      {isCurrent && !open && <span className="sb-group-here">{navLabel(current)}</span>}
+                    </span>
+                    <Icon name="chevronDown" size={18} strokeWidth={2} className="sb-group-chevron" />
                   </button>
-                  {open && (
-                    // Keyed by open-state so the reveal animation replays each time
-                    // the group is opened, not only on first mount.
-                    <div key={`${s.id}-items`} className="sb-section-items" style={{display: 'flex', flexDirection: 'column', gap: 2}}>
-                      {s.items.map(renderItem)}
+                  {/* Always mounted so open/close can animate height; `inert` keeps a
+                      closed group out of the tab order and the accessibility tree. */}
+                  <div id={panelId} role="group" aria-labelledby={btnId} inert={!open}
+                    className={`sb-group-panel${open ? ' open' : ''}`}>
+                    <div className="sb-group-clip">
+                      <div className="sb-group-items">{s.items.map(renderItem)}</div>
                     </div>
-                  )}
+                  </div>
                 </div>
               );
             })}
