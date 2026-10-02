@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import Icon from '../icons';
-import { useFadeRise, useCountUp } from '@/lib/motion';
+import { useFadeRise } from '@/lib/motion';
 import { useModalA11y } from '@/hooks/use-modal-a11y';
+import { CashView, CashPayStyles, cashMath } from './payment-cash';
 
 interface Props { method: string; total: number; billNo: number; onClose: () => void; onPaid: () => void; }
 
@@ -52,8 +53,16 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
     }
   }, [method]);
 
-  const change = method === 'cash' && cashGiven ? Math.max(0, parseFloat(cashGiven) - total) : 0;
-  const cashEnough = method === 'cash' ? parseFloat(cashGiven || '0') >= total : true;
+  const isCash = method === 'cash';
+  // The cash amount field is a keypad-driven display, not an <input>. Park focus
+  // on it (after useModalA11y's own first-focusable pass, which lands on "ปิด")
+  // so a hardware-keyboard cashier can type and press Enter straight away.
+  useEffect(() => {
+    if (!isCash) return;
+    dialogRef.current?.querySelector<HTMLElement>('[data-cash-entry]')?.focus({ preventScroll: true });
+  }, [isCash, dialogRef]);
+
+  const cashEnough = isCash ? cashMath(total, cashGiven).enough : true;
 
   const titleMap: Record<string, string> = { cash: 'รับเงินสด', card: 'รูดบัตร', qr: 'QR PromptPay', line: 'LINE Pay' };
 
@@ -67,13 +76,17 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
         aria-modal="true"
         aria-label={titleMap[method]}
         aria-busy={busy || undefined}
-        className="modal-card"
+        className={isCash ? 'modal-card cashpay' : 'modal-card'}
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 'min(440px, 92vw)', display: 'flex', flexDirection: 'column' }}
+        // Cash sizes itself from the .cashpay rules (wider two-column card on
+        // tablets/desktop, capped to the viewport height); other methods keep
+        // the original fixed width.
+        style={{ width: isCash ? undefined : 'min(440px, 92vw)', display: 'flex', flexDirection: 'column' }}
       >
-        <div style={{
-          padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-border)',
-          display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+        {isCash && <CashPayStyles />}
+        <div className={isCash ? 'cashpay-head' : undefined} style={{
+          padding: isCash ? undefined : 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-border)',
+          display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flex: 'none',
         }}>
           <div style={{
             width: 40, height: 40, borderRadius: 'var(--radius-md)', background: 'var(--color-accent-50)',
@@ -93,7 +106,10 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
           </button>
         </div>
 
-        <div style={{padding: 'var(--space-6)'}}>
+        <div
+          className={isCash && phase === 'await' ? 'cashpay-body scroll' : undefined}
+          style={isCash && phase === 'await' ? undefined : {padding: 'var(--space-6)'}}
+        >
           {phase === 'paid' ? (
             <SuccessView total={total} />
           ) : phase === 'processing' ? (
@@ -105,14 +121,14 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
           ) : method === 'card' ? (
             <CardView total={total} onSimulatePay={onConfirmPay} />
           ) : (
-            <CashView total={total} cashGiven={cashGiven} setCashGiven={setCashGiven} change={change} />
+            <CashView total={total} cashGiven={cashGiven} setCashGiven={setCashGiven} canConfirm={cashEnough} onConfirm={onConfirmPay} />
           )}
         </div>
 
-        {phase === 'await' && method === 'cash' && (
-          <div style={{padding: '0 var(--space-6) var(--space-5)', display: 'flex', gap: 'var(--space-2)'}}>
-            <button onClick={safeClose} className="btn btn-ghost btn-lg" style={{flex: 1, minHeight: 44}}>ยกเลิก</button>
-            <button onClick={onConfirmPay} disabled={!cashEnough} className="btn btn-primary btn-lg" style={{flex: 2, minHeight: 44, opacity: cashEnough ? 1 : 0.5}}>
+        {phase === 'await' && isCash && (
+          <div className="cashpay-foot">
+            <button type="button" onClick={safeClose} className="btn btn-ghost btn-lg" style={{flex: 1, minHeight: 44}}>ยกเลิก</button>
+            <button type="button" onClick={onConfirmPay} disabled={!cashEnough} className="btn btn-primary btn-lg" style={{flex: 2, minHeight: 44, opacity: cashEnough ? 1 : 0.5}}>
               <Icon name="check" size={16}/> ยืนยันรับเงิน
             </button>
           </div>
@@ -189,60 +205,6 @@ const FakeQR = ({ seed }: { seed: number }) => {
         <rect key={i} x={i % N} y={Math.floor(i / N)} width="1" height="1" fill={QR_INK}/>
       ))}
     </svg>
-  );
-};
-
-const CashView = ({ total, cashGiven, setCashGiven, change }: { total: number; cashGiven: string; setCashGiven: (v: string) => void; change: number }) => {
-  const presets = [100, 200, 500, 1000];
-  // Change count-up: the cashier glances here to read what to hand back. The
-  // tween makes a changing figure legible instead of flickering between values.
-  const changeRef = useCountUp(change, { duration: 0.35, format: (n) => `฿${Math.round(n).toLocaleString()}` });
-  return (
-    <div>
-      <div style={{textAlign: 'center', marginBottom: 'var(--space-4)'}}>
-        <div style={{fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)'}}>ยอดที่ต้องรับ</div>
-        <div className="num" style={{fontSize: 36, fontWeight: 700, color: 'var(--color-primary)'}}>฿{total.toLocaleString()}</div>
-      </div>
-      <div style={{fontSize: 13, fontWeight: 600, marginBottom: 'var(--space-2)'}}>เงินที่รับมา</div>
-      <input
-        type="number" placeholder="0"
-        value={cashGiven} onChange={(e) => setCashGiven(e.target.value)}
-        className="num input-std"
-        style={{
-          width: '100%', padding: 'var(--space-4)',
-          fontSize: 24, fontWeight: 700, textAlign: 'right',
-          background: 'var(--color-surface-2)', border: '1px solid var(--color-border)',
-          borderRadius: 'var(--radius-md)', outline: 'none',
-        }}
-      />
-      <div style={{display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-2)', marginTop: 'var(--space-2)'}}>
-        {presets.map((p) => (
-          <button key={p} onClick={() => setCashGiven(String(p))}
-            className="num pressable"
-            style={{
-              padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, minHeight: 44,
-              background: 'var(--color-surface-2)', border: '1px solid var(--color-border)',
-            }}
-          >฿{p}</button>
-        ))}
-        <button onClick={() => setCashGiven(String(total))}
-          className="pressable"
-          style={{
-            padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, minHeight: 44,
-            background: 'var(--color-accent-50)', border: '1px solid var(--color-accent)', color: 'var(--color-primary-700)',
-            gridColumn: 'span 4',
-          }}
-        >พอดี ฿{total.toLocaleString()}</button>
-      </div>
-      <div style={{
-        marginTop: 'var(--space-4)', padding: 'var(--space-4)',
-        background: 'var(--color-success-50)', borderRadius: 'var(--radius-md)',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      }}>
-        <div style={{fontSize: 13, color: 'var(--color-success)', fontWeight: 600}}>เงินทอน</div>
-        <span ref={changeRef} className="num" style={{fontSize: 22, fontWeight: 700, color: 'var(--color-success)'}}>฿{change.toLocaleString()}</span>
-      </div>
-    </div>
   );
 };
 
