@@ -87,7 +87,7 @@ export const NAV: NavItem[] = [
 
   // Kitchen & stock — the daily stock jobs first (check, count, buy), then the
   // menu-definition screens that are edited now and then (prep, recipes, catalog).
-  { id: 'sec-kitchen', header: true, icon: 'flame' },
+  { id: 'sec-kitchen', header: true, icon: 'pot' },
   { id: 'inventory', icon: 'inv',      soft: true },
   { id: 'stock-take',    icon: 'check' },
   { id: 'shopping-list', icon: 'cart' },
