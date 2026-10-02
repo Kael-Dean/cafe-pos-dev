@@ -95,7 +95,7 @@ export default function SettleModal({ session, tableName, onClose }: {
       busy={loading || !!payingId}
       footer={
         settled ? (
-          <button onClick={onClose} className="btn btn-lg" style={{ flex: 1, minHeight: 44 }}>
+          <button onClick={onClose} className="btn btn-primary btn-lg" style={{ flex: 1, minHeight: 44 }}>
             <Icon name="check" size={16} /> เสร็จสิ้น
           </button>
         ) : (
@@ -106,7 +106,7 @@ export default function SettleModal({ session, tableName, onClose }: {
             <button
               onClick={() => { void runClose(); }}
               disabled={closeSession.isPending || !!payingId}
-              className="btn btn-lg"
+              className="btn btn-primary btn-lg"
               style={{ flex: 1.4, minHeight: 44 }}
             >
               {closeSession.isPending
@@ -172,7 +172,7 @@ export default function SettleModal({ session, tableName, onClose }: {
                   <button
                     onClick={() => { void pay(o.id); }}
                     disabled={!!payingId}
-                    className="btn"
+                    className="btn btn-primary"
                     style={{ minHeight: 44, opacity: payingId ? 0.6 : 1 }}
                   >
                     {payingId === o.id

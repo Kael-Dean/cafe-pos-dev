@@ -224,7 +224,7 @@ function TableModal({ table, onClose }: { table: FloorTable | null; onClose: () 
       footer={
         <>
           <button onClick={onClose} className="btn btn-ghost btn-lg" style={{ flex: 1, minHeight: 44 }}>ยกเลิก</button>
-          <button onClick={() => { void submit(); }} disabled={busy || !valid} className="btn btn-lg" style={{ flex: 2, minHeight: 44, opacity: busy || !valid ? 0.5 : 1 }}>
+          <button onClick={() => { void submit(); }} disabled={busy || !valid} className="btn btn-primary btn-lg" style={{ flex: 2, minHeight: 44, opacity: busy || !valid ? 0.5 : 1 }}>
             {busy ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden /> : <><Icon name="check" size={16} /> บันทึก</>}
           </button>
         </>
@@ -327,7 +327,7 @@ function RatePlanModal({ plan, onClose }: { plan: RatePlan | null; onClose: () =
       footer={
         <>
           <button onClick={onClose} className="btn btn-ghost btn-lg" style={{ flex: 1, minHeight: 44 }}>ยกเลิก</button>
-          <button onClick={() => { void submit(); }} disabled={busy || !valid} className="btn btn-lg" style={{ flex: 2, minHeight: 44, opacity: busy || !valid ? 0.5 : 1 }}>
+          <button onClick={() => { void submit(); }} disabled={busy || !valid} className="btn btn-primary btn-lg" style={{ flex: 2, minHeight: 44, opacity: busy || !valid ? 0.5 : 1 }}>
             {busy ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden /> : <><Icon name="check" size={16} /> บันทึก</>}
           </button>
         </>
@@ -407,7 +407,7 @@ function SectionHead({ title, hint, action }: { title: string; hint: string; act
         <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{title}</h2>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4, lineHeight: 1.5 }}>{hint}</div>
       </div>
-      <button onClick={action.onClick} className="btn">
+      <button onClick={action.onClick} className="btn btn-primary">
         <Icon name="plus" size={16} /> {action.label}
       </button>
     </div>

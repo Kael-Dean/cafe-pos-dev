@@ -180,7 +180,7 @@ function CustomerPicker({ customerName, onPick, onClear }: {
           aria-label="เบอร์โทรสมาชิก"
           style={{ ...inputStyle, flex: 1 }}
         />
-        <button onClick={() => { void search(); }} disabled={lookup.isPending || !phone.trim()} className="btn" style={{ minHeight: 44 }}>
+        <button onClick={() => { void search(); }} disabled={lookup.isPending || !phone.trim()} className="btn btn-ghost" style={{ minHeight: 44 }}>
           {lookup.isPending ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden /> : <Icon name="search" size={16} />}
         </button>
       </div>
@@ -247,7 +247,7 @@ export default function OpenSessionModal({ table, onClose, onGoSetup }: {
           <button
             onClick={() => { void submit(); }}
             disabled={openSession.isPending || noPlans || partySize < 1}
-            className="btn btn-lg"
+            className="btn btn-primary btn-lg"
             style={{ flex: 2, minHeight: 44, opacity: openSession.isPending || noPlans ? 0.5 : 1 }}
           >
             {openSession.isPending
@@ -418,7 +418,7 @@ export function SessionDetailModal({ session, table, tables, canVoid, onClose, o
               <Icon name="cart" size={16} /> สั่งอาหาร
             </button>
           )}
-          <button onClick={onSettle} className="btn btn-lg" style={{ flex: 1.4, minHeight: 44 }}>
+          <button onClick={onSettle} className="btn btn-primary btn-lg" style={{ flex: 1.4, minHeight: 44 }}>
             <Icon name="cash" size={16} /> ปิดโต๊ะ / เช็คบิล
           </button>
         </>
@@ -465,7 +465,7 @@ export function SessionDetailModal({ session, table, tables, canVoid, onClose, o
       </Field>
 
       {dirty && (
-        <button onClick={() => { void saveEdits(); }} disabled={busy} className="btn btn-lg" style={{ width: '100%', minHeight: 44, marginBottom: 'var(--space-5)' }}>
+        <button onClick={() => { void saveEdits(); }} disabled={busy} className="btn btn-primary btn-lg" style={{ width: '100%', minHeight: 44, marginBottom: 'var(--space-5)' }}>
           {update.isPending ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden /> : <><Icon name="check" size={16} /> บันทึกการแก้ไข</>}
         </button>
       )}
@@ -489,7 +489,7 @@ export function SessionDetailModal({ session, table, tables, canVoid, onClose, o
             style={{ flex: 1 }}
             options={freeTables.map((t) => ({ value: t.id, label: `${t.name}${t.zone ? ` · ${t.zone}` : ''}` }))}
           />
-          <button onClick={() => { void doMove(); }} disabled={busy || !moveTo} className="btn" style={{ minHeight: 44 }}>ย้าย</button>
+          <button onClick={() => { void doMove(); }} disabled={busy || !moveTo} className="btn btn-ghost" style={{ minHeight: 44 }}>ย้าย</button>
         </div>
       </Field>
 

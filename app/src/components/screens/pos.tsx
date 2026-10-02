@@ -72,6 +72,9 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
   const [eligiblePromos, setEligiblePromos] = useState<EligiblePromotion[]>([]);
   const [selectedPromoIds, setSelectedPromoIds] = useState<string[]>([]);
   const [showPromoPanel, setShowPromoPanel] = useState(false);
+  // "Void bill" wipes the whole cart, so it asks first — it sits right beside
+  // the promotions button and is easy to hit by mistake on a phone.
+  const [confirmVoid, setConfirmVoid] = useState(false);
   // Phones (< 768px): the cart panel swaps its checkout block for a compact one and
   // the menu panel grows a "cart" bar. Structure differs, so this is a hook, not CSS.
   const isPhone = useIsPhone();
@@ -792,7 +795,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                       </span>
                     )}
                   </button>
-                  <button className="btn btn-ghost" style={{flex: 1, minWidth: 0, fontSize: 13, padding: 8, minHeight: 44}} onClick={() => cart.length && clearCart()}>
+                  <button className="btn btn-ghost" style={{flex: 1, minWidth: 0, fontSize: 13, padding: 8, minHeight: 44}} onClick={() => cart.length && setConfirmVoid(true)}>
                     <Icon name="void" size={14}/> {t.pos.void}
                   </button>
                 </div>
@@ -837,7 +840,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                     </span>
                   )}
                 </button>
-                <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8, minHeight: 44}} onClick={() => cart.length && clearCart()}>
+                <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8, minHeight: 44}} onClick={() => cart.length && setConfirmVoid(true)}>
                   <Icon name="void" size={14}/> {t.pos.void}
                 </button>
               </div>
@@ -931,6 +934,23 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                 })}
               </div>
             )}
+        </ModalShell>
+      )}
+      {confirmVoid && (
+        <ModalShell
+          title={t.pos.voidConfirmTitle}
+          onClose={() => setConfirmVoid(false)}
+          width={400}
+          footer={<>
+            <button onClick={() => setConfirmVoid(false)} className="btn btn-ghost btn-lg" style={{ flex: 1, minHeight: 48 }}>
+              {t.pos.voidKeep}
+            </button>
+            <button onClick={() => { clearCart(); setConfirmVoid(false); }} className="btn btn-danger btn-lg" style={{ flex: 1, minHeight: 48 }}>
+              <Icon name="void" size={16}/> {t.pos.voidConfirm}
+            </button>
+          </>}
+        >
+          <p style={{ margin: 0, fontSize: 15, lineHeight: 1.6 }}>{t.pos.voidConfirmBody(cartCount, baht(total))}</p>
         </ModalShell>
       )}
       {payment && (

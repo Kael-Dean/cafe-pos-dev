@@ -339,7 +339,7 @@ export function EmptyState({ icon, title, body, action }: {
       <div style={{ fontSize: 17, fontWeight: 700 }}>{title}</div>
       <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: 'var(--color-text-secondary)' }}>{body}</p>
       {action && (
-        <button onClick={action.onClick} className="btn btn-lg" style={{ minHeight: 44, marginTop: 'var(--space-2)' }}>
+        <button onClick={action.onClick} className="btn btn-primary btn-lg" style={{ minHeight: 44, marginTop: 'var(--space-2)' }}>
           {action.label}
         </button>
       )}
