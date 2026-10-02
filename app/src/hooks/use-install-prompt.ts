@@ -108,6 +108,32 @@ function subscribe(notify: () => void): () => void {
   };
 }
 
+/**
+ * Which tab of the illustrated install guide fits this device. Same UA tests as
+ * `classify()`, but independent of install state: a device that already has the
+ * app, or that is waiting on a prompt, still gets a sensible default tab.
+ * Identical to `GuidePlatform` in components/pwa/install-art/scenes.tsx.
+ */
+export type GuidePlatform = 'pc' | 'ios' | 'mac' | 'android';
+
+function classifyGuide(): GuidePlatform {
+  const ua = navigator.userAgent;
+  if (/iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
+  if (/Android/.test(ua)) return 'android';
+  const isChromium = /Chrome\/|Chromium\/|Edg\/|SamsungBrowser\/|OPR\//.test(ua);
+  const isFirefox = /Firefox\//.test(ua);
+  if (/Macintosh/.test(ua) && /Safari\//.test(ua) && !isChromium && !isFirefox) return 'mac';
+  return 'pc';
+}
+
+// The UA never changes within a page, so the guide tab is read once. The server
+// (and the first hydration pass) report 'pc'; the dialog that consumes this only
+// mounts on a click, long after hydration, so no mismatch is possible.
+let guidePlatform: GuidePlatform | null = null;
+const noopSubscribe = () => () => {};
+const getGuideSnapshot = (): GuidePlatform => (guidePlatform ??= classifyGuide());
+const getGuideServerSnapshot = (): GuidePlatform => 'pc';
+
 const getSnapshot = (): InstallPlatform => platform;
 const getServerSnapshot = (): InstallPlatform => 'unknown';
 
@@ -132,9 +158,12 @@ async function promptInstall(): Promise<InstallOutcome> {
 
 export function useInstallPrompt() {
   const current = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const guide = useSyncExternalStore(noopSubscribe, getGuideSnapshot, getGuideServerSnapshot);
   const install = useCallback(() => promptInstall(), []);
   return {
     platform: current,
+    /** Device family for the illustrated guide's default tab (`pc` on the server). */
+    guide,
     isInstalled: current === 'installed',
     /** True when `promptInstall()` will open the browser's native install dialog. */
     canPrompt: current === 'chromium-prompt',

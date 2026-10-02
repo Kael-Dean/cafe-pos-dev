@@ -120,30 +120,14 @@ export const en: Messages = {
   },
 
   pwa: {
-    installTitle: 'Install app',
+    installTitle: 'Install Kafé OS',
     installDesc: 'Add Kafé OS to this device and open it full screen from its icon, without typing the address each time.',
     installButton: 'Install app',
     installWaiting: 'Confirm in the browser dialog...',
-    installDismissed: 'Not installed yet. You can follow the steps below any time.',
+    installDismissed: 'Not installed yet. You can open the illustrated guide any time.',
     installedTitle: 'Installed on this device',
     installedDesc: 'Open Kafé OS from its icon on the home screen or taskbar.',
     loginEntry: 'Install the app on this device',
-    stepsLabel: 'How to install',
-    iosSteps: [
-      'Tap the Share button (a square with an arrow pointing up) in the browser toolbar.',
-      'Scroll down and choose “Add to Home Screen”.',
-      'Tap “Add” in the top-right corner.',
-    ],
-    macSafariSteps: [
-      'Open the “File” menu in the Safari menu bar (macOS Sonoma or later).',
-      'Choose “Add to Dock…”.',
-      'Click “Add” to confirm.',
-    ],
-    browserMenuSteps: [
-      'Open the browser menu (the three-dot or three-line button).',
-      'Choose “Install app” or “Add to Home screen”.',
-      'Press “Install” to confirm.',
-    ],
     unsupportedTitle: 'This browser cannot install the app',
     unsupportedDesc: 'Open Kafé OS in Chrome, Edge or Safari, then come back to this page to install. You can keep using it in this browser in the meantime.',
     offlineTitle: 'You are offline',
@@ -154,6 +138,94 @@ export const en: Messages = {
     updateReload: 'Reload now',
     updateLater: 'Later',
     updateReloading: 'Updating...',
+    guide: {
+      title: 'Install Kafé OS',
+      subtitle: 'Pick your device and follow the pictures step by step.',
+      openButton: 'Show illustrated install guide',
+      tabsLabel: 'Choose your device',
+      tabs: { pc: 'PC', ios: 'iPhone / iPad', mac: 'Mac', android: 'Android' },
+      detected: 'This device',
+      installNowTitle: 'This device can install it right away, no steps needed.',
+      installNowButton: 'Install now',
+      stepOf: (n: number, total: number) => `Step ${n} of ${total}`,
+      prev: 'Previous',
+      next: 'Next',
+      finish: 'Done',
+      slidesLabel: 'Install steps',
+      goToStep: (n: number) => `Go to step ${n}`,
+      steps: {
+        pc: [
+          {
+            title: 'Click the install icon',
+            body: 'It sits at the right end of the address bar in Chrome or Edge: a monitor with a down arrow. Hover over it to see “Install Kafé OS”.',
+          },
+          {
+            title: 'Click “Install”',
+            body: 'A confirmation box opens below the address bar. Click “Install”, next to “Cancel”.',
+          },
+          {
+            title: 'Done. Open it from the icon',
+            body: 'Kafé OS opens in its own window, with an icon on the taskbar and in the Start menu. Click that icon next time.',
+          },
+        ],
+        ios: [
+          {
+            title: 'Tap the Share button',
+            body: 'A square with an arrow pointing up, in the Safari toolbar. If you can’t see it, tap “…” first (in Chrome it’s in the address bar).',
+          },
+          {
+            title: 'Tap “Add to Home Screen”',
+            body: 'Scroll down the Share menu to find it, next to a square with a plus sign.',
+          },
+          {
+            title: 'Tap “Add”',
+            body: '“Add” is in the top-right corner. The app name and icon are already filled in.',
+          },
+          {
+            title: 'Done. Open it from your Home Screen',
+            body: 'The Kafé OS icon is now on your Home Screen. Tap it to open full screen, without the browser bars.',
+          },
+        ],
+        mac: [
+          {
+            title: 'Click the “File” menu',
+            body: 'Open Kafé OS in Safari, then click the “File” menu in the menu bar at the top of the screen.',
+          },
+          {
+            title: 'Choose “Add to Dock…”',
+            body: 'It’s in the “File” menu that opens.',
+          },
+          {
+            title: 'Click “Add”, then open it from the Dock',
+            body: 'The name and icon are already filled in. Click “Add” and the Kafé OS icon appears in the Dock at the bottom of the screen. Click it to open the app in its own window.',
+          },
+        ],
+        android: [
+          {
+            title: 'Tap the ⋮ menu',
+            body: 'The three vertical dots in the top-right corner of Chrome.',
+          },
+          {
+            title: 'Tap “Install app”',
+            body: 'It’s in the menu that opens. On some phones it says “Add to Home screen”.',
+          },
+          {
+            title: 'Tap “Install”',
+            body: 'A confirmation box opens. Tap “Install” and wait a moment for the icon to appear.',
+          },
+          {
+            title: 'Done. Open it from your home screen',
+            body: 'The Kafé OS icon is now on your home screen or in your app list. Tap it to open full screen.',
+          },
+        ],
+      },
+      notes: {
+        pc: 'No install icon? Open the ⋮ (Chrome) or ⋯ (Edge) menu in the top-right corner and choose “Install Kafé OS…” (in Edge, it’s under “Apps”).',
+        ios: 'Opened the link from LINE or another app? Open this page in Safari first, then follow the steps.',
+        mac: 'Using Chrome or Edge on a Mac? Follow the PC tab. Safari needs macOS Sonoma or later.',
+        android: 'Using Samsung Internet? Tap the ≡ menu, then “Add page to” → “Home screen”.',
+      },
+    },
   },
 
   shoppingList: {

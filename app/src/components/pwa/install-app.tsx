@@ -3,42 +3,12 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import Icon from '../icons';
 import { useI18n } from '@/lib/i18n';
-import { useInstallPrompt, type InstallOutcome, type InstallPlatform } from '@/hooks/use-install-prompt';
-
-type ManualPlatform = Extract<InstallPlatform, 'ios' | 'macos-safari' | 'browser-menu'>;
-
-function isManual(platform: InstallPlatform): platform is ManualPlatform {
-  return platform === 'ios' || platform === 'macos-safari' || platform === 'browser-menu';
-}
-
-/** Numbered "how to install" steps for platforms with no programmatic prompt. */
-function InstallSteps({ platform, labelledBy }: { platform: ManualPlatform; labelledBy?: string }) {
-  const { t } = useI18n();
-  const steps =
-    platform === 'ios' ? t.pwa.iosSteps :
-    platform === 'macos-safari' ? t.pwa.macSafariSteps :
-    t.pwa.browserMenuSteps;
-
-  return (
-    <ol
-      aria-labelledby={labelledBy}
-      aria-label={labelledBy ? undefined : t.pwa.stepsLabel}
-      style={{
-        // Tailwind's preflight strips list markers; the numbers are the point here.
-        margin: 0, paddingLeft: 22, listStyle: 'decimal',
-        display: 'flex', flexDirection: 'column', gap: 6,
-        fontSize: 14, lineHeight: 1.6, color: 'var(--color-text)',
-        textAlign: 'left',
-      }}
-    >
-      {steps.map((step) => <li key={step} style={{ paddingLeft: 4 }}>{step}</li>)}
-    </ol>
-  );
-}
+import { useInstallPrompt, type InstallOutcome } from '@/hooks/use-install-prompt';
+import { InstallGuideDialog } from './install-guide';
 
 /** Shared button + prompt state for the `chromium-prompt` platform. */
 function useInstallAction() {
-  const { platform, promptInstall } = useInstallPrompt();
+  const { platform, guide, promptInstall } = useInstallPrompt();
   const [pending, setPending] = useState(false);
   const [outcome, setOutcome] = useState<InstallOutcome | null>(null);
 
@@ -50,25 +20,24 @@ function useInstallAction() {
     setPending(false);
   };
 
-  return { platform, pending, dismissed: outcome === 'dismissed', run };
+  return { platform, guide, pending, dismissed: outcome === 'dismissed', run };
 }
 
 /**
  * Settings → "Install app". Mirrors the Language / Appearance cards and shows the
  * one action that works on this device: a real install button where the browser
- * offers one, numbered steps where it does not, and a plain pointer to a capable
- * browser otherwise.
+ * offers one, plus the illustrated step-by-step guide for every other case.
  */
 export function InstallCard() {
   const { t } = useI18n();
-  const { platform, pending, dismissed, run } = useInstallAction();
+  const { platform, guide, pending, dismissed, run } = useInstallAction();
+  const [guideOpen, setGuideOpen] = useState(false);
   const titleId = useId();
-  const stepsHeadingId = useId();
   const sectionRef = useRef<HTMLElement>(null);
   const prompted = useRef(false);
 
   // The install button unmounts as soon as the native dialog resolves (the
-  // platform becomes `installed` or falls back to the manual steps), which would
+  // platform becomes `installed` or falls back to the guide), which would
   // drop keyboard focus to <body>. Park it on the card instead, so the next Tab
   // continues from here and a screen reader lands on the result.
   useEffect(() => {
@@ -77,6 +46,8 @@ export function InstallCard() {
     const active = document.activeElement;
     if (!active || active === document.body) sectionRef.current?.focus({ preventScroll: true });
   }, [platform]);
+
+  const showGuide = platform !== 'unknown' && platform !== 'installed';
 
   return (
     <section
@@ -109,41 +80,8 @@ export function InstallCard() {
           </div>
         )}
 
-        {platform === 'chromium-prompt' && (
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => { prompted.current = true; void run(); }}
-            disabled={pending}
-            aria-busy={pending || undefined}
-            style={{ minHeight: 44, cursor: pending ? 'progress' : 'pointer' }}
-          >
-            {pending
-              ? <span className="spinner" aria-hidden style={{ width: 16, height: 16 }} />
-              : <Icon name="download" size={18} />}
-            {pending ? t.pwa.installWaiting : t.pwa.installButton}
-          </button>
-        )}
-
-        {/* Mounted from the start and filled in later: a live region that is
-            inserted together with its text is not announced by most screen readers. */}
-        <div role="status">
-          {dismissed && isManual(platform) && (
-            <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-secondary)' }}>
-              {t.pwa.installDismissed}
-            </p>
-          )}
-        </div>
-
-        {isManual(platform) && (
-          <>
-            <h3 id={stepsHeadingId} style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>{t.pwa.stepsLabel}</h3>
-            <InstallSteps platform={platform} labelledBy={stepsHeadingId} />
-          </>
-        )}
-
         {platform === 'unsupported' && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
             <Icon name="info" size={20} color="var(--color-info)" style={{ flexShrink: 0, marginTop: 1 }} />
             <div>
               <div style={{ fontSize: 14, fontWeight: 700 }}>{t.pwa.unsupportedTitle}</div>
@@ -151,68 +89,99 @@ export function InstallCard() {
             </div>
           </div>
         )}
+
+        {/* Mounted from the start and filled in later: a live region that is
+            inserted together with its text is not announced by most screen readers. */}
+        <div role="status">
+          {dismissed && showGuide && (
+            <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-secondary)' }}>
+              {t.pwa.installDismissed}
+            </p>
+          )}
+        </div>
+
+        {showGuide && platform !== 'unsupported' && platform !== 'chromium-prompt' && (
+          <p style={{ margin: '0 0 12px', fontSize: 13, lineHeight: 1.6, color: 'var(--color-text-secondary)' }}>
+            {t.pwa.guide.subtitle}
+          </p>
+        )}
+
+        {showGuide && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {platform === 'chromium-prompt' && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => { prompted.current = true; void run(); }}
+                disabled={pending}
+                aria-busy={pending || undefined}
+                style={{ minHeight: 44, cursor: pending ? 'progress' : 'pointer' }}
+              >
+                {pending
+                  ? <span className="spinner" aria-hidden style={{ width: 16, height: 16 }} />
+                  : <Icon name="download" size={18} />}
+                {pending ? t.pwa.installWaiting : t.pwa.installButton}
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setGuideOpen(true)}
+              disabled={pending}
+              aria-haspopup="dialog"
+              style={{ minHeight: 44, whiteSpace: 'normal', textAlign: 'left' }}
+            >
+              <Icon name="info" size={18} />
+              {t.pwa.guide.openButton}
+            </button>
+          </div>
+        )}
       </div>
+
+      {guideOpen && <InstallGuideDialog initialPlatform={guide} onClose={() => setGuideOpen(false)} />}
     </section>
   );
 }
 
 /**
  * Login-screen install entry — where a freshly unboxed tablet lands. One quiet
- * text button under the form: it opens the native dialog where available, and
- * otherwise discloses the steps inline (no modal). Renders nothing once the app
- * is installed.
+ * text button under the form that opens the illustrated install guide (with an
+ * "install now" shortcut inside when the browser offers one). Renders nothing
+ * once the app is installed.
  */
 export function InstallEntry() {
   const { t } = useI18n();
-  const { platform, pending, run } = useInstallAction();
+  const { platform, guide } = useInstallPrompt();
   const [open, setOpen] = useState(false);
-  const panelId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
 
-  if (platform === 'unknown' || platform === 'installed') return null;
+  // Installed from inside the dialog: the link that opened it is gone, so the
+  // dialog's focus restore has no target and focus would fall to <body>. Land on
+  // the first control of the surrounding login card instead.
+  const close = () => {
+    const scope = platform === 'installed' ? rootRef.current?.parentElement : null;
+    setOpen(false);
+    if (scope) {
+      requestAnimationFrame(() => {
+        const active = document.activeElement;
+        if (!active || active === document.body) scope.querySelector<HTMLElement>('input, button, a[href]')?.focus();
+      });
+    }
+  };
 
-  const canPrompt = platform === 'chromium-prompt';
+  // Keep the dialog mounted if the app gets installed from inside it, so the
+  // success message stays readable until the user closes it.
+  if (!open && (platform === 'unknown' || platform === 'installed')) return null;
 
   return (
-    <div style={{ marginTop: 'var(--space-5)', textAlign: 'center' }}>
-      <button
-        type="button"
-        className="btn-link"
-        onClick={() => { if (canPrompt) void run(); else setOpen((v) => !v); }}
-        disabled={pending}
-        aria-busy={pending || undefined}
-        aria-expanded={canPrompt ? undefined : open}
-        aria-controls={canPrompt ? undefined : panelId}
-      >
-        <Icon name="download" size={16} />
-        {pending ? t.pwa.installWaiting : t.pwa.loginEntry}
-        {!canPrompt && (
-          <Icon name="chevronDown" size={14} style={{
-            transform: open ? 'rotate(180deg)' : 'none',
-            transition: 'transform var(--dur-base) var(--ease-out)',
-          }} />
-        )}
-      </button>
-
-      {!canPrompt && (
-        <div id={panelId} hidden={!open} style={{ marginTop: 'var(--space-2)' }}>
-          <div style={{
-            padding: 'var(--space-4)',
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-md)',
-            textAlign: 'left',
-          }}>
-            {isManual(platform)
-              ? <InstallSteps platform={platform} />
-              : (
-                <>
-                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{t.pwa.unsupportedTitle}</div>
-                  <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>{t.pwa.unsupportedDesc}</div>
-                </>
-              )}
-          </div>
-        </div>
+    <div ref={rootRef} style={{ marginTop: 'var(--space-5)', textAlign: 'center' }}>
+      {platform !== 'installed' && (
+        <button type="button" className="btn-link" aria-haspopup="dialog" onClick={() => setOpen(true)}>
+          <Icon name="download" size={16} />
+          {t.pwa.loginEntry}
+        </button>
       )}
+      {open && <InstallGuideDialog initialPlatform={guide} onClose={close} />}
     </div>
   );
 }
