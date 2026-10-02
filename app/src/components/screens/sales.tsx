@@ -8,6 +8,7 @@ import { useStagger } from '@/lib/motion';
 import { SkeletonTable } from '@/components/ui/skeleton';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { ApiError } from '@/lib/api-client';
+import { useIsPhone } from '@/hooks/use-media-query';
 import {
   useSalespeople,
   useCreateSalesperson,
@@ -116,11 +117,27 @@ export default function SalesScreen() {
   const list = salespeople ?? [];
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
+    <div className="screen-pad-lg" style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
+      {/* Phone-only rules. Inline min-heights (36/38) and 14px inputs would beat the
+          global 44px / 16px phone rules, so they are raised here with !important. */}
+      <style>{`
+        @media (max-width: 767px) {
+          .sl-tap { min-height: 44px !important; }
+          .sl-icon-btn { min-width: 44px; justify-content: center; padding-inline: 10px !important; }
+          .sl-input { font-size: 16px !important; min-height: 44px; }
+          .sl-presets > button { flex: 1 1 0; }
+          .sl-range { margin-left: 0 !important; width: 100%; flex-wrap: nowrap !important; }
+          .sl-range > input { flex: 1 1 0; width: auto !important; min-width: 0; padding-inline: 8px !important; }
+          .sl-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+          .sl-metrics > :last-child { grid-column: span 2; }
+          .sl-edit-row > input { max-width: none !important; flex: 1 1 100%; }
+          .sl-edit-row > button { flex: 1 1 0; justify-content: center; }
+        }
+      `}</style>
       {/* Header */}
-      <div style={{ marginBottom: 20, display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+      <div className="page-header inline" style={{ marginBottom: 20, display: 'flex', alignItems: 'flex-start', flexWrap: 'nowrap', gap: 16 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>{t.sales.title}</h1>
+          <h1 className="page-title" style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>{t.sales.title}</h1>
           <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
             ยอดขายและ KPI ของเซลส์แต่ละคน · ทั้งหมด {list.length.toLocaleString()} คน
           </div>
@@ -132,9 +149,9 @@ export default function SalesScreen() {
       </div>
 
       {/* Date range toolbar */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+      <div className="sl-presets" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 20 }}>
         {PRESETS.map((p) => (
-          <button key={p.id} onClick={() => setRange(p.from, p.to)} className="pressable"
+          <button key={p.id} onClick={() => setRange(p.from, p.to)} className="pressable sl-tap" aria-pressed={activePreset === p.id}
             style={{
               padding: '7px 14px', minHeight: 38, borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
               border: '1px solid ' + (activePreset === p.id ? 'var(--color-primary)' : 'var(--color-border)'),
@@ -144,12 +161,12 @@ export default function SalesScreen() {
             {p.label}
           </button>
         ))}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
+        <div className="sl-range" style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>จาก</span>
-          <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)}
+          <input type="date" aria-label="จากวันที่" className="sl-input" value={from} max={to} onChange={(e) => setFrom(e.target.value)}
             style={{ ...IS, width: 'auto', padding: '7px 10px' }} />
           <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>ถึง</span>
-          <input type="date" value={to} min={from} max={TODAY} onChange={(e) => setTo(e.target.value)}
+          <input type="date" aria-label="ถึงวันที่" className="sl-input" value={to} min={from} max={TODAY} onChange={(e) => setTo(e.target.value)}
             style={{ ...IS, width: 'auto', padding: '7px 10px' }} />
         </div>
       </div>
@@ -188,12 +205,12 @@ export default function SalesScreen() {
 
           {isAdding && (
             <div data-sp-card style={{ background: 'var(--color-accent-50)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 14 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input autoFocus placeholder={t.sales.namePlaceholder} value={addingName} onChange={(e) => setAddingName(e.target.value)}
+              <div className="wrap-phone sl-edit-row" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input autoFocus aria-label={t.sales.namePlaceholder} className="sl-input" placeholder={t.sales.namePlaceholder} value={addingName} onChange={(e) => setAddingName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setIsAdding(false); }}
                   style={{ ...IS, padding: '6px 10px', maxWidth: 280 }} />
-                <button onClick={handleCreate} disabled={!addingName.trim() || createSales.isPending} className="pressable" style={btnSm('primary')}>{t.sales.addBtn}</button>
-                <button onClick={() => setIsAdding(false)} className="pressable" style={btnSm('ghost')}>{t.common.cancel}</button>
+                <button onClick={handleCreate} disabled={!addingName.trim() || createSales.isPending} className="pressable sl-tap" style={btnSm('primary')}>{t.sales.addBtn}</button>
+                <button onClick={() => setIsAdding(false)} className="pressable sl-tap" style={btnSm('ghost')}>{t.common.cancel}</button>
               </div>
             </div>
           )}
@@ -216,8 +233,8 @@ export default function SalesScreen() {
               {t.sales.deleteConfirm} <strong>{deleteTarget.name}</strong>?
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setDeleteTarget(null)} className="pressable" style={btnSm('ghost')}>{t.common.cancel}</button>
-              <button onClick={handleDelete} disabled={deleteSales.isPending} className="pressable" style={btnSm('danger')}>{t.common.delete}</button>
+              <button onClick={() => setDeleteTarget(null)} className="pressable sl-tap" style={btnSm('ghost')}>{t.common.cancel}</button>
+              <button onClick={handleDelete} disabled={deleteSales.isPending} className="pressable sl-tap" style={btnSm('danger')}>{t.common.delete}</button>
             </div>
           </div>
         </div>
@@ -251,6 +268,8 @@ function SalespersonCard({
   const totalItems = kpi?.totalItems ?? 0;
   const totalValue = kpi?.totalValue ?? 0;
 
+  const isPhone = useIsPhone();
+
   // Only members who actually bought are worth listing; sort by spend.
   const buyingMembers = (kpi?.members ?? [])
     .filter((m) => m.orderCount > 0)
@@ -262,12 +281,12 @@ function SalespersonCard({
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           {isEditing ? (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input autoFocus value={editingName} onChange={(e) => setEditingName(e.target.value)}
+            <div className="wrap-phone sl-edit-row" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input autoFocus aria-label="ชื่อเซลส์" className="sl-input" value={editingName} onChange={(e) => setEditingName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') onRename(); if (e.key === 'Escape') onCancelEdit(); }}
                 style={{ ...IS, padding: '6px 10px', maxWidth: 280 }} />
-              <button onClick={onRename} disabled={renamePending} className="pressable" style={btnSm('primary')}>บันทึก</button>
-              <button onClick={onCancelEdit} className="pressable" style={btnSm('ghost')}>ยกเลิก</button>
+              <button onClick={onRename} disabled={renamePending} className="pressable sl-tap" style={btnSm('primary')}>บันทึก</button>
+              <button onClick={onCancelEdit} className="pressable sl-tap" style={btnSm('ghost')}>ยกเลิก</button>
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -280,11 +299,12 @@ function SalespersonCard({
         </div>
         {!isEditing && (
           <div style={{ whiteSpace: 'nowrap' }}>
-            <button onClick={onStartEdit} className="pressable" style={btnSm('ghost')}>
-              <Icon name="pencil" size={14} /> แก้ไข
+            {/* Phones: icon-only (the label would squeeze the name onto 3 lines). */}
+            <button onClick={onStartEdit} aria-label={`แก้ไข ${sp.name}`} className="pressable sl-tap sl-icon-btn" style={btnSm('ghost')}>
+              <Icon name="pencil" size={14} /> <span className="hide-phone">แก้ไข</span>
             </button>
-            <button onClick={onDelete} className="pressable" style={{ ...btnSm('ghost'), marginLeft: 6, color: 'var(--color-danger)' }}>
-              <Icon name="trash" size={14} /> ลบ
+            <button onClick={onDelete} aria-label={`ลบ ${sp.name}`} className="pressable sl-tap sl-icon-btn" style={{ ...btnSm('ghost'), marginLeft: 6, color: 'var(--color-danger)' }}>
+              <Icon name="trash" size={14} /> <span className="hide-phone">ลบ</span>
             </button>
           </div>
         )}
@@ -296,7 +316,7 @@ function SalespersonCard({
           width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', cursor: 'pointer',
           borderTop: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'inherit', textAlign: 'left',
         }}>
-        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 }}>
+        <div className="sl-metrics" style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 }}>
           <Metric label="สมาชิกที่ดูแล" value={kpiLoading ? '…' : memberCount.toLocaleString()} />
           <Metric label="มาซื้อ" value={kpiLoading ? '…' : buyers.toLocaleString()} tone="success" />
           <Metric label="อัตราซื้อ" value={kpiLoading ? '…' : `${conv}%`} />
@@ -321,6 +341,15 @@ function SalespersonCard({
               <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', padding: '6px 8px 10px' }}>
                 มาซื้อ {buyers.toLocaleString()} จาก {memberCount.toLocaleString()} คน
               </div>
+              {isPhone ? (
+                // Phones: five columns do not fit — each member is a two-line row
+                // (name + spend, then phone · orders · items) that expands in place.
+                <div>
+                  {buyingMembers.map((m) => (
+                    <MemberRowPhone key={m.customerId} m={m} />
+                  ))}
+                </div>
+              ) : (
               <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
@@ -339,6 +368,7 @@ function SalespersonCard({
                 </tbody>
               </table>
               </div>
+              )}
             </>
           )}
         </div>
@@ -381,6 +411,42 @@ function MemberRow({ m }: { m: KpiMember }) {
         </tr>
       )}
     </>
+  );
+}
+
+// Phone version of MemberRow: a real <button> (keyboard + screen-reader friendly).
+function MemberRowPhone({ m }: { m: KpiMember }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ borderTop: '1px solid var(--color-border)' }}>
+      <button onClick={() => setOpen((v) => !v)} aria-expanded={open}
+        style={{ width: '100%', display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 8px', textAlign: 'left', color: 'inherit', fontFamily: 'inherit', cursor: 'pointer' }}>
+        <Icon name="chevronDown" size={14} color="var(--color-text-muted)"
+          style={{ flexShrink: 0, marginTop: 4, transition: 'transform .18s ease', transform: open ? 'rotate(180deg)' : 'rotate(-90deg)' }} />
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+            <span style={{ fontWeight: 600, fontSize: 14, minWidth: 0, overflowWrap: 'anywhere' }}>{m.name}</span>
+            <span className="num" style={{ fontWeight: 700, fontSize: 14, flexShrink: 0 }}>{baht(m.totalValue)}</span>
+          </span>
+          <span className="num" style={{ display: 'block', marginTop: 2, fontSize: 12, color: 'var(--color-text-secondary)' }}>
+            {m.phone || '—'} · {m.orderCount.toLocaleString()} ออเดอร์ · {m.totalItems.toLocaleString()} ชิ้น
+          </span>
+        </span>
+      </button>
+      {open && (
+        <div style={{ padding: '4px 10px 12px 30px', background: 'var(--color-surface-2)' }}>
+          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '6px 0' }}>ซื้ออะไรบ้าง</div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {m.items.map((it, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13 }}>
+                <span style={{ minWidth: 0 }}>{it.productName} <span style={{ color: 'var(--color-text-muted)' }}>× {it.quantity}</span></span>
+                <span className="num" style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }}>{baht(it.value)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

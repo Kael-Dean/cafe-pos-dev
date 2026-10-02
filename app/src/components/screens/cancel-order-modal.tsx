@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../icons';
 import { useI18n } from '@/lib/i18n';
 import { useModalA11y } from '@/hooks/use-modal-a11y';
@@ -37,7 +38,13 @@ export default function CancelOrderModal({ orderLabel, onClose, onConfirm }: Pro
 
   const canConfirm = reason.trim() !== '' && !loading;
 
-  return (
+  // Portaled to <body>: callers such as the receipt-copies screen animate in with a
+  // transform, and a transformed ancestor becomes the containing block for
+  // `position: fixed` — the dialog was then centred in the page column (off-screen
+  // on phones, under the tab bar) instead of the viewport.
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div
         ref={dialogRef}
@@ -59,7 +66,7 @@ export default function CancelOrderModal({ orderLabel, onClose, onConfirm }: Pro
           }}>
             <Icon name="trash" size={20} />
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 700 }}>{t.kds.cancelTitle}</div>
             <div className="num" style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>#{orderLabel}</div>
           </div>
@@ -71,7 +78,7 @@ export default function CancelOrderModal({ orderLabel, onClose, onConfirm }: Pro
           </button>
         </div>
 
-        <div className="scroll" style={{ padding: 'var(--space-6)', overflow: 'auto' }}>
+        <div className="scroll pad-phone" style={{ padding: 'var(--space-6)', overflow: 'auto', flex: '1 1 auto', minHeight: 0 }}>
           <div role="alert" style={{
             display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
             padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-5)',
@@ -117,9 +124,9 @@ export default function CancelOrderModal({ orderLabel, onClose, onConfirm }: Pro
           </div>
         </div>
 
-        <div style={{
+        <div className="pad-phone" style={{
           borderTop: '1px solid var(--color-border)', padding: 'var(--space-4) var(--space-6)',
-          display: 'flex', gap: 'var(--space-2)',
+          display: 'flex', gap: 'var(--space-2)', flexShrink: 0,
         }}>
           <button onClick={onClose} className="btn btn-ghost btn-lg" style={{ flex: 1, minHeight: 44 }}>
             {t.common.close}
@@ -140,6 +147,7 @@ export default function CancelOrderModal({ orderLabel, onClose, onConfirm }: Pro
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

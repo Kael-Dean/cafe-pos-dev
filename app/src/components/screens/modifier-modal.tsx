@@ -171,14 +171,15 @@ export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props)
         onClick={(e) => e.stopPropagation()}
         style={{ width: 'min(560px, 92vw)', maxHeight: '90dvh', display: 'flex', flexDirection: 'column' }}
       >
-        <div style={{padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 'var(--space-4)'}}>
+        {/* .pad-phone: 16px gutters on phones — two 140px option columns still fit a 360px screen */}
+        <div className="pad-phone" style={{padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flexShrink: 0}}>
           <div style={{
-            width: 56, height: 56, borderRadius: 'var(--radius-lg)',
+            width: 56, height: 56, borderRadius: 'var(--radius-lg)', flexShrink: 0,
             background: `linear-gradient(135deg, ${item.color}, ${item.color}cc)`,
             display: 'grid', placeItems: 'center',
             color: 'rgba(255,255,255,0.9)', fontSize: 9, fontWeight: 600, letterSpacing: '0.06em',
           }}>{item.nameEn.split(' ')[0].toUpperCase()}</div>
-          <div style={{flex: 1}}>
+          <div style={{flex: 1, minWidth: 0}}>
             <div style={{fontSize: 18, fontWeight: 700}}>{item.name}</div>
             <div style={{fontSize: 'var(--fs-14)', color: 'var(--color-text-secondary)'}}>{item.nameEn} • ราคาเริ่มต้น ฿{item.price}</div>
           </div>
@@ -190,7 +191,7 @@ export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props)
           </button>
         </div>
 
-        <div className="scroll" style={{flex: 1, overflow: 'auto', padding: 'var(--space-5) var(--space-6)'}}>
+        <div className="scroll pad-phone" style={{flex: 1, minHeight: 0, overflow: 'auto', padding: 'var(--space-5) var(--space-6)'}}>
           {isLoading ? (
             <ModifierGroupsSkeleton />
           ) : (
@@ -243,11 +244,14 @@ export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props)
             <div style={{fontSize: 'var(--fs-14)', fontWeight: 600, marginBottom: 'var(--space-2)'}}>หมายเหตุ <span style={{fontSize: 11, fontWeight: 500, color: 'var(--color-text-muted)'}}>(ตัวเลือก)</span></div>
             <input type="text" placeholder="เช่น ไม่ใส่น้ำแข็ง, ใส่ในแก้วร้อน"
               value={note} onChange={(e) => setNote(e.target.value)}
-              className="input-std"
+              aria-label="หมายเหตุ"
+              // text-[13px] as a class, not an inline fontSize: on phones the global
+              // 16px input rule (no iOS focus-zoom) has to win, and it cannot beat an inline style.
+              className="input-std text-[13px]"
               style={{
                 width: '100%', padding: '10px var(--space-3)', minHeight: 44,
                 background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-md)', fontSize: 13, outline: 'none',
+                borderRadius: 'var(--radius-md)', outline: 'none',
                 color: 'var(--color-text)', boxSizing: 'border-box',
               }}
             />
@@ -256,7 +260,10 @@ export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props)
           )}
         </div>
 
-        <div style={{padding: 'var(--space-4) var(--space-6)', borderTop: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)', background: 'var(--color-surface-2)', borderRadius: '0 0 var(--radius-xl) var(--radius-xl)'}}>
+        {/* Phones: the row wraps — stepper + total first, then the add button on its
+            own full-width row (it used to overlap the total at 390px). */}
+        <div className="wrap-phone modmodal-foot" style={{padding: 'var(--space-4) var(--space-6)', borderTop: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)', background: 'var(--color-surface-2)', borderRadius: '0 0 var(--radius-xl) var(--radius-xl)', flexShrink: 0}}>
+          <style>{`@media (max-width: 767px) { .modmodal-foot { padding: 12px 16px !important; row-gap: 10px !important; } }`}</style>
           <div style={{display: 'flex', alignItems: 'center', gap: 'var(--space-1)', padding: 'var(--space-1)', background: 'var(--color-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)'}}>
             <button onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="ลดจำนวน" className="icon-btn hit-44" style={{width: 36, height: 36, borderRadius: 'var(--radius-sm)', display: 'grid', placeItems: 'center'}}><Icon name="minus" size={14}/></button>
             <div className="num" aria-live="polite" style={{minWidth: 28, textAlign: 'center', fontWeight: 600}}>{qty}</div>
@@ -266,7 +273,7 @@ export default function ModifierModal({ item, onClose, onAdd, groupIds }: Props)
             <div style={{fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 500}}>ราคารวม</div>
             <div className="num" style={{fontSize: 22, fontWeight: 700, color: 'var(--color-primary)', letterSpacing: '-0.01em'}}>฿{(unitPrice * qty).toLocaleString()}</div>
           </div>
-          <button onClick={onConfirm} disabled={isLoading} className="btn btn-primary btn-lg pressable" style={{minWidth: 160, minHeight: 44, opacity: isLoading ? 0.5 : 1}}>
+          <button onClick={onConfirm} disabled={isLoading} className="btn btn-primary btn-lg pressable full-phone" style={{minWidth: 160, minHeight: 44, opacity: isLoading ? 0.5 : 1}}>
             <Icon name="plus" size={16}/> เพิ่มลงตะกร้า
           </button>
         </div>

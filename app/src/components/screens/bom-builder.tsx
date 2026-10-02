@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import Icon from '../icons';
-import { useToast, Tag, baht, Select, NumberInput } from '../app-common';
+import { useToast, Tag, baht, Select, NumberInput, MasterDetail, ModalShell } from '../app-common';
+import { useIsPhone } from '@/hooks/use-media-query';
 import { useStagger } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, useUpdateProduct, useUploadProductImage, useDeleteProductImage, type MenuItem, type Category } from '@/hooks/use-products';
@@ -26,6 +27,88 @@ type ApiProductType = 'MADE_TO_ORDER' | 'PRODUCED' | 'COMPONENT';
 // exVat() ถอดฐานก่อน VAT ออกมา เพื่อแสดง breakdown ใต้ช่องราคา และคิด margin จากรายได้จริง (ไม่รวม VAT).
 const VAT_RATE = 0.07;
 const exVat = (gross: number) => gross / (1 + VAT_RATE);
+
+// Phone-only rules (< 768px) the shared toolkit cannot express. The editor keeps its
+// inline desktop styles; these lift touch targets / input sizes to the phone minimums
+// and restack the dense rows (recipe line, modifier group header, cooking step).
+// `.bom-pop` marks pieces portaled to <body> (lot menu, photo preview) and `.bom-form`
+// form content inside a portaled ModalShell. Nothing here applies at >= 768px.
+const BOM_PHONE_CSS = `
+@media (max-width: 767px) {
+  .bom-screen input, .bom-screen textarea, .bom-form input, .bom-form textarea { font-size: 16px !important; min-height: 44px; }
+  .bom-screen button, .bom-form button, .bom-pop button { min-height: 44px !important; }
+  .bom-icon { min-width: 44px !important; width: auto !important; height: auto !important; }
+  .bom-btn-text { font-size: 13px !important; }
+
+  .bom-list-head { padding: 14px 16px 12px !important; }
+  .bom-screen .md-split-list > div { border-right: 0 !important; }
+  .bom-detail { padding: var(--screen-pad) !important; }
+
+  .bom-head { flex-wrap: wrap; align-items: flex-start !important; gap: 14px !important; padding: 16px !important; }
+  .bom-head-price { flex: 1 1 100%; justify-content: space-between; padding-top: 12px; border-top: 1px solid var(--color-border); }
+  .bom-name { flex-wrap: wrap; gap: 6px 10px !important; }
+  .bom-name h1 { white-space: normal !important; overflow-wrap: anywhere; font-size: 20px !important; line-height: 1.3; }
+  .bom-name input { flex: 1 1 100% !important; font-size: 20px !important; }
+  .bom-pill { padding: 0 12px !important; font-size: 13px !important; }
+  .bom-cat-menu { left: auto !important; right: 0; }
+  .bom-step { flex-direction: row !important; gap: 8px !important; }
+  .bom-step button { width: 44px !important; height: 44px !important; }
+  .bom-photo-btns button { font-size: 12px !important; min-width: 44px; }
+
+  .bom-sum { gap: 8px !important; }
+  .bom-sum > div { padding: 12px !important; }
+  .bom-card-head { flex-wrap: wrap; gap: 8px; padding: 12px 14px !important; }
+
+  .bom-row { grid-template-columns: 88px auto minmax(0, 1fr) auto 44px !important; grid-template-areas: 'info info info info info' 'qty unit ucost total del'; gap: 8px !important; padding: 12px 6px 12px 14px !important; }
+  .bom-row > .c-info { grid-area: info; padding-right: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; }
+  .bom-row > .c-info > div:first-child { flex: 1 1 100%; }
+  .bom-row > .c-info > div:nth-child(2) { flex: 1 1 auto; margin: 0 !important; font-size: 12px !important; }
+  .bom-row > .c-info > div:nth-child(3) { margin: 0 !important; }
+  .bom-row > .c-qty { grid-area: qty; width: 100%; box-sizing: border-box; }
+  .bom-row > .c-unit { grid-area: unit; }
+  .bom-row > .c-ucost { grid-area: ucost; text-align: left !important; white-space: nowrap; }
+  .bom-row > .c-ucost::before { content: '× '; }
+  .bom-row > .c-total { grid-area: total; white-space: nowrap; }
+  .bom-row > .c-total::before { content: '= '; font-weight: 400; color: var(--color-text-secondary); }
+  .bom-row > .c-del { grid-area: del; }
+  .bom-calc-btn { font-size: 13px !important; padding: 2px 8px !important; margin-left: auto; flex-shrink: 0; }
+  .bom-calc { padding: 10px 14px 14px !important; gap: 8px !important; }
+  .bom-total { grid-template-columns: minmax(0, 1fr) auto !important; padding-inline: 14px !important; }
+  .bom-total > div:last-child { display: none; }
+
+  .bom-actions > div { flex: 1; }
+  .bom-actions > div > button { flex: 1 1 0; min-width: 0 !important; }
+
+  .bom-group-head { flex-wrap: wrap; padding: 12px 14px !important; }
+  .bom-group-head > div:first-child { flex: 1 1 100% !important; }
+  .bom-group-head > button { margin-left: auto; }
+  .bom-opt { padding: 8px 6px 8px 14px !important; gap: 6px !important; }
+  .bom-opt-edit { padding: 14px !important; }
+  /* a flex:1 text input keeps its intrinsic ~20ch minimum and would push the price box out of the card */
+  .bom-opt-edit input[type='text'], .bom-step-add input { min-width: 0; }
+  .bom-recipe-row > button:last-child { margin-left: auto; }
+
+  .bom-step-row { display: grid !important; grid-template-columns: 22px minmax(0, 1fr) 44px; grid-template-areas: 'n text del' 'n move move'; gap: 2px 8px !important; padding: 10px 6px 6px 14px !important; align-items: start !important; }
+  .bom-step-row > .c-n { grid-area: n; padding-top: 12px; }
+  .bom-step-row > .c-text { grid-area: text; padding-top: 10px; }
+  .bom-step-row > .c-del { grid-area: del; }
+  .bom-step-row > .c-move { grid-area: move; flex-direction: row !important; gap: 6px !important; }
+  .bom-step-row > .c-move button { min-width: 44px; font-size: 13px !important; border: 1px solid var(--color-border) !important; border-radius: var(--radius-md) !important; }
+  .bom-step-add { padding: 10px 14px !important; }
+
+  /* Pinned footer of the detail pane: live cost / margin + Save, always above the tab bar. */
+  .bom-foot { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; padding: 8px var(--screen-pad); background: var(--color-surface); border-top: 1px solid var(--color-border); }
+  .bom-foot-info { flex: 1; min-width: 0; font-size: 12px; line-height: 1.35; color: var(--color-text-secondary); }
+  .bom-foot-info strong { display: block; font-size: 15px; font-weight: 700; color: var(--color-text); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bom-foot > button { flex-shrink: 0; min-height: 48px !important; }
+
+  .bom-modal-foot > button { flex: 1 1 0; justify-content: center; }
+  .bom-lot-menu button { font-size: 14px !important; }
+  .bom-lot-menu div { font-size: 12px !important; }
+  .bom-preview > button { top: calc(var(--top-inset, 0px) + 12px) !important; right: 12px !important; }
+  .bom-preview img { max-width: calc(100vw - 32px) !important; max-height: calc(var(--app-h, 100dvh) - 96px) !important; }
+}
+`;
 
 export default function BOMBuilder() {
   const toast = useToast();
@@ -61,11 +144,14 @@ export default function BOMBuilder() {
   const [editedSteps, setEditedSteps] = useState<CookingStepRead[]>([]);
   const [newStepText, setNewStepText] = useState('');
 
+  // Desktop / tablet open on the first recipe. Phones show one pane at a time
+  // (MasterDetail), so they start on the list and never auto-select.
+  const isPhone = useIsPhone();
   useEffect(() => {
-    if (!selectedId && products?.[0]) {
+    if (!isPhone && !selectedId && products?.[0]) {
       setSelectedId(products[0].id);
     }
-  }, [products, selectedId]);
+  }, [products, selectedId, isPhone]);
 
   // A freshly selected product starts clean; the load effects below only ever use
   // the raw setters, so loading server data never flips the unsaved-changes flag.
@@ -178,6 +264,12 @@ export default function BOMBuilder() {
     if (id === selectedId) return;
     if (isDirty && !(await confirmDiscard())) return;
     setSelectedId(id);
+  };
+
+  // Phones (MasterDetail back button): same unsaved-changes guard, then back to the list.
+  const backToList = async () => {
+    if (isDirty && !(await confirmDiscard())) return;
+    setSelectedId(null);
   };
 
   const saveRecipe = async () => {
@@ -311,14 +403,26 @@ export default function BOMBuilder() {
   const marginToneOf = (pct: number): 'success' | 'warning' | 'danger' => pct >= 65 ? 'success' : pct >= 50 ? 'warning' : 'danger';
 
   return (
-    <div style={{ display: 'flex', height: '100%', background: 'var(--color-bg)' }}>
-      {/* LEFT sidebar */}
-      <div style={{ width: 320, flexShrink: 0, background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--color-border)' }}>
+    <div className="bom-screen" style={{ display: 'flex', height: '100%', background: 'var(--color-bg)' }}>
+      <style>{BOM_PHONE_CSS}</style>
+      {/* Desktop: list + editor side by side. Phones: the list fills the screen; opening
+          a recipe swaps in the editor under a back bar, with Save pinned below it. */}
+      <MasterDetail
+        style={{ flex: 1 }}
+        listWidth={320}
+        hasSelection={selectedId != null}
+        onBack={() => { void backToList(); }}
+        backLabel="รายการเมนู"
+        detailTitle={selectedProduct?.name}
+        list={
+      // No flexShrink: 0 here — inside the MasterDetail pane (a column flex box) it would
+      // stop this root shrinking to the pane's height and the menu list would not scroll.
+      <div style={{ width: 320, background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column' }}>
+        <div className="bom-list-head" style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--color-border)' }}>
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 4 }}>P1 — Inventory</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}>สร้างเมนู</h2>
-            <button onClick={() => setAddMenuOpen(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)', flexShrink: 0 }} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={12} /> เพิ่มรายการ</button>
+            <button onClick={() => setAddMenuOpen(true)} className="bom-btn-text" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)', flexShrink: 0 }} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={12} /> เพิ่มรายการ</button>
           </div>
           <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>สูตรอาหาร · ต้นทุน · margin</div>
         </div>
@@ -326,7 +430,7 @@ export default function BOMBuilder() {
           <div style={{ position: 'absolute', left: 24, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', display: 'grid', placeItems: 'center' }}>
             <Icon name="search" size={16} color="var(--color-text-muted)" />
           </div>
-          <input type="text" placeholder="ค้นหาเมนู..." value={search} onChange={e => setSearch(e.target.value)}
+          <input type="text" placeholder="ค้นหาเมนู..." aria-label="ค้นหาเมนู" value={search} onChange={e => setSearch(e.target.value)}
             style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
           />
         </div>
@@ -411,9 +515,11 @@ export default function BOMBuilder() {
           })}
         </div>
       </div>
-
+        }
+        detail={
+      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
       {/* RIGHT panel */}
-      <div className="scroll" style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+      <div className="scroll bom-detail" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 24 }}>
         {!selectedProduct ? (
           <div style={{ padding: 60, textAlign: 'center', color: 'var(--color-text-muted)' }}>เลือกรายการจากรายการด้านซ้าย</div>
         ) : detailLoading ? (
@@ -478,6 +584,25 @@ export default function BOMBuilder() {
           </>
         )}
       </div>
+      {/* Phones: Save stays reachable while scrolling the editor — a footer of the
+          detail pane (above the tab bar), with the live cost / margin beside it. */}
+      {isPhone && selectedProduct && !detailLoading && (
+        <div className="bom-foot">
+          <div className="bom-foot-info">
+            {isComponent ? 'ต้นทุน/หน่วย' : `ต้นทุน ฿${costPerUnit.toFixed(2)}${isDirty ? ' · ยังไม่ได้บันทึก' : ''}`}
+            <strong style={isComponent ? undefined : { color: marginColorOf(marginPct) }}>
+              {isComponent ? `฿${costPerUnit.toFixed(2)}${isDirty ? ' · ยังไม่ได้บันทึก' : ''}` : `Margin ${marginPct.toFixed(1)}%`}
+            </strong>
+          </div>
+          <button onClick={saveRecipe} disabled={updateRecipe.isPending || updateProduct.isPending} className="pressable"
+            style={{ padding: '10px 22px', fontSize: 15, fontWeight: 600, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', border: 'none', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', opacity: updateRecipe.isPending || updateProduct.isPending ? 0.6 : 1 }}>
+            <Icon name="check" size={16} />{updateRecipe.isPending || updateProduct.isPending ? 'กำลังบันทึก...' : 'บันทึกสูตร'}
+          </button>
+        </div>
+      )}
+      </div>
+        }
+      />
 
       {picker && (
         <IngredientPicker
@@ -578,9 +703,10 @@ const EditableMenuName = ({ name, onRename }: { name: string; onRename: (n: stri
     };
     const cancel = () => { setDraft(name); setEditing(false); };
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 8px' }}>
+      <div className="bom-name" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 8px' }}>
         <input
           autoFocus
+          aria-label="ชื่อเมนู"
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onKeyDown={e => {
@@ -601,7 +727,7 @@ const EditableMenuName = ({ name, onRename }: { name: string; onRename: (n: stri
     );
   }
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '2px 0 8px', minWidth: 0 }}>
+    <div className="bom-name" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '2px 0 8px', minWidth: 0 }}>
       <h1
         onClick={() => setEditing(true)}
         title="คลิกเพื่อเปลี่ยนชื่อ"
@@ -638,7 +764,7 @@ const StepButtons = ({ value, step, min, max, onChange }: { value: number; step:
     e.currentTarget.style.borderColor = on ? 'var(--color-accent)' : 'var(--color-border)';
   };
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div className="bom-step" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <button type="button" aria-label="เพิ่ม" style={btn} onClick={() => onChange(clamp(value + step))} onMouseEnter={e => hover(e, true)} onMouseLeave={e => hover(e, false)}><Icon name="plus" size={15} /></button>
       <button type="button" aria-label="ลด" style={btn} onClick={() => onChange(clamp(value - step))} onMouseEnter={e => hover(e, true)} onMouseLeave={e => hover(e, false)}><Icon name="minus" size={15} /></button>
     </div>
@@ -647,7 +773,7 @@ const StepButtons = ({ value, step, min, max, onChange }: { value: number; step:
 
 const RightPanel = ({ product, isComponent, recipe, editedPrice, editedCategoryId, categories, inventoryItems, totalCost, isProduced, batchSize, editedServingsPerBatch, onServingsPerBatchChange, costPerUnit, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onCategoryChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, onDuplicate, onRename, duplicating, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen }: RightPanelProps) => (
   <>
-    <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
+    <div className="bom-head" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
       <ProductImageControl product={product} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500 }}>{product.nameEn}</div>
@@ -661,7 +787,7 @@ const RightPanel = ({ product, isComponent, recipe, editedPrice, editedCategoryI
           )}
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
+      <div className="bom-head-price" style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
         <div>
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>
             {isComponent ? 'ต้นทุน/หน่วย (ประมาณ)' : 'ราคาขาย'}
@@ -679,6 +805,7 @@ const RightPanel = ({ product, isComponent, recipe, editedPrice, editedCategoryI
                   <span style={{ fontSize: 18, color: 'var(--color-text-secondary)' }}>฿</span>
                   <NumberInput min={0} step={5} value={editedPrice}
                     onChange={onPriceChange}
+                    aria-label="ราคาขาย (บาท รวม VAT)"
                     className="num no-spin"
                     style={{ width: 78, fontSize: 30, fontWeight: 700, textAlign: 'right', border: 'none', borderBottom: '2px solid var(--color-border)', outline: 'none', padding: '4px 0', background: 'transparent', fontFamily: 'inherit', letterSpacing: '-0.02em' }}
                     onFocus={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
@@ -702,6 +829,7 @@ const RightPanel = ({ product, isComponent, recipe, editedPrice, editedCategoryI
                   integer
                   value={editedServingsPerBatch}
                   onChange={onServingsPerBatchChange}
+                  aria-label="จำนวนชิ้นต่อแบทช์"
                   className="num no-spin"
                   style={{ width: 56, fontSize: 30, fontWeight: 700, textAlign: 'right', border: 'none', borderBottom: '2px solid var(--color-accent)', outline: 'none', padding: '4px 0', background: 'transparent', fontFamily: 'inherit', letterSpacing: '-0.02em', color: 'var(--color-primary-700)' }}
                   onFocus={e => e.target.style.borderBottomColor = 'var(--color-accent)'}
@@ -716,7 +844,7 @@ const RightPanel = ({ product, isComponent, recipe, editedPrice, editedCategoryI
       </div>
     </div>
 
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${isComponent ? 2 : 4}, minmax(0, 1fr))`, gap: 12, marginBottom: 16 }}>
+    <div className="cols-2-phone bom-sum" style={{ display: 'grid', gridTemplateColumns: `repeat(${isComponent ? 2 : 4}, minmax(0, 1fr))`, gap: 12, marginBottom: 16 }}>
       <SummaryCard
         label={isProduced ? 'ต้นทุนวัตถุดิบ/ชิ้น' : 'ต้นทุนวัตถุดิบ'}
         value={`฿${costPerUnit.toFixed(2)}`}
@@ -740,7 +868,7 @@ const RightPanel = ({ product, isComponent, recipe, editedPrice, editedCategoryI
     </div>
 
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="bom-card-head" style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: 14, fontWeight: 700 }}>ส่วนประกอบ (Bill of Materials)</div>
         <button onClick={onPickerOpen} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={14} />เพิ่มวัตถุดิบ</button>
       </div>
@@ -752,7 +880,7 @@ const RightPanel = ({ product, isComponent, recipe, editedPrice, editedCategoryI
         </div>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 70px 100px 90px 36px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+          <div className="hide-phone" style={{ display: 'grid', gridTemplateColumns: '1fr 110px 70px 100px 90px 36px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
             <div>วัตถุดิบ</div><div style={{ textAlign: 'right' }}>ปริมาณ</div><div>หน่วย</div><div style={{ textAlign: 'right' }}>ราคา/หน่วย</div><div style={{ textAlign: 'right' }}>รวม</div><div></div>
           </div>
           {recipe.map((r, idx) => {
@@ -773,13 +901,13 @@ const RightPanel = ({ product, isComponent, recipe, editedPrice, editedCategoryI
               />
             );
           })}
-          <div style={{ padding: '14px 20px', display: 'grid', gridTemplateColumns: '1fr 90px 36px', gap: 12, alignItems: 'center', background: 'var(--color-surface-2)', borderTop: '2px solid var(--color-border)' }}>
+          <div className="bom-total" style={{ padding: '14px 20px', display: 'grid', gridTemplateColumns: '1fr 90px 36px', gap: 12, alignItems: 'center', background: 'var(--color-surface-2)', borderTop: '2px solid var(--color-border)' }}>
             <div style={{ fontSize: 13, fontWeight: 700 }}>{isProduced ? `ต้นทุนรวม/แบทช์ (${batchSize} ชิ้น)` : 'ต้นทุนรวมต่อหน่วยขาย'}</div>
             <div className="num" style={{ fontSize: 16, fontWeight: 800, textAlign: 'right' }}>฿{totalCost.toFixed(2)}</div>
             <div></div>
           </div>
           {isProduced && (
-            <div style={{ padding: '10px 20px', display: 'grid', gridTemplateColumns: '1fr 90px 36px', gap: 12, alignItems: 'center', background: 'var(--color-accent-50)', borderTop: '1px solid var(--color-border)' }}>
+            <div className="bom-total" style={{ padding: '10px 20px', display: 'grid', gridTemplateColumns: '1fr 90px 36px', gap: 12, alignItems: 'center', background: 'var(--color-accent-50)', borderTop: '1px solid var(--color-border)' }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-primary-700)' }}>÷ {batchSize} ชิ้น = ต้นทุน/ชิ้น</div>
               <div className="num" style={{ fontSize: 15, fontWeight: 800, textAlign: 'right', color: 'var(--color-primary-700)' }}>฿{costPerUnit.toFixed(2)}</div>
               <div></div>
@@ -789,7 +917,7 @@ const RightPanel = ({ product, isComponent, recipe, editedPrice, editedCategoryI
       )}
     </div>
 
-    <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className="bom-actions" style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'space-between', alignItems: 'center' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button onClick={onDuplicate} disabled={duplicating} title="คัดลอกเมนูนี้ พร้อมสูตร ตัวเลือก และขั้นตอนทำ" style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: duplicating ? 'not-allowed' : 'pointer', opacity: duplicating ? 0.6 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, minWidth: 132, whiteSpace: 'nowrap', fontFamily: 'inherit', transition: 'background-color 150ms var(--ease-out)' }} onMouseEnter={e => { if (!duplicating) e.currentTarget.style.background = 'var(--color-surface-2)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
           <Icon name="copy" size={14} /> {duplicating ? 'กำลังคัดลอก...' : 'คัดลอก'}
@@ -798,7 +926,8 @@ const RightPanel = ({ product, isComponent, recipe, editedPrice, editedCategoryI
           <Icon name="trash" size={14} /> ลบเมนูนี้
         </button>
       </div>
-      <button onClick={onSave} disabled={saving} style={{ padding: '10px 20px', fontSize: 14, fontWeight: 600, background: saving ? 'var(--color-surface-2)' : 'var(--color-primary)', color: saving ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }} onMouseEnter={e => { if (!saving) e.currentTarget.style.background = 'var(--color-primary-700)'; }} onMouseLeave={e => { if (!saving) e.currentTarget.style.background = 'var(--color-primary)'; }}>
+      {/* Phones save from the pinned footer of the detail pane instead. */}
+      <button onClick={onSave} disabled={saving} className="hide-phone" style={{ padding: '10px 20px', fontSize: 14, fontWeight: 600, background: saving ? 'var(--color-surface-2)' : 'var(--color-primary)', color: saving ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }} onMouseEnter={e => { if (!saving) e.currentTarget.style.background = 'var(--color-primary-700)'; }} onMouseLeave={e => { if (!saving) e.currentTarget.style.background = 'var(--color-primary)'; }}>
         <Icon name="check" size={16} />{saving ? 'กำลังบันทึก...' : 'บันทึกสูตร'}
       </button>
     </div>
@@ -847,7 +976,11 @@ const CategorySelector = ({ value, categories, onChange }: {
     <div ref={ref} style={{ position: 'relative' }}>
       <button
         type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`หมวดหมู่: ${current ? current.label : 'ยังไม่ระบุ'}`}
         onClick={() => setOpen(v => !v)}
+        className="bom-pill"
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 4,
           padding: '3px 8px', fontSize: 11, fontWeight: 600, borderRadius: 20,
@@ -862,7 +995,7 @@ const CategorySelector = ({ value, categories, onChange }: {
         <Icon name="chevronDown" size={10} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }} />
       </button>
       {open && (
-        <div style={{
+        <div className="bom-cat-menu" style={{
           position: 'absolute', top: 'calc(100% + 4px)', left: 0,
           background: 'var(--color-surface)', border: '1px solid var(--color-border)',
           borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 200,
@@ -973,6 +1106,7 @@ const LotPicker = ({ inv }: { inv: InventoryItem }) => {
         aria-expanded={open}
         onClick={() => setOpen(v => !v)}
         title="เลือกล็อตที่ใช้คิดต้นทุน (มีผลกับทุกเมนูที่ใช้วัตถุดิบนี้)"
+        className="bom-pill"
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 4,
           padding: '2px 7px', fontSize: 11, fontWeight: 600, borderRadius: 20,
@@ -1020,7 +1154,7 @@ const LotPickerMenu = ({ inv, pos, menuRef, onClose }: {
   });
 
   return (
-    <div ref={menuRef} role="menu" style={{
+    <div ref={menuRef} role="menu" className="bom-pop bom-lot-menu" style={{
       position: 'fixed', left: pos.left,
       top: pos.up ? undefined : pos.top,
       bottom: pos.up ? window.innerHeight - pos.top : undefined,
@@ -1080,13 +1214,15 @@ const BOMRow = ({ inv, qty, lineCost, stockOk, isLast, onQtyChange, onRemove }: 
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 70px 100px 90px 36px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: (!isLast || showCalc) ? '1px solid var(--color-border)' : 'none' }}>
-        <div>
+      <div className="bom-row" style={{ display: 'grid', gridTemplateColumns: '1fr 110px 70px 100px 90px 36px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: (!isLast || showCalc) ? '1px solid var(--color-border)' : 'none' }}>
+        <div className="c-info">
           <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
             {inv.name}
             <button
               onClick={() => setShowCalc(v => !v)}
               title="คำนวณต้นทุนจากหน่วยซื้อ"
+              aria-expanded={showCalc}
+              className="bom-calc-btn"
               style={{ background: showCalc ? 'var(--color-accent-50)' : 'transparent', border: 'none', cursor: 'pointer', padding: '2px 5px', borderRadius: 4, fontSize: 11, color: showCalc ? 'var(--color-accent)' : 'var(--color-text-muted)', fontFamily: 'inherit' }}
             >
               ÷ คำนวณ
@@ -1095,20 +1231,20 @@ const BOMRow = ({ inv, qty, lineCost, stockOk, isLast, onQtyChange, onRemove }: 
           <div style={{ fontSize: 11, color: stockOk ? 'var(--color-text-muted)' : 'var(--color-warning)', marginTop: 2 }}>คงเหลือ {inv.stock.toLocaleString()} {inv.unit}{!stockOk && ' · ใกล้หมด'}</div>
           <div style={{ marginTop: 4 }}><LotPicker inv={inv} /></div>
         </div>
-        <NumberInput step={1} min={0} value={qty} onChange={onQtyChange} className="num" style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, border: '1px solid var(--color-border)', borderRadius: 6, padding: '6px 10px', outline: 'none', fontFamily: 'inherit', background: 'var(--color-surface)' }} onFocus={e => e.target.style.borderColor = 'var(--color-accent)'} onBlur={e => e.target.style.borderColor = 'var(--color-border)'} />
-        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{inv.unit}</div>
-        <div className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'right' }}>฿{inv.costPerUnit.toFixed(2)}</div>
-        <div className="num" style={{ fontSize: 14, fontWeight: 700, textAlign: 'right' }}>฿{lineCost.toFixed(2)}</div>
-        <button onClick={onRemove} title="ลบวัตถุดิบ" style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center', padding: 6, borderRadius: 6, color: 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}><Icon name="trash" size={14} /></button>
+        <NumberInput step={1} min={0} value={qty} onChange={onQtyChange} aria-label={`ปริมาณ ${inv.name} (${inv.unit})`} className="num c-qty" style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, border: '1px solid var(--color-border)', borderRadius: 6, padding: '6px 10px', outline: 'none', fontFamily: 'inherit', background: 'var(--color-surface)' }} onFocus={e => e.target.style.borderColor = 'var(--color-accent)'} onBlur={e => e.target.style.borderColor = 'var(--color-border)'} />
+        <div className="c-unit" style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{inv.unit}</div>
+        <div className="num c-ucost" style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'right' }}>฿{inv.costPerUnit.toFixed(2)}</div>
+        <div className="num c-total" style={{ fontSize: 14, fontWeight: 700, textAlign: 'right' }}>฿{lineCost.toFixed(2)}</div>
+        <button onClick={onRemove} title="ลบวัตถุดิบ" aria-label={`ลบ ${inv.name} ออกจากสูตร`} className="c-del" style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center', padding: 6, borderRadius: 6, color: 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}><Icon name="trash" size={14} /></button>
       </div>
 
       {showCalc && (
-        <div style={{ padding: '10px 20px 14px', background: 'var(--color-accent-50)', borderBottom: isLast ? 'none' : '1px solid var(--color-border)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="bom-calc" style={{ padding: '10px 20px 14px', background: 'var(--color-accent-50)', borderBottom: isLast ? 'none' : '1px solid var(--color-border)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>ซื้อ:</span>
-          <input type="number" min={0} step={0.1} value={pkgQty} onChange={e => setPkgQty(e.target.value)} placeholder="ปริมาณ" style={{ width: 70, padding: '5px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
+          <input type="number" inputMode="decimal" aria-label="ปริมาณที่ซื้อ" min={0} step={0.1} value={pkgQty} onChange={e => setPkgQty(e.target.value)} placeholder="ปริมาณ" style={{ width: 70, padding: '5px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
           <Select value={pkgUnit} onChange={setPkgUnit} ariaLabel="หน่วยซื้อ" style={{ width: 'auto' }} triggerStyle={{ padding: '5px 8px', fontSize: 13, borderRadius: 6, minWidth: 72 }} menuMaxHeight={220} options={PKG_UNITS.map(u => ({ value: u, label: u }))} />
           <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>ราคา</span>
-          <input type="number" min={0} step={1} value={pkgPrice} onChange={e => setPkgPrice(e.target.value)} placeholder="฿" style={{ width: 80, padding: '5px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
+          <input type="number" inputMode="decimal" aria-label="ราคาที่ซื้อ (บาท)" min={0} step={1} value={pkgPrice} onChange={e => setPkgPrice(e.target.value)} placeholder="฿" style={{ width: 80, padding: '5px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
           {derived !== null ? (
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-accent)', whiteSpace: 'nowrap' }}>
               → ฿{derived.toFixed(4)}/{inv.unit} <span style={{ fontWeight: 400, color: 'var(--color-text-secondary)', fontSize: 11 }}>(ต้นทุน/หน่วยใช้)</span>
@@ -1156,7 +1292,7 @@ const ModifierSection = ({
 
   return (
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', marginTop: 16 }}>
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="bom-card-head" style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: 14, fontWeight: 700 }}>ตัวเลือก (Modifier Groups)</div>
         <button onClick={onPickerOpen} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, background: 'var(--color-surface-2)', color: 'var(--color-text)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-accent-50)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-surface-2)'}>
           <Icon name="plus" size={14} /> เปลี่ยนตัวเลือก
@@ -1213,7 +1349,7 @@ const ModifierGroupRow = ({ productId, group, inventoryItems }: {
 
   return (
     <div style={{ borderBottom: '1px solid var(--color-border)' }}>
-      <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 10, background: 'var(--color-surface-2)' }}>
+      <div className="bom-group-head" style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 10, background: 'var(--color-surface-2)' }}>
         <div style={{ flex: 1, fontSize: 16, fontWeight: 700 }}>{group.name}</div>
         <Tag tone={group.required ? 'danger' : 'warning'}>{group.required ? 'จำเป็น' : 'ตัวเลือก'}</Tag>
         <Tag tone="info">{isRadio ? 'เลือกได้ 1' : 'เลือกได้หลาย'}</Tag>
@@ -1240,12 +1376,12 @@ const ModifierGroupRow = ({ productId, group, inventoryItems }: {
         <ModifierOptionRow key={modifier.id} productId={productId} groupId={group.id} modifier={modifier} inventoryItems={inventoryItems} />
       ))}
       {addOpen && (
-        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--color-border)', background: 'var(--color-accent-50)' }}>
+        <div className="bom-opt-edit" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--color-border)', background: 'var(--color-accent-50)' }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <input type="text" placeholder="ชื่อตัวเลือก..." value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} style={{ flex: 1, padding: '10px 14px', fontSize: 15, border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} autoFocus />
+            <input type="text" placeholder="ชื่อตัวเลือก..." aria-label="ชื่อตัวเลือกใหม่" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} style={{ flex: 1, padding: '10px 14px', fontSize: 15, border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} autoFocus />
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-secondary)' }}>฿</span>
-              <input type="number" step="1" placeholder="0" value={newDelta} onChange={e => setNewDelta(e.target.value)} title="ส่วนต่างราคา (ติดลบได้)" style={{ width: 90, padding: '10px 14px', fontSize: 15, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
+              <input type="number" inputMode="decimal" step="1" placeholder="0" value={newDelta} onChange={e => setNewDelta(e.target.value)} title="ส่วนต่างราคา (ติดลบได้)" aria-label="ส่วนต่างราคา (บาท)" style={{ width: 90, minWidth: 0, padding: '10px 14px', fontSize: 15, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -1312,26 +1448,26 @@ const ModifierOptionRow = ({ productId, groupId, modifier, inventoryItems }: {
 
   return (
     <div style={{ borderTop: '1px solid var(--color-border)' }}>
-      <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div className="bom-opt" style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{modifier.name}</div>
         </div>
         <div className="num" style={{ fontSize: 15, fontWeight: 600, minWidth: 56, textAlign: 'right', color: deltaNum === 0 ? 'var(--color-text-muted)' : 'var(--color-text)' }}>{fmtDelta(deltaNum)}</div>
-        <button onClick={() => setEditing(v => !v)} title="แก้ไขตัวเลือก" aria-label={`แก้ไข ${modifier.name}`} style={{ display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 8, background: editing ? 'var(--color-accent-50)' : 'transparent', border: 'none', cursor: 'pointer', color: editing ? 'var(--color-accent)' : 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { if (!editing) { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-accent)'; } }} onMouseLeave={e => { if (!editing) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; } }}>
+        <button onClick={() => setEditing(v => !v)} title="แก้ไขตัวเลือก" aria-label={`แก้ไข ${modifier.name}`} aria-expanded={editing} className="bom-icon" style={{ display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 8, background: editing ? 'var(--color-accent-50)' : 'transparent', border: 'none', cursor: 'pointer', color: editing ? 'var(--color-accent)' : 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { if (!editing) { e.currentTarget.style.background = 'var(--color-accent-50)'; e.currentTarget.style.color = 'var(--color-accent)'; } }} onMouseLeave={e => { if (!editing) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; } }}>
           <Icon name="pencil" size={17} />
         </button>
-        <button onClick={handleDelete} disabled={deleteModifier.isPending} title="ลบตัวเลือก" aria-label={`ลบ ${modifier.name}`} style={{ display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 8, background: 'transparent', border: 'none', cursor: deleteModifier.isPending ? 'not-allowed' : 'pointer', color: 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
+        <button onClick={handleDelete} disabled={deleteModifier.isPending} title="ลบตัวเลือก" aria-label={`ลบ ${modifier.name}`} className="bom-icon" style={{ display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 8, background: 'transparent', border: 'none', cursor: deleteModifier.isPending ? 'not-allowed' : 'pointer', color: 'var(--color-text-muted)', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
           {deleteModifier.isPending ? '…' : <Icon name="trash" size={17} />}
         </button>
       </div>
 
       {editing && (
-        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--color-surface-2)', borderTop: '1px solid var(--color-border)' }}>
+        <div className="bom-opt-edit" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--color-surface-2)', borderTop: '1px solid var(--color-border)' }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="ชื่อตัวเลือก" style={{ flex: 1, padding: '10px 14px', fontSize: 15, border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
+            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="ชื่อตัวเลือก" aria-label="ชื่อตัวเลือก" style={{ flex: 1, padding: '10px 14px', fontSize: 15, border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-secondary)' }}>฿</span>
-              <input type="number" step="1" value={delta} onChange={e => setDelta(e.target.value)} title="ส่วนต่างราคา (ติดลบได้)" style={{ width: 90, padding: '10px 14px', fontSize: 15, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
+              <input type="number" inputMode="decimal" step="1" value={delta} onChange={e => setDelta(e.target.value)} title="ส่วนต่างราคา (ติดลบได้)" aria-label="ส่วนต่างราคา (บาท)" style={{ width: 90, minWidth: 0, padding: '10px 14px', fontSize: 15, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 8, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
@@ -1406,7 +1542,7 @@ const ModifierRecipeEditor = ({ productId, modifierId, inventoryItems }: {
       ) : rows.length === 0 ? (
         <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: 8 }}>{t.modifierRecipe.empty}</div>
       ) : rows.map((row, idx) => (
-        <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div key={idx} className="bom-recipe-row" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <Select
             value={row.inventory_item_id}
             onChange={v => updateRow(idx, { inventory_item_id: v })}
@@ -1416,15 +1552,15 @@ const ModifierRecipeEditor = ({ productId, modifierId, inventoryItems }: {
             menuMaxHeight={240}
             options={[{ value: '', label: t.modifierRecipe.selectIngredient }, ...inventoryItems.map(i => ({ value: i.id, label: i.name }))]}
           />
-          <input type="number" step={0.1} value={row.quantity} onChange={e => updateRow(idx, { quantity: e.target.value })} title={t.modifierRecipe.qtyTitle} style={{ width: 84, padding: '6px 10px', fontSize: 13, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
+          <input type="number" inputMode="decimal" step={0.1} value={row.quantity} onChange={e => updateRow(idx, { quantity: e.target.value })} title={t.modifierRecipe.qtyTitle} aria-label={t.modifierRecipe.qtyTitle} style={{ width: 84, padding: '6px 10px', fontSize: 13, textAlign: 'right', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)' }} />
           <div style={{ display: 'flex', border: '1px solid var(--color-border)', borderRadius: 6, overflow: 'hidden' }}>
             {(['override', 'delta'] as const).map(m => (
-              <button key={m} onClick={() => updateRow(idx, { mode: m })} style={{ padding: '6px 10px', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: row.mode === m ? 'var(--color-primary)' : 'var(--color-surface)', color: row.mode === m ? 'var(--color-text-inverse)' : 'var(--color-text-secondary)' }}>
+              <button key={m} onClick={() => updateRow(idx, { mode: m })} aria-pressed={row.mode === m} style={{ padding: '6px 10px', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: row.mode === m ? 'var(--color-primary)' : 'var(--color-surface)', color: row.mode === m ? 'var(--color-text-inverse)' : 'var(--color-text-secondary)' }}>
                 {m === 'override' ? t.modifierRecipe.modeOverride : t.modifierRecipe.modeDelta}
               </button>
             ))}
           </div>
-          <button onClick={() => removeRow(idx)} title={t.modifierRecipe.removeRow} style={{ display: 'grid', placeItems: 'center', width: 28, height: 28, borderRadius: 6, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
+          <button onClick={() => removeRow(idx)} title={t.modifierRecipe.removeRow} aria-label={t.modifierRecipe.removeRow} className="bom-icon" style={{ display: 'grid', placeItems: 'center', width: 28, height: 28, borderRadius: 6, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
             <Icon name="trash" size={13} />
           </button>
         </div>
@@ -1524,7 +1660,7 @@ const ProductImageControl = ({ product }: { product: MenuItem }) => {
         )}
       </div>
       <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={onPick} style={{ display: 'none' }} />
-      <div style={{ display: 'flex', gap: 4 }}>
+      <div className="bom-photo-btns" style={{ display: 'flex', gap: 4 }}>
         <button onClick={() => (product.imageUrl ? editExisting() : fileRef.current?.click())} disabled={busy} style={{ padding: '4px 8px', fontSize: 11, fontWeight: 600, background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 6, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
           {product.imageUrl ? 'เปลี่ยนรูป' : '＋ รูป'}
         </button>
@@ -1549,6 +1685,7 @@ const ProductImageControl = ({ product }: { product: MenuItem }) => {
           role="dialog"
           aria-modal="true"
           aria-label={`รูป ${product.name}`}
+          className="bom-pop bom-preview"
           style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.8)', display: 'grid', placeItems: 'center', padding: 24, cursor: 'zoom-out' }}
         >
           {/* Full-res zoom view, rendered only when opened — keep a plain <img> so the
@@ -1565,6 +1702,7 @@ const ProductImageControl = ({ product }: { product: MenuItem }) => {
             type="button"
             onClick={() => setPreview(false)}
             aria-label="ปิด"
+            className="bom-icon"
             style={{ position: 'absolute', top: 16, right: 16, width: 40, height: 40, borderRadius: 20, border: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: 20, lineHeight: 1, cursor: 'pointer', display: 'grid', placeItems: 'center' }}
           >
             ✕
@@ -1593,11 +1731,11 @@ const ModifierGroupPicker = ({ currentGroupIds, allGroups, onClose, onConfirm, s
 
   return (
     <div className="modal-backdrop" style={{ alignItems: 'center', padding: 'var(--space-5)' }} onClick={onClose}>
-      <div className="modal-card" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, maxHeight: '75vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: 20, borderBottom: '1px solid var(--color-border)' }}>
+      <div className="modal-card" role="dialog" aria-modal="true" aria-label="เลือก Modifier Groups" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, maxHeight: '75vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="pad-phone" style={{ padding: 20, borderBottom: '1px solid var(--color-border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <div style={{ fontSize: 16, fontWeight: 700 }}>เลือก Modifier Groups</div>
-            <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8, display: 'grid', placeItems: 'center' }}><Icon name="x" size={18} /></button>
+            <button onClick={onClose} aria-label="ปิด" className="bom-icon" style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8, display: 'grid', placeItems: 'center' }}><Icon name="x" size={18} /></button>
           </div>
           <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
             {allGroups.length} กลุ่มทั้งหมด
@@ -1620,7 +1758,7 @@ const ModifierGroupPicker = ({ currentGroupIds, allGroups, onClose, onConfirm, s
                     {group.options.length} ตัวเลือก · {group.type === 'radio' ? 'เลือกได้ 1' : 'เลือกได้หลาย'}{group.required ? ' · จำเป็น' : ''}
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                <div className="hide-phone" style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                   {group.options.slice(0, 3).map(o => <Tag key={o.id} tone="neutral">{o.label}</Tag>)}
                   {group.options.length > 3 && <Tag tone="neutral">+{group.options.length - 3}</Tag>}
                 </div>
@@ -1628,7 +1766,7 @@ const ModifierGroupPicker = ({ currentGroupIds, allGroups, onClose, onConfirm, s
             );
           })}
         </div>
-        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <div className="bom-modal-foot" style={{ padding: '12px 16px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
           <button onClick={() => onConfirm([...selected])} disabled={saving} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: saving ? 'var(--color-surface-2)' : 'var(--color-primary)', color: saving ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6, transition: 'background 150ms var(--ease-out)' }}>
             <Icon name="check" size={14} />{saving ? 'กำลังบันทึก...' : `บันทึก ${selected.size} กลุ่ม`}
@@ -1660,8 +1798,8 @@ const IngredientPicker = ({ existingIds, inventory, onConfirm, onClose }: {
 
   return (
     <div className="modal-backdrop" style={{ alignItems: 'center', padding: 'var(--space-5)' }} onClick={onClose}>
-      <div className="modal-card" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, maxHeight: '75vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: 20, borderBottom: '1px solid var(--color-border)' }}>
+      <div className="modal-card bom-form" role="dialog" aria-modal="true" aria-label="เลือกวัตถุดิบ" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, maxHeight: '75vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="pad-phone" style={{ padding: 20, borderBottom: '1px solid var(--color-border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <div>
               <div style={{ fontSize: 16, fontWeight: 700 }}>เลือกวัตถุดิบ</div>
@@ -1670,11 +1808,11 @@ const IngredientPicker = ({ existingIds, inventory, onConfirm, onClose }: {
                 {selected.size > 0 && <span style={{ color: 'var(--color-accent)', fontWeight: 600 }}> · เลือก {selected.size} รายการ</span>}
               </div>
             </div>
-            <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8, display: 'grid', placeItems: 'center' }}><Icon name="x" size={18} /></button>
+            <button onClick={onClose} aria-label="ปิด" className="bom-icon" style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8, display: 'grid', placeItems: 'center' }}><Icon name="x" size={18} /></button>
           </div>
           <div style={{ position: 'relative' }}>
             <div style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', display: 'grid', placeItems: 'center' }}><Icon name="search" size={16} color="var(--color-text-muted)" /></div>
-            <input type="text" placeholder="ค้นหาวัตถุดิบ..." autoFocus value={q} onChange={e => setQ(e.target.value)} style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+            <input type="text" placeholder="ค้นหาวัตถุดิบ..." aria-label="ค้นหาวัตถุดิบ" autoFocus value={q} onChange={e => setQ(e.target.value)} style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
           </div>
         </div>
 
@@ -1687,7 +1825,7 @@ const IngredientPicker = ({ existingIds, inventory, onConfirm, onClose }: {
               return (
                 <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', background: 'var(--color-surface)', border: '1px solid var(--color-accent)', borderRadius: 20, fontSize: 12, fontWeight: 600, color: 'var(--color-primary-700)' }}>
                   {inv.name}
-                  <button onClick={() => toggle(id)} aria-label={`เอา ${inv.name} ออก`} title="เอาออก" style={{ minWidth: 24, minHeight: 24, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'grid', placeItems: 'center', color: 'var(--color-text-muted)', lineHeight: 1 }}>
+                  <button onClick={() => toggle(id)} aria-label={`เอา ${inv.name} ออก`} title="เอาออก" className="bom-icon" style={{ minWidth: 24, minHeight: 24, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, display: 'grid', placeItems: 'center', color: 'var(--color-text-muted)', lineHeight: 1 }}>
                     <Icon name="x" size={11} />
                   </button>
                 </span>
@@ -1715,7 +1853,7 @@ const IngredientPicker = ({ existingIds, inventory, onConfirm, onClose }: {
           })}
         </div>
 
-        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <div className="bom-modal-foot" style={{ padding: '12px 16px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
           <button onClick={() => canAdd && onConfirm([...selected])} disabled={!canAdd} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: canAdd ? 'var(--color-primary)' : 'var(--color-surface-2)', color: canAdd ? 'var(--color-text-inverse)' : 'var(--color-text-muted)', border: 'none', borderRadius: 8, cursor: canAdd ? 'pointer' : 'not-allowed', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6, transition: 'background 150ms var(--ease-out)' }} onMouseEnter={e => { if (canAdd) e.currentTarget.style.background = 'var(--color-primary-700)'; }} onMouseLeave={e => { if (canAdd) e.currentTarget.style.background = 'var(--color-primary)'; }}>
             <Icon name="plus" size={14} /> เพิ่ม {selected.size > 0 ? `${selected.size} รายการ` : 'วัตถุดิบ'}
@@ -1742,38 +1880,27 @@ const BomFormField = ({ label, children }: { label: string; children: React.Reac
   </div>
 );
 
-const BomModalActions = ({ children }: { children: React.ReactNode }) => (
-  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid var(--color-border)', marginTop: 8 }}>{children}</div>
-);
-
-const BomModalShell = ({ title, subtitle, onClose, children }: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode }) => (
-  <div className="modal-backdrop" style={{ alignItems: 'center', padding: 'var(--space-5)' }} onClick={onClose}>
-    <div className="modal-card" role="dialog" aria-modal="true" aria-label={title} onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: 20, borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 700 }}>{title}</div>
-          {subtitle && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{subtitle}</div>}
-        </div>
-        <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8, display: 'grid', placeItems: 'center' }}><Icon name="x" size={18} /></button>
-      </div>
-      <div className="scroll" style={{ overflow: 'auto', padding: 20, flex: 1 }}>{children}</div>
-    </div>
-  </div>
+// The add / delete / discard dialogs sit on the shared <ModalShell>: scrollable body,
+// pinned action row, never taller than the visible screen, focus trap + Esc + restore.
+// `actions` is the pinned footer (was an action row at the end of the scroll area).
+const BomModalShell = ({ title, subtitle, onClose, actions, busy, children }: { title: string; subtitle?: string; onClose: () => void; actions: React.ReactNode; busy?: boolean; children: React.ReactNode }) => (
+  <ModalShell title={title} subtitle={subtitle} onClose={onClose} width={520} busy={busy} footer={actions}>
+    <div className="bom-form">{children}</div>
+  </ModalShell>
 );
 
 const DiscardConfirmModal = ({ onDiscard, onCancel }: {
   onDiscard: () => void; onCancel: () => void;
 }) => (
-  <BomModalShell title="ยังไม่ได้บันทึก" subtitle="มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก" onClose={onCancel}>
-    <div style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: 20, lineHeight: 1.7 }}>
-      หากออกตอนนี้ การเปลี่ยนแปลงที่แก้ไว้จะหายไป ต้องการทิ้งการเปลี่ยนแปลงหรือไม่?
-    </div>
-    <BomModalActions>
+  <BomModalShell title="ยังไม่ได้บันทึก" subtitle="มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก" onClose={onCancel} actions={<>
       <button onClick={onCancel} style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>อยู่ต่อ</button>
-      <button onClick={onDiscard} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'var(--color-danger-strong)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }}>
+      <button onClick={onDiscard} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'var(--color-danger-strong)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }}>
         <Icon name="trash" size={14} />ทิ้งการเปลี่ยนแปลง
       </button>
-    </BomModalActions>
+    </>}>
+    <div style={{ fontSize: 14, color: 'var(--color-text-secondary)', lineHeight: 1.7 }}>
+      หากออกตอนนี้ การเปลี่ยนแปลงที่แก้ไว้จะหายไป ต้องการทิ้งการเปลี่ยนแปลงหรือไม่?
+    </div>
   </BomModalShell>
 );
 
@@ -1781,16 +1908,15 @@ const DeleteConfirmModal = ({ name, deleting, onConfirm, onClose }: {
   name: string; deleting: boolean;
   onConfirm: () => void; onClose: () => void;
 }) => (
-  <BomModalShell title="ยืนยันการลบ" subtitle={`"${name}" จะถูกปิดใช้งาน`} onClose={onClose}>
-    <div style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: 20, lineHeight: 1.7 }}>
-      รายการนี้จะถูกซ่อนจากหน้า POS และ BOM Builder ข้อมูลยังอยู่ในระบบ สามารถกู้คืนได้ผ่าน backend
-    </div>
-    <BomModalActions>
+  <BomModalShell title="ยืนยันการลบ" subtitle={`"${name}" จะถูกปิดใช้งาน`} onClose={onClose} busy={deleting} actions={<>
       <button onClick={onClose} style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
-      <button onClick={onConfirm} disabled={deleting} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', fontSize: 13, fontWeight: 600, background: deleting ? 'var(--color-surface-2)' : 'var(--color-danger)', color: deleting ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 8, cursor: deleting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }}>
+      <button onClick={onConfirm} disabled={deleting} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 16px', fontSize: 13, fontWeight: 600, background: deleting ? 'var(--color-surface-2)' : 'var(--color-danger)', color: deleting ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 8, cursor: deleting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }}>
         <Icon name="trash" size={14} />{deleting ? 'กำลังลบ...' : 'ยืนยันลบ'}
       </button>
-    </BomModalActions>
+    </>}>
+    <div style={{ fontSize: 14, color: 'var(--color-text-secondary)', lineHeight: 1.7 }}>
+      รายการนี้จะถูกซ่อนจากหน้า POS และ BOM Builder ข้อมูลยังอยู่ในระบบ สามารถกู้คืนได้ผ่าน backend
+    </div>
   </BomModalShell>
 );
 
@@ -1814,7 +1940,10 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
   const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), categoryId, price: Number(price), description: description.trim(), type, apiProductType, servingsPerBatch: Math.max(1, Math.floor(Number(servingsPerBatch) || 1)) }); };
 
   return (
-    <BomModalShell title="เพิ่มรายการใหม่" subtitle="สร้างรายการในระบบ BOM" onClose={onClose}>
+    <BomModalShell title="เพิ่มรายการใหม่" subtitle="สร้างรายการในระบบ BOM" onClose={onClose} actions={<>
+        <button onClick={onClose} style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
+        <button onClick={submit} disabled={!canSubmit} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', border: 'none', borderRadius: 8, cursor: canSubmit ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canSubmit ? 1 : 0.45, transition: 'background 150ms var(--ease-out)' }} onMouseEnter={e => { if (canSubmit) e.currentTarget.style.background = 'var(--color-primary-700)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-primary)'; }}><Icon name="plus" size={14} /> เพิ่มรายการ</button>
+      </>}>
       {/* Type toggle */}
       <BomFormField label="ประเภท *">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -1870,19 +1999,13 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
 
       {!isComp && (
         <BomFormField label="ราคาขาย (฿) *">
-          <input type="number" min={0} step={5} value={price} onChange={e => setPrice(e.target.value)} placeholder="0" style={bomInputStyle()} />
+          <input type="number" inputMode="decimal" min={0} step={5} value={price} onChange={e => setPrice(e.target.value)} placeholder="0" style={bomInputStyle()} />
         </BomFormField>
       )}
 
       <BomFormField label="รายละเอียด">
         <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} placeholder="ไม่บังคับ" style={{ ...bomInputStyle(), resize: 'vertical', fontFamily: 'inherit' }} />
       </BomFormField>
-
-
-      <BomModalActions>
-        <button onClick={onClose} style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>ยกเลิก</button>
-        <button onClick={submit} disabled={!canSubmit} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', border: 'none', borderRadius: 8, cursor: canSubmit ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canSubmit ? 1 : 0.45, transition: 'background 150ms var(--ease-out)' }} onMouseEnter={e => { if (canSubmit) e.currentTarget.style.background = 'var(--color-primary-700)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-primary)'; }}><Icon name="plus" size={14} /> เพิ่มรายการ</button>
-      </BomModalActions>
     </BomModalShell>
   );
 };
@@ -1926,7 +2049,7 @@ const CookingStepsSection = ({
 
   return (
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', marginTop: 16 }}>
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="bom-card-head" style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: 14, fontWeight: 700 }}>วิธีการทำ (Cooking Steps)</div>
         {canEdit && (
           <button
@@ -1947,17 +2070,17 @@ const CookingStepsSection = ({
         </div>
       ) : (
         steps.map((step, idx) => (
-          <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', borderBottom: '1px solid var(--color-border)' }}>
-            <div className="num" style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', width: 20, textAlign: 'right', flexShrink: 0 }}>{idx + 1}</div>
+          <div key={step.id} className="bom-step-row" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', borderBottom: '1px solid var(--color-border)' }}>
+            <div className="num c-n" style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', width: 20, textAlign: 'right', flexShrink: 0 }}>{idx + 1}</div>
             {canEdit && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
-                <button onClick={() => moveUp(idx)} disabled={idx === 0} title="เลื่อนขึ้น" style={{ background: 'transparent', border: 'none', cursor: idx === 0 ? 'not-allowed' : 'pointer', padding: '2px 4px', borderRadius: 4, color: idx === 0 ? 'var(--color-text-muted)' : 'var(--color-text-secondary)', fontSize: 10, lineHeight: 1 }}>▲</button>
-                <button onClick={() => moveDown(idx)} disabled={idx === steps.length - 1} title="เลื่อนลง" style={{ background: 'transparent', border: 'none', cursor: idx === steps.length - 1 ? 'not-allowed' : 'pointer', padding: '2px 4px', borderRadius: 4, color: idx === steps.length - 1 ? 'var(--color-text-muted)' : 'var(--color-text-secondary)', fontSize: 10, lineHeight: 1 }}>▼</button>
+              <div className="c-move" style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+                <button onClick={() => moveUp(idx)} disabled={idx === 0} title="เลื่อนขึ้น" aria-label={`เลื่อนขั้นตอนที่ ${idx + 1} ขึ้น`} style={{ background: 'transparent', border: 'none', cursor: idx === 0 ? 'not-allowed' : 'pointer', padding: '2px 4px', borderRadius: 4, color: idx === 0 ? 'var(--color-text-muted)' : 'var(--color-text-secondary)', fontSize: 10, lineHeight: 1 }}>▲</button>
+                <button onClick={() => moveDown(idx)} disabled={idx === steps.length - 1} title="เลื่อนลง" aria-label={`เลื่อนขั้นตอนที่ ${idx + 1} ลง`} style={{ background: 'transparent', border: 'none', cursor: idx === steps.length - 1 ? 'not-allowed' : 'pointer', padding: '2px 4px', borderRadius: 4, color: idx === steps.length - 1 ? 'var(--color-text-muted)' : 'var(--color-text-secondary)', fontSize: 10, lineHeight: 1 }}>▼</button>
               </div>
             )}
-            <div style={{ flex: 1, fontSize: 14, lineHeight: 1.5 }}>{step.instruction}</div>
+            <div className="c-text" style={{ flex: 1, fontSize: 14, lineHeight: 1.5 }}>{step.instruction}</div>
             {canEdit && (
-              <button onClick={() => removeStep(idx)} title="ลบขั้นตอน" style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center', padding: 6, borderRadius: 6, color: 'var(--color-text-muted)', flexShrink: 0, transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
+              <button onClick={() => removeStep(idx)} title="ลบขั้นตอน" aria-label={`ลบขั้นตอนที่ ${idx + 1}`} className="c-del" style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center', padding: 6, borderRadius: 6, color: 'var(--color-text-muted)', flexShrink: 0, transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; e.currentTarget.style.color = 'var(--color-danger)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}>
                 <Icon name="x" size={14} />
               </button>
             )}
@@ -1966,10 +2089,11 @@ const CookingStepsSection = ({
       )}
 
       {canEdit && (
-        <div style={{ padding: '10px 20px', display: 'flex', gap: 8, alignItems: 'center', background: steps.length > 0 ? 'var(--color-surface-2)' : 'transparent' }}>
+        <div className="bom-step-add" style={{ padding: '10px 20px', display: 'flex', gap: 8, alignItems: 'center', background: steps.length > 0 ? 'var(--color-surface-2)' : 'transparent' }}>
           <input
             type="text"
             placeholder="เพิ่มขั้นตอน... เช่น ต้มน้ำ 500ml"
+            aria-label="ขั้นตอนใหม่"
             value={newStepText}
             onChange={e => onNewStepTextChange(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && addStep()}

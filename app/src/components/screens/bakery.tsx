@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import Icon from '../icons';
-import { useToast, Tag, baht, NumberInput } from '../app-common';
+import { useToast, Tag, baht, NumberInput, MasterDetail } from '../app-common';
+import { useIsPhone } from '@/hooks/use-media-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAllProducts, useUpdateProduct, type MenuItem } from '@/hooks/use-products';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
@@ -26,8 +27,43 @@ const fmtDateTh = (str: string) =>
 // the "no raw white" rule.
 const SWATCH_FG = 'oklch(0.99 0.004 70)';
 
+// ── Phone layout (< 768px) — phone-only rules; nothing here applies at ≥ 768px ──
+const BK_CSS = `
+@media (max-width: 767px) {
+  .bk-input { font-size: 16px !important; min-height: 44px; }
+  .bk-list-head { padding: 14px var(--screen-pad) 12px !important; }
+  /* Detail header: swatch + name on the first line, stock figure on its own line. */
+  .bk-head { flex-wrap: wrap; gap: 12px !important; padding: 16px !important; }
+  .bk-swatch { width: 56px !important; height: 56px !important; font-size: 18px !important; }
+  .bk-stock {
+    flex: 1 1 100%; display: flex; align-items: baseline; gap: 8px;
+    padding-top: 12px; border-top: 1px solid var(--color-border);
+  }
+  .bk-stock > :first-child { margin: 0 auto 0 0 !important; }
+  .bk-stock > .num { font-size: 24px !important; }
+  .bk-name { flex-wrap: wrap; }
+  .bk-name > h1 { font-size: 20px !important; white-space: normal !important; overflow-wrap: anywhere; }
+  .bk-name-edit { flex-wrap: wrap; }
+  .bk-name-edit > input { flex: 1 1 100% !important; font-size: 18px !important; min-height: 44px; }
+  .bk-name-edit > button:first-of-type { margin-left: auto; }
+  .bk-card-body { padding: 16px !important; }
+  .bk-card-head { padding: 12px 16px !important; }
+  .bk-submit { width: 100%; justify-content: center; min-height: 48px !important; }
+  /* Production history: date + units on one line, batches and note beneath. */
+  .bk-hist-head { display: none !important; }
+  .bk-hist-row { display: flex !important; flex-wrap: wrap; align-items: baseline; gap: 2px 12px !important; padding: 12px 16px !important; }
+  .bk-hist-row::after { content: ''; order: 2; flex-basis: 100%; height: 0; }
+  .bk-hist-row > .bk-h-date { order: 0; flex: 1 1 0; min-width: 0; color: var(--color-text) !important; font-weight: 600; }
+  .bk-hist-row > .bk-h-units { order: 1; flex: 0 0 auto; }
+  .bk-hist-row > .bk-h-batches { order: 3; text-align: left !important; font-size: 12px; color: var(--color-text-secondary); font-weight: 500 !important; }
+  .bk-hist-row > .bk-h-batches::before { content: attr(data-label) ' '; }
+  .bk-hist-row > .bk-h-note { order: 4; flex: 1 1 0; min-width: 0; font-size: 12px; white-space: normal !important; }
+}
+`;
+
 export default function Bakery() {
   const toast = useToast();
+  const isPhone = useIsPhone();
   const { data: products, isLoading: productsLoading } = useAllProducts();
   const { data: inventoryItems } = useInventory();
 
@@ -42,21 +78,32 @@ export default function Bakery() {
 
   const selectedProduct = producedProducts.find(p => p.id === selectedId) ?? null;
 
+  // Desktop / tablet: open the first recipe so the detail pane is never empty.
+  // Phones show one pane at a time, so auto-selecting would hide the list.
   useEffect(() => {
-    if (!selectedId && producedProducts[0]) {
+    if (!isPhone && !selectedId && producedProducts[0]) {
       setSelectedId(producedProducts[0].id);
     }
-  }, [producedProducts, selectedId]);
+  }, [producedProducts, selectedId, isPhone]);
 
   const filtered = producedProducts.filter(p =>
     !search || p.name.toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
-    <div style={{ display: 'flex', height: '100%', background: 'var(--color-bg)' }}>
-      {/* LEFT — produced product list */}
-      <div style={{ width: 320, flexShrink: 0, background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--color-border)', background: 'linear-gradient(180deg, var(--color-accent-50) 0%, var(--color-surface) 100%)' }}>
+    <MasterDetail
+      className="bk-root"
+      style={{ background: 'var(--color-bg)' }}
+      listWidth={320}
+      hasSelection={selectedProduct != null}
+      onBack={() => setSelectedId(null)}
+      backLabel="รายการผลิต"
+      list={
+      /* LEFT — produced product list (the pane fixes the width; no flexShrink here —
+         inside the pane's column it would stop the list from scrolling) */
+      <div style={{ width: 320, background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column' }}>
+        <style>{BK_CSS}</style>
+        <div className="bk-list-head" style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--color-border)', background: 'linear-gradient(180deg, var(--color-accent-50) 0%, var(--color-surface) 100%)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--color-accent)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
               <Icon name="cake" size={20} color="var(--color-text-inverse)" />
@@ -72,7 +119,7 @@ export default function Bakery() {
           <div style={{ position: 'absolute', left: 24, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', display: 'grid', placeItems: 'center' }}>
             <Icon name="search" size={16} color="var(--color-text-muted)" />
           </div>
-          <input type="text" placeholder="ค้นหารายการผลิต..." value={search} onChange={e => setSearch(e.target.value)}
+          <input type="text" className="bk-input" aria-label="ค้นหารายการผลิต" placeholder="ค้นหารายการผลิต..." value={search} onChange={e => setSearch(e.target.value)}
             style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
           />
         </div>
@@ -124,9 +171,10 @@ export default function Bakery() {
           })}
         </div>
       </div>
-
-      {/* RIGHT — selected product detail */}
-      <div className="scroll" style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+      }
+      detail={
+      /* RIGHT — selected product detail */
+      <div className="scroll screen-pad" style={{ flex: 1, overflow: 'auto', padding: 24 }}>
         {!selectedProduct ? (
           <div style={{ padding: 60, textAlign: 'center', color: 'var(--color-text-muted)' }}>เลือกรายการเพื่อบันทึกการผลิต</div>
         ) : (
@@ -138,7 +186,8 @@ export default function Bakery() {
           />
         )}
       </div>
-    </div>
+      }
+    />
   );
 }
 
@@ -157,9 +206,10 @@ const EditableMenuName = ({ name, onRename }: { name: string; onRename: (n: stri
     };
     const cancel = () => { setDraft(name); setEditing(false); };
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 8px' }}>
+      <div className="bk-name-edit" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 8px' }}>
         <input
           autoFocus
+          aria-label="ชื่อเมนู"
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onKeyDown={e => {
@@ -180,7 +230,7 @@ const EditableMenuName = ({ name, onRename }: { name: string; onRename: (n: stri
     );
   }
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '2px 0 8px', minWidth: 0 }}>
+    <div className="bk-name" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '2px 0 8px', minWidth: 0 }}>
       <h1
         onClick={() => setEditing(true)}
         title="คลิกเพื่อเปลี่ยนชื่อ"
@@ -252,8 +302,8 @@ const ProductionPanel = ({ product, stockItem, onSuccess, onError }: ProductionP
   return (
     <>
       {/* Header */}
-      <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
-        <div style={{ width: 80, height: 80, borderRadius: 12, background: product.color, color: SWATCH_FG, display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 800, flexShrink: 0 }}>{product.tag}</div>
+      <div className="bk-head" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
+        <div className="bk-swatch" style={{ width: 80, height: 80, borderRadius: 12, background: product.color, color: SWATCH_FG, display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 800, flexShrink: 0 }}>{product.tag}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500 }}>{product.nameEn}</div>
           <EditableMenuName name={product.name} onRename={handleRename} />
@@ -265,7 +315,7 @@ const ProductionPanel = ({ product, stockItem, onSuccess, onError }: ProductionP
             </Tag>
           </div>
         </div>
-        <div>
+        <div className="bk-stock">
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>สต็อกพร้อมขาย</div>
           <div className="num" style={{ fontSize: 30, fontWeight: 700, letterSpacing: '-0.02em', color: stockItem && stockItem.stock > 0 ? 'var(--color-text)' : 'var(--color-warning)' }}>
             {stockItem ? stockItem.stock.toLocaleString() : '—'}
@@ -276,11 +326,11 @@ const ProductionPanel = ({ product, stockItem, onSuccess, onError }: ProductionP
 
       {/* Production form */}
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)' }}>
+        <div className="bk-card-head" style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)' }}>
           <div style={{ fontSize: 14, fontWeight: 700 }}>บันทึกการผลิต</div>
           <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>หักวัตถุดิบจากสูตร · เพิ่มสต็อกสำเร็จรูป</div>
         </div>
-        <div style={{ padding: 20 }}>
+        <div className="bk-card-body" style={{ padding: 20 }}>
           {recipeIncomplete && (
             <div style={{ padding: 12, marginBottom: 16, background: 'var(--color-warning-50)', border: '1px solid var(--color-warning)', borderRadius: 8, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <Icon name="info" size={18} color="var(--color-warning-fg)" />
@@ -293,7 +343,7 @@ const ProductionPanel = ({ product, stockItem, onSuccess, onError }: ProductionP
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 16, marginBottom: 16, alignItems: 'flex-end' }}>
+          <div className="cols-1-phone" style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 16, marginBottom: 16, alignItems: 'flex-end' }}>
             <div>
               <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>จำนวนแบทช์ *</div>
               <NumberInput
@@ -322,6 +372,8 @@ const ProductionPanel = ({ product, stockItem, onSuccess, onError }: ProductionP
             <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>หมายเหตุ</div>
             <input
               type="text"
+              className="bk-input"
+              aria-label="หมายเหตุ"
               value={notes}
               onChange={e => setNotes(e.target.value)}
               maxLength={500}
@@ -334,6 +386,7 @@ const ProductionPanel = ({ product, stockItem, onSuccess, onError }: ProductionP
             <button
               onClick={submit}
               disabled={createOrder.isPending || batches < 1}
+              className="bk-submit"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '12px 24px', minHeight: 44, boxSizing: 'border-box', fontSize: 14, fontWeight: 600, background: createOrder.isPending ? 'var(--color-surface-2)' : 'var(--color-primary)', color: createOrder.isPending ? 'var(--color-text-muted)' : 'var(--color-text-inverse)', border: 'none', borderRadius: 8, cursor: createOrder.isPending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background 150ms var(--ease-out)' }}
               onMouseEnter={e => { if (!createOrder.isPending) e.currentTarget.style.background = 'var(--color-primary-700)'; }}
               onMouseLeave={e => { if (!createOrder.isPending) e.currentTarget.style.background = 'var(--color-primary)'; }}
@@ -353,7 +406,7 @@ const ProductionPanel = ({ product, stockItem, onSuccess, onError }: ProductionP
 
 const ProductionHistory = ({ orders, unit }: { orders: ProductionOrder[]; unit: string }) => (
   <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
-    <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <div className="bk-card-head" style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <div style={{ fontSize: 14, fontWeight: 700 }}>ประวัติการผลิต</div>
       <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{orders.length} รายการ</div>
     </div>
@@ -361,18 +414,18 @@ const ProductionHistory = ({ orders, unit }: { orders: ProductionOrder[]; unit: 
       <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>ยังไม่มีประวัติการผลิต</div>
     ) : (
       <>
-        <div style={{ display: 'grid', gridTemplateColumns: '160px 90px 110px 1fr', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+        <div className="bk-hist-head" style={{ display: 'grid', gridTemplateColumns: '160px 90px 110px 1fr', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
           <div>วันเวลา</div>
           <div style={{ textAlign: 'right' }}>แบทช์</div>
           <div style={{ textAlign: 'right' }}>ผลิตได้</div>
           <div>หมายเหตุ</div>
         </div>
         {orders.map(o => (
-          <div key={o.id} style={{ display: 'grid', gridTemplateColumns: '160px 90px 110px 1fr', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: '1px solid var(--color-border)', fontSize: 13 }}>
-            <div style={{ color: 'var(--color-text-secondary)' }}>{fmtDateTh(o.producedAt)}</div>
-            <div className="num" style={{ textAlign: 'right', fontWeight: 600 }}>{o.batchesCount}</div>
-            <div className="num" style={{ textAlign: 'right', fontWeight: 700 }}>+{o.unitsProduced} {unit}</div>
-            <div style={{ color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.notes ?? '—'}</div>
+          <div key={o.id} className="bk-hist-row" style={{ display: 'grid', gridTemplateColumns: '160px 90px 110px 1fr', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: '1px solid var(--color-border)', fontSize: 13 }}>
+            <div className="bk-h-date" style={{ color: 'var(--color-text-secondary)' }}>{fmtDateTh(o.producedAt)}</div>
+            <div className="num bk-h-batches" data-label="แบทช์" style={{ textAlign: 'right', fontWeight: 600 }}>{o.batchesCount}</div>
+            <div className="num bk-h-units" style={{ textAlign: 'right', fontWeight: 700 }}>+{o.unitsProduced} {unit}</div>
+            <div className="bk-h-note" style={{ color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.notes ?? '—'}</div>
           </div>
         ))}
       </>

@@ -166,6 +166,22 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
           .receipt-print-root .receipt-paper { box-shadow: none !important; border: none !important; margin: 0 !important; border-radius: 0 !important; max-height: none !important; overflow: visible !important; }
           .receipt-print-root .receipt-edit-input { border: none !important; padding: 0 !important; background: transparent !important; }
         }
+        /* Phones (< 768px): tighter gutters, 44px controls, and a two-row footer —
+           secondary actions on top, "close" + the primary print button at the thumb. */
+        @media (max-width: 767px) {
+          .receipt-print-root { padding: 12px !important; padding-top: calc(var(--top-inset) + 12px) !important; }
+          .receipt-modal-shell { max-height: calc(var(--app-h, 100dvh) - 24px) !important; }
+          .receipt-bar { padding: 10px 12px 10px 16px !important; }
+          .receipt-backdate { padding: 10px 16px !important; gap: 8px !important; }
+          .receipt-backdate-label { flex: 1 0 100% !important; }
+          .receipt-date { flex: 1 1 0; min-width: 0; min-height: 44px !important; font-size: 16px !important; }
+          .receipt-date-save { min-height: 44px !important; }
+          .receipt-scroll { padding: 12px !important; }
+          .receipt-foot { padding: 10px 12px !important; }
+          .receipt-foot > button { flex: 1 1 0; min-width: 0; justify-content: center; padding-left: 8px !important; padding-right: 8px !important; white-space: nowrap; }
+          .receipt-foot-break { flex: 0 0 100% !important; height: 0; }
+          .receipt-foot > .receipt-foot-print { flex: 2 1 0; }
+        }
       `}</style>
 
       <div
@@ -176,6 +192,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
           backdropFilter: 'blur(6px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           padding: 'var(--space-4)',
+          paddingTop: 'calc(var(--top-inset, 0px) + var(--space-4))',
           overflowY: 'auto',
         }}
         onClick={onClose}
@@ -190,7 +207,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
           onClick={e => e.stopPropagation()}
           style={{
             width: '100%', maxWidth: 460,
-            maxHeight: 'calc(100dvh - (var(--space-4) * 2))',
+            maxHeight: 'calc(var(--app-h, 100dvh) - (var(--space-4) * 2))',
             background: 'var(--color-surface)',
             borderRadius: 'var(--radius-xl)',
             boxShadow: 'var(--shadow-lg)',
@@ -199,7 +216,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
           }}
         >
           {/* ── Toolbar ── */}
-          <div className="receipt-no-print" style={{
+          <div className="receipt-no-print receipt-bar" style={{
             padding: '14px 20px', flexShrink: 0,
             display: 'flex', alignItems: 'center', gap: 10,
             borderBottom: '1px solid var(--color-border)',
@@ -211,7 +228,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
             }}>
               <Icon name="printer" size={17} />
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 700 }}>ใบเสร็จรับเงิน</div>
               <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
                 ออเดอร์ #{data.orderNumber} · {formatDate(shownDate)} {formatTime(shownDate)}
@@ -227,12 +244,12 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
 
           {/* ── Backdate editor (server-persisted; for keying past sales) ── */}
           {onSaveDate && (
-            <div className="receipt-no-print" style={{
+            <div className="receipt-no-print receipt-backdate" style={{
               padding: 'var(--space-3) var(--space-5)', flexShrink: 0,
               borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
               display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap',
             }}>
-              <div style={{ flex: 1, minWidth: 120 }}>
+              <div className="receipt-backdate-label" style={{ flex: 1, minWidth: 120 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text)' }}>วันที่ใบเสร็จ</div>
                 <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>แก้เพื่อคีย์ขายย้อนหลัง</div>
               </div>
@@ -242,7 +259,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
                 value={pickedDate}
                 max={todayYMD}
                 onChange={e => setPickedDate(e.target.value)}
-                className="input-std"
+                className="input-std receipt-date"
                 style={{
                   padding: '8px var(--space-3)', minHeight: 40, borderRadius: 'var(--radius-md)', fontSize: 14,
                   border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)',
@@ -252,7 +269,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
                 onClick={handleSaveDate}
                 disabled={!dateChanged || savingDate}
                 aria-busy={savingDate || undefined}
-                className="pressable"
+                className="pressable receipt-date-save"
                 style={{
                   padding: '9px var(--space-4)', minHeight: 40, borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 700,
                   display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
@@ -281,7 +298,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
           </div>
 
           {/* ── Footer actions ── */}
-          <div className="receipt-no-print" style={{
+          <div className="receipt-no-print receipt-foot" style={{
             padding: 'var(--space-3) var(--space-5)', flexShrink: 0, borderTop: '1px solid var(--color-border)',
             display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap', rowGap: 'var(--space-2)',
           }}>
@@ -305,12 +322,13 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
             }}>
               <Icon name="print" size={14} /> บันทึก PDF
             </button>
-            <div style={{ flex: 1 }} />
-            <button onClick={onClose} className="icon-btn" style={{
+            {/* spacer on tablet / desktop; a full-width line break on phones */}
+            <div className="receipt-foot-break" style={{ flex: 1 }} />
+            <button onClick={onClose} className="icon-btn receipt-foot-close" style={{
               padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 13, minHeight: 44,
               color: 'var(--color-text-secondary)',
             }}>ปิด</button>
-            <button onClick={handlePrint} disabled={isPrinting} aria-busy={isPrinting || undefined} className="pressable" style={{
+            <button onClick={handlePrint} disabled={isPrinting} aria-busy={isPrinting || undefined} className="pressable receipt-foot-print" style={{
               padding: '9px 22px', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 700, minHeight: 44,
               background: isPrinting ? 'var(--color-surface-2)' : 'var(--color-primary)',
               color: isPrinting ? 'var(--color-text-secondary)' : 'var(--color-text-inverse)',

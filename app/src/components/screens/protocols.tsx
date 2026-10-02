@@ -105,14 +105,31 @@ export default function ProtocolsScreen() {
   };
 
   return (
-    <div ref={screenRef} style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
+    <div ref={screenRef} className="screen-pad-lg" style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
+      {/* Phone-only rules. Ticking the checklist is a daily one-handed job, so on a
+          phone each task row is taller, the box is bigger and the text is 15px. */}
+      <style>{`
+        @media (max-width: 767px) {
+          .pt-progress { flex-shrink: 0; gap: 10px !important; padding: 8px 12px !important; }
+          .pt-card { padding: 14px !important; }
+          .pt-card-head { align-items: flex-start !important; gap: 10px; }
+          .pt-card-head > :first-child { flex-wrap: wrap; min-width: 0; }
+          .pt-task { min-height: 48px !important; gap: 12px !important; padding: 10px !important; }
+          .pt-task > :first-child { width: 22px !important; height: 22px !important; border-radius: 6px !important; }
+          .pt-task > span { font-size: 15px !important; line-height: 1.45; }
+          .pt-input { font-size: 16px !important; min-height: 44px; }
+          .pt-tap { min-width: 44px !important; min-height: 44px !important; }
+          .pt-cta { justify-content: center; }
+          .pt-form-actions > button { flex: 1 1 0; }
+        }
+      `}</style>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+      <div className="page-header inline" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'nowrap', gap: 0, marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>Protocols / SOP</h1>
+          <h1 className="page-title" style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>Protocols / SOP</h1>
           <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>เช็คลิสต์การปฏิบัติงานประจำร้านกาแฟ</div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: '12px 20px', boxShadow: 'var(--shadow-sm)' }}>
+        <div className="pt-progress" style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: '12px 20px', boxShadow: 'var(--shadow-sm)' }}>
           <ProgressRing pct={overallPct} size={52} stroke={5} />
           <div>
             <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
@@ -124,7 +141,7 @@ export default function ProtocolsScreen() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid var(--color-border)' }}>
+      <div className="tab-strip" style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid var(--color-border)' }}>
         {(['checklist', 'library'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             style={{ padding: '8px 18px', borderRadius: '8px 8px 0 0', fontSize: 14, fontWeight: tab === t ? 600 : 500, color: tab === t ? 'var(--color-accent)' : 'var(--color-text-secondary)', background: tab === t ? 'var(--color-surface)' : 'transparent', borderBottom: tab === t ? '2px solid var(--color-accent)' : '2px solid transparent', cursor: 'pointer', transition: 'all 150ms' }}>
@@ -176,8 +193,8 @@ export default function ProtocolsScreen() {
                       const pct = protocol.tasks.length > 0 ? Math.round((completed.length / protocol.tasks.length) * 100) : 0;
                       const done = completed.length === protocol.tasks.length && protocol.tasks.length > 0;
                       return (
-                        <div key={protocol.id} style={{ background: 'var(--color-surface)', border: `1px solid ${done ? 'var(--color-success-50)' : 'var(--color-border)'}`, borderRadius: 12, padding: 18, boxShadow: 'var(--shadow-xs)', transition: 'border-color 300ms' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                        <div key={protocol.id} className="pt-card" style={{ background: 'var(--color-surface)', border: `1px solid ${done ? 'var(--color-success-50)' : 'var(--color-border)'}`, borderRadius: 12, padding: 18, boxShadow: 'var(--shadow-xs)', transition: 'border-color 300ms' }}>
+                          <div className="pt-card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span style={{ fontWeight: 600, fontSize: 15 }}>{protocol.name}</span>
                               {done && <Tag tone="success">✓ เสร็จแล้ว</Tag>}
@@ -191,13 +208,17 @@ export default function ProtocolsScreen() {
                             {protocol.tasks.map(task => {
                               const checked = completed.includes(task.id);
                               return (
-                                <label key={task.id} onClick={() => handleCheck(protocol, task.id, !checked)} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '9px 10px', minHeight: 44, boxSizing: 'border-box', borderRadius: 7, background: checked ? 'var(--color-success-50)' : 'transparent', transition: 'background 150ms', userSelect: 'none' }}>
+                                <div key={task.id} className="pt-task"
+                                  role="checkbox" aria-checked={checked} tabIndex={0}
+                                  onClick={() => handleCheck(protocol, task.id, !checked)}
+                                  onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleCheck(protocol, task.id, !checked); } }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '9px 10px', minHeight: 44, boxSizing: 'border-box', borderRadius: 7, background: checked ? 'var(--color-success-50)' : 'transparent', transition: 'background 150ms', userSelect: 'none' }}>
                                   <div
                                     style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${checked ? 'var(--color-success)' : 'var(--color-border-strong)'}`, background: checked ? 'var(--color-success)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 150ms', cursor: 'pointer' }}>
                                     {checked && <Icon name="check" size={11} color="var(--color-text-inverse)" strokeWidth={3} />}
                                   </div>
                                   <span style={{ fontSize: 14, color: checked ? 'var(--color-success)' : 'var(--color-text)', textDecoration: checked ? 'line-through' : 'none', transition: 'all 150ms' }}>{task.title}</span>
-                                </label>
+                                </div>
                               );
                             })}
                           </div>
@@ -216,7 +237,7 @@ export default function ProtocolsScreen() {
         <div>
           {admin && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-              <button onClick={() => setShowForm(v => !v)}
+              <button onClick={() => setShowForm(v => !v)} className="full-phone pt-cta" aria-expanded={showForm}
                 style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
                 <Icon name="plus" size={15} /> สร้าง Protocol
               </button>
@@ -224,12 +245,12 @@ export default function ProtocolsScreen() {
           )}
 
           {showForm && (
-            <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 20, marginBottom: 20, boxShadow: 'var(--shadow-sm)' }}>
+            <div className="pad-phone" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 20, marginBottom: 20, boxShadow: 'var(--shadow-sm)' }}>
               <div style={{ fontWeight: 600, marginBottom: 14, fontSize: 15 }}>Protocol ใหม่</div>
               <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
                 <div style={{ flex: 2, minWidth: 180 }}>
-                  <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ชื่อ *</label>
-                  <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={{ ...IS, width: '100%' }} placeholder="เช่น เช็คความสะอาดร้าน" />
+                  <label htmlFor="pt-name" style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ชื่อ *</label>
+                  <input id="pt-name" className="pt-input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={{ ...IS, width: '100%' }} placeholder="เช่น เช็คความสะอาดร้าน" />
                 </div>
                 <div style={{ flex: 1, minWidth: 150 }}>
                   <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ช่วงเวลา</label>
@@ -247,9 +268,9 @@ export default function ProtocolsScreen() {
                 {tasks.map((task, i) => (
                   <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
                     <span style={{ color: 'var(--color-text-muted)', width: 20, fontSize: 12, flexShrink: 0, paddingTop: 2 }}>{i + 1}.</span>
-                    <input value={task} onChange={e => { const t = [...tasks]; t[i] = e.target.value; setTasks(t); }} placeholder={`งานที่ ${i + 1}`} style={{ ...IS, flex: 1 }} />
+                    <input className="pt-input" aria-label={`งานที่ ${i + 1}`} value={task} onChange={e => { const t = [...tasks]; t[i] = e.target.value; setTasks(t); }} placeholder={`งานที่ ${i + 1}`} style={{ ...IS, flex: 1, minWidth: 0 }} />
                     {tasks.length > 1 && (
-                      <button onClick={() => setTasks(tasks.filter((_, j) => j !== i))} aria-label={`ลบงานที่ ${i + 1}`} style={{ minWidth: 32, minHeight: 32, display: 'grid', placeItems: 'center', padding: 8, borderRadius: 7, border: '1px solid var(--color-border)', color: 'var(--color-danger)', flexShrink: 0, cursor: 'pointer' }}>
+                      <button onClick={() => setTasks(tasks.filter((_, j) => j !== i))} aria-label={`ลบงานที่ ${i + 1}`} className="pt-tap" style={{ minWidth: 32, minHeight: 32, display: 'grid', placeItems: 'center', padding: 8, borderRadius: 7, border: '1px solid var(--color-border)', color: 'var(--color-danger)', flexShrink: 0, cursor: 'pointer' }}>
                         <Icon name="x" size={13} />
                       </button>
                     )}
@@ -261,7 +282,7 @@ export default function ProtocolsScreen() {
                 </button>
               </div>
 
-              <div style={{ display: 'flex', gap: 10 }}>
+              <div className="pt-form-actions" style={{ display: 'flex', gap: 10 }}>
                 <button onClick={handleCreate} disabled={createProtocol.isPending}
                   style={{ padding: '9px 18px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
                   {createProtocol.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
@@ -271,7 +292,7 @@ export default function ProtocolsScreen() {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+          <div className="cols-1-phone" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
             {!isLoading && (protocols ?? []).length === 0 && (
               <div style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 40, gridColumn: '1/-1' }}>ยังไม่มี Protocol</div>
             )}

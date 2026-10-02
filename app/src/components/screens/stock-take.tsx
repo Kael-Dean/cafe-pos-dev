@@ -5,6 +5,7 @@ import Icon from '../icons';
 import { useToast } from '../app-common';
 import { useStagger } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
+import { useIsPhone } from '@/hooks/use-media-query';
 import {
   useStockTakePreview,
   useSubmitStockTake,
@@ -34,6 +35,75 @@ const varianceBg = (v: number) =>
 
 const fmtVariance = (v: number) => (v > 0 ? `+${fmt3(v)}` : fmt3(v));
 
+// ── Phone layout (< 768px) ────────────────────────────────────────────────────
+// Every rule below is phone-only except the first, which carries the dialog gutter
+// that used to be inline (an inline padding would beat the phone safe-area padding
+// and the keyboard lift that globals.css / use-keyboard-inset apply to the backdrop).
+const ST_CSS = `
+@media (min-width: 768px) {
+  .modal-backdrop.st-backdrop { padding: var(--space-5); }
+}
+@media (max-width: 767px) {
+  .st-head { padding: 12px var(--screen-pad) 0 !important; }
+  .st-head-title { font-size: 18px !important; margin-bottom: 8px !important; }
+  .st-tabs > button { flex: 1 1 0; justify-content: center; }
+  .st-scroll { scroll-padding-bottom: 88px; }
+  .st-root textarea { font-size: 16px !important; }
+  .st-check { gap: 14px !important; }
+
+  /* Summary tiles shrink so the count sheet starts in the first screenful. */
+  .st-kpis { gap: 8px !important; }
+  .st-kpi { flex: 1 1 calc(50% - 4px) !important; min-width: 0 !important; padding: 10px 12px !important; }
+  .st-kpi:first-child { flex-basis: 100% !important; }
+  .st-kpi > :nth-child(1) { margin-bottom: 2px !important; }
+  .st-kpi > :nth-child(2) { font-size: 17px !important; }
+  .st-kpi > :nth-child(3) { margin-top: 0 !important; }
+
+  /* Count sheet: name on top, system figures left, a thumb-sized count field right. */
+  .st-count-head { display: none !important; }
+  .st-count-row {
+    grid-template-columns: minmax(0, 1fr) 136px !important;
+    grid-template-areas: "name name" "sys input" "used input";
+    gap: 2px 12px !important; padding: 12px 14px !important;
+  }
+  .st-count-row > .st-c-name { grid-area: name; display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 8px; margin-bottom: 6px; }
+  .st-count-row > .st-c-name > :last-child { font-size: 12px !important; }
+  .st-count-row > .st-c-sys { grid-area: sys; align-self: end; }
+  .st-count-row > .st-c-used { grid-area: used; align-self: start; font-size: 12px !important; }
+  .st-count-row > .st-c-input { grid-area: input; align-self: center; }
+  .st-count-row > [data-label] { text-align: left !important; }
+  .st-count-row > [data-label]::before { content: attr(data-label) ' '; color: var(--color-text-secondary); }
+  .st-count-input {
+    width: 100% !important; min-height: 48px; padding: 8px 12px !important;
+    font-size: 18px !important; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+
+  /* Save stays in reach while counting; it drops back into the flow while the
+     keyboard is up so the rows keep the room. */
+  .st-submit {
+    /* Sticky insets are measured from the scroller's content edge, so pull the bar
+       through the bottom gutter to sit flush on the tab bar. */
+    position: sticky; bottom: calc(-1 * var(--screen-pad)); z-index: 2;
+    margin: 0 calc(-1 * var(--screen-pad));
+    padding: 10px var(--screen-pad);
+    background: var(--color-bg); border-top: 1px solid var(--color-border);
+  }
+  .st-submit > button { width: 100%; justify-content: center; min-height: 48px !important; }
+  html[data-kb-open] .st-submit, html[data-kb-resized] .st-submit { position: static; }
+  .st-refresh { width: 100%; justify-content: center; }
+
+  /* Variance tables (result dialog, history): two-line rows instead of four columns. */
+  .st-var-head { display: none !important; }
+  .st-var-row { display: flex !important; flex-wrap: wrap; align-items: baseline; gap: 2px 12px !important; }
+  .st-var-row::after { content: ''; order: 2; flex-basis: 100%; height: 0; }
+  .st-var-row > .st-v-name { order: 0; flex: 1 1 0; min-width: 0; }
+  .st-var-row > .st-v-diff { order: 1; flex: 0 0 auto; font-size: 15px !important; }
+  .st-var-row > [data-label] { order: 3; text-align: left !important; font-size: 12px !important; color: var(--color-text-secondary); }
+  .st-var-row > [data-label]::before { content: attr(data-label) ' '; }
+  .st-history-body { padding: 8px !important; }
+}
+`;
+
 // ── ModalShell ────────────────────────────────────────────────────────────────
 const ModalShell = ({
   title,
@@ -48,7 +118,7 @@ const ModalShell = ({
   children: React.ReactNode;
   maxWidth?: number;
 }) => (
-  <div className="modal-backdrop" style={{ alignItems: 'center', padding: 'var(--space-5)' }} onClick={onClose}>
+  <div className="modal-backdrop st-backdrop" style={{ alignItems: 'center' }} onClick={onClose}>
     <div
       className="modal-card"
       role="dialog"
@@ -110,6 +180,7 @@ const ModalShell = ({
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 const KpiCard = ({ label, value, sub }: { label: string; value: string; sub?: string }) => (
   <div
+    className="st-kpi"
     style={{
       background: 'var(--color-surface)',
       border: '1px solid var(--color-border)',
@@ -154,6 +225,7 @@ const ResultModal = ({
     ) : (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div
+          className="st-var-head"
           style={{
             display: 'grid',
             gridTemplateColumns: '1fr 90px 90px 90px',
@@ -174,6 +246,7 @@ const ResultModal = ({
         {results.map((r) => (
           <div
             key={r.inventoryItemId}
+            className="st-var-row"
             style={{
               display: 'grid',
               gridTemplateColumns: '1fr 90px 90px 90px',
@@ -185,13 +258,14 @@ const ResultModal = ({
               alignItems: 'center',
             }}
           >
-            <div>
+            <div className="st-v-name">
               <div style={{ fontWeight: 600, fontSize: 14 }}>{r.name}</div>
               <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{r.unit}</div>
             </div>
-            <div style={{ textAlign: 'right', fontSize: 13 }}>{fmt3(r.systemQuantity)}</div>
-            <div style={{ textAlign: 'right', fontSize: 13 }}>{fmt3(r.actualQuantity)}</div>
+            <div data-label="ระบบ" style={{ textAlign: 'right', fontSize: 13 }}>{fmt3(r.systemQuantity)}</div>
+            <div data-label="จริง" style={{ textAlign: 'right', fontSize: 13 }}>{fmt3(r.actualQuantity)}</div>
             <div
+              className="st-v-diff"
               style={{
                 textAlign: 'right',
                 fontSize: 13,
@@ -211,6 +285,7 @@ const ResultModal = ({
 // ── Tab 1: Stock Check ────────────────────────────────────────────────────────
 function StockCheckTab() {
   const toast = useToast();
+  const isPhone = useIsPhone();
   const { data: preview, isLoading, isError, refetch } = useStockTakePreview();
   const submitMutation = useSubmitStockTake();
 
@@ -226,6 +301,12 @@ function StockCheckTab() {
 
   const getActual = (item: StockTakePreviewItem) =>
     actuals[item.inventoryItemId] ?? String(item.systemQuantity);
+
+  // Enter / the keypad's "next" key walks down the count column.
+  const focusCount = (idx: number) => {
+    const el = document.querySelector<HTMLInputElement>(`[data-st-count="${idx}"]`);
+    if (el) { el.focus(); el.select(); }
+  };
 
   const handleRefresh = () => {
     setActuals({});
@@ -305,9 +386,9 @@ function StockCheckTab() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="st-check" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* KPI row */}
-      <div ref={kpiRef} style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <div ref={kpiRef} className="st-kpis" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <KpiCard
           label="ช่วงเวลา"
           value={preview ? fmtDateTh(preview.periodStart) : '—'}
@@ -321,7 +402,7 @@ function StockCheckTab() {
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
         <button
           onClick={handleRefresh}
-          className="pressable"
+          className="pressable st-refresh"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -374,6 +455,7 @@ function StockCheckTab() {
         >
           {/* Table header */}
           <div
+            className="st-count-head"
             style={{
               display: 'grid',
               gridTemplateColumns: '1fr 110px 110px 130px',
@@ -397,6 +479,7 @@ function StockCheckTab() {
           {items.map((item, idx) => (
             <div
               key={item.inventoryItemId}
+              className="st-count-row"
               style={{
                 display: 'grid',
                 gridTemplateColumns: '1fr 110px 110px 130px',
@@ -406,25 +489,39 @@ function StockCheckTab() {
                 borderTop: idx === 0 ? 'none' : '1px solid var(--color-border)',
               }}
             >
-              <div>
+              <div className="st-c-name">
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{item.name}</div>
                 <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{item.unit}</div>
               </div>
-              <div style={{ textAlign: 'right', fontSize: 13, color: 'var(--color-text-secondary)' }}>
+              <div className="st-c-used" data-label="ใช้ในช่วงนี้" style={{ textAlign: 'right', fontSize: 13, color: 'var(--color-text-secondary)' }}>
                 {fmt3(item.consumedInPeriod)}
               </div>
-              <div style={{ textAlign: 'right', fontSize: 13 }}>
+              <div className="st-c-sys" data-label="ระบบ" style={{ textAlign: 'right', fontSize: 13 }}>
                 {fmt3(item.systemQuantity)}
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div className="st-c-input" style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <input
                   type="number"
+                  inputMode="decimal"
+                  enterKeyHint={idx === items.length - 1 ? 'done' : 'next'}
                   step="any"
                   min={0}
                   value={getActual(item)}
                   onChange={(e) =>
                     setActuals((prev) => ({ ...prev, [item.inventoryItemId]: e.target.value }))
                   }
+                  // Phones: the field is pre-filled with the system figure, so select it
+                  // on focus — the first digit typed replaces it instead of appending.
+                  onFocus={isPhone ? (e) => e.currentTarget.select() : undefined}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    if (idx < items.length - 1) focusCount(idx + 1);
+                    else e.currentTarget.blur();
+                  }}
+                  data-st-count={idx}
+                  aria-label={`นับจริง ${item.name} (${item.unit})`}
+                  className="st-count-input"
                   style={{
                     width: 110,
                     padding: '7px 10px',
@@ -472,7 +569,7 @@ function StockCheckTab() {
 
       {/* Submit */}
       {items.length > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <div className="st-submit" style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button
             onClick={handleSubmit}
             disabled={submitMutation.isPending}
@@ -621,9 +718,10 @@ function HistoryTab() {
 
             {/* Expanded details */}
             {isOpen && (
-              <div style={{ borderTop: '1px solid var(--color-border)', padding: 16 }}>
+              <div className="st-history-body" style={{ borderTop: '1px solid var(--color-border)', padding: 16 }}>
                 {/* Detail header */}
                 <div
+                  className="st-var-head"
                   style={{
                     display: 'grid',
                     gridTemplateColumns: '1fr 90px 90px 90px',
@@ -648,6 +746,7 @@ function HistoryTab() {
                 {event.items.map((item, iidx) => (
                   <div
                     key={iidx}
+                    className="st-var-row"
                     style={{
                       display: 'grid',
                       gridTemplateColumns: '1fr 90px 90px 90px',
@@ -658,7 +757,7 @@ function HistoryTab() {
                       alignItems: 'center',
                     }}
                   >
-                    <div>
+                    <div className="st-v-name">
                       <span style={{ fontWeight: 500, fontSize: 13 }}>{item.name}</span>
                       <span
                         style={{
@@ -670,9 +769,10 @@ function HistoryTab() {
                         {item.unit}
                       </span>
                     </div>
-                    <div style={{ textAlign: 'right', fontSize: 13 }}>{fmt3(item.systemQuantity)}</div>
-                    <div style={{ textAlign: 'right', fontSize: 13 }}>{fmt3(item.actualQuantity)}</div>
+                    <div data-label="ระบบ" style={{ textAlign: 'right', fontSize: 13 }}>{fmt3(item.systemQuantity)}</div>
+                    <div data-label="จริง" style={{ textAlign: 'right', fontSize: 13 }}>{fmt3(item.actualQuantity)}</div>
                     <div
+                      className="st-v-diff"
                       style={{
                         textAlign: 'right',
                         fontSize: 13,
@@ -704,6 +804,7 @@ export default function StockTakeScreen() {
 
   return (
     <div
+      className="st-root"
       style={{
         height: '100%',
         display: 'flex',
@@ -711,8 +812,10 @@ export default function StockTakeScreen() {
         background: 'var(--color-bg)',
       }}
     >
+      <style>{ST_CSS}</style>
       {/* Header */}
       <div
+        className="st-head"
         style={{
           padding: '20px 24px 0',
           borderBottom: '1px solid var(--color-border)',
@@ -720,8 +823,8 @@ export default function StockTakeScreen() {
           flexShrink: 0,
         }}
       >
-        <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Stock Take</div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div className="st-head-title" style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Stock Take</div>
+        <div className="st-tabs" style={{ display: 'flex', gap: 4 }}>
           {tabs.map((t) => (
             <button
               key={t.id}
@@ -754,7 +857,7 @@ export default function StockTakeScreen() {
       </div>
 
       {/* Content */}
-      <div className="scroll" style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+      <div className="scroll screen-pad st-scroll" style={{ flex: 1, overflow: 'auto', padding: 24 }}>
         {tab === 'check' ? <StockCheckTab /> : <HistoryTab />}
       </div>
     </div>

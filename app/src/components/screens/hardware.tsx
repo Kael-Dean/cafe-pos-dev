@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { useIsPhone } from '@/hooks/use-media-query';
 import Icon from '../icons';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useFadeRise } from '@/lib/motion';
@@ -167,15 +169,24 @@ export default function HardwareScreen() {
   /* ── Render ── */
 
   return (
-    <div ref={rootRef} style={{ height: '100%', overflowY: 'auto', padding: '28px var(--space-8)' }}>
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
+    <div ref={rootRef} className="screen-pad-lg" style={{ height: '100%', overflowY: 'auto', padding: '28px var(--space-8)' }}>
+      <style>{`
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+        @media (max-width: 767px) {
+          .hw-input { font-size: 16px !important; min-height: 44px; }
+          .hw-row > button { flex: 1 1 auto; }
+          /* Receipt preview: the card is capped to the visible screen (globals.css), so
+             the paper area flexes and scrolls while the header and Close stay pinned. */
+          .hw-preview-body { padding: var(--space-3) !important; max-height: none !important; flex: 1 1 auto; min-height: 0; }
+        }
+      `}</style>
 
       <div style={{ marginBottom: 'var(--space-6)' }}>
         <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 'var(--space-1)' }}>Hardware / เครื่องพิมพ์</h1>
         <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>จัดการเครื่องพิมพ์ใบเสร็จ</div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
+      <div className="cols-1-phone" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
         {/* Left column: printer status + USB connection */}
         <div>
           {/* Printer status card */}
@@ -198,7 +209,7 @@ export default function HardwareScreen() {
                 </div>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <div className="hw-row" style={{ display: 'flex', gap: 'var(--space-2)' }}>
               <button onClick={checkStatus} className="pressable" style={{ ...btnGhost, minHeight: 44 }}>
                 <Icon name="refresh" size={13} style={{ animation: printer === 'checking' ? 'spin 1s linear infinite' : 'none' }} />
                 ตรวจสอบ
@@ -266,7 +277,7 @@ export default function HardwareScreen() {
                 <Field label="สาขา" value={branchInput} onChange={setBranchInput} placeholder="สาขาที่ 00001" />
               </div>
             )}
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <div className="wrap-phone" style={{ display: 'flex', gap: 'var(--space-2)' }}>
               <button
                 onClick={saveStoreInfo}
                 disabled={savingStore || !storeInput.trim() || configLoading}
@@ -325,8 +336,14 @@ export default function HardwareScreen() {
  */
 function PreviewModal({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
   const ref = useModalA11y(onClose);
+  const isPhone = useIsPhone();
 
-  return (
+  // The screen root keeps a transform after its entrance animation, which makes it
+  // the containing block for this position:fixed backdrop — so the overlay scrolls
+  // with the page. Harmless on desktop (this screen never scrolls there), but on a
+  // phone the preview button sits ~330px down and the dialog opened off-screen.
+  // Phones therefore render it on <body>; desktop keeps the in-screen overlay as is.
+  const dialog = (
     <div
       className="modal-backdrop"
       style={{ zIndex: 200, alignItems: 'flex-start', padding: 'var(--space-5) var(--space-4) var(--space-10)', overflowY: 'auto' }}
@@ -368,7 +385,7 @@ function PreviewModal({ onClose, children }: { onClose: () => void; children: Re
         </div>
 
         {/* Receipt paper */}
-        <div style={{ padding: 'var(--space-5)', overflowY: 'auto', maxHeight: '72dvh' }}>
+        <div className="hw-preview-body" style={{ padding: 'var(--space-5)', overflowY: 'auto', maxHeight: '72dvh' }}>
           {children}
         </div>
 
@@ -384,6 +401,7 @@ function PreviewModal({ onClose, children }: { onClose: () => void; children: Re
       </div>
     </div>
   );
+  return isPhone ? createPortal(dialog, document.body) : dialog;
 }
 
 function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
@@ -407,7 +425,8 @@ function Field({ label, value, onChange, placeholder, mono }: {
       <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>{label}</div>
       <input
         value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className="input-std"
+        aria-label={label}
+        className="input-std hw-input"
         style={{ ...inputStyle, fontFamily: mono ? 'var(--font-num), "Courier New", monospace' : 'inherit' }}
       />
     </div>

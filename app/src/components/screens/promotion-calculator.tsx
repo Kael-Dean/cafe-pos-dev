@@ -103,8 +103,9 @@ export default function PromotionCalculator() {
         วิเคราะห์ผลกระทบต่อกำไรและยอดขายที่ต้องเพิ่มเพื่อคุ้มทุน ก่อนเปิดใช้ส่วนลดจริง
       </div>
 
-      {/* Inputs */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 14, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 18 }}>
+      {/* Inputs — phones (.pc-inputs, styled in promotions.tsx): product on its own
+          row, the two numbers side by side. */}
+      <div className="pc-inputs" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 14, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 18 }}>
         <div>
           <label style={labelStyle}>สินค้า</label>
           <Select
@@ -119,13 +120,13 @@ export default function PromotionCalculator() {
         <div>
           <label style={labelStyle}>ส่วนลด (%)</label>
           <NumberInput min={0} max={99} integer value={discountPct}
-            onChange={setDiscountPct}
+            onChange={setDiscountPct} aria-label="ส่วนลด (%)" className="pm-input"
             style={inputStyle} />
         </div>
         <div>
           <label style={labelStyle}>ช่วงข้อมูล (วัน)</label>
           <NumberInput min={1} max={365} integer value={days}
-            onChange={setDays}
+            onChange={setDays} aria-label="ช่วงข้อมูล (วัน)" className="pm-input"
             style={inputStyle} />
         </div>
       </div>
@@ -153,7 +154,7 @@ export default function PromotionCalculator() {
       ) : (
         <>
           {/* Recommendation badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 16 }}>
+          <div className="pc-rec" style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 16 }}>
             <Tag tone={REC[calc.rec].tone}>{
               calc.rec === 'viable' ? 'แนะนำ' : calc.rec === 'moderate_risk' ? 'ระวัง' : calc.rec === 'no_cost_data' ? 'ข้อมูลไม่พอ' : 'เสี่ยง'
             }</Tag>

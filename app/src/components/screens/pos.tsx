@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import Image from 'next/image';
 import Icon from '../icons';
-import { useToast, baht, Select } from '../app-common';
+import { useToast, baht, Select, ModalShell } from '../app-common';
 import { useI18n } from '@/lib/i18n';
 import { useAllProducts, useCategories, type MenuItem } from '@/hooks/use-products';
 import { useBestSellerNames } from '@/hooks/use-best-sellers';
@@ -20,7 +20,7 @@ import { useMembershipProgram, type ProgramRead } from '@/hooks/use-membership';
 import { useCustomerDetail } from '@/hooks/use-customers';
 import { usePrinter } from '@/hooks/use-printer';
 import { useStagger } from '@/lib/motion';
-import { useModalA11y } from '@/hooks/use-modal-a11y';
+import { useIsPhone } from '@/hooks/use-media-query';
 
 interface CartLine { menuId: string; name: string; basePrice: number; unitPrice: number; qty: number; mods: string[]; modIds: string[]; modKey: string; }
 
@@ -72,6 +72,11 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
   const [eligiblePromos, setEligiblePromos] = useState<EligiblePromotion[]>([]);
   const [selectedPromoIds, setSelectedPromoIds] = useState<string[]>([]);
   const [showPromoPanel, setShowPromoPanel] = useState(false);
+  // Phones (< 768px): the cart panel swaps its checkout block for a compact one and
+  // the menu panel grows a "cart" bar. Structure differs, so this is a hook, not CSS.
+  const isPhone = useIsPhone();
+  // Phone only: subtotal / discount rows are folded behind the grand-total row.
+  const [totalsOpen, setTotalsOpen] = useState(false);
 
   const { data: categories, isLoading: catsLoading } = useCategories();
   const { data: rawProducts, isLoading: prodLoading, isError } = useAllProducts();
@@ -104,7 +109,9 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
       setModifierItem(item);
     } else {
       addLine({ menuId: item.id, name: item.name, basePrice: item.price, unitPrice: item.price, qty: 1, mods: [], modIds: [], modKey: '' });
-      toast({ kind: 'success', title: t.pos.addedToCart, msg: item.name, duration: 1600 });
+      // Phones: the cart bar under the menu shows the new count + total — a toast
+      // would sit right on top of it.
+      if (!isPhone) toast({ kind: 'success', title: t.pos.addedToCart, msg: item.name, duration: 1600 });
     }
     setPendingModifierId(null);
   }, [pendingDetail, pendingModifierId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -491,23 +498,26 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
 
   return (
     <div style={{display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--color-bg)'}}>
+      <PosPhoneStyles />
       {/* Table-tab banner — the cashier must always be able to see that this sale
           is going on a table's bill instead of being paid now. */}
       {session && (
-        <div role="status" className="shrink-0" style={{
+        <div role="status" className="shrink-0 pos-banner" style={{
           display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
           padding: '10px 20px', background: 'var(--color-primary)', color: 'var(--color-text-inverse)',
         }}>
           <Icon name="park" size={18} />
-          <div style={{ flex: 1, minWidth: 180 }}>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>{t.pos.tableBanner(session.tableName)}</div>
-            <div style={{ fontSize: 12, opacity: 0.85 }}>{t.pos.tableBannerHint}</div>
+          <div className="pos-banner-text" style={{ flex: 1, minWidth: 180 }}>
+            <div className="pos-banner-title" style={{ fontWeight: 700, fontSize: 14 }}>{t.pos.tableBanner(session.tableName)}</div>
+            <div className="hide-phone" style={{ fontSize: 12, opacity: 0.85 }}>{t.pos.tableBannerHint}</div>
           </div>
           {onClearSession && (
             <button
               onClick={onClearSession}
               className="btn btn-ghost"
-              style={{ minHeight: 40, color: 'var(--color-text-inverse)', borderColor: 'currentColor' }}
+              // No inline minHeight: .btn is already 42px tall, and an inline 40 would
+              // beat the 44px phone tap-target rule.
+              style={{ color: 'var(--color-text-inverse)', borderColor: 'currentColor' }}
             >
               {t.pos.tableExit}
             </button>
@@ -567,16 +577,18 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
           className={`${activeTab === 'menu' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-[60%] md:max-w-[60%] shrink-0`}
           style={{borderRight: '1px solid var(--color-border)'}}
         >
-          <div style={{padding: '16px 20px 0 20px', display: 'flex', flexDirection: 'column', gap: 12}}>
+          <div className="pos-menu-head" style={{padding: '16px 20px 0 20px', display: 'flex', flexDirection: 'column', gap: 12}}>
             <div style={{display: 'flex', gap: 12, alignItems: 'center'}}>
-              <h1 style={{margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em'}}>{t.pos.menuTitle}</h1>
+              {/* Phones: the tab above already says "เมนู" — the search gets the full row. */}
+              <h1 className="hide-phone" style={{margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em'}}>{t.pos.menuTitle}</h1>
               <div style={{flex: 1, position: 'relative'}}>
                 <div style={{position: 'absolute', top: 10, left: 12, color: 'var(--color-text-muted)'}}>
                   <Icon name="search" size={16} />
                 </div>
                 <input type="text" placeholder={t.pos.searchPlaceholder}
                   value={search} onChange={(e) => setSearch(e.target.value)}
-                  className="input-std"
+                  aria-label={t.pos.searchPlaceholder}
+                  className="input-std pos-search"
                   style={{
                     width: '100%', padding: '10px 12px 10px 36px', minHeight: 44,
                     background: 'var(--color-surface)',
@@ -586,7 +598,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                 />
               </div>
             </div>
-            <div style={{display: 'flex', gap: 6, overflowX: 'auto', overflowY: 'hidden', flexWrap: 'nowrap'}} className="scroll">
+            <div style={{display: 'flex', gap: 6, overflowX: 'auto', overflowY: 'hidden', flexWrap: 'nowrap'}} className="scroll tab-strip">
               <CategoryTab label={t.pos.catFav} active={category === 'fav'} onClick={() => { setCategory('fav'); setSearch(''); }} highlight />
               <CategoryTab label={t.pos.catAll} active={category === 'all'} onClick={() => { setCategory('all'); setSearch(''); }} />
               {catsLoading && !categories ? (
@@ -603,7 +615,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
             </div>
           </div>
 
-          <div className="scroll" style={{flex: 1, overflow: 'auto', padding: 20}}>
+          <div className="scroll pos-menu-scroll" style={{flex: 1, overflow: 'auto', padding: 20}}>
             {isError ? (
               <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: 'var(--color-danger)'}}>
                 <div style={{marginBottom: 8}}><Icon name="warning" size={32}/></div>
@@ -655,6 +667,22 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
               </>
             )}
           </div>
+
+          {/* Phones: running total under the menu. A flex child of the panel (not
+              position: fixed), so it always sits above the bottom tab bar. */}
+          {isPhone && cartCount > 0 && (
+            <div className="pos-cartbar-wrap">
+              <button type="button" className="pos-cartbar pressable" onClick={() => setActiveTab('cart')}>
+                <Icon name="cart" size={20} />
+                <span>{t.pos.tabCart}</span>
+                {/* keyed so the pill replays its short bump when the count changes */}
+                <span key={cartCount} className="num pos-cartbar-count">{t.pos.itemsAria(cartCount)}</span>
+                <span className="num pos-cartbar-total">{baht(total)}</span>
+                <Icon name="chevronRight" size={18} />
+              </button>
+              <span className="sr-only" role="status">{t.pos.tabCart} {t.pos.itemsAria(cartCount)} {baht(total)}</span>
+            </div>
+          )}
         </div>
 
         {/* RIGHT: Cart — full-width on mobile, 40% on md+ */}
@@ -662,19 +690,19 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
           className={`${activeTab === 'cart' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-[40%] md:max-w-[40%] shrink-0`}
           style={{background: 'var(--color-surface)'}}
         >
-          <div style={{padding: '20px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-            <div>
-              <div style={{fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500}}>{t.pos.currentBill}</div>
-              <div style={{fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em'}} className="num">{'A' + String(billNo).padStart(3, '0')}</div>
+          <div className="pos-cart-head" style={{padding: '20px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+            <div className="pos-bill">
+              <div className="pos-bill-label" style={{fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500}}>{t.pos.currentBill}</div>
+              <div style={{fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em'}} className="num pos-bill-no">{'A' + String(billNo).padStart(3, '0')}</div>
             </div>
-            <div style={{display: 'flex', gap: 6, alignItems: 'center'}}>
+            <div className="pos-cart-actions" style={{display: 'flex', gap: 6, alignItems: 'center'}}>
               {memberInfo ? (
-                <div style={{
+                <div className="pos-member-chip" style={{
                   display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px 6px 12px',
                   borderRadius: 999, background: 'var(--color-accent-50)', border: '1px solid var(--color-accent)',
                 }}>
                   <Icon name="user" size={14} color="var(--color-accent-600)" />
-                  <div style={{lineHeight: 1.1}}>
+                  <div className="pos-member-text" style={{lineHeight: 1.1}}>
                     <div style={{fontSize: 12, fontWeight: 700, color: 'var(--color-primary-700)'}}>{memberInfo.account.customer_name}</div>
                     <div style={{fontSize: 10, color: 'var(--color-accent-600)'}}>
                       {t.pos.pointsUnit(memberInfo.account.points_balance.toLocaleString())}{memberInfo.redeemReward ? t.pos.redeemSuffix : ''}
@@ -691,15 +719,15 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                 </div>
               ) : (
                 <>
-                  <button className="btn btn-ghost" style={{padding: '8px 12px', fontSize: 12, minHeight: 44}} onClick={() => { setMembershipPhase('lookup'); setShowMembership(true); }}>
+                  <button className="btn btn-ghost pos-head-btn" style={{padding: '8px 12px', fontSize: 12, minHeight: 44}} onClick={() => { setMembershipPhase('lookup'); setShowMembership(true); }}>
                     <Icon name="user" size={14}/> {t.pos.customer}
                   </button>
-                  <button className="btn btn-ghost" style={{padding: '8px 12px', fontSize: 12, whiteSpace: 'nowrap', minHeight: 44}} onClick={() => { setMembershipPhase('register'); setShowMembership(true); }}>
+                  <button className="btn btn-ghost pos-head-btn" style={{padding: '8px 12px', fontSize: 12, whiteSpace: 'nowrap', minHeight: 44}} onClick={() => { setMembershipPhase('register'); setShowMembership(true); }}>
                     <Icon name="plus" size={14}/> {t.pos.register}
                   </button>
                 </>
               )}
-              <button className="btn btn-ghost" style={{padding: 8, minHeight: 44, minWidth: 44}} title={t.pos.parkBill} aria-label={t.pos.parkBill}>
+              <button className="btn btn-ghost pos-park" style={{padding: 8, minHeight: 44, minWidth: 44}} title={t.pos.parkBill} aria-label={t.pos.parkBill}>
                 <Icon name="park" size={16}/>
               </button>
             </div>
@@ -707,7 +735,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
 
           <div className="scroll" style={{flex: 1, overflow: 'auto', padding: '8px 0'}}>
             {cart.length === 0 ? (
-              <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
+              <div className="pos-empty" style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
                 <div style={{marginBottom: 12, opacity: 0.6}}><Icon name="cart" size={48}/></div>
                 <div style={{fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4}}>{t.pos.emptyCart}</div>
                 <div style={{fontSize: 13}}>{t.pos.emptyCartHint}</div>
@@ -719,7 +747,58 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
             ))}
           </div>
 
-          {/* Sticky checkout section on mobile */}
+          {isPhone ? (
+            /* Phone checkout: the line list keeps the height. Subtotal / discount rows
+               fold behind the grand-total row, and the four methods share one row —
+               still one tap from the cart to the payment dialog. */
+            <div className="pos-co">
+              {totalsOpen && (
+                <div id="pos-co-rows" className="pos-co-rows">
+                  <Row label={t.pos.subtotal} value={baht(subtotal)} />
+                  {memberDiscount > 0 && <Row label={t.pos.memberDiscount} value={`-${baht(memberDiscount)}`} />}
+                  {promoDiscount > 0 && <Row label={t.pos.promoDiscount} value={`-${baht(promoDiscount)}`} />}
+                  {discount === 0 && <Row label={t.pos.discount} value={baht(0)} muted />}
+                </div>
+              )}
+              <button type="button" className="pos-co-total" aria-expanded={totalsOpen} aria-controls="pos-co-rows" onClick={() => setTotalsOpen(v => !v)}>
+                <span className="pos-co-total-text">
+                  <span className="pos-co-total-label">{t.pos.grandTotal}</span>
+                  <span className="num pos-co-total-sub">
+                    {t.pos.itemsAria(cartCount)}{discount > 0 ? ` · ${t.pos.discount} -${baht(discount)}` : ''}
+                  </span>
+                </span>
+                <span className="num pos-co-amount">{baht(total)}</span>
+                {/* the rows open upward, so the chevron points up while closed */}
+                <Icon name="chevronDown" size={16} style={{ flexShrink: 0, color: 'var(--color-text-secondary)', transform: totalsOpen ? 'none' : 'rotate(180deg)' }} />
+              </button>
+              <div className="pos-co-actions">
+                {session ? (
+                  <PayButton compact icon="park" label={t.pos.tableAddToTab} onClick={addToTab} disabled={!cart.length} pending={paying} primary />
+                ) : (
+                  <div className="pos-co-pay">
+                    <PayButton compact icon="cash" label={t.pos.pay.cash} onClick={() => cart.length && setPayment('cash')} disabled={!cart.length} pending={paying} />
+                    <PayButton compact icon="card" label={t.pos.pay.card} onClick={() => cart.length && setPayment('card')} disabled={!cart.length} pending={paying} />
+                    <PayButton compact icon="qr"   label="QR" ariaLabel={t.pos.pay.qr} onClick={() => cart.length && setPayment('qr')} disabled={!cart.length} pending={paying} primary />
+                    <PayButton compact icon="line" label={t.pos.pay.line} onClick={() => cart.length && setPayment('line')} disabled={!cart.length} pending={paying} />
+                  </div>
+                )}
+                <div style={{display: 'flex', gap: 8}}>
+                  <button className="btn btn-ghost" style={{flex: 1, minWidth: 0, fontSize: 13, padding: 8, minHeight: 44, opacity: panelOfferCount ? 1 : 0.5}}
+                    onClick={() => panelOfferCount && setShowPromoPanel(true)} disabled={!panelOfferCount}>
+                    <Icon name="discount" size={14}/> {t.pos.promotions}
+                    {panelOfferCount > 0 && (
+                      <span className="num" style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)', borderRadius: 999, fontSize: 11, fontWeight: 700, padding: '1px 6px' }}>
+                        {panelSelectedCount > 0 ? `${panelSelectedCount}/${panelOfferCount}` : panelOfferCount}
+                      </span>
+                    )}
+                  </button>
+                  <button className="btn btn-ghost" style={{flex: 1, minWidth: 0, fontSize: 13, padding: 8, minHeight: 44}} onClick={() => cart.length && clearCart()}>
+                    <Icon name="void" size={14}/> {t.pos.void}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
           <div style={{flexShrink: 0, borderTop: '1px solid var(--color-border)'}}>
             <div style={{padding: '20px 20px 14px', background: 'var(--color-surface-2)'}}>
               <Row label={t.pos.subtotal} value={baht(subtotal)} />
@@ -764,6 +843,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
               </div>
             </div>
           </div>
+          )}
         </div>
       </div>
 
@@ -774,7 +854,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
           onClose={() => { setModifierItem(null); setModifierGroupIds([]); }}
           onAdd={(line) => {
             addLine(line);
-            toast({ kind: 'success', title: t.pos.addedToCart, msg: `${line.name} • ${baht(line.unitPrice)}`, duration: 1800 });
+            if (!isPhone) toast({ kind: 'success', title: t.pos.addedToCart, msg: `${line.name} • ${baht(line.unitPrice)}`, duration: 1800 });
             setModifierItem(null);
             setModifierGroupIds([]);
           }}
@@ -788,18 +868,22 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
         />
       )}
       {showPromoPanel && (
-        <PromoPanel onClose={() => setShowPromoPanel(false)} label={t.pos.promoPanelTitle}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>{t.pos.promoPanelTitle}</div>
-              <button onClick={() => setShowPromoPanel(false)} aria-label={t.common.close} className="icon-btn hit-44" style={{ width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center' }}><Icon name="x" size={16} /></button>
-            </div>
-
+        <ModalShell
+          title={t.pos.promoPanelTitle}
+          onClose={() => setShowPromoPanel(false)}
+          width={520}
+          footer={
+            <button onClick={() => setShowPromoPanel(false)} className="btn btn-primary btn-lg" style={{ flex: 1, minHeight: 48 }}>
+              {t.pos.applyDiscount}{discount > 0 ? ` (-${baht(discount)})` : ''}
+            </button>
+          }
+        >
             {/* Member reward redemption — shown alongside promotions when points qualify. */}
             {redeemAvailable && memberInfo && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 14px', borderRadius: 10, marginBottom: 8, border: `1px solid ${memberInfo.redeemReward ? 'var(--color-accent)' : 'var(--color-border)'}`, background: memberInfo.redeemReward ? 'var(--color-accent-50)' : 'var(--color-surface-2)' }}>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={memberInfo.redeemReward} onChange={e => toggleRedeem(e.target.checked)} style={{ width: 16, height: 16, marginTop: 3, accentColor: 'var(--color-accent)' }} />
-                  <div style={{ flex: 1 }}>
+                  <input type="checkbox" checked={memberInfo.redeemReward} onChange={e => toggleRedeem(e.target.checked)} style={{ width: 16, height: 16, marginTop: 3, flexShrink: 0, accentColor: 'var(--color-accent)' }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 700 }}>{t.pos.redeemTitle}</div>
                     <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{t.pos.redeemDesc(pointsToRedeem.toLocaleString(), rewardDescLabel)}</div>
                     <div style={{ fontSize: 11, color: 'var(--color-accent-600)', marginTop: 2 }}>
@@ -835,8 +919,8 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                   const locked = !!exclusiveSelected && exclusiveSelected.promotion_id !== e.promotion_id;
                   return (
                     <label key={e.promotion_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10, border: `1px solid ${checked ? 'var(--color-accent)' : 'var(--color-border)'}`, background: checked ? 'var(--color-accent-50)' : 'var(--color-surface-2)', cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? 0.5 : 1 }}>
-                      <input type="checkbox" checked={checked} disabled={locked} onChange={() => togglePromo(e)} style={{ width: 16, height: 16 }} />
-                      <div style={{ flex: 1 }}>
+                      <input type="checkbox" checked={checked} disabled={locked} onChange={() => togglePromo(e)} style={{ width: 16, height: 16, flexShrink: 0, accentColor: 'var(--color-accent)' }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 14, fontWeight: 600 }}>
                           {e.name}{e.is_exclusive && <span style={{ fontSize: 11, color: 'var(--color-danger)', fontWeight: 600 }}>{t.pos.exclusiveSuffix}</span>}
                         </div>
@@ -847,10 +931,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                 })}
               </div>
             )}
-            <button onClick={() => setShowPromoPanel(false)} className="pressable" style={{ marginTop: 16, width: '100%', padding: 12, minHeight: 48, borderRadius: 10, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
-              {t.pos.applyDiscount}{discount > 0 ? ` (-${baht(discount)})` : ''}
-            </button>
-        </PromoPanel>
+        </ModalShell>
       )}
       {payment && (
         <PaymentModal method={payment} total={total} billNo={billNo} onClose={() => setPayment(null)} onPaid={onPaid} />
@@ -1018,23 +1099,23 @@ const MenuCard = ({ item, onClick }: { item: MenuItem; onClick: () => void }) =>
 const CartLine = ({ line, onInc, onDec, onRemove }: { line: CartLine; onInc: () => void; onDec: () => void; onRemove: () => void }) => {
   const { t } = useI18n();
   return (
-  <div style={{padding: '12px 20px', display: 'flex', gap: 12, alignItems: 'flex-start', borderBottom: '1px solid var(--color-surface-2)'}}>
-    <div style={{flex: 1, minWidth: 0}}>
-      <div style={{fontSize: 14, fontWeight: 600, marginBottom: 2}}>{line.name}</div>
+  <div className="pos-line" style={{padding: '12px 20px', display: 'flex', gap: 12, alignItems: 'flex-start', borderBottom: '1px solid var(--color-surface-2)'}}>
+    <div className="pos-line-info" style={{flex: 1, minWidth: 0}}>
+      <div className="pos-line-name" style={{fontSize: 14, fontWeight: 600, marginBottom: 2}}>{line.name}</div>
       {line.mods.length > 0 && (
-        <div style={{fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.45}}>
+        <div className="pos-line-mods" style={{fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.45}}>
           {line.mods.join(' • ')}
         </div>
       )}
     </div>
-    <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
-      <button onClick={onDec} className="pressable hit-44" aria-label={t.pos.decQty} style={qtyBtnStyle}><Icon name="minus" size={14}/></button>
+    <div className="pos-line-qty" style={{display: 'flex', alignItems: 'center', gap: 8}}>
+      <button onClick={onDec} className="pressable hit-44 pos-qty-btn" aria-label={t.pos.decQty} style={qtyBtnStyle}><Icon name="minus" size={14}/></button>
       <div className="num" style={{minWidth: 20, textAlign: 'center', fontWeight: 600}}>{line.qty}</div>
-      <button onClick={onInc} className="pressable hit-44" aria-label={t.pos.incQty} style={qtyBtnStyle}><Icon name="plus" size={14}/></button>
+      <button onClick={onInc} className="pressable hit-44 pos-qty-btn" aria-label={t.pos.incQty} style={qtyBtnStyle}><Icon name="plus" size={14}/></button>
     </div>
-    <div style={{minWidth: 64, textAlign: 'right'}}>
-      <div className="num" style={{fontWeight: 600, fontSize: 14}}>฿{(line.unitPrice * line.qty).toLocaleString()}</div>
-      <button onClick={onRemove} className="hit-44" style={{fontSize: 11, color: 'var(--color-danger)', marginTop: 2, position: 'relative'}}>{t.pos.remove}</button>
+    <div className="pos-line-price" style={{minWidth: 64, textAlign: 'right'}}>
+      <div className="num pos-line-amount" style={{fontWeight: 600, fontSize: 14}}>฿{(line.unitPrice * line.qty).toLocaleString()}</div>
+      <button onClick={onRemove} className="hit-44 pos-line-remove" style={{fontSize: 11, color: 'var(--color-danger)', marginTop: 2, position: 'relative'}}>{t.pos.remove}</button>
     </div>
   </div>
   );
@@ -1053,9 +1134,24 @@ const Row = ({ label, value, muted }: { label: string; value: string; muted?: bo
   </div>
 );
 
-const PayButton = ({ icon, label, onClick, disabled, primary, pending }: { icon: string; label: string; onClick: () => void; disabled: boolean; primary?: boolean; pending?: boolean }) => {
+const PayButton = ({ icon, label, ariaLabel, onClick, disabled, primary, pending, compact }: {
+  icon: string; label: string; onClick: () => void; disabled: boolean; primary?: boolean; pending?: boolean;
+  /** Full name for assistive tech when `label` is shortened to fit (phones). */
+  ariaLabel?: string;
+  /** Phone checkout: a shorter button, so four methods share one row. */
+  compact?: boolean;
+}) => {
   const { t } = useI18n();
   const off = disabled || pending;
+  if (compact) {
+    return (
+      <button onClick={onClick} disabled={off} aria-label={ariaLabel} aria-busy={pending || undefined}
+        className={`pos-pay pressable${off ? ' off' : ''}${primary ? ' primary' : ''}`}>
+        {pending ? <span className="spinner" style={{width: 18, height: 18}} aria-hidden /> : <Icon name={icon} size={20}/>}
+        <span>{pending ? t.common.saving : label}</span>
+      </button>
+    );
+  }
   return (
     <button onClick={onClick} disabled={off} className="hover-raise" aria-busy={pending || undefined}
       style={{
@@ -1077,17 +1173,97 @@ const PayButton = ({ icon, label, onClick, disabled, primary, pending }: { icon:
 };
 
 /**
- * Promo/redeem overlay shell — hosts the modal a11y hook (focus trap, Esc to
- * close, focus restore) so the panel content can stay inline in POSTerminal
- * without calling hooks inside conditional JSX.
+ * Phone-only layout for the POS screen (< 768px). Everything sits inside the media
+ * query, so tablet / desktop keep their inline styles untouched; `!important` is
+ * what lets a class override those inline desktop values on phones.
  */
-const PromoPanel = ({ onClose, label, children }: { onClose: () => void; label: string; children: React.ReactNode }) => {
-  const dialogRef = useModalA11y(onClose);
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={label} className="fade-in" onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '85vh', overflowY: 'auto', padding: 20, boxShadow: 'var(--shadow-lg)' }}>
-        {children}
-      </div>
-    </div>
-  );
-};
+const POS_PHONE_CSS = `
+@media (max-width: 767px) {
+  .pos-banner { padding: 6px 12px !important; gap: 8px !important; flex-wrap: nowrap !important; }
+  .pos-banner-text { min-width: 0 !important; }
+  .pos-banner-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .pos-menu-head { padding: 10px 12px 0 !important; gap: 10px !important; }
+  .pos-search { font-size: 16px !important; }
+  .pos-menu-scroll { padding: 12px !important; }
+
+  /* Cart bar under the menu */
+  .pos-cartbar-wrap {
+    flex-shrink: 0; padding: 8px 12px;
+    background: var(--color-surface); border-top: 1px solid var(--color-border);
+  }
+  .pos-cartbar {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; min-height: 52px; padding: 0 12px 0 14px;
+    border-radius: var(--radius-lg);
+    background: var(--color-primary); color: var(--color-text-inverse);
+    box-shadow: var(--shadow-sm);
+    font-size: 15px; font-weight: 700; text-align: left;
+  }
+  .pos-cartbar-count {
+    padding: 2px 8px; border-radius: var(--radius-pill);
+    background: var(--color-accent); color: var(--color-on-accent);
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+    animation: pos-bump 180ms var(--ease-out);
+  }
+  .pos-cartbar-total { margin-left: auto; font-size: 18px; letter-spacing: -0.01em; white-space: nowrap; }
+
+  /* Cart header: one compact row */
+  .pos-cart-head { padding: 8px 12px !important; gap: 8px; }
+  .pos-bill { flex-shrink: 0; }
+  .pos-bill-label { font-size: 11px !important; line-height: 1.3; }
+  .pos-bill-no { font-size: 18px !important; line-height: 1.2; }
+  .pos-cart-actions { flex: 1; min-width: 0; justify-content: flex-end; }
+  .pos-head-btn { padding: 8px 10px !important; }
+  .pos-park { flex-shrink: 0; }
+  .pos-member-chip { flex: 0 1 auto; min-width: 0; }
+  .pos-member-text { min-width: 0; }
+  .pos-member-text > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pos-empty { padding: 40px 20px !important; text-align: center; }
+
+  /* Cart line: name + amount on the first row, modifiers + controls on the second,
+     so a long Thai name gets the full width instead of a 128px column. */
+  .pos-line {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "name name amount" "mods remove qty";
+    column-gap: 8px !important; row-gap: 4px !important;
+    padding: 10px 12px !important;
+  }
+  .pos-line-info, .pos-line-price { display: contents; }
+  .pos-line-name { grid-area: name; margin: 0 !important; overflow-wrap: anywhere; }
+  .pos-line-mods { grid-area: mods; align-self: start; overflow-wrap: anywhere; }
+  .pos-line-amount { grid-area: amount; align-self: start; font-size: 15px !important; text-align: right; white-space: nowrap; }
+  .pos-line-qty { grid-area: qty; gap: 2px !important; }
+  .pos-qty-btn { width: 44px !important; height: 44px !important; border-radius: var(--radius-md) !important; }
+  .pos-line-remove { grid-area: remove; min-width: 44px; margin: 0 !important; padding: 0 6px; font-size: 13px !important; }
+
+  /* Checkout */
+  .pos-co { flex-shrink: 0; border-top: 1px solid var(--color-border); background: var(--color-surface); }
+  .pos-co-rows { padding: 8px 14px 4px; background: var(--color-surface-2); border-bottom: 1px solid var(--color-border); }
+  .pos-co-total {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; min-height: 56px; padding: 6px 12px 6px 14px;
+    background: var(--color-surface-2); text-align: left;
+  }
+  .pos-co-total-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .pos-co-total-label { font-size: 14px; font-weight: 600; }
+  .pos-co-total-sub { font-size: 12px; color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pos-co-amount { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: var(--color-primary); white-space: nowrap; }
+  .pos-co-actions { display: grid; gap: 8px; padding: 10px 12px; }
+  .pos-co-pay { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .pos-pay {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    min-width: 0; min-height: 56px; padding: 6px 2px;
+    border-radius: var(--radius-md);
+    background: var(--color-primary); color: var(--color-text-inverse);
+    border: 1px solid var(--color-primary); box-shadow: var(--shadow-sm);
+    font-size: 12px; font-weight: 600; line-height: 1.3;
+  }
+  .pos-pay.primary { font-weight: 700; }
+  .pos-pay.off { background: var(--color-surface-2); color: var(--color-text-muted); border-color: var(--color-border); box-shadow: none; }
+  .pos-pay > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+@keyframes pos-bump { from { transform: scale(0.9); opacity: 0.6; } to { transform: none; opacity: 1; } }
+`;
+const PosPhoneStyles = () => <style>{POS_PHONE_CSS}</style>;

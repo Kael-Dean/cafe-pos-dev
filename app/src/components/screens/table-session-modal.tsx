@@ -40,13 +40,14 @@ function ModalShell({ title, subtitle, icon, onClose, children, footer, busy }: 
         aria-modal="true"
         aria-label={title}
         aria-busy={busy || undefined}
-        className="modal-card"
+        className="modal-card tsm-card"
         onClick={(e) => e.stopPropagation()}
         style={{ width: 'min(520px, 94vw)', maxHeight: '90dvh', display: 'flex', flexDirection: 'column' }}
       >
-        <div style={{
+        <style>{TSM_PHONE_CSS}</style>
+        <div className="tsm-head" style={{
           padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-border)',
-          display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+          display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexShrink: 0,
         }}>
           <div style={{
             width: 40, height: 40, borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)',
@@ -66,14 +67,14 @@ function ModalShell({ title, subtitle, icon, onClose, children, footer, busy }: 
           </button>
         </div>
 
-        <div className="scroll" style={{ padding: 'var(--space-6)', overflow: 'auto', flex: 1 }}>
+        <div className="scroll pad-phone" style={{ padding: 'var(--space-6)', overflow: 'auto', flex: 1, minHeight: 0 }}>
           {children}
         </div>
 
         {footer && (
-          <div style={{
+          <div className="tsm-foot" style={{
             borderTop: '1px solid var(--color-border)', padding: 'var(--space-4) var(--space-6)',
-            display: 'flex', gap: 'var(--space-2)',
+            display: 'flex', gap: 'var(--space-2)', flexShrink: 0,
           }}>
             {footer}
           </div>
@@ -83,6 +84,21 @@ function ModalShell({ title, subtitle, icon, onClose, children, footer, busy }: 
     document.body,
   );
 }
+
+/**
+ * Phones (< 768px), for every dialog built on this shell (open / detail / settle /
+ * table + rate-plan editors): 16px gutters, inputs at 16px so iOS does not zoom on
+ * focus, and a footer whose buttons wrap onto their own rows when the labels do
+ * not fit side by side (e.g. "ไว้ก่อน" + "เช็คสถานะอีกครั้ง" at 360px).
+ */
+const TSM_PHONE_CSS = `
+@media (max-width: 767px) {
+  .tsm-head { padding: 12px 12px 12px 16px !important; }
+  .tsm-card input, .tsm-card textarea { font-size: 16px !important; }
+  .tsm-foot { flex-wrap: wrap; padding: 12px 16px !important; }
+  .tsm-foot > * { flex: 1 1 auto !important; min-width: 0; padding-left: 12px; padding-right: 12px; }
+}
+`;
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -145,8 +161,9 @@ function CustomerPicker({ customerName, onPick, onClear }: {
   if (customerName) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-        <span style={{ flex: 1, fontSize: 14 }}><Icon name="user" size={14} style={{ marginRight: 6 }} />{customerName}</span>
-        <button onClick={onClear} className="btn btn-ghost" style={{ minHeight: 40 }}>เอาออก</button>
+        {/* phones: icon + name on one line (the svg is display:block) */}
+        <span className="max-md:flex max-md:items-center" style={{ flex: 1, minWidth: 0, fontSize: 14 }}><Icon name="user" size={14} style={{ marginRight: 6 }} />{customerName}</span>
+        <button onClick={onClear} className="btn btn-ghost">เอาออก</button>
       </div>
     );
   }
@@ -249,7 +266,7 @@ export default function OpenSessionModal({ table, onClose, onGoSetup }: {
           <Icon name="warning" size={18} />
           <div style={{ flex: 1 }}>
             ร้านนี้ยังไม่มีแพ็กเกจเวลา — ต้องสร้างก่อนถึงจะเปิดโต๊ะได้
-            {onGoSetup && <div><button onClick={onGoSetup} className="btn btn-ghost" style={{ marginTop: 'var(--space-2)', minHeight: 40 }}>ไปตั้งค่าโต๊ะ</button></div>}
+            {onGoSetup && <div><button onClick={onGoSetup} className="btn btn-ghost" style={{ marginTop: 'var(--space-2)' }}>ไปตั้งค่าโต๊ะ</button></div>}
           </div>
         </div>
       )}

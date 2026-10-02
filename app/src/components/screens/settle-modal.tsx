@@ -158,7 +158,7 @@ export default function SettleModal({ session, tableName, onClose }: {
                 border: '1px solid var(--color-border)', background: 'var(--color-surface)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
-                  <span className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>#{o.receiptNo}</span>
+                  <span className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)', minWidth: 0, overflowWrap: 'anywhere' }}>#{o.receiptNo}</span>
                   <strong className="num" style={{ marginLeft: 'auto', fontSize: 18, fontVariantNumeric: 'tabular-nums' }}>{bahtStr(o.total)}</strong>
                 </div>
                 <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -166,7 +166,7 @@ export default function SettleModal({ session, tableName, onClose }: {
                     value={method[o.id] ?? 'CASH'}
                     onChange={(v) => setMethod((prev) => ({ ...prev, [o.id]: v as PaymentMethod }))}
                     ariaLabel={`วิธีจ่ายบิล ${o.receiptNo}`}
-                    style={{ flex: 1 }}
+                    style={{ flex: 1, minWidth: 0 }}
                     options={METHODS}
                   />
                   <button

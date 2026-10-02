@@ -46,7 +46,7 @@ export default function TableSetup() {
 
   if (featureLoading) {
     return (
-      <div style={{ padding: 'var(--space-8)', maxWidth: 900, margin: '0 auto' }} aria-busy="true">
+      <div className="screen-pad-lg" style={{ padding: 'var(--space-8)', maxWidth: 900, margin: '0 auto' }} aria-busy="true">
         <span className="sr-only">กำลังโหลด…</span>
         <Skeleton height={28} width={240} radius="var(--radius-md)" style={{ marginBottom: 'var(--space-6)' }} />
         <Skeleton height={200} radius="var(--radius-lg)" />
@@ -62,8 +62,8 @@ export default function TableSetup() {
   }
 
   return (
-    <div ref={contentRef} style={{ padding: 'var(--space-8)', maxWidth: 900, margin: '0 auto' }}>
-      <h1 className="text-balance" style={{ fontSize: 22, fontWeight: 700, marginBottom: 'var(--space-6)', color: 'var(--color-text)' }}>
+    <div ref={contentRef} className="screen-pad-lg" style={{ padding: 'var(--space-8)', maxWidth: 900, margin: '0 auto' }}>
+      <h1 className="text-balance max-md:flex max-md:items-center" style={{ fontSize: 22, fontWeight: 700, marginBottom: 'var(--space-6)', color: 'var(--color-text)' }}>
         <Icon name="settings" size={20} style={{ marginRight: 8 }} />
         ตั้งค่าโต๊ะ & ค่าเวลา
       </h1>
@@ -90,11 +90,11 @@ export default function TableSetup() {
           {plans.map((p) => (
             <Card key={p.id}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-                <strong style={{ fontSize: 15 }}>{p.name}</strong>
+                <strong style={{ fontSize: 15, minWidth: 0, overflowWrap: 'anywhere' }}>{p.name}</strong>
                 {p.isDefault && <Chip tone="primary">ค่าเริ่มต้น</Chip>}
                 {!p.isActive && <Chip tone="muted">ปิดใช้งาน</Chip>}
                 <span style={{ marginLeft: 'auto', display: 'flex', gap: 'var(--space-2)' }}>
-                  <button onClick={() => setEditPlan(p)} className="btn btn-ghost" style={{ minHeight: 40 }}>
+                  <button onClick={() => setEditPlan(p)} className="btn btn-ghost" aria-label={`แก้ไข ${p.name}`}>
                     <Icon name="pencil" size={15} /> แก้ไข
                   </button>
                 </span>
@@ -118,7 +118,7 @@ export default function TableSetup() {
           action={{ label: 'เพิ่มโต๊ะ', onClick: () => setNewTable(true) }}
         />
 
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 'var(--space-3)', cursor: 'pointer' }}>
+        <label className="max-md:min-h-[44px]" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 'var(--space-3)', cursor: 'pointer' }}>
           <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
           แสดงโต๊ะที่ปิดใช้งานแล้ว
         </label>
@@ -140,7 +140,7 @@ export default function TableSetup() {
                 <span className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t.capacity} ที่</span>
                 {!t.isActive && <Chip tone="muted">ปิดใช้งาน</Chip>}
                 <span style={{ marginLeft: 'auto' }}>
-                  <button onClick={() => setEditTable(t)} className="btn btn-ghost" style={{ minHeight: 40 }}>
+                  <button onClick={() => setEditTable(t)} className="btn btn-ghost" aria-label={`แก้ไขโต๊ะ ${t.name}`}>
                     <Icon name="pencil" size={15} /> แก้ไข
                   </button>
                 </span>
@@ -407,7 +407,7 @@ function SectionHead({ title, hint, action }: { title: string; hint: string; act
         <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{title}</h2>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4, lineHeight: 1.5 }}>{hint}</div>
       </div>
-      <button onClick={action.onClick} className="btn" style={{ minHeight: 40 }}>
+      <button onClick={action.onClick} className="btn">
         <Icon name="plus" size={16} /> {action.label}
       </button>
     </div>

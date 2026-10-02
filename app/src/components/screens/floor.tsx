@@ -77,10 +77,10 @@ export default function Floor({ onOrderForSession, onNavigate }: Props) {
   // ── Feature gate: the add-on is invisible, not forbidden ────────────────────
   if (featureLoading) {
     return (
-      <div style={{ padding: 'var(--space-8)' }} aria-busy="true">
+      <div className="screen-pad-lg" style={{ padding: 'var(--space-8)' }} aria-busy="true">
         <span className="sr-only">กำลังโหลดผังโต๊ะ…</span>
         <Skeleton height={28} width={220} radius="var(--radius-md)" style={{ marginBottom: 'var(--space-6)' }} />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+        <div className="cols-2-phone floor-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
           {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} height={132} radius="var(--radius-lg)" />)}
         </div>
       </div>
@@ -100,27 +100,28 @@ export default function Floor({ onOrderForSession, onNavigate }: Props) {
   const loading = tablesQ.isLoading || sessionsQ.isLoading;
 
   return (
-    <div ref={contentRef} style={{ padding: 'var(--space-8)', maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flexWrap: 'wrap', marginBottom: 'var(--space-6)' }}>
-        <h1 className="text-balance" style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>
+    <div ref={contentRef} className="screen-pad-lg" style={{ padding: 'var(--space-8)', maxWidth: 1200, margin: '0 auto' }}>
+      <style>{FLOOR_PHONE_CSS}</style>
+      <div className="floor-head" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flexWrap: 'wrap', marginBottom: 'var(--space-6)' }}>
+        <h1 className="text-balance floor-title" style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>
           <Icon name="park" size={20} style={{ marginRight: 8 }} />
           ผังโต๊ะ
         </h1>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+        <div className="floor-chips" style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
           <SummaryChip label="ว่าง" value={free} tone="success" />
           <SummaryChip label="กำลังใช้" value={occupied} tone="primary" />
         </div>
         <button
           onClick={() => { void tablesQ.refetch(); void sessionsQ.refetch(); }}
           className="btn btn-ghost"
-          style={{ marginLeft: 'auto', minHeight: 40 }}
+          style={{ marginLeft: 'auto' }}
         >
           <Icon name="refresh" size={16} /> รีเฟรช
         </button>
       </div>
 
       {loading && (
-        <div aria-busy="true" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+        <div aria-busy="true" className="cols-2-phone floor-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
           <span className="sr-only">กำลังโหลดผังโต๊ะ…</span>
           {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} height={132} radius="var(--radius-lg)" />)}
         </div>
@@ -136,14 +137,14 @@ export default function Floor({ onOrderForSession, onNavigate }: Props) {
       )}
 
       {!loading && zones.map(([zone, list]) => (
-        <section key={zone} style={{ marginBottom: 'var(--space-8)' }}>
+        <section key={zone} className="floor-zone" style={{ marginBottom: 'var(--space-8)' }}>
           <h2 style={{
             fontSize: 13, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase',
             color: 'var(--color-text-secondary)', margin: '0 0 var(--space-3)',
           }}>
             {zone}
           </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+          <div className="cols-2-phone floor-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
             {list.map((table) => (
               <TableCard
                 key={table.id}
@@ -216,7 +217,7 @@ function TableCard({ table, session, now, onClick }: {
   return (
     <button
       onClick={onClick}
-      className="pressable"
+      className="pressable floor-card"
       aria-label={busy
         ? `โต๊ะ ${table.name} กำลังใช้ ${session.partySize} คน ${formatMinutes(elapsed)}`
         : `โต๊ะ ${table.name} ว่าง`}
@@ -229,8 +230,8 @@ function TableCard({ table, session, now, onClick }: {
         color: 'var(--color-text)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-        <span style={{ fontSize: 18, fontWeight: 700 }}>{table.name}</span>
+      <div className="floor-card-head" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <span className="floor-card-name" style={{ fontSize: 18, fontWeight: 700 }}>{table.name}</span>
         <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{table.capacity} ที่</span>
         <span style={{
           marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
@@ -249,13 +250,13 @@ function TableCard({ table, session, now, onClick }: {
 
       {session && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', fontSize: 13, color: 'var(--color-text-secondary)' }}>
+          <div className="floor-card-meta" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', fontSize: 13, color: 'var(--color-text-secondary)' }}>
             <span><Icon name="user" size={13} style={{ marginRight: 4 }} />{session.partySize} คน</span>
             <span className="num"><Icon name="clock" size={13} style={{ marginRight: 4 }} />{formatMinutes(elapsed)}</span>
           </div>
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>เปิด {clockTime(session.openedAt)}</div>
 
-          <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+          <div className="floor-card-foot" style={{ marginTop: 'auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
             <span className="num" style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
               {preview.isLoading || !preview.data ? '—' : bahtStr(preview.data.amount)}
             </span>
@@ -270,6 +271,28 @@ function TableCard({ table, session, now, onClick }: {
     </button>
   );
 }
+
+/**
+ * Phones (< 768px): two table cards per row (one 200px column wasted half the
+ * screen), so each card is ~160px wide — the name row and the amount row wrap
+ * instead of pushing the status pill / badges out of the card.
+ */
+const FLOOR_PHONE_CSS = `
+@media (max-width: 767px) {
+  /* title + refresh on the first row, the two counters underneath */
+  .floor-head { gap: 10px 12px !important; margin-bottom: 16px !important; }
+  .floor-title { flex: 1; min-width: 0; display: flex; align-items: center; font-size: 20px !important; }
+  .floor-chips { order: 3; flex: 1 0 100%; }
+  .floor-card-meta { flex-wrap: wrap; row-gap: 2px; }
+  .floor-card-meta > span { display: inline-flex; align-items: center; white-space: nowrap; }
+  .floor-zone { margin-bottom: 20px !important; }
+  .floor-grid { gap: 10px !important; }
+  .floor-card { padding: 12px !important; min-height: 120px !important; min-width: 0; }
+  .floor-card-head { flex-wrap: wrap; row-gap: 2px; }
+  .floor-card-name { min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
+  .floor-card-foot { flex-wrap: wrap; }
+}
+`;
 
 // ── Small shared bits ─────────────────────────────────────────────────────────
 function MiniBadge({ children, tone }: { children: React.ReactNode; tone: 'info' | 'success' | 'warning' }) {

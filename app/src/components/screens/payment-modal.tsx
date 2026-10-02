@@ -83,8 +83,8 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
         // the original fixed width.
         style={{ width: isCash ? undefined : 'min(440px, 92vw)', display: 'flex', flexDirection: 'column' }}
       >
-        {isCash && <CashPayStyles />}
-        <div className={isCash ? 'cashpay-head' : undefined} style={{
+        {isCash ? <CashPayStyles /> : <PayModalPhoneStyles />}
+        <div className={isCash ? 'cashpay-head' : 'paymodal-head'} style={{
           padding: isCash ? undefined : 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-border)',
           display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flex: 'none',
         }}>
@@ -107,7 +107,7 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
         </div>
 
         <div
-          className={isCash && phase === 'await' ? 'cashpay-body scroll' : undefined}
+          className={isCash && phase === 'await' ? 'cashpay-body scroll' : isCash ? undefined : 'paymodal-body scroll'}
           style={isCash && phase === 'await' ? undefined : {padding: 'var(--space-6)'}}
         >
           {phase === 'paid' ? (
@@ -138,6 +138,29 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
   );
 }
 
+/**
+ * Card / QR / LINE on phones (< 768px): the body scrolls inside the height-capped
+ * card and the confirm button stays pinned to its bottom edge, so it is reachable
+ * on short screens (360×640, landscape). Nothing here applies ≥ 768px — there
+ * `.paymodal-pin` is a plain wrapper and the dialog renders exactly as before.
+ * (Cash has its own layout: `.cashpay` in payment-cash.tsx.)
+ */
+const PAYMODAL_PHONE_CSS = `
+@media (max-width: 767px) {
+  .paymodal-head { padding: 12px 16px !important; }
+  /* Bottom padding lives on .paymodal-pin so the pinned button keeps its gutter. */
+  .paymodal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 16px 0 !important; }
+  .paymodal-pin {
+    position: sticky; bottom: 0;
+    margin: 12px -16px 0; padding: 12px 16px 16px;
+    background: var(--color-surface);
+  }
+  .paymodal-pin > button { margin-top: 0 !important; min-height: 48px !important; }
+  .paymodal-qr { width: min(240px, 100%) !important; height: auto !important; aspect-ratio: 1; }
+}
+`;
+const PayModalPhoneStyles = () => <style>{PAYMODAL_PHONE_CSS}</style>;
+
 const QRView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () => void }) => {
   // QR "generation": brief skeleton in the code slot so the matrix doesn't pop
   // in cold. PromptPay codes resolve fast, so this is a short, honest beat.
@@ -154,7 +177,7 @@ const QRView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () => 
         ฿{total.toLocaleString()}
       </div>
       <div style={{fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)'}}>คาเฟ่ Kafé OS • PromptPay</div>
-      <div aria-busy={generating || undefined} style={{
+      <div aria-busy={generating || undefined} className="paymodal-qr" style={{
         width: 240, height: 240, margin: '0 auto', padding: 'var(--space-4)',
         background: QR_PAPER, borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)',
       }}>
@@ -171,9 +194,11 @@ const QRView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () => 
         }}/>
         <span>{generating ? 'กำลังสร้าง QR...' : 'กำลังรอการชำระเงิน...'}</span>
       </div>
-      <button onClick={onSimulatePay} disabled={generating} className="btn btn-primary btn-block btn-lg" style={{marginTop: 'var(--space-5)', minHeight: 44, opacity: generating ? 0.5 : 1}}>
-        <Icon name="check" size={16}/> จำลอง: ลูกค้าชำระแล้ว
-      </button>
+      <div className="paymodal-pin">
+        <button onClick={onSimulatePay} disabled={generating} className="btn btn-primary btn-block btn-lg" style={{marginTop: 'var(--space-5)', minHeight: 44, opacity: generating ? 0.5 : 1}}>
+          <Icon name="check" size={16}/> จำลอง: ลูกค้าชำระแล้ว
+        </button>
+      </div>
       <style>{`@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }`}</style>
     </div>
   );
@@ -228,9 +253,11 @@ const CardView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () =
       <div style={{fontSize: 14, fontWeight: 600}}>กรุณาเสียบ / แตะบัตรที่เครื่อง EDC</div>
       <div style={{fontSize: 12, color: 'var(--color-text-secondary)'}}>เครื่อง EDC: SCB-A1 • พร้อมใช้งาน</div>
     </div>
-    <button onClick={onSimulatePay} className="btn btn-primary btn-block btn-lg" style={{marginTop: 'var(--space-4)', minHeight: 44}}>
-      <Icon name="check" size={16}/> จำลอง: รูดสำเร็จ
-    </button>
+    <div className="paymodal-pin">
+      <button onClick={onSimulatePay} className="btn btn-primary btn-block btn-lg" style={{marginTop: 'var(--space-4)', minHeight: 44}}>
+        <Icon name="check" size={16}/> จำลอง: รูดสำเร็จ
+      </button>
+    </div>
     <style>{`@keyframes wiggle { 0%,100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }`}</style>
   </div>
 );
@@ -258,9 +285,11 @@ const LineView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () =
       <div style={{fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 'var(--space-3)'}}>
         {generating ? 'กำลังสร้าง QR...' : 'สแกนเพื่อชำระผ่าน LINE Pay'}
       </div>
-      <button onClick={onSimulatePay} disabled={generating} className="btn btn-primary btn-block btn-lg" style={{marginTop: 'var(--space-4)', minHeight: 44, opacity: generating ? 0.5 : 1}}>
-        <Icon name="check" size={16}/> จำลอง: ชำระสำเร็จ
-      </button>
+      <div className="paymodal-pin">
+        <button onClick={onSimulatePay} disabled={generating} className="btn btn-primary btn-block btn-lg" style={{marginTop: 'var(--space-4)', minHeight: 44, opacity: generating ? 0.5 : 1}}>
+          <Icon name="check" size={16}/> จำลอง: ชำระสำเร็จ
+        </button>
+      </div>
     </div>
   );
 };

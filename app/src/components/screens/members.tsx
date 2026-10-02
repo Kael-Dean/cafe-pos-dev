@@ -10,6 +10,7 @@ import { SkeletonTable } from '@/components/ui/skeleton';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { useCustomerDetail } from '@/hooks/use-customers';
 import { useSalespeople, useAssignSales } from '@/hooks/use-salespeople';
+import { useIsPhone } from '@/hooks/use-media-query';
 import {
   useMembers,
   useMemberDetail,
@@ -64,7 +65,8 @@ export default function MembersScreen() {
   // search replays the entrance; subtle (8px, 40ms apart), honors reduced-motion.
   // Must be called before the admin early-return: `me` starts undefined and the
   // guard flips once /me resolves — a hook after the return crashes React.
-  const rowsRef = useStagger({ selector: 'tbody tr', each: 0.03 });
+  const rowsRef = useStagger({ selector: 'tbody tr, li[data-member-id]', each: 0.03 });
+  const isPhone = useIsPhone();
 
   if (!isAdmin(me?.role)) {
     return <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>{t.members.adminOnly}</div>;
@@ -75,10 +77,11 @@ export default function MembersScreen() {
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
-      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+    <div className="screen-pad-lg" style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
+      <MembersPhoneStyles />
+      <div className="page-header inline" style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', flexWrap: 'nowrap', gap: 16 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>{t.members.title}</h1>
+          <h1 className="page-title" style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>{t.members.title}</h1>
           <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t.members.subtitle(total.toLocaleString())}</div>
         </div>
         <button onClick={() => setShowRegister(true)} className="pressable"
@@ -90,8 +93,8 @@ export default function MembersScreen() {
       {/* Search — live: results update as you type (debounced) */}
       <div style={{ marginBottom: 18, maxWidth: 460 }}>
         <div style={{ position: 'relative' }}>
-          <div style={{ position: 'absolute', top: 10, left: 12, color: 'var(--color-text-muted)' }}><Icon name="search" size={16} /></div>
-          <input value={searchInput} onChange={e => setSearchInput(e.target.value)}
+          <div className="mb-search-icon" style={{ position: 'absolute', top: 10, left: 12, color: 'var(--color-text-muted)' }}><Icon name="search" size={16} /></div>
+          <input enterKeyHint="search" aria-label={t.members.searchPlaceholder} className="mb-input" value={searchInput} onChange={e => setSearchInput(e.target.value)}
             placeholder={t.members.searchPlaceholder} style={{ ...IS, paddingLeft: 36, paddingRight: searchInput ? 36 : 12 }} />
           {searchInput && (
             <button onClick={() => setSearchInput('')} aria-label={t.common.cancel} className="icon-btn hit-44"
@@ -114,6 +117,34 @@ export default function MembersScreen() {
         </div>
       ) : (
         <div key={`${page}-${query.name ?? ''}-${query.phone ?? ''}`} ref={rowsRef} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
+          {isPhone ? (
+            // Phones: a lookup list instead of the 6-column table — name, phone and
+            // tier on the left, the points balance on the right, one tap opens the member.
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {members.map((m, i) => (
+                <li key={m.id} data-member-id={m.id} style={{ display: 'flex', alignItems: 'stretch', borderTop: i ? '1px solid var(--color-border)' : 'none' }}>
+                  <button onClick={() => setSelectedId(m.id)}
+                    style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '12px 4px 12px 14px', textAlign: 'left', color: 'inherit', fontFamily: 'inherit', cursor: 'pointer' }}>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 15, fontWeight: 600, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{m.customer_name}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '2px 8px', marginTop: 4 }}>
+                        <span className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{m.phone ?? '—'}</span>
+                        <Tag tone={TIER_TONE[m.tier]}>{t.members.tier[m.tier]}</Tag>
+                      </span>
+                    </span>
+                    <span style={{ flexShrink: 0, textAlign: 'right' }}>
+                      <span className="num" style={{ display: 'block', fontSize: 16, fontWeight: 700, lineHeight: 1.2 }}>{m.points_balance.toLocaleString()}</span>
+                      <span style={{ display: 'block', fontSize: 11, color: 'var(--color-text-secondary)' }}>{t.members.colBalance}</span>
+                    </span>
+                  </button>
+                  <button onClick={() => setDeleteTarget(m)} aria-label={`${t.members.deleteBtn} ${m.customer_name}`}
+                    className="icon-btn" style={{ flexShrink: 0, width: 44, display: 'grid', placeItems: 'center', color: 'var(--color-danger)' }}>
+                    <Icon name="trash" size={16} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
           <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
@@ -151,6 +182,7 @@ export default function MembersScreen() {
             </tbody>
           </table>
           </div>
+          )}
         </div>
       )}
 
@@ -174,6 +206,24 @@ export default function MembersScreen() {
         <DeleteMemberModal member={deleteTarget} onClose={() => setDeleteTarget(null)} />
       )}
     </div>
+  );
+}
+
+/* Phone-only rules. 14px inputs would beat the global 16px phone rule (iOS zooms
+   in on focus), and the three stat tiles cannot hold a ฿ amount at a third of a
+   phone-width modal, so they wrap two-up with a smaller figure. */
+function MembersPhoneStyles() {
+  return (
+    <style>{`
+      @media (max-width: 767px) {
+        .mb-input { font-size: 16px !important; min-height: 44px; }
+        .mb-search-icon { top: 14px !important; }
+        .mb-pad { padding-left: 16px !important; padding-right: 16px !important; }
+        .mb-stats { flex-wrap: wrap; gap: 8px !important; }
+        .mb-stat { flex: 1 1 120px !important; min-width: 0; padding: 10px 12px !important; }
+        .mb-stat-val { font-size: 18px !important; overflow-wrap: anywhere; }
+      }
+    `}</style>
   );
 }
 
@@ -245,7 +295,7 @@ function RegisterMemberModal({ onClose, onRegistered }: { onClose: () => void; o
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 'min(440px, 94vw)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div className="mb-pad" style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--color-accent-50)', color: 'var(--color-accent-600)', display: 'grid', placeItems: 'center' }}>
             <Icon name="user" size={22} />
           </div>
@@ -256,24 +306,24 @@ function RegisterMemberModal({ onClose, onRegistered }: { onClose: () => void; o
           <button onClick={onClose} aria-label={t.common.cancel} className="icon-btn hit-44" style={{ width: 36, height: 36, borderRadius: 8, display: 'grid', placeItems: 'center', color: 'var(--color-text-secondary)' }}><Icon name="x" size={18} /></button>
         </div>
 
-        <div style={{ padding: '20px 24px', display: 'grid', gap: 14 }}>
+        <div className="mb-pad" style={{ padding: '20px 24px', display: 'grid', gap: 14 }}>
           <div>
-            <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>{t.members.nameLabel}</label>
-            <input value={name} onChange={e => setName(e.target.value)} style={IS} placeholder={t.members.namePlaceholder} />
+            <label htmlFor="mb-reg-name" style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>{t.members.nameLabel}</label>
+            <input id="mb-reg-name" className="mb-input" autoComplete="name" value={name} onChange={e => setName(e.target.value)} style={IS} placeholder={t.members.namePlaceholder} />
           </div>
           <div>
-            <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>{t.members.phoneLabel}</label>
-            <input value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" style={IS} placeholder="08XXXXXXXX"
+            <label htmlFor="mb-reg-phone" style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>{t.members.phoneLabel}</label>
+            <input id="mb-reg-phone" className="mb-input" type="tel" autoComplete="tel" value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" style={IS} placeholder="08XXXXXXXX"
               onKeyDown={e => { if (e.key === 'Enter') submit(); }} />
           </div>
           <div>
-            <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>{t.members.dobLabel}</label>
-            <input value={dob} onChange={e => setDob(e.target.value)} type="date" style={IS} />
+            <label htmlFor="mb-reg-dob" style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>{t.members.dobLabel}</label>
+            <input id="mb-reg-dob" className="mb-input" value={dob} onChange={e => setDob(e.target.value)} type="date" style={IS} />
             <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>{t.members.dobHint}</div>
           </div>
         </div>
 
-        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 10, background: 'var(--color-surface-2)' }}>
+        <div className="mb-pad" style={{ padding: '16px 24px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 10, background: 'var(--color-surface-2)' }}>
           <button onClick={onClose} className="pressable" style={{ padding: '11px 18px', minHeight: 44, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, cursor: 'pointer' }}>{t.common.cancel}</button>
           <button onClick={submit} disabled={register.isPending || checking} className="pressable"
             style={{ flex: 1, padding: '11px 18px', minHeight: 44, borderRadius: 8, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 700, fontSize: 14, cursor: (register.isPending || checking) ? 'not-allowed' : 'pointer', opacity: (register.isPending || checking) ? 0.6 : 1 }}>
@@ -322,8 +372,8 @@ function MemberDetailModal({ accountId, onClose }: { accountId: string; onClose:
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 'min(560px, 94vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ flex: 1 }}>
+        <div className="mb-pad" style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 700 }}>{member?.customer_name ?? t.members.memberFallback}</div>
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }} className="num">{member?.phone ?? ''}</div>
             {customer?.sales_name && (
@@ -337,19 +387,19 @@ function MemberDetailModal({ accountId, onClose }: { accountId: string; onClose:
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 4, padding: '0 24px', borderBottom: '1px solid var(--color-border)' }}>
+        <div className="mb-pad" style={{ display: 'flex', gap: 4, padding: '0 24px', borderBottom: '1px solid var(--color-border)' }}>
           <TabButton active={tab === 'points'} onClick={() => setTab('points')}>{t.members.tabPoints}</TabButton>
           <TabButton active={tab === 'orders'} onClick={() => setTab('orders')}>{t.members.tabOrders}</TabButton>
         </div>
 
-        <div className="scroll" style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
+        <div className="scroll mb-pad" style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
           {tab === 'orders' ? (
             <MemberOrdersTab accountId={accountId} />
           ) : isLoading || !member ? (
             <SkeletonTable rows={6} cols={3} header={false} label={t.common.loading} />
           ) : (
             <>
-              <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+              <div className="mb-stats" style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
                 <Stat label={t.members.statBalance} value={member.points_balance.toLocaleString()} accent />
                 <Stat label={t.members.statLifetime} value={member.lifetime_points_earned.toLocaleString()} />
                 <Stat label={t.members.statJoined} value={fmtDate(member.joined_at)} small />
@@ -378,11 +428,13 @@ function MemberDetailModal({ accountId, onClose }: { accountId: string; onClose:
               {/* Adjust points */}
               <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, padding: 14, marginBottom: 20 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{t.members.adjustTitle}</div>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  <input type="number" value={delta} onChange={e => setDelta(e.target.value)} placeholder={t.members.deltaPlaceholder} style={{ ...IS, width: 120 }} />
-                  <input value={note} onChange={e => setNote(e.target.value)} placeholder={t.members.reasonPlaceholder} style={IS} />
+                {/* The delta keeps type="number" WITHOUT an inputMode: it must accept a
+                    minus sign, and the decimal/numeric phone keypads have no "-" key. */}
+                <div className="wrap-phone" style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <input type="number" aria-label={t.members.deltaPlaceholder} className="mb-input full-phone" value={delta} onChange={e => setDelta(e.target.value)} placeholder={t.members.deltaPlaceholder} style={{ ...IS, width: 120 }} />
+                  <input aria-label={t.members.reasonPlaceholder} className="mb-input" value={note} onChange={e => setNote(e.target.value)} placeholder={t.members.reasonPlaceholder} style={IS} />
                 </div>
-                <button onClick={submitAdjust} disabled={adjust.isPending} className="pressable"
+                <button onClick={submitAdjust} disabled={adjust.isPending} className="pressable full-phone"
                   style={{ padding: '8px 18px', minHeight: 44, borderRadius: 8, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 13, cursor: adjust.isPending ? 'not-allowed' : 'pointer', opacity: adjust.isPending ? 0.6 : 1 }}>
                   {adjust.isPending ? t.members.savingAdjust : t.members.saveAdjust}
                 </button>
@@ -450,7 +502,7 @@ function MemberOrdersTab({ accountId }: { accountId: string }) {
   return (
     <>
       {/* Lifetime summary — aggregated across ALL orders, not just this page */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 18 }}>
+      <div className="mb-stats" style={{ display: 'flex', gap: 12, marginBottom: 18 }}>
         <Stat label={t.members.statTotalOrders} value={total.toLocaleString()} />
         <Stat label={t.members.statTotalSpent} value={baht(Number(data?.total_spent ?? 0))} accent />
         <Stat label={t.members.statTotalDiscount} value={baht(Number(data?.total_discount ?? 0))} />
@@ -521,9 +573,9 @@ function Row({ label, value, muted, discount }: { label: string; value: string; 
 
 function Stat({ label, value, accent, small }: { label: string; value: string; accent?: boolean; small?: boolean }) {
   return (
-    <div style={{ flex: 1, background: 'var(--color-surface-2)', borderRadius: 10, padding: '12px 14px' }}>
+    <div className="mb-stat" style={{ flex: 1, background: 'var(--color-surface-2)', borderRadius: 10, padding: '12px 14px' }}>
       <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{label}</div>
-      <div className="num" style={{ fontSize: small ? 15 : 22, fontWeight: 800, color: accent ? 'var(--color-accent-600)' : 'var(--color-text)' }}>{value}</div>
+      <div className={small ? 'num' : 'num mb-stat-val'} style={{ fontSize: small ? 15 : 22, fontWeight: 800, color: accent ? 'var(--color-accent-600)' : 'var(--color-text)' }}>{value}</div>
     </div>
   );
 }

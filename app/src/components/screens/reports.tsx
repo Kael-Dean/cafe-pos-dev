@@ -48,12 +48,125 @@ const IS: React.CSSProperties = {
 };
 const LB: React.CSSProperties = { fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 'var(--space-1)' };
 
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function Card({ children, style, className }: { children: React.ReactNode; style?: React.CSSProperties; className?: string }) {
   return (
-    <div style={{
+    <div className={className} style={{
       background: 'var(--color-surface)', border: '1px solid var(--color-border)',
       borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)', ...style,
     }}>{children}</div>
+  );
+}
+
+/* Phone-only rules for the report views (rendered once per view root). Desktop
+   keeps every inline style: the two wrappers below are `display: contents` there,
+   so the controls stay one wrapping flex row exactly as before. */
+function ReportsPhoneStyles() {
+  return (
+    <style>{`
+      @media (min-width: 768px) { .rp-dates, .rp-actions { display: contents; } }
+      @media (max-width: 767px) {
+        .rp-modes { display: flex !important; }
+        .rp-modes > button { flex: 1 1 0; padding-inline: 8px !important; }
+        .rp-dates { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; width: 100%; }
+        .rp-dates > div { flex: 1 1 150px; min-width: 0; }
+        .rp-date { width: 100% !important; min-width: 0; font-size: 16px !important; }
+        .rp-actions { display: flex; flex-wrap: wrap; gap: 12px; width: 100%; }
+        .rp-actions > .btn { flex: 1 1 auto; }
+        .rp-sum > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+        .rp-sum-val { font-size: 20px !important; overflow-wrap: anywhere; }
+        .rp-tbl th, .rp-tbl td { padding-left: 12px !important; padding-right: 12px !important; }
+        /* Wide tables scroll sideways inside their card; the row label stays put. */
+        .rp-sticky th:first-child, .rp-sticky td:first-child:not([colspan]) {
+          position: sticky; left: 0; z-index: 1; max-width: 44vw;
+          background: var(--color-surface); box-shadow: 1px 0 0 var(--color-border);
+        }
+        .rp-sticky thead th:first-child { background: var(--color-surface-2); }
+      }
+    `}</style>
+  );
+}
+
+/* Shown on phones under the title of a table that scrolls sideways. */
+function ScrollHint() {
+  return <span className="only-phone"> • ปัดซ้าย–ขวาเพื่อดูทุกคอลัมน์</span>;
+}
+
+/* Mode tabs + date inputs + Run / Download — shared by the three report views. */
+function ReportControls({
+  mode, onMode, day, onDay, from, onFrom, to, onTo,
+  loading, downloading, canDownload, onRun, onDownload, error,
+}: {
+  mode: ReportMode; onMode: (m: ReportMode) => void;
+  day: string; onDay: (v: string) => void;
+  from: string; onFrom: (v: string) => void;
+  to: string; onTo: (v: string) => void;
+  loading: boolean; downloading: boolean; canDownload: boolean;
+  onRun: () => void; onDownload: () => void;
+  error: string | null;
+}) {
+  return (
+    <Card className="pad-phone" style={{ marginBottom: 16 }}>
+      <div role="tablist" aria-label="ช่วงเวลารายงาน" className="rp-modes" style={{ display: 'inline-flex', background: 'var(--color-surface-2)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-1)', marginBottom: 'var(--space-4)' }}>
+        {([['daily', 'รายวัน'], ['range', 'รายเดือน / ช่วงวันที่']] as [ReportMode, string][]).map(([m, label]) => (
+          <button
+            key={m}
+            role="tab"
+            aria-selected={mode === m}
+            onClick={() => onMode(m)}
+            style={{
+              minHeight: 44, padding: '8px 16px', borderRadius: 'var(--radius-md)', border: 'none', cursor: 'pointer',
+              fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
+              background: mode === m ? 'var(--color-surface)' : 'transparent',
+              color: mode === m ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              boxShadow: mode === m ? 'var(--shadow-sm)' : 'none',
+              transition: 'background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
+            }}
+          >{label}</button>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}>
+        <div className="rp-dates">
+          {mode === 'daily' ? (
+            <>
+              <div>
+                <label htmlFor="rp-day" style={LB}>วันที่</label>
+                <input id="rp-day" className="rp-date" type="date" value={day} max={TODAY} onChange={(e) => onDay(e.target.value)} style={IS} />
+              </div>
+              <button className="btn btn-ghost" onClick={() => onDay(TODAY)}>วันนี้</button>
+            </>
+          ) : (
+            <>
+              <div>
+                <label htmlFor="rp-from" style={LB}>วันเริ่ม</label>
+                <input id="rp-from" className="rp-date" type="date" value={from} max={to} onChange={(e) => onFrom(e.target.value)} style={IS} />
+              </div>
+              <div>
+                <label htmlFor="rp-to" style={LB}>วันสิ้นสุด</label>
+                <input id="rp-to" className="rp-date" type="date" value={to} max={TODAY} onChange={(e) => onTo(e.target.value)} style={IS} />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="rp-actions">
+          <button className="btn btn-primary" onClick={onRun} disabled={loading}>
+            <Icon name="reports" size={14} /> {loading ? 'กำลังเรียก…' : 'เรียกรายงาน'}
+          </button>
+          <button className="btn btn-ghost" onClick={onDownload} disabled={!canDownload || downloading}>
+            <Icon name="download" size={14} /> {downloading ? 'กำลังสร้าง…' : 'ดาวน์โหลด Excel'}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div role="alert" style={{
+          marginTop: 'var(--space-4)', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: 13,
+          background: 'var(--color-danger-50)', color: 'var(--color-danger)',
+          border: '1px solid var(--color-danger)',
+        }}>{error}</div>
+      )}
+    </Card>
   );
 }
 
@@ -67,7 +180,7 @@ function SummaryCard({ label, value, format }: { label: string; value: number; f
       borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
     }}>
       <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', fontWeight: 500 }}>{label}</div>
-      <span ref={ref} className="num" style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>{format(value)}</span>
+      <span ref={ref} className="num rp-sum-val" style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>{format(value)}</span>
     </div>
   );
 }
@@ -81,7 +194,7 @@ function ReportSkeleton({ rangeMode }: { rangeMode: boolean }) {
       <div style={{ marginBottom: 'var(--space-3)' }}>
         <Skeleton height={24} width={220} radius="var(--radius-pill)" />
       </div>
-      <div style={{
+      <div className="kpi-grid rp-sum" style={{
         display: 'grid',
         gridTemplateColumns: `repeat(${rangeMode ? 4 : 3}, 1fr)`,
         gap: 'var(--space-4)', marginBottom: 'var(--space-4)',
@@ -125,7 +238,7 @@ function ReportTable({ title, cols, rows, sub }: {
         {sub && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{sub}</div>}
       </div>
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <table className="rp-tbl" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--color-surface-2)' }}>
               <th style={{ textAlign: 'left', padding: '8px 16px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>{cols[0]}</th>
@@ -226,9 +339,10 @@ function RegisterTable({ title, lines, groupByDay = false }: { title: string; li
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
           แยกตามรายการสินค้าในแต่ละบิล • {billCount.toLocaleString()} บิล • {lines.length.toLocaleString()} รายการ
           {groupByDay && groups.length > 0 && ` • ${groups.length.toLocaleString()} วัน`}
+          <ScrollHint />
         </div>
       </div>
-      <div style={{ overflowX: 'auto', maxHeight: 520 }}>
+      <div className="table-scroll" tabIndex={0} role="region" aria-label={title} style={{ overflowX: 'auto', maxHeight: 520 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr>
@@ -364,7 +478,8 @@ function SalesReport({ onBack }: { onBack: () => void }) {
     : '';
 
   return (
-    <div className="scroll" style={{ height: '100%', overflow: 'auto', padding: 'var(--space-6)', background: 'var(--color-bg)' }}>
+    <div className="scroll screen-pad" style={{ height: '100%', overflow: 'auto', padding: 'var(--space-6)', background: 'var(--color-bg)' }}>
+      <ReportsPhoneStyles />
       {/* Back to hub */}
       <button className="btn btn-ghost hover-raise" onClick={onBack} style={{ marginBottom: 'var(--space-4)', alignSelf: 'flex-start' }}>
         <Icon name="chevronLeft" size={14} /> รายงาน
@@ -373,71 +488,17 @@ function SalesReport({ onBack }: { onBack: () => void }) {
       {/* Header */}
       <div style={{ marginBottom: 'var(--space-5)' }}>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 2 }}>รายงาน</div>
-        <h1 className="text-balance" style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>เรียกรายงานยอดขาย</h1>
+        <h1 className="text-balance page-title" style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>เรียกรายงานยอดขาย</h1>
         <div className="text-pretty" style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)' }}>เลือกวัน/ช่วงวันที่ แล้วดาวน์โหลดเป็น Excel (.xlsx)</div>
       </div>
 
       {/* Controls */}
-      <Card style={{ marginBottom: 16 }}>
-        {/* Mode toggle */}
-        <div role="tablist" aria-label="ช่วงเวลารายงาน" style={{ display: 'inline-flex', background: 'var(--color-surface-2)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-1)', marginBottom: 'var(--space-4)' }}>
-          {([['daily', 'รายวัน'], ['range', 'รายเดือน / ช่วงวันที่']] as [ReportMode, string][]).map(([m, label]) => (
-            <button
-              key={m}
-              role="tab"
-              aria-selected={mode === m}
-              onClick={() => setMode(m)}
-              style={{
-                minHeight: 44, padding: '8px 16px', borderRadius: 'var(--radius-md)', border: 'none', cursor: 'pointer',
-                fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
-                background: mode === m ? 'var(--color-surface)' : 'transparent',
-                color: mode === m ? 'var(--color-text)' : 'var(--color-text-secondary)',
-                boxShadow: mode === m ? 'var(--shadow-sm)' : 'none',
-                transition: 'background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
-              }}
-            >{label}</button>
-          ))}
-        </div>
-
-        {/* Date inputs + actions */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}>
-          {mode === 'daily' ? (
-            <>
-              <div>
-                <label style={LB}>วันที่</label>
-                <input type="date" value={day} max={TODAY} onChange={(e) => setDay(e.target.value)} style={IS} />
-              </div>
-              <button className="btn btn-ghost" onClick={() => setDay(TODAY)}>วันนี้</button>
-            </>
-          ) : (
-            <>
-              <div>
-                <label style={LB}>วันเริ่ม</label>
-                <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} style={IS} />
-              </div>
-              <div>
-                <label style={LB}>วันสิ้นสุด</label>
-                <input type="date" value={to} max={TODAY} onChange={(e) => setTo(e.target.value)} style={IS} />
-              </div>
-            </>
-          )}
-
-          <button className="btn btn-primary" onClick={runReport} disabled={loading}>
-            <Icon name="reports" size={14} /> {loading ? 'กำลังเรียก…' : 'เรียกรายงาน'}
-          </button>
-          <button className="btn btn-ghost" onClick={download} disabled={!data || downloading}>
-            <Icon name="download" size={14} /> {downloading ? 'กำลังสร้าง…' : 'ดาวน์โหลด Excel'}
-          </button>
-        </div>
-
-        {error && (
-          <div role="alert" style={{
-            marginTop: 'var(--space-4)', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: 13,
-            background: 'var(--color-danger-50)', color: 'var(--color-danger)',
-            border: '1px solid var(--color-danger)',
-          }}>{error}</div>
-        )}
-      </Card>
+      <ReportControls
+        mode={mode} onMode={setMode}
+        day={day} onDay={setDay} from={from} onFrom={setFrom} to={to} onTo={setTo}
+        loading={loading} downloading={downloading} canDownload={!!data}
+        onRun={runReport} onDownload={download} error={error}
+      />
 
       {/* Loading — shaped skeleton mirroring the summary row + report tables */}
       {loading && <ReportSkeleton rangeMode={mode === 'range'} />}
@@ -449,7 +510,7 @@ function SalesReport({ onBack }: { onBack: () => void }) {
             <Tag tone="accent">{periodText}</Tag>
           </div>
 
-          <div style={{
+          <div className="kpi-grid rp-sum" style={{
             display: 'grid',
             gridTemplateColumns: `repeat(${data.mode === 'range' ? 4 : 3}, 1fr)`,
             gap: 16, marginBottom: 16,
@@ -538,9 +599,10 @@ function WasteRegisterTable({ title, events, groupByDay = false }: { title: stri
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
           ทุกครั้งที่บันทึกของเสีย • {events.length.toLocaleString()} รายการ
           {groupByDay && groups.length > 0 && ` • ${groups.length.toLocaleString()} วัน`}
+          <ScrollHint />
         </div>
       </div>
-      <div style={{ overflowX: 'auto', maxHeight: 520 }}>
+      <div className="table-scroll" tabIndex={0} role="region" aria-label={title} style={{ overflowX: 'auto', maxHeight: 520 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr>
@@ -625,10 +687,11 @@ function WasteBreakdownTable({ title, sub, firstCol, rows }: {
     <Card style={{ padding: 0, overflow: 'hidden' }}>
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border)' }}>
         <div style={{ fontSize: 15, fontWeight: 700 }}>{title}</div>
-        {sub && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{sub}</div>}
+        {sub && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{sub}<ScrollHint /></div>}
+        {!sub && <div className="only-phone" style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>ปัดซ้าย–ขวาเพื่อดูทุกคอลัมน์</div>}
       </div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+      <div className="table-scroll" tabIndex={0} role="region" aria-label={title} style={{ overflowX: 'auto', '--table-min': '460px' } as React.CSSProperties}>
+        <table className="rp-tbl rp-sticky" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--color-surface-2)' }}>
               <th style={{ textAlign: 'left', padding: '8px 16px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>{firstCol}</th>
@@ -720,7 +783,8 @@ function WasteReport({ onBack }: { onBack: () => void }) {
     : '';
 
   return (
-    <div className="scroll" style={{ height: '100%', overflow: 'auto', padding: 'var(--space-6)', background: 'var(--color-bg)' }}>
+    <div className="scroll screen-pad" style={{ height: '100%', overflow: 'auto', padding: 'var(--space-6)', background: 'var(--color-bg)' }}>
+      <ReportsPhoneStyles />
       {/* Back to hub */}
       <button className="btn btn-ghost hover-raise" onClick={onBack} style={{ marginBottom: 'var(--space-4)', alignSelf: 'flex-start' }}>
         <Icon name="chevronLeft" size={14} /> รายงาน
@@ -729,69 +793,17 @@ function WasteReport({ onBack }: { onBack: () => void }) {
       {/* Header */}
       <div style={{ marginBottom: 'var(--space-5)' }}>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 2 }}>รายงาน</div>
-        <h1 className="text-balance" style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>เรียกรายงานของเสีย</h1>
+        <h1 className="text-balance page-title" style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>เรียกรายงานของเสีย</h1>
         <div className="text-pretty" style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)' }}>เลือกวัน/ช่วงวันที่ แล้วดาวน์โหลดเป็น Excel (.xlsx)</div>
       </div>
 
       {/* Controls */}
-      <Card style={{ marginBottom: 16 }}>
-        <div role="tablist" aria-label="ช่วงเวลารายงาน" style={{ display: 'inline-flex', background: 'var(--color-surface-2)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-1)', marginBottom: 'var(--space-4)' }}>
-          {([['daily', 'รายวัน'], ['range', 'รายเดือน / ช่วงวันที่']] as [ReportMode, string][]).map(([m, label]) => (
-            <button
-              key={m}
-              role="tab"
-              aria-selected={mode === m}
-              onClick={() => setMode(m)}
-              style={{
-                minHeight: 44, padding: '8px 16px', borderRadius: 'var(--radius-md)', border: 'none', cursor: 'pointer',
-                fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
-                background: mode === m ? 'var(--color-surface)' : 'transparent',
-                color: mode === m ? 'var(--color-text)' : 'var(--color-text-secondary)',
-                boxShadow: mode === m ? 'var(--shadow-sm)' : 'none',
-                transition: 'background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
-              }}
-            >{label}</button>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}>
-          {mode === 'daily' ? (
-            <>
-              <div>
-                <label style={LB}>วันที่</label>
-                <input type="date" value={day} max={TODAY} onChange={(e) => setDay(e.target.value)} style={IS} />
-              </div>
-              <button className="btn btn-ghost" onClick={() => setDay(TODAY)}>วันนี้</button>
-            </>
-          ) : (
-            <>
-              <div>
-                <label style={LB}>วันเริ่ม</label>
-                <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} style={IS} />
-              </div>
-              <div>
-                <label style={LB}>วันสิ้นสุด</label>
-                <input type="date" value={to} max={TODAY} onChange={(e) => setTo(e.target.value)} style={IS} />
-              </div>
-            </>
-          )}
-
-          <button className="btn btn-primary" onClick={runReport} disabled={loading}>
-            <Icon name="reports" size={14} /> {loading ? 'กำลังเรียก…' : 'เรียกรายงาน'}
-          </button>
-          <button className="btn btn-ghost" onClick={download} disabled={!data || downloading}>
-            <Icon name="download" size={14} /> {downloading ? 'กำลังสร้าง…' : 'ดาวน์โหลด Excel'}
-          </button>
-        </div>
-
-        {error && (
-          <div role="alert" style={{
-            marginTop: 'var(--space-4)', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: 13,
-            background: 'var(--color-danger-50)', color: 'var(--color-danger)',
-            border: '1px solid var(--color-danger)',
-          }}>{error}</div>
-        )}
-      </Card>
+      <ReportControls
+        mode={mode} onMode={setMode}
+        day={day} onDay={setDay} from={from} onFrom={setFrom} to={to} onTo={setTo}
+        loading={loading} downloading={downloading} canDownload={!!data}
+        onRun={runReport} onDownload={download} error={error}
+      />
 
       {loading && <ReportSkeleton rangeMode={mode === 'range'} />}
 
@@ -801,7 +813,7 @@ function WasteReport({ onBack }: { onBack: () => void }) {
             <Tag tone="accent">{periodText}</Tag>
           </div>
 
-          <div style={{
+          <div className="kpi-grid rp-sum" style={{
             display: 'grid',
             gridTemplateColumns: `repeat(${data.mode === 'range' ? 4 : 3}, 1fr)`,
             gap: 16, marginBottom: 16,
@@ -863,10 +875,10 @@ function SalespersonSummaryTable({ rows }: { rows: SalespersonKpi[] }) {
     <Card style={{ padding: 0, overflow: 'hidden' }}>
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border)' }}>
         <div style={{ fontSize: 15, fontWeight: 700 }}>สรุปตามเซลส์</div>
-        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>เรียงตามยอดขายมาก→น้อย</div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>เรียงตามยอดขายมาก→น้อย<ScrollHint /></div>
       </div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+      <div className="table-scroll" tabIndex={0} role="region" aria-label="สรุปตามเซลส์" style={{ overflowX: 'auto', '--table-min': '520px' } as React.CSSProperties}>
+        <table className="rp-tbl rp-sticky" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--color-surface-2)' }}>
               <th style={thL}>เซลส์</th>
@@ -935,8 +947,8 @@ function SalespersonDetailCard({ sp, defaultOpen }: { sp: SalespersonKpi; defaul
         <div className="num" style={{ fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap' }}>{baht(sp.totalValue)}</div>
       </button>
       {open && (
-        <div style={{ overflowX: 'auto', borderTop: '1px solid var(--color-border)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <div className="table-scroll" tabIndex={0} role="region" aria-label={`สมาชิกของ ${sp.salesName}`} style={{ overflowX: 'auto', borderTop: '1px solid var(--color-border)', '--table-min': '520px' } as React.CSSProperties}>
+          <table className="rp-tbl rp-sticky" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--color-surface-2)' }}>
                 <th style={thL}>สมาชิก</th>
@@ -1040,75 +1052,24 @@ function SalespersonReport({ onBack }: { onBack: () => void }) {
     : '';
 
   return (
-    <div className="scroll" style={{ height: '100%', overflow: 'auto', padding: 'var(--space-6)', background: 'var(--color-bg)' }}>
+    <div className="scroll screen-pad" style={{ height: '100%', overflow: 'auto', padding: 'var(--space-6)', background: 'var(--color-bg)' }}>
+      <ReportsPhoneStyles />
       <button className="btn btn-ghost hover-raise" onClick={onBack} style={{ marginBottom: 'var(--space-4)', alignSelf: 'flex-start' }}>
         <Icon name="chevronLeft" size={14} /> รายงาน
       </button>
 
       <div style={{ marginBottom: 'var(--space-5)' }}>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 2 }}>รายงาน</div>
-        <h1 className="text-balance" style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>รายงานเซลส์</h1>
+        <h1 className="text-balance page-title" style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>รายงานเซลส์</h1>
         <div className="text-pretty" style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)' }}>ยอดขายและสมาชิกที่แต่ละเซลส์ดูแล — กดที่ชื่อเซลส์เพื่อดูรายละเอียดรายคน แล้วดาวน์โหลดเป็น Excel (.xlsx)</div>
       </div>
 
-      <Card style={{ marginBottom: 16 }}>
-        <div role="tablist" aria-label="ช่วงเวลารายงาน" style={{ display: 'inline-flex', background: 'var(--color-surface-2)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-1)', marginBottom: 'var(--space-4)' }}>
-          {([['daily', 'รายวัน'], ['range', 'รายเดือน / ช่วงวันที่']] as [ReportMode, string][]).map(([m, label]) => (
-            <button
-              key={m}
-              role="tab"
-              aria-selected={mode === m}
-              onClick={() => setMode(m)}
-              style={{
-                minHeight: 44, padding: '8px 16px', borderRadius: 'var(--radius-md)', border: 'none', cursor: 'pointer',
-                fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
-                background: mode === m ? 'var(--color-surface)' : 'transparent',
-                color: mode === m ? 'var(--color-text)' : 'var(--color-text-secondary)',
-                boxShadow: mode === m ? 'var(--shadow-sm)' : 'none',
-                transition: 'background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
-              }}
-            >{label}</button>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}>
-          {mode === 'daily' ? (
-            <>
-              <div>
-                <label style={LB}>วันที่</label>
-                <input type="date" value={day} max={TODAY} onChange={(e) => setDay(e.target.value)} style={IS} />
-              </div>
-              <button className="btn btn-ghost" onClick={() => setDay(TODAY)}>วันนี้</button>
-            </>
-          ) : (
-            <>
-              <div>
-                <label style={LB}>วันเริ่ม</label>
-                <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} style={IS} />
-              </div>
-              <div>
-                <label style={LB}>วันสิ้นสุด</label>
-                <input type="date" value={to} max={TODAY} onChange={(e) => setTo(e.target.value)} style={IS} />
-              </div>
-            </>
-          )}
-
-          <button className="btn btn-primary" onClick={runReport} disabled={loading}>
-            <Icon name="reports" size={14} /> {loading ? 'กำลังเรียก…' : 'เรียกรายงาน'}
-          </button>
-          <button className="btn btn-ghost" onClick={download} disabled={!data || downloading}>
-            <Icon name="download" size={14} /> {downloading ? 'กำลังสร้าง…' : 'ดาวน์โหลด Excel'}
-          </button>
-        </div>
-
-        {error && (
-          <div role="alert" style={{
-            marginTop: 'var(--space-4)', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: 13,
-            background: 'var(--color-danger-50)', color: 'var(--color-danger)',
-            border: '1px solid var(--color-danger)',
-          }}>{error}</div>
-        )}
-      </Card>
+      <ReportControls
+        mode={mode} onMode={setMode}
+        day={day} onDay={setDay} from={from} onFrom={setFrom} to={to} onTo={setTo}
+        loading={loading} downloading={downloading} canDownload={!!data}
+        onRun={runReport} onDownload={download} error={error}
+      />
 
       {loading && <ReportSkeleton rangeMode={mode === 'range'} />}
 
@@ -1118,7 +1079,7 @@ function SalespersonReport({ onBack }: { onBack: () => void }) {
             <Tag tone="accent">{periodText}</Tag>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 }}>
+          <div className="kpi-grid rp-sum" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 }}>
             <SummaryCard label="จำนวนเซลส์" value={data.totalSalespeople} format={fmtInt} />
             <SummaryCard label="สมาชิกที่ดูแล" value={data.totalMembers} format={fmtInt} />
             <SummaryCard label="สมาชิกที่ซื้อ" value={data.buyingMembers} format={fmtInt} />
@@ -1189,10 +1150,11 @@ function ReportCard({ entry, onOpen }: { entry: ReportEntry; onOpen: (id: string
 
 function ReportsHub({ onOpen }: { onOpen: (id: string) => void }) {
   return (
-    <div className="scroll" style={{ height: '100%', overflow: 'auto', padding: 'var(--space-6)', background: 'var(--color-bg)' }}>
+    <div className="scroll screen-pad" style={{ height: '100%', overflow: 'auto', padding: 'var(--space-6)', background: 'var(--color-bg)' }}>
+      <ReportsPhoneStyles />
       <div style={{ marginBottom: 'var(--space-5)' }}>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 2 }}>รายงาน</div>
-        <h1 className="text-balance" style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>รายงานทั้งหมด</h1>
+        <h1 className="text-balance page-title" style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>รายงานทั้งหมด</h1>
         <div className="text-pretty" style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)' }}>เลือกรายงานที่ต้องการดู</div>
       </div>
 

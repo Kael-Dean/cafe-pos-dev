@@ -2,13 +2,60 @@
 
 import { useState } from 'react';
 import Icon from '../icons';
-import { useToast } from '../app-common';
+import { useToast, ModalShell } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { useCountUp } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { useStaffList, useWeeklySchedule, useAssignShift, type ShiftAssignment } from '@/hooks/use-hr';
 import { usePreOrders, usePreOrder, type PreOrderStatus, type PreOrderListItem } from '@/hooks/use-pre-orders';
-import { useModalA11y } from '@/hooks/use-modal-a11y';
+import { useIsPhone } from '@/hooks/use-media-query';
+
+// Phone-only rules (< 768px). The 8-column week table is replaced on phones by a
+// day picker + that day's list (rendered only when useIsPhone()), so most of this
+// styles markup that does not exist at >= 768px; the rest restacks the header and
+// the week navigation, which keep their inline desktop styles.
+const SHIFT_PHONE_CSS = `
+@media (max-width: 767px) {
+  .shift-screen button { min-height: 44px !important; }
+  .shift-head { flex-direction: column !important; align-items: stretch !important; gap: 12px; margin-bottom: 16px !important; }
+  .shift-stats > div { flex: 1 1 0; min-width: 0 !important; padding: 8px 4px !important; }
+  .shift-nav { flex-wrap: wrap; padding: 8px !important; gap: 8px !important; margin-bottom: 12px !important; }
+  .shift-nav > button { min-width: 44px; justify-content: center; }
+  .shift-nav-label { flex: 1 1 calc(100% - 120px) !important; font-size: 14px !important; }
+  .shift-nav-wide { flex: 1 1 0; font-size: 13px !important; }
+  .shift-unassigned > div { flex-wrap: wrap; border-radius: var(--radius-lg) !important; }
+  .shift-unassigned > div > div:first-child { font-size: 11px !important; }
+
+  .shift-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin-bottom: 12px; background: var(--color-surface-2); border-radius: var(--radius-lg); }
+  .shift-seg > button { border-radius: var(--radius-md); font-size: 14px; font-weight: 500; color: var(--color-text-secondary); }
+  .shift-seg > button[aria-pressed='true'] { background: var(--color-surface); color: var(--color-text); font-weight: 700; box-shadow: var(--shadow-xs); }
+
+  .shift-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin-bottom: 14px; }
+  .shift-days > button { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 0 5px; min-height: 64px !important; border-radius: var(--radius-md); border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+  .shift-days > button[data-today] { border-color: var(--color-accent); color: var(--color-accent-600); }
+  .shift-days > button[aria-pressed='true'] { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-text-inverse); }
+  .shift-days-w { font-size: 12px; font-weight: 500; }
+  .shift-days-d { font-size: 17px; font-weight: 700; line-height: 1.2; }
+  .shift-days-n { font-size: 11px; font-weight: 500; opacity: 0.85; }
+
+  .shift-day-title { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
+  .shift-day-sub { font-size: 13px; font-weight: 500; color: var(--color-text-secondary); }
+  .shift-list { list-style: none; margin: 0; padding: 0; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; }
+  .shift-list > li + li { border-top: 1px solid var(--color-border); }
+  .shift-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px !important; padding: 8px 12px; text-align: left; color: var(--color-text); }
+  button.shift-row:active { background: var(--color-surface-2); }
+  .shift-avatar { width: 34px; height: 34px; border-radius: var(--radius-pill); flex-shrink: 0; display: grid; place-items: center; background: var(--color-accent-50); color: var(--color-primary); font-weight: 700; font-size: 14px; }
+  .shift-row-main { flex: 1; min-width: 0; }
+  .shift-row-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .shift-row-meta { font-size: 12px; color: var(--color-text-secondary); }
+  .shift-time { flex-shrink: 0; padding: 6px 10px; border-radius: var(--radius-md); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .shift-time[data-empty] { border: 1px dashed var(--color-border-strong); color: var(--color-text-secondary); font-weight: 500; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
+  .shift-section { margin: 18px 0 8px; font-size: 13px; font-weight: 600; color: var(--color-text-secondary); }
+  .shift-po-tag { flex-shrink: 0; padding: 3px 10px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .shift-note { margin-top: 10px; font-size: 12px; color: var(--color-text-secondary); }
+}
+`;
+// Inputs in the portaled dialogs keep >= 16px via their own inline size (17px).
 
 /** Small whole-number stat that counts up on mount (header KPI chips). */
 function StatNum({ value, color }: { value: number; color: string }) {
@@ -61,6 +108,15 @@ function dateStr(d: Date): string {
   return d.toISOString().split('T')[0];
 }
 
+// Weekday (Monday = 0) and day-of-month read from the "YYYY-MM-DD" string itself, so
+// the phone day picker labels each date with its real weekday in every timezone.
+function dowOf(ds: string): number {
+  return (new Date(`${ds}T00:00:00Z`).getUTCDay() + 6) % 7;
+}
+function domOf(ds: string): number {
+  return Number(ds.slice(8, 10));
+}
+
 // Format "HH:MM:SS" → "HH:MM"
 function fmtTime(t: string): string {
   return t.slice(0, 5);
@@ -88,9 +144,13 @@ export default function ShiftSchedule() {
   const [editEnd, setEditEnd] = useState('16:00');
   const [selectedPreOrderId, setSelectedPreOrderId] = useState<string | null>(null);
   const [showCancelled, setShowCancelled] = useState(false);
+  // Phones: one day at a time (team) or my own week, instead of the week table.
+  const isPhone = useIsPhone();
+  const [phoneDay, setPhoneDay] = useState<string | null>(null);
+  const [phoneView, setPhoneView] = useState<'team' | 'mine'>('team');
 
   const { data: staff, isLoading: staffLoading } = useStaffList();
-  const { data: shifts, isLoading: shiftsLoading } = useWeeklySchedule(weekStart);
+  const { data: shifts, isLoading: shiftsLoading, refetch: refetchShifts } = useWeeklySchedule(weekStart);
   const assignShift = useAssignShift();
   // Pre-orders: fetch all statuses (first 200, due_date asc) and filter to the
   // visible week client-side — no backend date-range param needed.
@@ -106,6 +166,10 @@ export default function ShiftSchedule() {
   const weekDates = Array.from({ length: 7 }, (_, i) => addDays(new Date(weekStart), i));
   const today = dateStr(new Date());
   const staffList = staff ?? [];
+
+  // Phone day picker: the tapped day while it is in the visible week, else today, else Monday.
+  const weekStrs = weekDates.map(dateStr);
+  const selDay = phoneDay && weekStrs.includes(phoneDay) ? phoneDay : weekStrs.includes(today) ? today : weekStrs[0];
 
   const shiftsToday = staffList.filter(s => !!shiftMap[`${s.id}:${today}`]).length;
   const noShiftToday = staffList.length - shiftsToday;
@@ -138,18 +202,23 @@ export default function ShiftSchedule() {
         end_time: `${editEnd}:00`,
       });
       setEditingCell(null);
+      // useAssignShift invalidates by a week key it derives itself; east of UTC that key
+      // differs from this screen's `weekStart`, so the saved shift would not appear
+      // until a reload. Refetch the week on screen explicitly.
+      void refetchShifts();
       toast({ kind: 'success', title: 'บันทึกกะแล้ว' });
     } catch (e: unknown) { toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) }); }
   };
 
   if (staffLoading || shiftsLoading) {
     return (
-      <div style={{ height: '100%', overflowY: 'auto', padding: 'var(--space-8)' }} aria-busy="true">
+      <div className="screen-pad-lg shift-screen" style={{ height: '100%', overflowY: 'auto', padding: 'var(--space-8)' }} aria-busy="true">
+        <style>{SHIFT_PHONE_CSS}</style>
         <span className="sr-only">กำลังโหลดตารางกะ…</span>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-6)' }}>
+        <div className="shift-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-6)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            <Skeleton height={26} width={260} radius="var(--radius-md)" />
-            <Skeleton height={14} width={320} />
+            <Skeleton height={26} width={260} radius="var(--radius-md)" style={{ maxWidth: '100%' }} />
+            <Skeleton height={14} width={320} style={{ maxWidth: '100%' }} />
           </div>
           <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
             {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={56} width={88} radius="var(--radius-lg)" />)}
@@ -164,14 +233,15 @@ export default function ShiftSchedule() {
   }
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: 'var(--space-8)' }}>
+    <div className="screen-pad-lg shift-screen" style={{ height: '100%', overflowY: 'auto', padding: 'var(--space-8)' }}>
+      <style>{SHIFT_PHONE_CSS}</style>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-6)' }}>
+      <div className="shift-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-6)' }}>
         <div>
           <h1 className="text-balance" style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 'var(--space-1)' }}>ตารางกะ / Shift Schedule</h1>
           <div className="text-pretty" style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>จัดการกะพนักงานรายสัปดาห์ ระบุเวลาเริ่ม/สิ้นสุด</div>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+        <div className="shift-stats" style={{ display: 'flex', gap: 'var(--space-3)' }}>
           {[
             { label: 'มีกะวันนี้',    val: shiftsToday,       color: 'var(--color-success)',        bg: 'var(--color-success-50)' },
             { label: 'ไม่มีกะวันนี้', val: noShiftToday,      color: 'var(--color-text-muted)',     bg: 'var(--color-surface-2)' },
@@ -186,24 +256,164 @@ export default function ShiftSchedule() {
       </div>
 
       {/* Week navigation */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 10, padding: '10px 14px', boxShadow: 'var(--shadow-xs)' }}>
+      <div className="shift-nav" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 10, padding: '10px 14px', boxShadow: 'var(--shadow-xs)' }}>
         <button onClick={prevWeek} aria-label="สัปดาห์ก่อนหน้า" className="hit-44 pressable" style={{ minHeight: 38, padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
           <Icon name="chevronRight" size={15} style={{ transform: 'rotate(180deg)' }} />
         </button>
-        <div style={{ flex: 1, textAlign: 'center', fontWeight: 600, fontSize: 15 }}>
+        <div className="shift-nav-label" style={{ flex: 1, textAlign: 'center', fontWeight: 600, fontSize: 15 }}>
           {new Date(weekStart).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} – {addDays(new Date(weekStart), 6).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
         </div>
         <button onClick={nextWeek} aria-label="สัปดาห์ถัดไป" className="hit-44 pressable" style={{ minHeight: 38, padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
           <Icon name="chevronRight" size={15} />
         </button>
-        <button onClick={goToday} className="pressable" style={{ minHeight: 38, padding: '6px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: 13, color: 'var(--color-text-secondary)', fontWeight: 500, cursor: 'pointer' }}>สัปดาห์นี้</button>
-        <button onClick={() => setShowCancelled(v => !v)} title="แสดง/ซ่อนพรีออเดอร์ที่ยกเลิก" style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--color-border)', background: showCancelled ? 'var(--color-surface-2)' : 'transparent', fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button onClick={goToday} className="pressable shift-nav-wide" style={{ minHeight: 38, padding: '6px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: 13, color: 'var(--color-text-secondary)', fontWeight: 500, cursor: 'pointer' }}>สัปดาห์นี้</button>
+        <button onClick={() => setShowCancelled(v => !v)} aria-pressed={showCancelled} title="แสดง/ซ่อนพรีออเดอร์ที่ยกเลิก" className="shift-nav-wide" style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--color-border)', background: showCancelled ? 'var(--color-surface-2)' : 'transparent', fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 12, height: 12, borderRadius: 3, border: '1px solid var(--color-border-strong)', background: showCancelled ? 'var(--color-accent)' : 'transparent', display: 'inline-block', flexShrink: 0 }} />
           แสดงที่ยกเลิก
         </button>
       </div>
 
+      {/* Phones: day picker + that day's shifts (or my own week) — same data and handlers as the table */}
+      {isPhone && (() => {
+        const timePill = (shift: ShiftAssignment | undefined, emptyLabel: React.ReactNode) => {
+          const c = shiftCellStyle(shift);
+          return shift
+            ? <span className="shift-time" style={{ background: c.bg, color: c.fg }}>{fmtTime(shift.start_time)}–{fmtTime(shift.end_time)}</span>
+            : <span className="shift-time" data-empty="">{emptyLabel}</span>;
+        };
+        const emptyLabel = admin ? <><Icon name="plus" size={13} /> ตั้งกะ</> : 'ไม่มีกะ';
+        const dayStaff = [...staffList].sort((a, b) => {
+          const sa = shiftMap[`${a.id}:${selDay}`]?.start_time ?? '99';
+          const sb = shiftMap[`${b.id}:${selDay}`]?.start_time ?? '99';
+          return sa.localeCompare(sb);
+        });
+        const onShift = dayStaff.filter(s => !!shiftMap[`${s.id}:${selDay}`]).length;
+        const dayPreOrders = preOrdersByDate[selDay] ?? [];
+        const mine = staffList.find(s => s.id === me?.id);
+        const myShifts = mine ? weekStrs.map(ds => shiftMap[`${mine.id}:${ds}`]) : [];
+        const myCount = myShifts.filter(Boolean).length;
+        const myHours = myShifts.reduce((sum, sh) => {
+          if (!sh) return sum;
+          const mins = (t: string) => parseInt(t.slice(0, 2), 10) * 60 + parseInt(t.slice(3, 5), 10);
+          return sum + Math.max(0, mins(sh.end_time) - mins(sh.start_time)) / 60;
+        }, 0);
+        return (
+          <div>
+            <div className="shift-seg" role="group" aria-label="มุมมองตารางกะ">
+              <button type="button" aria-pressed={phoneView === 'team'} onClick={() => setPhoneView('team')}>ทั้งทีม</button>
+              <button type="button" aria-pressed={phoneView === 'mine'} onClick={() => setPhoneView('mine')}>กะของฉัน</button>
+            </div>
+
+            {phoneView === 'team' ? (
+              <>
+                <div className="shift-days" role="group" aria-label="เลือกวัน">
+                  {weekStrs.map(ds => {
+                    const n = staffList.filter(s => !!shiftMap[`${s.id}:${ds}`]).length;
+                    return (
+                      <button key={ds} type="button" aria-pressed={ds === selDay} data-today={ds === today ? '' : undefined}
+                        aria-label={`วัน${DAY_FULL[dowOf(ds)]}ที่ ${domOf(ds)} มีกะ ${n} คน`} onClick={() => setPhoneDay(ds)}>
+                        <span className="shift-days-w">{DAY_SHORT[dowOf(ds)]}</span>
+                        <span className="shift-days-d">{domOf(ds)}</span>
+                        <span className="shift-days-n">{n} คน</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <h2 className="shift-day-title">
+                  วัน{DAY_FULL[dowOf(selDay)]}ที่ {fmtDateTh(selDay)}{selDay === today ? ' (วันนี้)' : ''}
+                  <span className="shift-day-sub"> · มีกะ {onShift}/{staffList.length} คน</span>
+                </h2>
+                {staffList.length === 0 ? (
+                  <div className="shift-note">ยังไม่มีพนักงาน</div>
+                ) : (
+                  <ul className="shift-list">
+                    {dayStaff.map(member => {
+                      const shift = shiftMap[`${member.id}:${selDay}`];
+                      const body = (
+                        <>
+                          <span className="shift-avatar" aria-hidden="true">{member.name.charAt(0)}</span>
+                          <span className="shift-row-main">
+                            <span className="shift-row-name" style={{ display: 'block' }}>{member.name}</span>
+                            <span className="shift-row-meta">{member.role}</span>
+                          </span>
+                          {timePill(shift, emptyLabel)}
+                        </>
+                      );
+                      return (
+                        <li key={member.id}>
+                          {admin
+                            ? <button type="button" className="shift-row" onClick={() => openEditor(member.id, selDay)}>{body}</button>
+                            : <div className="shift-row">{body}</div>}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                {admin && <div className="shift-note">แตะชื่อพนักงานเพื่อกำหนดเวลาเข้า–ออกงาน</div>}
+
+                <h3 className="shift-section">พรีออเดอร์ที่ต้องส่ง ({dayPreOrders.length})</h3>
+                {dayPreOrders.length === 0 ? (
+                  <div className="shift-note" style={{ marginTop: 0 }}>ไม่มีพรีออเดอร์ในวันนี้</div>
+                ) : (
+                  <ul className="shift-list">
+                    {dayPreOrders.map(po => {
+                      const c = PREORDER_STATUS_COLORS[po.status];
+                      return (
+                        <li key={po.id}>
+                          <button type="button" className="shift-row" onClick={() => setSelectedPreOrderId(po.id)}>
+                            <span className="shift-row-main">
+                              <span className="shift-row-name" style={{ display: 'block', textDecoration: po.status === 'CANCELLED' ? 'line-through' : 'none' }}>{preOrderLabel(po)}</span>
+                              <span className="shift-row-meta">{po.itemCount > 0 ? `${po.itemCount} รายการ` : 'ยังไม่มีรายการ'}</span>
+                            </span>
+                            <span className="shift-po-tag" style={{ background: c.bg, color: c.fg }}>{PREORDER_STATUS_LABELS[po.status]}</span>
+                            <Icon name="chevronRight" size={16} color="var(--color-text-muted)" />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </>
+            ) : !mine ? (
+              <div className="shift-note">ไม่พบชื่อของคุณในรายชื่อพนักงานของสาขานี้</div>
+            ) : (
+              <>
+                <h2 className="shift-day-title">
+                  {mine.name}
+                  <span className="shift-day-sub"> · สัปดาห์นี้ {myCount} กะ{myCount > 0 ? ` · ${Number.isInteger(myHours) ? myHours : myHours.toFixed(1)} ชม.` : ''}</span>
+                </h2>
+                <ul className="shift-list">
+                  {weekStrs.map((ds, i) => {
+                    const shift = myShifts[i];
+                    const body = (
+                      <>
+                        <span className="shift-row-main">
+                          <span className="shift-row-name" style={{ display: 'block', color: ds === today ? 'var(--color-accent-600)' : undefined }}>
+                            วัน{DAY_FULL[dowOf(ds)]}{ds === today ? ' (วันนี้)' : ''}
+                          </span>
+                          <span className="shift-row-meta">{fmtDateTh(ds)}</span>
+                        </span>
+                        {timePill(shift, emptyLabel)}
+                      </>
+                    );
+                    return (
+                      <li key={ds}>
+                        {admin
+                          ? <button type="button" className="shift-row" onClick={() => openEditor(mine.id, ds)}>{body}</button>
+                          : <div className="shift-row">{body}</div>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Grid */}
+      {!isPhone && (
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
         <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -315,11 +525,12 @@ export default function ShiftSchedule() {
         </table>
         </div>
       </div>
+      )}
 
       {/* Shift notes by day */}
       <div style={{ marginTop: 20, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 16, boxShadow: 'var(--shadow-xs)' }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: 'var(--color-text-secondary)' }}>พนักงานที่ยังไม่มีกะสัปดาห์นี้</div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="shift-unassigned" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {staffList.map(s => {
             const unassigned = weekDates.filter(d => !shiftMap[`${s.id}:${dateStr(d)}`]);
             if (unassigned.length === 0) return null;
@@ -337,54 +548,38 @@ export default function ShiftSchedule() {
         </div>
       </div>
 
-      {admin && <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8 }}>คลิกที่ช่องเพื่อกำหนดเวลาเข้า-ออกงาน</div>}
+      {admin && <div className="hide-phone" style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8 }}>คลิกที่ช่องเพื่อกำหนดเวลาเข้า-ออกงาน</div>}
 
       {editingCell && admin && (() => {
         const member = staffList.find(s => s.id === editingCell.userId);
         const d = new Date(editingCell.date);
         const dayIdx = (d.getDay() + 6) % 7;          // Monday = 0
+        const timeInput: React.CSSProperties = { width: '100%', minHeight: 48, padding: '11px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text)', fontSize: 17, fontFamily: 'inherit', boxSizing: 'border-box' };
         return (
-          <div onClick={() => setEditingCell(null)} style={{ position: 'absolute', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
-            <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-xl)', width: 460, maxWidth: '92vw', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
-              {/* Header — who & which day */}
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface-2)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                  <div style={{ width: 44, height: 44, borderRadius: 99, background: 'var(--color-accent-50)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>
-                    {member?.name.charAt(0) ?? '?'}
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member?.name ?? 'พนักงาน'}</div>
-                    <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>วัน{DAY_FULL[dayIdx]}ที่ {fmtDateTh(editingCell.date)}</div>
-                  </div>
-                </div>
-                <button onClick={() => setEditingCell(null)} title="ปิด" style={{ padding: 4, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', flexShrink: 0 }}>
-                  <Icon name="x" size={20} />
-                </button>
+          <ModalShell
+            title={member?.name ?? 'พนักงาน'}
+            subtitle={`วัน${DAY_FULL[dayIdx]}ที่ ${fmtDateTh(editingCell.date)} · กำหนดเวลาเข้า–ออกงาน`}
+            onClose={() => setEditingCell(null)}
+            width={460}
+            busy={assignShift.isPending}
+            footer={<>
+              <button onClick={() => setEditingCell(null)} className="pressable" style={{ minHeight: 44, padding: '10px 22px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', color: 'var(--color-text)', border: '1px solid var(--color-border)', fontSize: 14, cursor: 'pointer' }}>ยกเลิก</button>
+              <button onClick={() => handleAssign(editingCell.userId, editingCell.date)} disabled={assignShift.isPending} className="pressable" style={{ minHeight: 44, padding: '10px 28px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontSize: 14, fontWeight: 600, cursor: 'pointer', border: 'none' }}>
+                {assignShift.isPending ? 'กำลังบันทึก…' : 'บันทึก'}
+              </button>
+            </>}
+          >
+            <div className="form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label htmlFor="shift-edit-start" style={{ display: 'block', fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 6 }}>เวลาเริ่ม</label>
+                <input id="shift-edit-start" type="time" value={editStart} onChange={e => setEditStart(e.target.value)} style={timeInput} />
               </div>
-
-              {/* Body — time pickers */}
-              <div style={{ padding: 24 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 14 }}>กำหนดเวลาเข้า–ออกงาน</div>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 6 }}>เวลาเริ่ม</label>
-                    <input type="time" value={editStart} onChange={e => setEditStart(e.target.value)} style={{ width: '100%', minHeight: 44, padding: '11px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text)', fontSize: 17, fontFamily: 'inherit', boxSizing: 'border-box' }} />
-                  </div>
-                  <div style={{ paddingBottom: 12, fontSize: 13, color: 'var(--color-text-muted)' }}>ถึง</div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 6 }}>เวลาสิ้นสุด</label>
-                    <input type="time" value={editEnd} onChange={e => setEditEnd(e.target.value)} style={{ width: '100%', minHeight: 44, padding: '11px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text)', fontSize: 17, fontFamily: 'inherit', boxSizing: 'border-box' }} />
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 10, marginTop: 24 }}>
-                  <button onClick={() => handleAssign(editingCell.userId, editingCell.date)} disabled={assignShift.isPending} className="pressable" style={{ flex: 1, minHeight: 44, padding: '12px 0', borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontSize: 14, fontWeight: 600, cursor: 'pointer', border: 'none' }}>
-                    บันทึก
-                  </button>
-                  <button onClick={() => setEditingCell(null)} className="pressable" style={{ minHeight: 44, padding: '12px 22px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', color: 'var(--color-text)', border: '1px solid var(--color-border)', fontSize: 14, cursor: 'pointer' }}>ยกเลิก</button>
-                </div>
+              <div>
+                <label htmlFor="shift-edit-end" style={{ display: 'block', fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 6 }}>เวลาสิ้นสุด</label>
+                <input id="shift-edit-end" type="time" value={editEnd} onChange={e => setEditEnd(e.target.value)} style={timeInput} />
               </div>
             </div>
-          </div>
+          </ModalShell>
         );
       })()}
 
@@ -398,15 +593,20 @@ export default function ShiftSchedule() {
 // Read-only pre-order detail shown when a calendar badge is clicked.
 function PreOrderDetailModal({ id, onClose }: { id: string; onClose: () => void }) {
   const { data: po, isLoading } = usePreOrder(id);
-  const dialogRef = useModalA11y(onClose);
   const fmtMoney = (v: string | null) =>
     v == null ? '—' : `฿${Number(v).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
+  const ready = !isLoading && !!po;
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="รายละเอียดพรีออเดอร์" onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', width: 560, maxWidth: '90vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: 'var(--shadow-lg)' }}>
+    <ModalShell
+      title={ready ? preOrderLabel(po) : 'รายละเอียดพรีออเดอร์'}
+      subtitle={ready && po.customerPhone ? <span style={{ fontFamily: 'var(--font-num)' }}>{po.customerPhone}</span> : undefined}
+      onClose={onClose}
+      width={560}
+      footer={<button onClick={onClose} className="pressable" style={{ minHeight: 44, padding: '10px 22px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', color: 'var(--color-text)', border: '1px solid var(--color-border)', fontSize: 14, cursor: 'pointer' }}>ปิด</button>}
+    >
         {isLoading || !po ? (
-          <div style={{ padding: 'var(--space-10)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }} aria-busy="true">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }} aria-busy="true">
             <span className="sr-only">กำลังโหลดรายละเอียดพรีออเดอร์…</span>
             <Skeleton height={20} width="50%" radius="var(--radius-md)" />
             <Skeleton height={14} width="35%" />
@@ -416,32 +616,23 @@ function PreOrderDetailModal({ id, onClose }: { id: string; onClose: () => void 
             <SkeletonTable rows={3} cols={4} />
           </div>
         ) : (
-          <div style={{ padding: 24 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 18 }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>{preOrderLabel(po)}</div>
-                {po.customerPhone && <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', fontFamily: 'var(--font-num)' }}>{po.customerPhone}</div>}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', color: PREORDER_STATUS_COLORS[po.status].fg, background: PREORDER_STATUS_COLORS[po.status].bg }}>
-                  {PREORDER_STATUS_LABELS[po.status]}
-                </span>
-                <button onClick={onClose} title="ปิด" style={{ padding: 4, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }}>
-                  <Icon name="x" size={18} />
-                </button>
-              </div>
+          <div>
+            <div style={{ marginBottom: 14 }}>
+              <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', color: PREORDER_STATUS_COLORS[po.status].fg, background: PREORDER_STATUS_COLORS[po.status].bg }}>
+                {PREORDER_STATUS_LABELS[po.status]}
+              </span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 12, marginBottom: 18 }}>
               {[
-                { label: 'วันที่สั่ง', value: fmtDateTh(po.orderDate) },
-                { label: 'วันส่งของ', value: fmtDateTh(po.dueDate) },
-                { label: 'มัดจำ', value: po.depositAmount ? `${fmtMoney(po.depositAmount)}${po.depositPaid ? ' (ชำระแล้ว)' : ' (ยังไม่ชำระ)'}` : '—' },
-                { label: 'หมายเหตุ', value: po.notes || '—' },
+                { label: 'วันที่สั่ง', value: fmtDateTh(po.orderDate), wide: false },
+                { label: 'วันส่งของ', value: fmtDateTh(po.dueDate), wide: false },
+                { label: 'มัดจำ', value: po.depositAmount ? `${fmtMoney(po.depositAmount)}${po.depositPaid ? ' (ชำระแล้ว)' : ' (ยังไม่ชำระ)'}` : '—', wide: true },
+                { label: 'หมายเหตุ', value: po.notes || '—', wide: true },
               ].map(m => (
-                <div key={m.label}>
-                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 2 }}>{m.label}</div>
-                  <div style={{ fontSize: 13, fontWeight: 500, wordBreak: 'break-word' }}>{m.value}</div>
+                <div key={m.label} style={{ gridColumn: m.wide ? '1 / -1' : undefined }}>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{m.label}</div>
+                  <div style={{ fontSize: 14, fontWeight: 500, overflowWrap: 'anywhere' }}>{m.value}</div>
                 </div>
               ))}
             </div>
@@ -453,7 +644,7 @@ function PreOrderDetailModal({ id, onClose }: { id: string; onClose: () => void 
                   <tr style={{ background: 'var(--color-surface-2)' }}>
                     <th style={thStyle}>รายการ</th>
                     <th style={{ ...thStyle, textAlign: 'center', width: 50 }}>จำนวน</th>
-                    <th style={{ ...thStyle, textAlign: 'right', width: 90 }}>ราคา</th>
+                    <th className="hide-phone" style={{ ...thStyle, textAlign: 'right', width: 90 }}>ราคา</th>
                     <th style={{ ...thStyle, textAlign: 'right', width: 100 }}>รวม</th>
                   </tr>
                 </thead>
@@ -462,15 +653,17 @@ function PreOrderDetailModal({ id, onClose }: { id: string; onClose: () => void 
                     <tr key={it.id} style={{ borderTop: '1px solid var(--color-border)' }}>
                       <td style={{ padding: '8px 12px' }}>{it.productName}</td>
                       <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: 'var(--font-num)' }}>{it.quantity}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-num)' }}>{fmtMoney(it.unitPrice)}</td>
+                      <td className="hide-phone" style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-num)' }}>{fmtMoney(it.unitPrice)}</td>
                       <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-num)', fontWeight: 600 }}>{fmtMoney(it.lineTotal)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr style={{ borderTop: '2px solid var(--color-border)', background: 'var(--color-surface-2)' }}>
-                    <td colSpan={3} style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>รวมทั้งหมด</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, fontFamily: 'var(--font-num)' }}>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>รวมทั้งหมด</td>
+                    <td />
+                    <td className="hide-phone" />
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, fontFamily: 'var(--font-num)', whiteSpace: 'nowrap' }}>
                       {fmtMoney(String(po.items.reduce((s, it) => s + Number(it.lineTotal), 0)))}
                     </td>
                   </tr>
@@ -480,7 +673,6 @@ function PreOrderDetailModal({ id, onClose }: { id: string; onClose: () => void 
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </ModalShell>
   );
 }

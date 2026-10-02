@@ -8,6 +8,7 @@ import { useStagger } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api-client';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
+import { useIsPhone } from '@/hooks/use-media-query';
 import {
   useInventory, useInventoryMovements, useWasteStock,
   useCreateInventoryItem, useDeleteInventoryItem, useUpdateInventoryItem, useSupplierHistory,
@@ -139,6 +140,94 @@ const todayIso = () => new Date().toISOString().split('T')[0];
 // Sentinel value for the "+ เพิ่มแพ็คใหม่" row in the pack dropdown. A cuid can never
 // collide with it.
 const NEW_PACK_OPTION = '__new_pack__';
+
+// ── Phone layout (< 768px) ────────────────────────────────────────────────────
+// Every rule is phone-only except the first, which carries the dialog gutter that
+// used to be inline (an inline padding would beat the phone safe-area padding and
+// the keyboard lift that globals.css / use-keyboard-inset apply to the backdrop).
+//
+// Grid-tables become two-line rows: mark the header `.inv-thead`, each row `.inv-row`,
+// then per cell — `.inv-t` title (line 1, grows), `.inv-k` key figure (line 1, right),
+// `.inv-lead` (before the title), `data-label="…"` meta (line 2, label prefixed;
+// `data-label=""` for no prefix), `.inv-wide` own full line, `.inv-act` buttons line.
+const INV_CSS = `
+@media (min-width: 768px) {
+  .modal-backdrop.inv-backdrop { padding: var(--space-5); }
+}
+@media (max-width: 767px) {
+  .inv-root input:not([type="checkbox"]):not([type="radio"]), .inv-root textarea { font-size: 16px !important; min-height: 44px; }
+  .inv-icon-btn { min-width: 44px; justify-content: center; }
+
+  .inv-thead { display: none !important; }
+  .inv-row { display: flex !important; flex-wrap: wrap; align-items: baseline !important; gap: 2px 12px !important; padding: 12px 14px !important; }
+  .inv-row.inv-mid { align-items: center !important; }
+  .inv-row::after { content: ''; order: 5; flex-basis: 100%; height: 0; }
+  .inv-row > * { min-width: 0; }
+  .inv-row > .inv-lead { order: 0; flex: 0 0 auto; }
+  .inv-row > .inv-t { order: 1; flex: 1 1 0; }
+  .inv-row > .inv-k { order: 2; flex: 0 0 auto; text-align: right !important; }
+  .inv-row > [data-label] { order: 6; text-align: left !important; font-size: 12px !important; font-weight: 500 !important; color: var(--color-text-secondary) !important; }
+  .inv-row > [data-label]:not([data-label=""])::before { content: attr(data-label) ' '; }
+  .inv-row > [data-label] div { display: inline !important; margin: 0 !important; }
+  .inv-row > [data-label] div + div { margin-left: 6px !important; }
+  .inv-row > .inv-wide { order: 7; flex: 1 1 100%; margin-top: 4px; }
+  .inv-row > .inv-act { order: 8; flex: 0 1 auto; margin-left: auto; display: flex; justify-content: flex-end !important; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .inv-row > .inv-act:empty { display: none; }
+  .inv-row > .inv-act > button { min-width: 88px; font-size: 13px !important; }
+  .inv-row > .inv-k > button { min-width: 44px; }
+
+  /* Tab headers */
+  .inv-head { flex-direction: column; align-items: stretch !important; gap: 12px; }
+  .inv-head-actions > button { flex: 1 1 0; justify-content: center; padding-inline: 10px !important; }
+  .inv-usage-head { flex-wrap: wrap; gap: 10px; }
+  .inv-usage-sum { padding: 12px 14px !important; gap: 16px !important; }
+  .inv-banner { flex-direction: column; align-items: stretch !important; gap: 14px; padding: 16px !important; }
+  .inv-banner-actions > button { flex: 1 1 auto; justify-content: center; }
+
+  /* Dialogs: actions stay pinned to the bottom edge of the scrolling body
+     (back in the flow while the keyboard is up, so the form keeps the room). */
+  .inv-actions {
+    position: sticky; bottom: calc(-1 * var(--space-5)); z-index: 3; flex-wrap: wrap;
+    margin: 8px calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) !important;
+    padding: 12px var(--space-5) !important;
+    background: var(--color-surface);
+  }
+  .inv-actions > button { flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin: 0 !important; min-height: 48px; white-space: nowrap; }
+  html[data-kb-open] .inv-actions, html[data-kb-resized] .inv-actions { position: static; }
+
+  .inv-packform { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
+  .inv-packform > :first-child, .inv-packform > :last-child { grid-column: 1 / -1; }
+  .inv-packform > :last-child > button { flex: 1 1 0; justify-content: center; font-size: 14px !important; }
+  .inv-lotform { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
+  .inv-lotform > :nth-child(n+3) { grid-column: 1 / -1; }
+  .inv-lotform > button { justify-content: center; font-size: 14px !important; min-height: 48px; }
+  .inv-opt { min-height: 44px; font-size: 15px !important; }
+  .inv-formcard { padding: 12px !important; }
+
+  .inv-packrows-head { display: none !important; }
+  .inv-packrow {
+    grid-template-columns: 24px minmax(0, 1fr) minmax(0, 1fr) 44px !important;
+    grid-template-areas: "radio label label rm" "radio size price price";
+    gap: 6px !important; padding-bottom: 8px; border-bottom: 1px solid var(--color-border);
+  }
+  .inv-packrow > input:not([type="radio"]) { padding-inline: 8px !important; }
+  .inv-packs-add { display: inline-flex; align-items: center; gap: 6px; }
+  .inv-packrow > :nth-child(1) { grid-area: radio; width: 20px; height: 20px; }
+  .inv-packrow > :nth-child(2) { grid-area: label; }
+  .inv-packrow > :nth-child(3) { grid-area: size; }
+  .inv-packrow > :nth-child(4) { grid-area: price; }
+  .inv-packrow > :nth-child(5) { grid-area: rm; min-width: 44px; }
+
+  .inv-exp-head, .inv-exp-row { grid-template-columns: 28px minmax(0, 1fr) auto !important; }
+  .inv-exp-head > :nth-child(n+3) { display: none; }
+  .inv-exp-head { min-height: 44px; }
+  .inv-exp-row { min-height: 52px; gap: 2px 10px !important; }
+  .inv-exp-row > :nth-child(4) { grid-column: 2 / -1; }
+  .inv-exp-row > :nth-child(4) div { display: inline; }
+  .inv-exp-row > :nth-child(4) div + div { margin-left: 6px; }
+  .inv-exp-head > input, .inv-exp-row > input { width: 22px !important; height: 22px !important; }
+}
+`;
 
 export default function Inventory() {
   const toast = useToast();
@@ -288,7 +377,8 @@ export default function Inventory() {
   ];
 
   return (
-    <div className="scroll" style={{ height: '100%', overflow: 'auto', padding: 'clamp(12px, 3vw, 24px)', background: 'var(--color-bg)' }}>
+    <div className="scroll inv-root" style={{ height: '100%', overflow: 'auto', padding: 'clamp(12px, 3vw, 24px)', background: 'var(--color-bg)' }}>
+      <style>{INV_CSS}</style>
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 4 }}>P1 — Inventory</div>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>Inventory</h1>
@@ -481,11 +571,11 @@ const FormField = ({ label, htmlFor, children }: { label: string; htmlFor?: stri
 };
 
 const ModalActions = ({ children }: { children: React.ReactNode }) => (
-  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid var(--color-border)', marginTop: 8 }}>{children}</div>
+  <div className="inv-actions" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid var(--color-border)', marginTop: 8 }}>{children}</div>
 );
 
 const ModalShell = ({ title, subtitle, onClose, children, maxWidth = 520 }: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode; maxWidth?: number }) => (
-  <div className="modal-backdrop" style={{ alignItems: 'center', padding: 'var(--space-5)' }} onClick={onClose}>
+  <div className="modal-backdrop inv-backdrop" style={{ alignItems: 'center' }} onClick={onClose}>
     <div className="modal-card" role="dialog" aria-modal="true" aria-label={title} onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: 'var(--space-5)', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <div>
@@ -551,7 +641,7 @@ const ItemsTab = ({ items, totalCount, search, setSearch, statusFilter, setStatu
             style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
           />
         </div>
-        <button onClick={onAddIngredient} style={{ ...primaryBtnStyle(), padding: '10px 12px' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={16} /></button>
+        <button onClick={onAddIngredient} aria-label="เพิ่มวัตถุดิบ" className="inv-icon-btn" style={{ ...primaryBtnStyle(), padding: '10px 12px' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={16} /></button>
       </div>
       <div className="flex md:hidden" style={{ gap: 4 }}>
         <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--color-surface-2)', borderRadius: 8, flex: 1 }}>
@@ -707,7 +797,7 @@ const UsageTab = ({ stats, movements }: {
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div className="inv-usage-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 700 }}>อัตราการใช้วัตถุดิบ</div>
           <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
@@ -732,7 +822,7 @@ const UsageTab = ({ stats, movements }: {
         </div>
       ) : (
         <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 24, alignItems: 'center', background: 'var(--color-surface-2)' }}>
+          <div className="inv-usage-sum" style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 24, alignItems: 'center', background: 'var(--color-surface-2)' }}>
             <div>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>รายการที่ใช้</div>
               <div className="num" style={{ fontSize: 22, fontWeight: 700 }}>{stats.filter(s => (view === 'week' ? s.weekQty : s.monthQty) > 0).length}</div>
@@ -744,7 +834,7 @@ const UsageTab = ({ stats, movements }: {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '40px 1.5fr 1fr 120px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid var(--color-border)' }}>
+          <div className="inv-thead" style={{ display: 'grid', gridTemplateColumns: '40px 1.5fr 1fr 120px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid var(--color-border)' }}>
             <div>#</div><div>วัตถุดิบ</div><div>ปริมาณที่ใช้ ({periodLabel})</div><div style={{ textAlign: 'right' }}>จำนวน</div>
           </div>
 
@@ -752,10 +842,10 @@ const UsageTab = ({ stats, movements }: {
             const qty = view === 'week' ? s.weekQty : s.monthQty;
             const barPct = (qty / maxQty) * 100;
             return (
-              <div key={s.name} style={{ display: 'grid', gridTemplateColumns: '40px 1.5fr 1fr 120px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === stats.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
-                <div className="num" style={{ fontSize: 13, color: 'var(--color-text-muted)', fontWeight: 700 }}>{idx + 1}</div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{s.name}</div>
-                <div>
+              <div key={s.name} className="inv-row" style={{ display: 'grid', gridTemplateColumns: '40px 1.5fr 1fr 120px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === stats.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
+                <div className="num inv-lead" style={{ fontSize: 13, color: 'var(--color-text-muted)', fontWeight: 700 }}>{idx + 1}</div>
+                <div className="inv-t" style={{ fontSize: 14, fontWeight: 600 }}>{s.name}</div>
+                <div className="inv-wide">
                   <div style={{ height: 10, background: 'var(--color-surface-2)', borderRadius: 999, overflow: 'hidden' }}>
                     <div style={{
                       height: '100%', width: `${barPct}%`,
@@ -764,7 +854,7 @@ const UsageTab = ({ stats, movements }: {
                     }} />
                   </div>
                 </div>
-                <div className="num" style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: qty === 0 ? 'var(--color-text-muted)' : 'var(--color-text)' }}>
+                <div className="num inv-k" style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: qty === 0 ? 'var(--color-text-muted)' : 'var(--color-text)' }}>
                   {qty > 0 ? `${qty.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${s.unit}` : '—'}
                 </div>
               </div>
@@ -782,18 +872,18 @@ const ReceiveTab = ({ onNewReceipt, onContinueDraft, onViewReceipt, onAddIngredi
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      <div className="inv-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 700 }}>ใบรับสินค้า</div>
           <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>สร้างใบรับ → เพิ่มรายการ → ยืนยัน เพื่ออัปเดตสต็อก</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="inv-head-actions" style={{ display: 'flex', gap: 8 }}>
           <button onClick={onAddIngredient} style={{ ...primaryBtnStyle(), background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-surface-2)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-surface)'; }}><Icon name="plus" size={14} /> เพิ่มวัตถุดิบ</button>
           <button onClick={onNewReceipt} style={primaryBtnStyle()} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}><Icon name="plus" size={14} /> รับเข้าสต็อกใหม่</button>
         </div>
       </div>
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '130px 160px 1.5fr 110px 80px 120px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+        <div className="inv-thead" style={{ display: 'grid', gridTemplateColumns: '130px 160px 1.5fr 110px 80px 120px', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
           <div>วันที่รับ</div><div>Ref</div><div>Supplier</div><div>สถานะ</div><div style={{ textAlign: 'right' }}>รายการ</div><div></div>
         </div>
         {isLoading ? (
@@ -803,13 +893,13 @@ const ReceiveTab = ({ onNewReceipt, onContinueDraft, onViewReceipt, onAddIngredi
         ) : !receipts || receipts.length === 0 ? (
           <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>ยังไม่มีใบรับสินค้า — กด "รับเข้าสต็อกใหม่" เพื่อเริ่ม</div>
         ) : receipts.map((r: ReceiptListItem, idx: number) => (
-          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '130px 160px 1.5fr 110px 80px 120px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === receipts.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
-            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{formatDate(r.receivedAt)}</div>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>{r.receiptRef || <span style={{ color: 'var(--color-text-muted)' }}>—</span>}</div>
-            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{r.supplierName || <span style={{ color: 'var(--color-text-muted)' }}>—</span>}</div>
-            <div><Tag tone={r.status === 'CONFIRMED' ? 'success' : 'warning'}>{r.status === 'CONFIRMED' ? 'ยืนยันแล้ว' : 'แบบร่าง'}</Tag></div>
-            <div className="num" style={{ fontSize: 13, textAlign: 'right', color: 'var(--color-text-secondary)' }}>{r.lotCount} รายการ</div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div key={r.id} className="inv-row" style={{ display: 'grid', gridTemplateColumns: '130px 160px 1.5fr 110px 80px 120px', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === receipts.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
+            <div data-label="" style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{formatDate(r.receivedAt)}</div>
+            <div className="inv-t" style={{ fontSize: 13, fontWeight: 600 }}>{r.receiptRef || <span style={{ color: 'var(--color-text-muted)' }}>—</span>}</div>
+            <div data-label="" style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{r.supplierName || <span style={{ color: 'var(--color-text-muted)' }}>—</span>}</div>
+            <div className="inv-k"><Tag tone={r.status === 'CONFIRMED' ? 'success' : 'warning'}>{r.status === 'CONFIRMED' ? 'ยืนยันแล้ว' : 'แบบร่าง'}</Tag></div>
+            <div className="num" data-label="" style={{ fontSize: 13, textAlign: 'right', color: 'var(--color-text-secondary)' }}>{r.lotCount} รายการ</div>
+            <div className="inv-act" style={{ display: 'flex', justifyContent: 'flex-end' }}>
               {r.status === 'DRAFT' ? (
                 <button onClick={() => onContinueDraft(r.id)} style={miniBtnStyle('primary')} onMouseEnter={e => e.currentTarget.style.background = 'var(--color-primary-700)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--color-primary)'}>ต่อ →</button>
               ) : (
@@ -829,7 +919,7 @@ const WastageTab = ({ items, movements, totalCost, onAdd, expiredCount, onExpire
   expiredCount: number; onExpiredWaste: () => void;
 }) => (
   <>
-    <div style={{ background: 'var(--color-warning-50)', border: '1px solid var(--color-warning)', borderRadius: 12, padding: 20, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <div className="inv-banner" style={{ background: 'var(--color-warning-50)', border: '1px solid var(--color-warning)', borderRadius: 12, padding: 20, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
         <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--color-surface)', color: 'var(--color-warning)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
           <Icon name="warning" size={24} />
@@ -839,7 +929,7 @@ const WastageTab = ({ items, movements, totalCost, onAdd, expiredCount, onExpire
           <div className="num" style={{ fontSize: 28, fontWeight: 800, color: 'var(--color-text)', letterSpacing: '-0.02em', marginTop: 2 }}>{baht(totalCost)}</div>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      <div className="inv-banner-actions" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         {expiredCount > 0 && (
           <button onClick={onExpiredWaste} style={{ ...ghostBtnStyle(), background: 'var(--color-surface)' }}>ตัดจ่ายล็อตหมดอายุ ({expiredCount})</button>
         )}
@@ -847,7 +937,7 @@ const WastageTab = ({ items, movements, totalCost, onAdd, expiredCount, onExpire
       </div>
     </div>
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '140px 1.5fr 110px 130px 110px 1fr', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+      <div className="inv-thead" style={{ display: 'grid', gridTemplateColumns: '140px 1.5fr 110px 130px 110px 1fr', gap: 12, padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
         <div>เวลา</div><div>วัตถุดิบ</div><div style={{ textAlign: 'right' }}>จำนวน</div><div>สาเหตุ</div><div style={{ textAlign: 'right' }}>มูลค่า</div><div>ผู้บันทึก / หมายเหตุ</div>
       </div>
       {movements.length === 0 ? (
@@ -857,13 +947,13 @@ const WastageTab = ({ items, movements, totalCost, onAdd, expiredCount, onExpire
         const lossValue = inv ? inv.costPerUnit * m.qty : 0;
         const reasonLabel = m.reason ? (WASTAGE_REASON_LABELS[m.reason] ?? m.reason) : null;
         return (
-          <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '140px 1.5fr 110px 130px 110px 1fr', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === movements.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
-            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{formatRelative(m.at)}</div>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>{inv?.name || m.invId}</div>
-            <div className="num" style={{ fontSize: 13, fontWeight: 600, textAlign: 'right', color: 'var(--color-danger)' }}>-{m.qty.toLocaleString()} {inv?.unit}</div>
-            <div><Tag tone={m.reason === 'EXPIRED' ? 'danger' : m.reason === 'TRIAL' || m.reason === 'CANCELED' ? 'info' : 'warning'}>{reasonLabel}</Tag></div>
-            <div className="num" style={{ fontSize: 13, fontWeight: 600, textAlign: 'right' }}>{baht(lossValue)}</div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}><div>{m.user}</div>{m.note && <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>{m.note}</div>}</div>
+          <div key={m.id} className="inv-row" style={{ display: 'grid', gridTemplateColumns: '140px 1.5fr 110px 130px 110px 1fr', gap: 12, padding: '12px 20px', alignItems: 'center', borderBottom: idx === movements.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
+            <div data-label="" style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{formatRelative(m.at)}</div>
+            <div className="inv-t" style={{ fontSize: 14, fontWeight: 500 }}>{inv?.name || m.invId}</div>
+            <div className="num inv-k" style={{ fontSize: 13, fontWeight: 600, textAlign: 'right', color: 'var(--color-danger)' }}>-{m.qty.toLocaleString()} {inv?.unit}</div>
+            <div data-label=""><Tag tone={m.reason === 'EXPIRED' ? 'danger' : m.reason === 'TRIAL' || m.reason === 'CANCELED' ? 'info' : 'warning'}>{reasonLabel}</Tag></div>
+            <div className="num" data-label="มูลค่า" style={{ fontSize: 13, fontWeight: 600, textAlign: 'right' }}>{baht(lossValue)}</div>
+            <div className="inv-wide" style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}><div>{m.user}</div>{m.note && <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>{m.note}</div>}</div>
           </div>
         );
       })}
@@ -1039,7 +1129,7 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
     >
       {step === 'header' ? (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="cols-1-phone" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <FormField label="Supplier"><input type="text" value={supplierName} onChange={e => setSupplierName(e.target.value)} placeholder="เช่น Thai Beverage Co." style={inputStyle()} autoFocus /></FormField>
             <FormField label="เลขที่ใบรับ (Ref)"><input type="text" value={receiptRef} onChange={e => setReceiptRef(e.target.value)} placeholder="เช่น INV-2026-0042" style={inputStyle()} /></FormField>
           </div>
@@ -1057,11 +1147,12 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
         <>
           {/* Add-lot form */}
           {!isConfirmed && (
-            <div style={{ background: 'var(--color-surface-2)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+            <div className="inv-formcard" style={{ background: 'var(--color-surface-2)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>เพิ่มรายการสินค้า</div>
               <div style={{ position: 'relative', marginBottom: 10 }}>
                 <input
                   type="text"
+                  aria-label="เลือกวัตถุดิบ"
                   placeholder="เลือกวัตถุดิบ..."
                   value={ingredientSearch}
                   onChange={e => { setIngredientSearch(e.target.value); setIngredientOpen(true); }}
@@ -1077,6 +1168,7 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
                       <div
                         key={it.id}
                         onMouseDown={() => { handleSelectLotItem(it.id); setIngredientSearch(it.name); setIngredientOpen(false); }}
+                        className="inv-opt"
                         style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', background: it.id === lotItemId ? 'var(--color-accent-50)' : undefined, color: it.id === lotItemId ? 'var(--color-primary)' : undefined, fontWeight: it.id === lotItemId ? 600 : undefined }}
                       >
                         <div>{it.name} · {it.unit}</div>
@@ -1112,18 +1204,18 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
               {selectedLotItem && newPackOpen && (
                 <div style={{ marginBottom: 10, padding: 10, background: 'var(--color-accent-50)', borderRadius: 8 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-primary-700)', marginBottom: 8 }}>แพ็คใหม่ของ {selectedLotItem.name}</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr auto', gap: 8, alignItems: 'flex-end' }}>
+                  <div className="inv-packform" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr auto', gap: 8, alignItems: 'flex-end' }}>
                     <div>
                       <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ชื่อแพ็ค</div>
-                      <input type="text" value={npLabel} onChange={e => setNpLabel(e.target.value)} placeholder="เช่น Meiji 2L" style={smallInputStyle()} />
+                      <input type="text" aria-label="ชื่อแพ็ค" value={npLabel} onChange={e => setNpLabel(e.target.value)} placeholder="เช่น Meiji 2L" style={smallInputStyle()} />
                     </div>
                     <div>
                       <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ขนาด ({selectedLotItem.unit}/แพ็ค) *</div>
-                      <input type="number" min={0.001} step="any" value={npSize} onChange={e => setNpSize(e.target.value)} placeholder="2000" style={smallInputStyle()} />
+                      <input type="number" inputMode="decimal" aria-label={`ขนาด (${selectedLotItem.unit}/แพ็ค)`} min={0.001} step="any" value={npSize} onChange={e => setNpSize(e.target.value)} placeholder="2000" style={smallInputStyle()} />
                     </div>
                     <div>
                       <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ราคา/แพ็ค</div>
-                      <input type="number" min={0} step={0.01} value={npPrice} onChange={e => setNpPrice(e.target.value)} placeholder="ไม่บังคับ" style={smallInputStyle()} />
+                      <input type="number" inputMode="decimal" aria-label="ราคา/แพ็ค" min={0} step={0.01} value={npPrice} onChange={e => setNpPrice(e.target.value)} placeholder="ไม่บังคับ" style={smallInputStyle()} />
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={handleCreatePack} disabled={Number(npSize) <= 0 || createPack.isPending} style={{ ...primaryBtnStyle(), padding: '8px 12px', fontSize: 12, opacity: Number(npSize) > 0 ? 1 : 0.4, whiteSpace: 'nowrap' }}>
@@ -1136,18 +1228,18 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
                   </div>
                 </div>
               )}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'flex-end' }}>
+              <div className="inv-lotform" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'flex-end' }}>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>จำนวนแพ็ค *</div>
-                  <input type="number" min={0.001} step="any" value={lotPacks} onChange={e => setLotPacks(e.target.value)} placeholder="0" style={smallInputStyle()} />
+                  <input type="number" inputMode="decimal" aria-label="จำนวนแพ็ค" min={0.001} step="any" value={lotPacks} onChange={e => setLotPacks(e.target.value)} placeholder="0" style={smallInputStyle()} />
                 </div>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ราคารวม (฿) *</div>
-                  <input type="number" min={0} step={0.01} value={lotTotalPrice} onChange={e => setLotTotalPrice(e.target.value)} placeholder="0.00" title="ใส่ 0 ได้ถ้าเป็นของแถม" style={smallInputStyle()} />
+                  <input type="number" inputMode="decimal" aria-label="ราคารวม (บาท)" min={0} step={0.01} value={lotTotalPrice} onChange={e => setLotTotalPrice(e.target.value)} placeholder="0.00" title="ใส่ 0 ได้ถ้าเป็นของแถม" style={smallInputStyle()} />
                 </div>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>วันหมดอายุ</div>
-                  <input type="date" value={lotExpiry} onChange={e => setLotExpiry(e.target.value)} style={smallInputStyle()} />
+                  <input type="date" aria-label="วันหมดอายุ" value={lotExpiry} onChange={e => setLotExpiry(e.target.value)} style={smallInputStyle()} />
                 </div>
                 <button onClick={handleAddLot} disabled={!canAddLot || addLot.isPending} style={{ ...primaryBtnStyle(), padding: '8px 14px', fontSize: 12, opacity: canAddLot ? 1 : 0.4, cursor: canAddLot ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap' }}>
                   {addLot.isPending ? '...' : '+ เพิ่ม'}
@@ -1179,7 +1271,7 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
             </div>
           ) : (
             <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 70px 80px 90px 100px 36px', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+              <div className="inv-thead" style={{ display: 'grid', gridTemplateColumns: '1.5fr 70px 80px 90px 100px 36px', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
                 <div>วัตถุดิบ</div><div style={{ textAlign: 'right' }}>แพ็ค</div><div style={{ textAlign: 'right' }}>รับเข้า</div><div style={{ textAlign: 'right' }}>ราคา/แพ็ค</div><div>หมดอายุ</div><div></div>
               </div>
               {!receipt?.lots || receipt.lots.length === 0 ? (
@@ -1187,15 +1279,15 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
               ) : receipt.lots.map((lot: StockLot, idx: number) => {
                 const badge = expiryBadge(lot.expiryDate);
                 return (
-                  <div key={lot.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 70px 80px 90px 100px 36px', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === receipt.lots.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
-                    <div>
+                  <div key={lot.id} className="inv-row inv-mid" style={{ display: 'grid', gridTemplateColumns: '1.5fr 70px 80px 90px 100px 36px', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === receipt.lots.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
+                    <div className="inv-t">
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{lot.inventoryItemName}</div>
                       {lot.packLabel && <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 1 }}>{lot.packLabel}</div>}
                     </div>
-                    <div className="num" style={{ fontSize: 13, textAlign: 'right', color: 'var(--color-text-secondary)' }}>{lot.qtyPacks.toLocaleString()}</div>
-                    <div className="num" style={{ fontSize: 13, textAlign: 'right' }}>{lot.qtyReceived.toLocaleString()}</div>
-                    <div className="num" style={{ fontSize: 13, textAlign: 'right', fontWeight: 600 }}>฿{lot.packPrice.toFixed(2)}</div>
-                    <div style={{ fontSize: 12 }}>
+                    <div className="num" data-label="แพ็ค" style={{ fontSize: 13, textAlign: 'right', color: 'var(--color-text-secondary)' }}>{lot.qtyPacks.toLocaleString()}</div>
+                    <div className="num" data-label="รับเข้า" style={{ fontSize: 13, textAlign: 'right' }}>{lot.qtyReceived.toLocaleString()}</div>
+                    <div className="num" data-label="ราคา/แพ็ค" style={{ fontSize: 13, textAlign: 'right', fontWeight: 600 }}>฿{lot.packPrice.toFixed(2)}</div>
+                    <div data-label="หมดอายุ" style={{ fontSize: 12 }}>
                       {lot.expiryDate ? (
                         <div>
                           <div style={{ color: badge ? badge.color : 'var(--color-text-secondary)', fontWeight: 600 }}>{formatDate(lot.expiryDate)}</div>
@@ -1203,9 +1295,9 @@ const ReceiptFlowModal = ({ items, initialReceiptId, onClose, onConfirmed, onAdd
                         </div>
                       ) : <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
                     </div>
-                    <div>
+                    <div className="inv-k">
                       {!isConfirmed && (
-                        <button onClick={() => handleDeleteLot(lot.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--color-text-muted)', display: 'grid', placeItems: 'center', borderRadius: 4 }} title="ลบรายการ">
+                        <button onClick={() => handleDeleteLot(lot.id)} aria-label={`ลบรายการ ${lot.inventoryItemName}`} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--color-text-muted)', display: 'grid', placeItems: 'center', borderRadius: 4 }} title="ลบรายการ">
                           <Icon name="x" size={14} />
                         </button>
                       )}
@@ -1259,7 +1351,7 @@ const LotsModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void
       </div>
 
       <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '28px 150px 90px 70px 90px 90px 110px', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+        <div className="inv-thead" style={{ display: 'grid', gridTemplateColumns: '28px 150px 90px 70px 90px 90px 110px', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
           <div>#</div><div>แพ็ค / วันที่รับ</div><div style={{ textAlign: 'right' }}>คงเหลือ</div><div style={{ textAlign: 'right' }}>แพ็ค</div><div style={{ textAlign: 'right' }}>ราคา/แพ็ค</div><div style={{ textAlign: 'right' }}>ต้นทุน/หน่วย</div><div>หมดอายุ</div>
         </div>
         {isLoading ? (
@@ -1274,20 +1366,20 @@ const LotsModal = ({ item, onClose }: { item: InventoryItem; onClose: () => void
           // backend tells us which one is the head.
           const isHead = lot.isHead;
           return (
-            <div key={lot.id} style={{ display: 'grid', gridTemplateColumns: '28px 150px 90px 70px 90px 90px 110px', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === lots.length - 1 ? 'none' : '1px solid var(--color-border)', background: isHead ? 'var(--color-accent-50)' : undefined }}>
-              <div className="num" style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 700 }}>{idx + 1}</div>
-              <div>
+            <div key={lot.id} className="inv-row" style={{ display: 'grid', gridTemplateColumns: '28px 150px 90px 70px 90px 90px 110px', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === lots.length - 1 ? 'none' : '1px solid var(--color-border)', background: isHead ? 'var(--color-accent-50)' : undefined }}>
+              <div className="num inv-lead" style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 700 }}>{idx + 1}</div>
+              <div className="inv-t">
                 <div style={{ fontSize: 12, fontWeight: 600 }}>{lot.packLabel ?? '—'}</div>
                 <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 1 }}>
                   {formatDate(lot.receivedAt)}{lot.supplierName ? ` · ${lot.supplierName}` : ''}
                 </div>
                 {isHead && <div style={{ fontSize: 10, color: 'var(--color-primary)', fontWeight: 700, marginTop: 2 }}>● {lot.isInUse ? 'กำลังใช้ (ปักหมุด)' : 'กำลังใช้ (FIFO)'}</div>}
               </div>
-              <div className="num" style={{ fontSize: 13, fontWeight: 700, textAlign: 'right' }}>{lot.qtyRemaining.toLocaleString()} {item.unit}</div>
-              <div className="num" style={{ fontSize: 12, color: 'var(--color-text-secondary)', textAlign: 'right' }}>{lot.qtyPacks.toLocaleString()} แพ็ค</div>
-              <div className="num" style={{ fontSize: 12, fontWeight: 600, textAlign: 'right' }}>฿{lot.packPrice.toFixed(2)}</div>
-              <div className="num" style={{ fontSize: 12, color: 'var(--color-text-secondary)', textAlign: 'right' }}>฿{lot.costPerUnit.toFixed(2)}</div>
-              <div style={{ fontSize: 12 }}>
+              <div className="num inv-k" style={{ fontSize: 13, fontWeight: 700, textAlign: 'right' }}>{lot.qtyRemaining.toLocaleString()} {item.unit}</div>
+              <div className="num" data-label="" style={{ fontSize: 12, color: 'var(--color-text-secondary)', textAlign: 'right' }}>{lot.qtyPacks.toLocaleString()} แพ็ค</div>
+              <div className="num" data-label="ราคา/แพ็ค" style={{ fontSize: 12, fontWeight: 600, textAlign: 'right' }}>฿{lot.packPrice.toFixed(2)}</div>
+              <div className="num" data-label="ต้นทุน/หน่วย" style={{ fontSize: 12, color: 'var(--color-text-secondary)', textAlign: 'right' }}>฿{lot.costPerUnit.toFixed(2)}</div>
+              <div data-label="หมดอายุ" style={{ fontSize: 12 }}>
                 {lot.expiryDate ? (
                   <div>
                     <div style={{ color: badge ? badge.color : 'var(--color-text-secondary)', fontWeight: badge ? 600 : 400 }}>{formatDate(lot.expiryDate)}</div>
@@ -1371,18 +1463,18 @@ const PacksModal = ({ item, canEdit, onClose }: { item: InventoryItem; canEdit: 
 
   const packForm = (
     <div style={{ padding: '10px 14px', background: 'var(--color-accent-50)', borderTop: '1px solid var(--color-border)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr auto', gap: 8, alignItems: 'flex-end' }}>
+      <div className="inv-packform" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr auto', gap: 8, alignItems: 'flex-end' }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ชื่อแพ็ค</div>
-          <input type="text" value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} placeholder={form.size ? `${form.size} ${item.unit}` : 'เช่น Meiji 2L'} style={smallInputStyle()} autoFocus />
+          <input type="text" aria-label="ชื่อแพ็ค" value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} placeholder={form.size ? `${form.size} ${item.unit}` : 'เช่น Meiji 2L'} style={smallInputStyle()} autoFocus />
         </div>
         <div>
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ขนาด ({item.unit}/แพ็ค) *</div>
-          <input type="number" min={0.001} step="any" value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} placeholder="2000" style={smallInputStyle()} />
+          <input type="number" inputMode="decimal" aria-label={`ขนาด (${item.unit}/แพ็ค)`} min={0.001} step="any" value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} placeholder="2000" style={smallInputStyle()} />
         </div>
         <div>
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>ราคา/แพ็ค</div>
-          <input type="number" min={0} step={0.01} value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="ไม่บังคับ" style={smallInputStyle()} />
+          <input type="number" inputMode="decimal" aria-label="ราคา/แพ็ค" min={0} step={0.01} value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="ไม่บังคับ" style={smallInputStyle()} />
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <button onClick={saveForm} disabled={Number(form.size) <= 0 || busy} style={{ ...primaryBtnStyle(), padding: '8px 14px', fontSize: 12, opacity: Number(form.size) > 0 && !busy ? 1 : 0.45, whiteSpace: 'nowrap' }}>บันทึก</button>
@@ -1421,7 +1513,7 @@ const PacksModal = ({ item, canEdit, onClose }: { item: InventoryItem; canEdit: 
       {error && <div style={{ padding: '10px 14px', background: 'var(--color-danger-50)', color: 'var(--color-danger)', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
       <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 110px 90px 1fr', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+        <div className="inv-thead" style={{ display: 'grid', gridTemplateColumns: '1.4fr 110px 90px 1fr', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
           <div>ชื่อแพ็ค</div><div style={{ textAlign: 'right' }}>ขนาด</div><div style={{ textAlign: 'right' }}>ราคาล่าสุด</div><div></div>
         </div>
 
@@ -1435,19 +1527,19 @@ const PacksModal = ({ item, canEdit, onClose }: { item: InventoryItem; canEdit: 
           </div>
         ) : packs.map((p, idx) => (
           editing === p.id ? <div key={p.id}>{packForm}</div> : (
-            <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 110px 90px 1fr', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === packs.length - 1 ? 'none' : '1px solid var(--color-border)', opacity: p.isActive ? 1 : 0.55 }}>
-              <div>
+            <div key={p.id} className="inv-row" style={{ display: 'grid', gridTemplateColumns: '1.4fr 110px 90px 1fr', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === packs.length - 1 ? 'none' : '1px solid var(--color-border)', opacity: p.isActive ? 1 : 0.55 }}>
+              <div className="inv-t">
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{p.label}</div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
                   {p.isDefault && <Tag tone="accent">ค่าเริ่มต้น</Tag>}
                   {!p.isActive && <Tag tone="neutral">ปิดใช้</Tag>}
                 </div>
               </div>
-              <div className="num" style={{ fontSize: 13, textAlign: 'right' }}>{p.packSize.toLocaleString()} {item.unit}</div>
-              <div className="num" style={{ fontSize: 13, textAlign: 'right', color: p.lastPrice === null ? 'var(--color-text-muted)' : 'var(--color-text-secondary)' }}>
+              <div className="num inv-k" style={{ fontSize: 13, textAlign: 'right' }}>{p.packSize.toLocaleString()} {item.unit}</div>
+              <div className="num" data-label="ราคาล่าสุด" style={{ fontSize: 13, textAlign: 'right', color: p.lastPrice === null ? 'var(--color-text-muted)' : 'var(--color-text-secondary)' }}>
                 {p.lastPrice === null ? '—' : `฿${p.lastPrice.toFixed(2)}`}
               </div>
-              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <div className="inv-act" style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                 {canEdit && p.isActive && (
                   <button onClick={() => openEdit(p)} disabled={busy} style={miniBtnStyle('ghost')}>แก้ไข</button>
                 )}
@@ -1578,7 +1670,7 @@ const ExpiredWasteModal = ({ onClose }: { onClose: () => void }) => {
       maxWidth={640}
     >
       <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: EXPIRED_GRID, gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)', alignItems: 'center' }}>
+        <div className="inv-exp-head" style={{ display: 'grid', gridTemplateColumns: EXPIRED_GRID, gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)', alignItems: 'center' }}>
           <input
             type="checkbox"
             checked={allChecked}
@@ -1602,7 +1694,7 @@ const ExpiredWasteModal = ({ onClose }: { onClose: () => void }) => {
         ) : rows.map((lot, idx) => {
           const badge = expiryBadge(lot.expiryDate);
           return (
-            <label key={lot.lotId} style={{ display: 'grid', gridTemplateColumns: EXPIRED_GRID, gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === rows.length - 1 ? 'none' : '1px solid var(--color-border)', cursor: 'pointer' }}>
+            <label key={lot.lotId} className="inv-exp-row" style={{ display: 'grid', gridTemplateColumns: EXPIRED_GRID, gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === rows.length - 1 ? 'none' : '1px solid var(--color-border)', cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={isChecked(lot.lotId, idx)}
@@ -1668,6 +1760,9 @@ const AddIngredientModal = ({ onClose, onSubmit, isPending }: {
 
   const canSubmit = name.trim().length > 0 && unit.trim().length > 0
     && packRows.length > 0 && packRows.every(r => Number(r.size) > 0);
+  // Phones hide the pack column headings (the row is restacked), so the
+  // placeholders carry the field names there instead of an example value.
+  const isPhone = useIsPhone();
 
   const submit = () => {
     if (!canSubmit || isPending) return;
@@ -1699,28 +1794,28 @@ const AddIngredientModal = ({ onClose, onSubmit, isPending }: {
 
       <div style={{ background: 'var(--color-surface-2)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>แพ็คที่ซื้อ *</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '28px 1.4fr 1fr 1fr 28px', gap: 8, fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 6 }}>
+        <div className="inv-packrows-head" style={{ display: 'grid', gridTemplateColumns: '28px 1.4fr 1fr 1fr 28px', gap: 8, fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 6 }}>
           <div title="แพ็คหลัก">หลัก</div><div>ชื่อแพ็ค</div><div>ขนาด ({unit || 'unit'}) *</div><div>ราคา/แพ็ค</div><div></div>
         </div>
         {packRows.map((r, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '28px 1.4fr 1fr 1fr 28px', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+          <div key={i} className="inv-packrow" style={{ display: 'grid', gridTemplateColumns: '28px 1.4fr 1fr 1fr 28px', gap: 8, alignItems: 'center', marginBottom: 8 }}>
             <input type="radio" name="default-pack" checked={defaultIdx === i} onChange={() => setDefaultIdx(i)} aria-label={`ตั้งแพ็คแถวที่ ${i + 1} เป็นแพ็คหลัก`} style={{ justifySelf: 'center' }} />
-            <input type="text" value={r.label} onChange={e => setRow(i, { label: e.target.value })} placeholder={r.size ? `${r.size} ${unit || 'unit'}` : 'เช่น Meiji 2L'} style={smallInputStyle()} />
-            <input type="number" min={0.001} step="any" value={r.size} onChange={e => setRow(i, { size: e.target.value })} placeholder="2000" style={smallInputStyle()} />
-            <input type="number" min={0} step={0.01} value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder="ไม่บังคับ" style={smallInputStyle()} />
+            <input type="text" aria-label={`ชื่อแพ็ค แถวที่ ${i + 1}`} value={r.label} onChange={e => setRow(i, { label: e.target.value })} placeholder={isPhone ? 'ชื่อแพ็ค เช่น Meiji 2L' : r.size ? `${r.size} ${unit || 'unit'}` : 'เช่น Meiji 2L'} style={smallInputStyle()} />
+            <input type="number" inputMode="decimal" aria-label={`ขนาด (${unit || 'unit'}) แถวที่ ${i + 1}`} min={0.001} step="any" value={r.size} onChange={e => setRow(i, { size: e.target.value })} placeholder={isPhone ? `ขนาด (${unit || 'unit'})` : '2000'} style={smallInputStyle()} />
+            <input type="number" inputMode="decimal" aria-label={`ราคา/แพ็ค แถวที่ ${i + 1}`} min={0} step={0.01} value={r.price} onChange={e => setRow(i, { price: e.target.value })} placeholder={isPhone ? 'ราคา/แพ็ค' : 'ไม่บังคับ'} style={smallInputStyle()} />
             {packRows.length > 1 ? (
-              <button onClick={() => removeRow(i)} title="ลบแพ็คนี้" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', display: 'grid', placeItems: 'center', padding: 2 }}><Icon name="x" size={13} /></button>
+              <button onClick={() => removeRow(i)} title="ลบแพ็คนี้" aria-label={`ลบแพ็คแถวที่ ${i + 1}`} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', display: 'grid', placeItems: 'center', padding: 2 }}><Icon name="x" size={13} /></button>
             ) : <div />}
           </div>
         ))}
-        <button onClick={addRow} style={{ ...ghostBtnStyle(), padding: '6px 12px', fontSize: 12 }}>
+        <button onClick={addRow} className="inv-packs-add" style={{ ...ghostBtnStyle(), padding: '6px 12px', fontSize: 12 }}>
           <Icon name="plus" size={12} /> เพิ่มแพ็ค
         </button>
         <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8 }}>ซื้อยี่ห้อ/ขนาดไหนก็เพิ่มเป็นแพ็คได้ — ราคาจริงระบุตอนรับสินค้า ต้นทุน/หน่วยคำนวณให้อัตโนมัติ</div>
       </div>
 
       <FormField label="Par Level — จุดสั่งซื้อ (ไม่บังคับ)">
-        <input type="number" min={0} step="any" value={parLevel} onChange={e => setParLevel(e.target.value)} placeholder={`0 ${unit || 'หน่วย'}`} style={inputStyle()} />
+        <input type="number" inputMode="decimal" min={0} step="any" value={parLevel} onChange={e => setParLevel(e.target.value)} placeholder={`0 ${unit || 'หน่วย'}`} style={inputStyle()} />
         <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>แจ้งเตือนเมื่อสต็อกต่ำกว่าค่านี้</div>
       </FormField>
 
@@ -1792,7 +1887,7 @@ const EditIngredientModal = ({ item, onClose, onSubmit, isPending }: {
         </div>
       </FormField>
       <FormField label="Par Level — จุดสั่งซื้อ" htmlFor={parId}>
-        <input id={parId} type="number" min={0} step="any" value={parLevel} onChange={e => setParLevel(e.target.value)} placeholder={`0 ${u || 'หน่วย'}`} aria-invalid={!parValid} aria-describedby={parHintId} className="input-std" style={inputStyle()} />
+        <input id={parId} type="number" inputMode="decimal" min={0} step="any" value={parLevel} onChange={e => setParLevel(e.target.value)} placeholder={`0 ${u || 'หน่วย'}`} aria-invalid={!parValid} aria-describedby={parHintId} className="input-std" style={inputStyle()} />
         <div id={parHintId} style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>แจ้งเตือนเมื่อสต็อกต่ำกว่าค่านี้</div>
       </FormField>
 
@@ -1858,7 +1953,7 @@ const WastageModal = ({ items, presetItemId, onClose, onSubmit }: { items: Inven
       <FormField label="วัตถุดิบ"><ItemSelect items={items} value={invId} onChange={setInvId} placeholder="เลือกวัตถุดิบ..." /></FormField>
       {selectedItem && <div style={{ padding: 12, background: 'var(--color-surface-2)', borderRadius: 8, marginBottom: 16, fontSize: 12, color: 'var(--color-text-secondary)' }}>คงเหลือ: <strong className="num">{selectedItem.stock.toLocaleString()} {selectedItem.unit}</strong> · ต้นทุน: ฿{selectedItem.costPerUnit.toFixed(2)}/{selectedItem.unit}</div>}
       <FormField label={`จำนวนที่สูญเสีย${selectedItem ? ` (${selectedItem.unit})` : ''}`}>
-        <input type="number" min={0} step={1} value={qty} onChange={e => setQty(e.target.value)} placeholder="0" style={inputStyle()} />
+        <input type="number" inputMode="decimal" aria-label={`จำนวนที่สูญเสีย${selectedItem ? ` (${selectedItem.unit})` : ''}`} min={0} step={1} value={qty} onChange={e => setQty(e.target.value)} placeholder="0" style={inputStyle()} />
         {willGoNegative && <div style={{ fontSize: 11, color: 'var(--color-warning)', marginTop: 6, fontWeight: 600 }}>⚠ จำนวนเกินสต็อกที่มี</div>}
       </FormField>
       <FormField label="สาเหตุ">
@@ -1895,7 +1990,7 @@ const ReceiptDetailModal = ({ id, onClose }: { id: string; onClose: () => void }
       ) : (
         <>
           <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 80px 90px 90px 110px', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+            <div className="inv-thead" style={{ display: 'grid', gridTemplateColumns: '1.5fr 80px 90px 90px 110px', gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
               <div>วัตถุดิบ</div><div style={{ textAlign: 'right' }}>จำนวนแพ็ค</div><div style={{ textAlign: 'right' }}>ราคา/แพ็ค</div><div style={{ textAlign: 'right' }}>ราคารวม</div><div>วันหมดอายุ</div>
             </div>
             {!receipt?.lots || receipt.lots.length === 0 ? (
@@ -1904,15 +1999,15 @@ const ReceiptDetailModal = ({ id, onClose }: { id: string; onClose: () => void }
               const rowTotal = lot.qtyPacks * lot.packPrice;
               const badge = expiryBadge(lot.expiryDate);
               return (
-                <div key={lot.id} style={{ display: 'grid', gridTemplateColumns: '1.5fr 80px 90px 90px 110px', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === receipt.lots.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
-                  <div>
+                <div key={lot.id} className="inv-row" style={{ display: 'grid', gridTemplateColumns: '1.5fr 80px 90px 90px 110px', gap: 10, padding: '10px 14px', alignItems: 'center', borderBottom: idx === receipt.lots.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
+                  <div className="inv-t">
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{lot.inventoryItemName}</div>
                     {lot.packLabel && <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 1 }}>{lot.packLabel}</div>}
                   </div>
-                  <div className="num" style={{ fontSize: 13, textAlign: 'right', color: 'var(--color-text-secondary)' }}>{lot.qtyPacks.toLocaleString()}</div>
-                  <div className="num" style={{ fontSize: 13, textAlign: 'right' }}>฿{lot.packPrice.toFixed(2)}</div>
-                  <div className="num" style={{ fontSize: 13, fontWeight: 600, textAlign: 'right' }}>฿{rowTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                  <div style={{ fontSize: 12 }}>
+                  <div className="num" data-label="แพ็ค" style={{ fontSize: 13, textAlign: 'right', color: 'var(--color-text-secondary)' }}>{lot.qtyPacks.toLocaleString()}</div>
+                  <div className="num" data-label="ราคา/แพ็ค" style={{ fontSize: 13, textAlign: 'right' }}>฿{lot.packPrice.toFixed(2)}</div>
+                  <div className="num inv-k" style={{ fontSize: 13, fontWeight: 600, textAlign: 'right' }}>฿{rowTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  <div data-label="หมดอายุ" style={{ fontSize: 12 }}>
                     {lot.expiryDate ? (
                       <div>
                         <div style={{ color: badge ? badge.color : 'var(--color-text-secondary)', fontWeight: badge ? 600 : 400 }}>{formatDate(lot.expiryDate)}</div>

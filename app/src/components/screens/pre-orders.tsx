@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Icon from '../icons';
-import { useToast, NumberInput } from '../app-common';
+import { useToast, NumberInput, MasterDetail, ModalShell } from '../app-common';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { useLookupMember, type AccountRead } from '@/hooks/use-membership';
 import {
@@ -19,7 +19,89 @@ import {
 import { useAddToShoppingList } from '@/hooks/use-shopping-list';
 import { useAllProducts, type MenuItem } from '@/hooks/use-products';
 import { useInventory, type InventoryItem } from '@/hooks/use-inventory';
-import { useModalA11y } from '@/hooks/use-modal-a11y';
+import { PHONE_QUERY } from '@/hooks/use-media-query';
+
+// ── Phone layout (< 768px) — phone-only rules; nothing here applies at ≥ 768px ──
+// Dialogs are portaled to <body> by ModalShell, so their rules hang off .po-form
+// rather than the screen root.
+const PO_CSS = `
+@media (max-width: 767px) {
+  .po-form input:not([type="checkbox"]), .po-form textarea, .po-add input { font-size: 16px !important; min-height: 44px; }
+  .po-list-head { padding: 12px var(--screen-pad) 10px !important; }
+  .po-pills > button { min-height: 44px !important; }
+  .po-detail { padding: 16px var(--screen-pad) !important; }
+  .po-tabs > button { flex: 1 1 0; }
+  .po-threshold { min-height: 44px; }
+
+  /* Items: name + line total (+ remove) on the first line, qty and unit price beneath. */
+  .po-items-head { display: none !important; }
+  .po-item { display: flex !important; flex-wrap: wrap; align-items: center; gap: 2px 10px !important; padding: 10px 14px !important; }
+  .po-item::after { content: ''; order: 3; flex-basis: 100%; height: 0; }
+  .po-item > .po-i-name { order: 0; flex: 1 1 0; min-width: 0; white-space: normal !important; overflow-wrap: anywhere; font-weight: 600; }
+  .po-item > .po-i-total { order: 1; flex: 0 0 auto; }
+  .po-item > .po-i-rm { order: 2; flex: 0 0 auto; }
+  .po-item > .po-i-rm:empty { display: none !important; }
+  .po-item > .po-i-rm > button { width: 44px !important; height: 44px !important; }
+  .po-item > [data-label] { order: 4; text-align: left !important; font-size: 13px; color: var(--color-text-secondary); }
+  .po-item > [data-label]::before { content: attr(data-label) ' '; }
+  .po-total { display: flex !important; justify-content: space-between; align-items: baseline; padding: 12px 14px !important; }
+  .po-total > :last-child { display: none; }
+  .po-fulfil { padding: 10px 14px 12px !important; }
+  .po-fulfil > :last-child { margin-left: 0 !important; }
+
+  /* Add-item row: search on its own line, qty + price, then the two buttons. */
+  .po-add { gap: 8px !important; padding: 12px 14px !important; }
+  .po-add::after { content: ''; order: 3; flex-basis: 100%; height: 0; }
+  .po-add > .po-add-search { flex: 1 1 100% !important; }
+  .po-add > .po-add-qty { flex: 0 0 96px; width: auto !important; }
+  .po-add > .po-add-price { flex: 1 1 0; width: auto !important; min-width: 0; }
+  .po-add > button { order: 4; flex: 1 1 0; }
+  .po-dd { max-height: 232px !important; }
+  .po-opt { min-height: 44px; align-items: center; padding: 8px 12px !important; font-size: 15px !important; }
+
+  /* Order actions stay in reach: pinned to the bottom of the detail pane, the
+     destructive one furthest from the thumb. Back in the flow while typing. */
+  .po-actions {
+    position: sticky; bottom: 0; z-index: 2; flex-wrap: nowrap !important; gap: 8px !important;
+    margin: 16px calc(-1 * var(--screen-pad)) -16px !important; padding: 10px var(--screen-pad) !important;
+    background: var(--color-bg);
+  }
+  .po-actions > button { flex: 0 0 auto; min-height: 48px; padding: 12px 14px !important; }
+  .po-actions > .po-danger { order: 1; }
+  .po-actions > .po-edit { order: 2; }
+  .po-actions > .po-primary { order: 3; flex: 1 1 0; }
+  html[data-kb-open] .po-actions, html[data-kb-resized] .po-actions { position: static; }
+
+  /* Ingredients: name + shopping-list action first, the three figures beneath. */
+  .po-ing-head { display: none !important; }
+  .po-ing { display: flex !important; flex-wrap: wrap; align-items: center; gap: 2px 10px !important; }
+  .po-ing::after { content: ''; order: 2; flex-basis: 100%; height: 0; }
+  .po-ing > .po-g-name { order: 0; flex: 1 1 0; min-width: 0; }
+  .po-ing > .po-g-act { order: 1; flex: 0 0 auto; }
+  .po-ing > .po-g-act > button { min-width: 64px; font-size: 13px !important; }
+  .po-ing > [data-label] { order: 3; text-align: left !important; font-size: 12px !important; color: var(--color-text-secondary); }
+  .po-ing > [data-label]::before { content: attr(data-label) ' '; }
+
+  /* Dialog forms */
+  .po-check { padding-top: 0 !important; min-height: 44px; }
+  .po-check > input { width: 20px !important; height: 20px !important; min-height: 0 !important; flex-shrink: 0; }
+  .po-check > label { flex: 1; display: flex; align-items: center; min-height: 44px; font-size: 15px !important; }
+  .po-citem { padding: 4px 4px 4px 12px !important; }
+  .po-citem > button { width: 44px !important; height: 44px !important; }
+  .po-cadd > .po-cadd-search { flex: 1 1 100% !important; }
+  .po-cadd > .po-cadd-qty { flex: 0 0 88px; width: auto !important; }
+  .po-cadd > .po-cadd-price { flex: 1 1 0; width: auto !important; min-width: 0; }
+  .po-member { min-height: 44px; }
+  .po-foot-btn { padding: 12px 10px !important; white-space: nowrap; }
+}
+`;
+
+// Phones: a product search field near the bottom of a scroll area opens its
+// suggestions below the fold — bring the field to the top once the keyboard is up.
+const revealOnPhone = (el: HTMLElement) => {
+  if (typeof window === 'undefined' || !window.matchMedia(PHONE_QUERY).matches) return;
+  window.setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 250);
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const STATUS_LABELS: Record<PreOrderStatus, string> = {
@@ -323,11 +405,21 @@ export default function PreOrders() {
   ];
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-
-      {/* ── Left column: filter + list ── */}
-      <div style={{ width: 380, flexShrink: 0, borderRight: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--color-bg)' }}>
-        <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--color-border)' }}>
+    <>
+    <MasterDetail
+      className="po-root"
+      style={{ overflow: 'hidden' }}
+      listWidth={380}
+      hasSelection={selectedId != null}
+      onBack={() => setSelectedId(null)}
+      backLabel="Pre-Orders"
+      list={
+      /* ── Left column: filter + list ── (the pane fixes the width; no flexShrink
+         here — inside the pane's column it would stop this root shrinking to the
+         pane height and the list below could no longer scroll) */
+      <div style={{ width: 380, borderRight: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--color-bg)' }}>
+        <style>{PO_CSS}</style>
+        <div className="po-list-head" style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--color-border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Pre-Orders</h2>
             <button
@@ -338,7 +430,7 @@ export default function PreOrders() {
               สร้างใหม่
             </button>
           </div>
-          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          <div className="tab-strip bleed po-pills" style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
             {filterPills.map(pill => {
               const active = statusFilter === pill.value;
               return (
@@ -398,8 +490,9 @@ export default function PreOrders() {
           )}
         </div>
       </div>
-
-      {/* ── Right column: detail ── */}
+      }
+      detail={
+      /* ── Right column: detail ── */
       <div style={{ flex: 1, overflow: 'auto', background: 'var(--color-bg)' }}>
         {!selectedId ? (
           <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: 'var(--color-text-secondary)' }}>
@@ -409,7 +502,7 @@ export default function PreOrders() {
             </div>
           </div>
         ) : detailLoading ? (
-          <div aria-busy="true" style={{ padding: '24px 32px', maxWidth: 1280, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+          <div aria-busy="true" className="po-detail" style={{ padding: '24px 32px', maxWidth: 1280, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
             <span className="sr-only">กำลังโหลดรายละเอียด Pre-Order…</span>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
@@ -462,6 +555,8 @@ export default function PreOrders() {
           />
         ) : null}
       </div>
+      }
+    />
 
       {/* ── Modals ── */}
       {createOpen && (
@@ -514,7 +609,7 @@ export default function PreOrders() {
           dangerous
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -611,7 +706,7 @@ function DetailPanel({
   const showAddDropdown = addSearchFocused && filteredProducts.length > 0;
 
   return (
-    <div style={{ padding: '24px 32px', maxWidth: 1280, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+    <div className="po-detail" style={{ padding: '24px 32px', maxWidth: 1280, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
         <div>
@@ -624,7 +719,7 @@ function DetailPanel({
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', marginBottom: 20 }}>
+      <div className="po-tabs" style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', marginBottom: 20 }}>
         {(['details', 'ingredients'] as const).map(t => (
           <button key={t} onClick={() => onTabChange(t)} style={{
             padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer',
@@ -678,7 +773,7 @@ function DetailPanel({
               )}
             </div>
             <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px 32px', padding: '10px 14px', background: 'var(--color-surface-2)', fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', gap: 8 }}>
+              <div className="po-items-head" style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px 32px', padding: '10px 14px', background: 'var(--color-surface-2)', fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', gap: 8 }}>
                 <div>สินค้า</div><div style={{ textAlign: 'right' }}>จำนวน</div><div style={{ textAlign: 'right' }}>ราคา/ชิ้น</div><div style={{ textAlign: 'right' }}>รวม</div><div/>
               </div>
               {detail.items.map(it => {
@@ -689,14 +784,14 @@ function DetailPanel({
                   : undefined;
                 return (
                   <div key={it.id}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px 32px', padding: '13px 14px', borderTop: '1px solid var(--color-border)', fontSize: 14, gap: 8, alignItems: 'center' }}>
-                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.productName}</div>
-                      <div style={{ textAlign: 'right' }}>{it.quantity}</div>
-                      <div style={{ textAlign: 'right' }}>฿{Number(it.unitPrice).toFixed(2)}</div>
-                      <div style={{ textAlign: 'right', fontWeight: 500 }}>฿{Number(it.lineTotal).toFixed(2)}</div>
-                      <div style={{ display: 'grid', placeItems: 'center' }}>
+                    <div className="po-item" style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px 32px', padding: '13px 14px', borderTop: '1px solid var(--color-border)', fontSize: 14, gap: 8, alignItems: 'center' }}>
+                      <div className="po-i-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.productName}</div>
+                      <div data-label="จำนวน" style={{ textAlign: 'right' }}>{it.quantity}</div>
+                      <div data-label="ราคา/ชิ้น" style={{ textAlign: 'right' }}>฿{Number(it.unitPrice).toFixed(2)}</div>
+                      <div className="po-i-total" style={{ textAlign: 'right', fontWeight: 500 }}>฿{Number(it.lineTotal).toFixed(2)}</div>
+                      <div className="po-i-rm" style={{ display: 'grid', placeItems: 'center' }}>
                         {isPending && (
-                          <button onClick={() => onRemoveItem(it.id)} aria-label="ลบรายการ" title="ลบรายการ" style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                          <button onClick={() => onRemoveItem(it.id)} aria-label={`ลบรายการ ${it.productName}`} title="ลบรายการ" style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
                             <Icon name="x" size={14} />
                           </button>
                         )}
@@ -718,27 +813,27 @@ function DetailPanel({
               })}
               {/* Add item inline row */}
               {isPending && addItemOpen && (
-                <div style={{ padding: '10px 12px', borderTop: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div style={{ position: 'relative', flex: 2, minWidth: 160 }}>
-                    <input placeholder="ค้นหาสินค้า..." value={addItemProductSearch} onChange={e => onAddItemProductSearch(e.target.value)}
-                      onFocus={() => setAddSearchFocused(true)}
+                <div className="po-add" style={{ padding: '10px 12px', borderTop: '1px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div className="po-add-search" style={{ position: 'relative', flex: 2, minWidth: 160 }}>
+                    <input placeholder="ค้นหาสินค้า..." aria-label="ค้นหาสินค้า" value={addItemProductSearch} onChange={e => onAddItemProductSearch(e.target.value)}
+                      onFocus={e => { setAddSearchFocused(true); revealOnPhone(e.currentTarget); }}
                       onBlur={() => setTimeout(() => setAddSearchFocused(false), 150)}
                       style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 12, background: 'var(--color-bg)', boxSizing: 'border-box' }}
                     />
                     {showAddDropdown && (
-                      <div onMouseDown={e => e.preventDefault()} style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: 'var(--shadow-md)' }}>
+                      <div className="po-dd" onMouseDown={e => e.preventDefault()} style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: 'var(--shadow-md)' }}>
                         {filteredProducts.slice(0, 6).map(p => (
-                          <div key={p.id} onMouseDown={() => { onAddItemProductSelect(p.id, p.name); setAddSearchFocused(false); }} style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
+                          <div key={p.id} className="po-opt" onMouseDown={() => { onAddItemProductSelect(p.id, p.name); setAddSearchFocused(false); }} style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
                             <span>{p.name}</span><span style={{ color: 'var(--color-text-secondary)' }}>฿{p.price.toFixed(2)}</span>
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
-                  <NumberInput min={1} integer placeholder="จำนวน" value={addItemQty} onChange={onAddItemQtyChange}
+                  <NumberInput min={1} integer placeholder="จำนวน" aria-label="จำนวน" className="po-add-qty" value={addItemQty} onChange={onAddItemQtyChange}
                     style={{ width: 60, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 12 }}
                   />
-                  <input type="number" min={0} placeholder="ราคา (ว่าง=ตามสินค้า)" value={addItemPrice} onChange={e => onAddItemPriceChange(e.target.value)}
+                  <input type="number" inputMode="decimal" min={0} placeholder="ราคา (ว่าง=ตามสินค้า)" aria-label="ราคาต่อชิ้น (เว้นว่าง = ราคาตามสินค้า)" className="po-add-price" value={addItemPrice} onChange={e => onAddItemPriceChange(e.target.value)}
                     style={{ width: 130, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 12 }}
                   />
                   <button onClick={onAddItem} disabled={!addItemProductId} className="pressable"
@@ -749,7 +844,7 @@ function DetailPanel({
                 </div>
               )}
               {/* Total */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px 32px', padding: '10px 12px', borderTop: '1px solid var(--color-border)', background: 'var(--color-surface-2)', gap: 8 }}>
+              <div className="po-total" style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px 32px', padding: '10px 12px', borderTop: '1px solid var(--color-border)', background: 'var(--color-surface-2)', gap: 8 }}>
                 <div style={{ gridColumn: '1/4', fontSize: 13, fontWeight: 600, textAlign: 'right', color: 'var(--color-text-secondary)' }}>ยอดรวม</div>
                 <div className="num" style={{ textAlign: 'right', fontWeight: 700, fontSize: 14, fontVariantNumeric: 'tabular-nums' }}>฿{totalStr}</div>
                 <div/>
@@ -758,22 +853,22 @@ function DetailPanel({
           </div>
 
           {/* Action buttons */}
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--color-border)' }}>
+          <div className="po-actions" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--color-border)' }}>
             {detail.status === 'PENDING' && (
               <>
-                <button onClick={onEdit} style={{ padding: '13px 28px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>แก้ไข</button>
-                <button onClick={onStart} disabled={startPending} className="pressable"
+                <button onClick={onEdit} className="po-edit" style={{ padding: '13px 28px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>แก้ไข</button>
+                <button onClick={onStart} disabled={startPending} className="pressable po-primary"
                   style={{ minHeight: 44, padding: '13px 32px', borderRadius: 'var(--radius-lg)', border: 'none', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontSize: 15, fontWeight: 700, cursor: 'pointer', opacity: startPending ? 0.7 : 1 }}>
                   {startPending ? 'กำลังเริ่ม...' : 'เริ่มผลิต'}
                 </button>
-                <button onClick={onCancel} disabled={cancelPending}
+                <button onClick={onCancel} disabled={cancelPending} className="po-danger"
                   style={{ padding: '13px 28px', borderRadius: 10, border: '1px solid var(--color-danger)', color: 'var(--color-danger)', background: 'transparent', fontSize: 15, fontWeight: 600, cursor: 'pointer', opacity: cancelPending ? 0.7 : 1 }}>
                   ยกเลิก
                 </button>
               </>
             )}
             {detail.status === 'IN_PROGRESS' && (
-              <button onClick={onComplete} disabled={completePending} className="pressable"
+              <button onClick={onComplete} disabled={completePending} className="pressable po-primary"
                 style={{ minHeight: 44, padding: '13px 36px', borderRadius: 'var(--radius-lg)', border: 'none', background: 'var(--color-success)', color: 'var(--color-text-inverse)', fontSize: 15, fontWeight: 700, cursor: 'pointer', opacity: completePending ? 0.7 : 1 }}>
                 {completePending ? 'กำลังบันทึก...' : '✓ ส่งมอบแล้ว'}
               </button>
@@ -846,7 +941,7 @@ function FulfillmentRow({ mode, quantity, fgStock, fgUnit, canEdit, saving, onCh
   };
 
   return (
-    <div style={{
+    <div className="po-fulfil" style={{
       padding: '10px 14px 12px 24px', borderTop: '1px dashed var(--color-border)',
       display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
       background: 'var(--color-surface-2)', fontSize: 13,
@@ -897,40 +992,41 @@ function IngredientsTab({ ingredients, threshold, onThresholdChange, onAddToShop
   }
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '10px 14px', background: 'var(--color-surface)', borderRadius: 8, border: '1px solid var(--color-border)' }}>
-        <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>Threshold: {threshold}%</label>
-        <input type="range" min={0} max={100} value={threshold} onChange={e => onThresholdChange(Number(e.target.value))} style={{ flex: 1 }} />
+      <div className="po-threshold" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '10px 14px', background: 'var(--color-surface)', borderRadius: 8, border: '1px solid var(--color-border)' }}>
+        <label htmlFor="po-threshold" style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>Threshold: {threshold}%</label>
+        <input id="po-threshold" type="range" min={0} max={100} value={threshold} onChange={e => onThresholdChange(Number(e.target.value))} style={{ flex: 1 }} />
       </div>
       {ingredients.items.length === 0 ? (
         <div style={{ color: 'var(--color-text-secondary)', fontSize: 13, textAlign: 'center', padding: 32 }}>ไม่มีวัตถุดิบ (สินค้าในออเดอร์อาจไม่มี recipe)</div>
       ) : (
         <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 70px 100px', padding: '8px 12px', background: 'var(--color-surface-2)', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', gap: 8 }}>
+          <div className="po-ing-head" style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 70px 100px', padding: '8px 12px', background: 'var(--color-surface-2)', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', gap: 8 }}>
             <div>วัตถุดิบ</div><div style={{ textAlign: 'right' }}>ต้องการ</div><div style={{ textAlign: 'right' }}>สต็อก</div><div style={{ textAlign: 'right' }}>ใช้%</div><div/>
           </div>
           {ingredients.items.map(line => (
-            <div key={line.inventoryItemId} style={{
+            <div key={line.inventoryItemId} className="po-ing" style={{
               display: 'grid', gridTemplateColumns: '1fr 90px 90px 70px 100px',
               padding: '10px 12px', borderTop: '1px solid var(--color-border)', gap: 8, alignItems: 'center',
               background: line.exceedsThreshold ? 'var(--color-danger-50)' : 'transparent',
             }}>
-              <div>
+              <div className="po-g-name">
                 <div style={{ fontSize: 13, fontWeight: 500 }}>{line.name}</div>
                 <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{line.unit}</div>
               </div>
-              <div style={{ textAlign: 'right', fontSize: 13 }}>{Number(line.qtyNeeded).toFixed(3)}</div>
-              <div style={{ textAlign: 'right', fontSize: 13 }}>{Number(line.stockOnHand).toFixed(3)}</div>
-              <div style={{ textAlign: 'right', fontSize: 13 }}>
+              <div data-label="ต้องการ" style={{ textAlign: 'right', fontSize: 13 }}>{Number(line.qtyNeeded).toFixed(3)}</div>
+              <div data-label="สต็อก" style={{ textAlign: 'right', fontSize: 13 }}>{Number(line.stockOnHand).toFixed(3)}</div>
+              <div data-label="ใช้" style={{ textAlign: 'right', fontSize: 13 }}>
                 {line.usagePct !== null
                   ? <span style={{ color: line.exceedsThreshold ? 'var(--color-danger)' : 'inherit', fontWeight: line.exceedsThreshold ? 600 : 400 }}>{line.usagePct.toFixed(1)}%</span>
                   : <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
                 }
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div className="po-g-act" style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 {line.onShoppingList ? (
                   <span style={{ fontSize: 11, color: 'var(--color-text-secondary)', padding: '3px 8px', borderRadius: 999, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}>มีแล้ว</span>
                 ) : (
                   <button onClick={() => onAddToShoppingList(line.inventoryItemId, line.name)}
+                    aria-label={`เพิ่ม ${line.name} เข้า Shopping List`}
                     style={{ fontSize: 11, color: 'var(--color-primary)', padding: '3px 8px', borderRadius: 999, background: 'var(--color-accent-50)', border: '1px solid var(--color-primary)', cursor: 'pointer', fontWeight: 500 }}>
                     + เพิ่ม
                   </button>
@@ -1003,36 +1099,42 @@ function CreateModal({
     return () => { cancelled = true; clearTimeout(t); };
   }, [cPhone]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Esc-to-close must honour the same guard as the ✕ button (disabled while saving).
-  const dialogRef = useModalA11y(() => { if (!isPending) onClose(); });
-
+  // ModalShell owns Escape / focus trap / focus restore; `busy` blocks closing while
+  // saving. The body scrolls and the footer stays pinned, so "สร้าง Pre-Order" is
+  // always on screen — also above the phone keyboard.
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="สร้าง Pre-Order ใหม่" style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-xl)', width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: 'var(--shadow-lg)' }}>
-        <div style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>สร้าง Pre-Order ใหม่</div>
-          <button onClick={onClose} disabled={isPending} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
-            <Icon name="x" size={16} />
-          </button>
-        </div>
-        <div style={{ padding: '0 24px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <ModalShell
+      title="สร้าง Pre-Order ใหม่"
+      onClose={onClose}
+      width={560}
+      busy={isPending}
+      closeOnBackdrop={false}
+      footer={<>
+        <button onClick={onClose} disabled={isPending} className="po-foot-btn" style={{ padding: '12px 24px', borderRadius: 9, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>ยกเลิก</button>
+        <button onClick={onConfirm} disabled={isPending} className="pressable po-foot-btn" style={{ minHeight: 44, padding: '12px 26px', borderRadius: 'var(--radius-md)', border: 'none', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontSize: 14, fontWeight: 600, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1 }}>
+          {isPending ? 'กำลังสร้าง...' : 'สร้าง Pre-Order'}
+        </button>
+      </>}
+    >
+        <div className="po-form" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Customer */}
           <section>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>ข้อมูลลูกค้า</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="cols-1-phone" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
-                <label style={labelStyle}>ชื่อลูกค้า *</label>
-                <input value={cName} onChange={e => onNameChange(e.target.value)} maxLength={120} placeholder="Alice" style={inputStyle} />
+                <label htmlFor="cName" style={labelStyle}>ชื่อลูกค้า *</label>
+                <input id="cName" value={cName} onChange={e => onNameChange(e.target.value)} maxLength={120} placeholder="Alice" autoComplete="off" style={inputStyle} />
               </div>
               <div>
-                <label style={labelStyle}>เบอร์โทร *</label>
-                <input value={cPhone} onChange={e => onPhoneChange(e.target.value)} maxLength={30} placeholder="0812345678" style={inputStyle} />
+                <label htmlFor="cPhone" style={labelStyle}>เบอร์โทร *</label>
+                <input id="cPhone" type="tel" inputMode="tel" value={cPhone} onChange={e => onPhoneChange(e.target.value)} maxLength={30} placeholder="0812345678" autoComplete="off" style={inputStyle} />
                 {lookup.isPending ? (
                   <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>กำลังค้นหาสมาชิก...</div>
                 ) : foundMember ? (
                   <button
                     type="button"
                     onClick={() => onNameChange(foundMember.customer_name)}
+                    className="po-member"
                     style={{
                       display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, width: '100%',
                       padding: '6px 10px', borderRadius: 7, cursor: 'pointer', textAlign: 'left',
@@ -1055,18 +1157,18 @@ function CreateModal({
           {/* Order info */}
           <section>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>ข้อมูลออเดอร์</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div><label style={labelStyle}>วันที่สั่ง</label><input type="date" value={cOrderDate} onChange={e => onOrderDateChange(e.target.value)} style={inputStyle} /></div>
-              <div><label style={labelStyle}>กำหนดส่ง *</label><input type="date" value={cDueDate} onChange={e => onDueDateChange(e.target.value)} style={inputStyle} /></div>
-              <div><label style={labelStyle}>มัดจำ (บาท)</label><input type="number" min={0} value={cDeposit} onChange={e => onDepositChange(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 18 }}>
+            <div className="cols-1-phone" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div><label htmlFor="cOrderDate" style={labelStyle}>วันที่สั่ง</label><input id="cOrderDate" type="date" value={cOrderDate} onChange={e => onOrderDateChange(e.target.value)} style={inputStyle} /></div>
+              <div><label htmlFor="cDueDate" style={labelStyle}>กำหนดส่ง *</label><input id="cDueDate" type="date" value={cDueDate} onChange={e => onDueDateChange(e.target.value)} style={inputStyle} /></div>
+              <div><label htmlFor="cDeposit" style={labelStyle}>มัดจำ (บาท)</label><input id="cDeposit" type="number" inputMode="decimal" min={0} value={cDeposit} onChange={e => onDepositChange(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
+              <div className="po-check" style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 18 }}>
                 <input type="checkbox" id="cDepositPaid" checked={cDepositPaid} onChange={e => onDepositPaidChange(e.target.checked)} style={{ width: 15, height: 15 }} />
                 <label htmlFor="cDepositPaid" style={{ fontSize: 13, cursor: 'pointer' }}>รับมัดจำแล้ว</label>
               </div>
             </div>
             <div style={{ marginTop: 10 }}>
-              <label style={labelStyle}>หมายเหตุ</label>
-              <textarea value={cNotes} onChange={e => onNotesChange(e.target.value)} rows={2} placeholder="เพิ่มเติม..." style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
+              <label htmlFor="cNotes" style={labelStyle}>หมายเหตุ</label>
+              <textarea id="cNotes" value={cNotes} onChange={e => onNotesChange(e.target.value)} rows={2} placeholder="เพิ่มเติม..." style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
             </div>
           </section>
           {/* Items */}
@@ -1075,54 +1177,47 @@ function CreateModal({
             {cItems.length > 0 && (
               <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 10 }}>
                 {cItems.map((ci, idx) => (
-                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: idx < cItems.length - 1 ? '1px solid var(--color-border)' : 'none', fontSize: 13 }}>
-                    <div style={{ flex: 1 }}>{nameById(ci.product_id)}</div>
+                  <div key={idx} className="po-citem" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: idx < cItems.length - 1 ? '1px solid var(--color-border)' : 'none', fontSize: 13 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>{nameById(ci.product_id)}</div>
                     <div style={{ color: 'var(--color-text-secondary)' }}>×{ci.quantity}</div>
                     <div style={{ fontWeight: 500 }}>
                       ฿{((ci.unit_price ? Number(ci.unit_price) : (allProducts.find(p => p.id === ci.product_id)?.price ?? 0)) * ci.quantity).toFixed(2)}
                     </div>
-                    <button onClick={() => onRemoveItem(idx)} aria-label="ลบรายการ" title="ลบรายการ" style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                    <button onClick={() => onRemoveItem(idx)} aria-label={`ลบรายการ ${nameById(ci.product_id)}`} title="ลบรายการ" style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
                       <Icon name="x" size={12} />
                     </button>
                   </div>
                 ))}
               </div>
             )}
-            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-              <div style={{ flex: 2, minWidth: 160, position: 'relative' }}>
-                <label style={labelStyle}>สินค้า</label>
-                <input placeholder="ค้นหาสินค้า..." value={cItemProductSearch} onChange={e => onItemProductSearch(e.target.value)}
-                  onFocus={() => setSearchFocused(true)}
+            <div className="po-cadd" style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div className="po-cadd-search" style={{ flex: 2, minWidth: 160, position: 'relative' }}>
+                <label htmlFor="cItemSearch" style={labelStyle}>สินค้า</label>
+                <input id="cItemSearch" placeholder="ค้นหาสินค้า..." value={cItemProductSearch} onChange={e => onItemProductSearch(e.target.value)}
+                  onFocus={e => { setSearchFocused(true); revealOnPhone(e.currentTarget.parentElement ?? e.currentTarget); }}
                   onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+                  autoComplete="off"
                   style={inputStyle} />
                 {showDropdown && (
-                  <div onMouseDown={e => e.preventDefault()} style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: 'var(--shadow-md)' }}>
+                  <div className="po-dd" onMouseDown={e => e.preventDefault()} style={{ position: 'absolute', top: '100%', left: 0, right: 0, border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface)', zIndex: 20, maxHeight: 150, overflowY: 'auto', marginTop: 2, boxShadow: 'var(--shadow-md)' }}>
                     {filtered.slice(0, 6).map(p => (
-                      <div key={p.id} onMouseDown={() => { onItemProductSelect(p.id, p.name); setSearchFocused(false); }} style={{ padding: '7px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
+                      <div key={p.id} className="po-opt" onMouseDown={() => { onItemProductSelect(p.id, p.name); setSearchFocused(false); }} style={{ padding: '7px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
                         <span>{p.name}</span><span style={{ color: 'var(--color-text-secondary)' }}>฿{p.price.toFixed(2)}</span>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-              <div style={{ width: 70 }}><label style={labelStyle}>จำนวน</label><NumberInput min={1} integer value={cItemQty} onChange={onItemQtyChange} style={inputStyle} /></div>
-              <div style={{ width: 110 }}><label style={labelStyle}>ราคา (ว่าง=catalog)</label><input type="number" min={0} value={cItemPrice} onChange={e => onItemPriceChange(e.target.value)} placeholder="ปกติ" style={inputStyle} /></div>
+              <div className="po-cadd-qty" style={{ width: 70 }}><label htmlFor="cItemQty" style={labelStyle}>จำนวน</label><NumberInput id="cItemQty" min={1} integer value={cItemQty} onChange={onItemQtyChange} style={inputStyle} /></div>
+              <div className="po-cadd-price" style={{ width: 110 }}><label htmlFor="cItemPrice" style={labelStyle}>ราคา (ว่าง=catalog)</label><input id="cItemPrice" type="number" inputMode="decimal" min={0} value={cItemPrice} onChange={e => onItemPriceChange(e.target.value)} placeholder="ปกติ" style={inputStyle} /></div>
               <button onClick={onAddItem} disabled={!cItemProductId} className="pressable"
                 style={{ minHeight: 44, padding: '10px 18px', borderRadius: 'var(--radius-md)', border: 'none', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontSize: 14, fontWeight: 600, cursor: cItemProductId ? 'pointer' : 'not-allowed', opacity: cItemProductId ? 1 : 0.5, marginBottom: 1 }}>
                 + เพิ่ม
               </button>
             </div>
           </section>
-          {/* Footer */}
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid var(--color-border)' }}>
-            <button onClick={onClose} disabled={isPending} style={{ padding: '12px 24px', borderRadius: 9, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>ยกเลิก</button>
-            <button onClick={onConfirm} disabled={isPending} className="pressable" style={{ minHeight: 44, padding: '12px 26px', borderRadius: 'var(--radius-md)', border: 'none', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontSize: 14, fontWeight: 600, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1 }}>
-              {isPending ? 'กำลังสร้าง...' : 'สร้าง Pre-Order'}
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -1141,39 +1236,35 @@ function EditModal({
   eNotes: string; onNotesChange: (s: string) => void;
   onConfirm: () => void; onClose: () => void; isPending: boolean;
 }) {
-  // Esc-to-close must honour the same guard as the ✕ button (disabled while saving).
-  const dialogRef = useModalA11y(() => { if (!isPending) onClose(); });
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="แก้ไข Pre-Order" style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-xl)', width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' as const, boxShadow: 'var(--shadow-lg)' }}>
-        <div style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>แก้ไข Pre-Order</div>
-          <button onClick={onClose} disabled={isPending} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
-            <Icon name="x" size={16} />
-          </button>
-        </div>
-        <div style={{ padding: '0 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div><label style={labelStyle}>ชื่อลูกค้า</label><input value={eName} onChange={e => onNameChange(e.target.value)} maxLength={120} style={inputStyle} /></div>
-            <div><label style={labelStyle}>เบอร์โทร</label><input value={ePhone} onChange={e => onPhoneChange(e.target.value)} maxLength={30} style={inputStyle} /></div>
-            <div><label style={labelStyle}>วันที่สั่ง</label><input type="date" value={eOrderDate} onChange={e => onOrderDateChange(e.target.value)} style={inputStyle} /></div>
-            <div><label style={labelStyle}>กำหนดส่ง</label><input type="date" value={eDueDate} onChange={e => onDueDateChange(e.target.value)} style={inputStyle} /></div>
-            <div><label style={labelStyle}>มัดจำ (บาท)</label><input type="number" min={0} value={eDeposit} onChange={e => onDepositChange(e.target.value)} style={inputStyle} /></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 18 }}>
+    <ModalShell
+      title="แก้ไข Pre-Order"
+      onClose={onClose}
+      width={480}
+      busy={isPending}
+      closeOnBackdrop={false}
+      footer={<>
+        <button onClick={onClose} disabled={isPending} className="po-foot-btn" style={{ padding: '12px 24px', borderRadius: 9, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>ยกเลิก</button>
+        <button onClick={onConfirm} disabled={isPending} className="pressable po-foot-btn" style={{ minHeight: 44, padding: '12px 26px', borderRadius: 'var(--radius-md)', border: 'none', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontSize: 14, fontWeight: 600, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1 }}>
+          {isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+        </button>
+      </>}
+    >
+        <div className="po-form" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="cols-1-phone" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div><label htmlFor="eName" style={labelStyle}>ชื่อลูกค้า</label><input id="eName" value={eName} onChange={e => onNameChange(e.target.value)} maxLength={120} autoComplete="off" style={inputStyle} /></div>
+            <div><label htmlFor="ePhone" style={labelStyle}>เบอร์โทร</label><input id="ePhone" type="tel" inputMode="tel" value={ePhone} onChange={e => onPhoneChange(e.target.value)} maxLength={30} autoComplete="off" style={inputStyle} /></div>
+            <div><label htmlFor="eOrderDate" style={labelStyle}>วันที่สั่ง</label><input id="eOrderDate" type="date" value={eOrderDate} onChange={e => onOrderDateChange(e.target.value)} style={inputStyle} /></div>
+            <div><label htmlFor="eDueDate" style={labelStyle}>กำหนดส่ง</label><input id="eDueDate" type="date" value={eDueDate} onChange={e => onDueDateChange(e.target.value)} style={inputStyle} /></div>
+            <div><label htmlFor="eDeposit" style={labelStyle}>มัดจำ (บาท)</label><input id="eDeposit" type="number" inputMode="decimal" min={0} value={eDeposit} onChange={e => onDepositChange(e.target.value)} style={inputStyle} /></div>
+            <div className="po-check" style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 18 }}>
               <input type="checkbox" id="eDepositPaid" checked={eDepositPaid} onChange={e => onDepositPaidChange(e.target.checked)} style={{ width: 15, height: 15 }} />
               <label htmlFor="eDepositPaid" style={{ fontSize: 13, cursor: 'pointer' }}>รับมัดจำแล้ว</label>
             </div>
           </div>
-          <div><label style={labelStyle}>หมายเหตุ</label><textarea value={eNotes} onChange={e => onNotesChange(e.target.value)} rows={2} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} /></div>
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid var(--color-border)' }}>
-            <button onClick={onClose} disabled={isPending} style={{ padding: '12px 24px', borderRadius: 9, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>ยกเลิก</button>
-            <button onClick={onConfirm} disabled={isPending} className="pressable" style={{ minHeight: 44, padding: '12px 26px', borderRadius: 'var(--radius-md)', border: 'none', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontSize: 14, fontWeight: 600, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1 }}>
-              {isPending ? 'กำลังบันทึก...' : 'บันทึก'}
-            </button>
-          </div>
+          <div><label htmlFor="eNotes" style={labelStyle}>หมายเหตุ</label><textarea id="eNotes" value={eNotes} onChange={e => onNotesChange(e.target.value)} rows={2} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} /></div>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -1181,19 +1272,21 @@ function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel, dang
   title: string; message: string; confirmLabel: string;
   onConfirm: () => void; onCancel: () => void; dangerous?: boolean;
 }) {
-  const dialogRef = useModalA11y(onCancel);
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-xl)', width: '100%', maxWidth: 400, padding: 28, boxShadow: 'var(--shadow-lg)' }}>
-        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 10 }}>{title}</div>
-        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: 24 }}>{message}</div>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onCancel} style={{ padding: '12px 24px', borderRadius: 9, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>ยกเลิก</button>
-          <button onClick={onConfirm} className="pressable" style={{ minHeight: 44, padding: '12px 26px', borderRadius: 'var(--radius-md)', border: 'none', background: dangerous ? 'var(--color-danger)' : 'var(--color-primary)', color: dangerous ? 'white' : 'var(--color-text-inverse)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+    <ModalShell
+      title={title}
+      onClose={onCancel}
+      width={400}
+      closeOnBackdrop={false}
+      footer={<>
+        <button onClick={onCancel} className="po-foot-btn" style={{ padding: '12px 24px', borderRadius: 9, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>ยกเลิก</button>
+        {/* danger-strong (not plain danger) keeps white text at AA in both themes. */}
+        <button onClick={onConfirm} className="pressable po-foot-btn" style={{ minHeight: 44, padding: '12px 26px', borderRadius: 'var(--radius-md)', border: 'none', background: dangerous ? 'var(--color-danger-strong)' : 'var(--color-primary)', color: dangerous ? '#fff' : 'var(--color-text-inverse)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+          {confirmLabel}
+        </button>
+      </>}
+    >
+      <div style={{ fontSize: 14, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>{message}</div>
+    </ModalShell>
   );
 }

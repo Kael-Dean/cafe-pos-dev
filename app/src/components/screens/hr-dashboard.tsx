@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Icon from '../icons';
-import { useToast, Tag, Select } from '../app-common';
+import { useToast, Tag, Select, ModalShell } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { useCountUp } from '@/lib/motion';
 import { SkeletonTable } from '@/components/ui/skeleton';
@@ -14,29 +14,38 @@ import {
   type StaffRead, type StaffRole, type StaffPosition,
 } from '@/hooks/use-hr';
 import { ApiError } from '@/lib/api-client';
-import { useModalA11y } from '@/hooks/use-modal-a11y';
+import { useIsPhone } from '@/hooks/use-media-query';
 
-/**
- * Overlay shell for the staff modals — hosts the modal a11y hook (focus trap,
- * Esc to close, focus restore) so the modal content can stay inline in the tab
- * component without calling hooks inside conditional JSX.
- */
-function HrOverlay({ onClose, label, cardStyle, children }: {
-  onClose: () => void;
-  label: string;
-  cardStyle?: React.CSSProperties;
-  children: React.ReactNode;
-}) {
-  const dialogRef = useModalA11y(onClose);
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', zIndex: 50 }}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={label}
-        style={{ background: 'var(--color-surface)', borderRadius: 12, padding: 24, boxShadow: 'var(--shadow-lg)', ...cardStyle }}>
-        {children}
-      </div>
-    </div>
-  );
+// Phone-only rules (< 768px) the shared toolkit cannot express: inline font sizes /
+// min-heights below the touch minimums, the staff table wrapper, the task-status
+// switch and the calendar day cells. `.hr-form` marks form content inside a portaled
+// ModalShell (which renders outside `.hr-screen`). Nothing here applies at >= 768px.
+const HR_PHONE_CSS = `
+@media (max-width: 767px) {
+  .hr-screen input, .hr-screen textarea, .hr-form input, .hr-form textarea { font-size: 16px !important; min-height: 44px; }
+  .hr-screen button, .hr-form button { min-height: 44px !important; }
+  .hr-table-wrap { background: transparent !important; border: 0 !important; border-radius: 0 !important; overflow: visible !important; }
+  .hr-table-wrap .row-card-actions > button { flex: 1 1 0; margin: 0 !important; font-size: 14px !important; }
+  .hr-leave-actions > button { flex: 1 1 0; font-size: 14px !important; }
+  .hr-task-act { font-size: 13px !important; padding: 4px 14px !important; }
+  .hr-icon-btn { min-width: 44px; display: grid; place-items: center; margin: -8px -10px -12px 0; }
+  /* .row-card > [data-label] is display:flex !important and out-ranks .hide-phone */
+  .hr-table-wrap .row-card > .hide-phone { display: none !important; }
+  /* One status at a time: the switch already names the column, so the board column
+     loses its own header and chrome and the task cards sit directly on the page. */
+  .hr-col { background: transparent !important; border: 0 !important; padding: 0 !important; min-height: 0 !important; }
+  .hr-col-head { display: none !important; }
+  .hr-form-actions > button { flex: 1 1 0; }
+  .hr-seg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; margin-bottom: 12px; background: var(--color-surface-2); border-radius: var(--radius-lg); }
+  .hr-seg > button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 6px 2px; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; line-height: 1.3; color: var(--color-text-secondary); min-height: 52px !important; }
+  .hr-seg > button[aria-pressed='true'] { background: var(--color-surface); color: var(--color-text); font-weight: 700; box-shadow: var(--shadow-xs); }
+  .hr-seg-n { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .hr-cal-cell { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; width: 100%; min-height: 50px !important; padding: 6px 0 4px; border-radius: var(--radius-md); border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .hr-cal-cell[data-today] { border-color: var(--color-accent); background: var(--color-accent-50); font-weight: 700; }
+  .hr-cal-cell[aria-pressed='true'] { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+  .hr-cal-n { min-width: 20px; padding: 0 5px; border-radius: var(--radius-pill); background: var(--color-danger-50); color: var(--color-danger); font-size: 11px; font-weight: 700; line-height: 16px; }
 }
+`;
 
 /** Overview KPI figure: counts up on mount (whole number). */
 function OverviewStat({ value }: { value: number }) {
@@ -72,7 +81,7 @@ const TASK_STATUS_TONE: Record<TaskStatus, 'neutral' | 'info' | 'warning' | 'suc
 
 function LeaveCard({ leave, admin, onReview }: { leave: LeaveRequest; admin: boolean; onReview?: (id: string, status: 'APPROVED' | 'REJECTED') => void }) {
   return (
-    <div style={{ padding: '14px 16px', background: 'var(--color-surface-2)', borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+    <div className="stack-phone" style={{ padding: '14px 16px', background: 'var(--color-surface-2)', borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 14 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 600, fontSize: 14 }}>{leave.user_name || leave.user_id}</span>
@@ -85,7 +94,7 @@ function LeaveCard({ leave, admin, onReview }: { leave: LeaveRequest; admin: boo
         {leave.note && <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{leave.note}</div>}
       </div>
       {admin && leave.status === 'PENDING' && onReview && (
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0 }}>
+        <div className="hr-leave-actions" style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0 }}>
           <button onClick={() => onReview(leave.id, 'APPROVED')} className="pressable"
             style={{ minHeight: 44, padding: '5px 14px', borderRadius: 'var(--radius-sm)', background: 'var(--color-success-50)', color: 'var(--color-success)', fontWeight: 600, fontSize: 12, cursor: 'pointer', border: 'none' }}>
             อนุมัติ
@@ -115,7 +124,7 @@ function TaskCard({ task, admin, myId, onStatusChange, onConfirm, onDelete }: {
           {task.description && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{task.description}</div>}
         </div>
         {admin && (
-          <button onClick={() => onDelete(task.id)} title="ลบ" style={{ padding: 4, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', flexShrink: 0 }}>
+          <button onClick={() => onDelete(task.id)} title="ลบ" aria-label={`ลบงาน ${task.title}`} className="hr-icon-btn" style={{ padding: 4, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', flexShrink: 0 }}>
             <Icon name="x" size={14} />
           </button>
         )}
@@ -130,22 +139,22 @@ function TaskCard({ task, admin, myId, onStatusChange, onConfirm, onDelete }: {
       </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {task.status === 'TODO' && (
-          <button onClick={() => onStatusChange(task.id, 'IN_PROGRESS')} className="pressable" style={{ minHeight: 32, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-info-50)', color: 'var(--color-info)', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
+          <button onClick={() => onStatusChange(task.id, 'IN_PROGRESS')} className="pressable hr-task-act" style={{ minHeight: 32, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-info-50)', color: 'var(--color-info)', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
             เริ่มทำ
           </button>
         )}
         {task.status === 'IN_PROGRESS' && (
-          <button onClick={() => onStatusChange(task.id, 'PENDING_REVIEW')} className="pressable" style={{ minHeight: 32, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-warning-50)', color: 'var(--color-warning-fg)', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
+          <button onClick={() => onStatusChange(task.id, 'PENDING_REVIEW')} className="pressable hr-task-act" style={{ minHeight: 32, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-warning-50)', color: 'var(--color-warning-fg)', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
             ส่งตรวจ
           </button>
         )}
         {task.status === 'PENDING_REVIEW' && admin && (
-          <button onClick={() => onConfirm(task.id)} className="pressable" style={{ minHeight: 32, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-success-50)', color: 'var(--color-success)', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
+          <button onClick={() => onConfirm(task.id)} className="pressable hr-task-act" style={{ minHeight: 32, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-success-50)', color: 'var(--color-success)', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
             ยืนยันเสร็จ
           </button>
         )}
         {admin && task.status !== 'DONE' && (
-          <button onClick={() => onStatusChange(task.id, 'DONE')} className="pressable" style={{ minHeight: 32, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
+          <button onClick={() => onStatusChange(task.id, 'DONE')} className="pressable hr-task-act" style={{ minHeight: 32, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
             ทำเสร็จ
           </button>
         )}
@@ -299,11 +308,11 @@ function StaffTab({ admin }: { admin: boolean }) {
       )}
 
       {/* Staff table */}
-      <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
+      <div className="hr-table-wrap" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+        <table className="row-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
-            <tr style={{ background: 'var(--color-surface-2)' }}>
+            <tr className="row-cards-head" style={{ background: 'var(--color-surface-2)' }}>
               {['ชื่อ', 'Role', 'ตำแหน่ง', 'เบอร์โทร', 'อีเมล', ''].map((h, i) => (
                 <th key={i} style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: 12, color: 'var(--color-text-secondary)', borderBottom: '1px solid var(--color-border)', whiteSpace: 'nowrap' }}>
                   {h}
@@ -313,23 +322,23 @@ function StaffTab({ admin }: { admin: boolean }) {
           </thead>
           <tbody>
             {(staffList ?? []).map(s => (
-              <tr key={s.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                <td style={{ padding: '10px 16px', fontWeight: 500 }}>{s.name}</td>
-                <td style={{ padding: '10px 16px' }}>
+              <tr key={s.id} className="row-card" style={{ borderBottom: '1px solid var(--color-border)' }}>
+                <td className="row-card-title" style={{ padding: '10px 16px', fontWeight: 500 }}>{s.name}</td>
+                <td data-label="Role" style={{ padding: '10px 16px' }}>
                   <span style={{ padding: '2px 8px', borderRadius: 'var(--radius-md)', fontSize: 11, fontWeight: 600, background: 'var(--color-accent-50)', color: 'var(--color-accent-600)' }}>
                     {ROLE_LABEL[s.role] ?? s.role}
                   </span>
                 </td>
-                <td style={{ padding: '10px 16px', color: 'var(--color-text-secondary)', fontSize: 13 }}>
+                <td data-label="ตำแหน่ง" style={{ padding: '10px 16px', color: 'var(--color-text-secondary)', fontSize: 13 }}>
                   {POS_LABEL[s.position] ?? s.position}
                 </td>
-                <td style={{ padding: '10px 16px', color: 'var(--color-text-secondary)', fontSize: 13, fontFamily: 'var(--font-num)' }}>
+                <td data-label="เบอร์โทร" className={s.phone ? undefined : 'hide-phone'} style={{ padding: '10px 16px', color: 'var(--color-text-secondary)', fontSize: 13, fontFamily: 'var(--font-num)' }}>
                   {s.phone ?? <em style={{ color: 'var(--color-text-muted)' }}>—</em>}
                 </td>
-                <td style={{ padding: '10px 16px', color: 'var(--color-text-secondary)', fontSize: 13 }}>
+                <td data-label="อีเมล" className={s.email ? undefined : 'hide-phone'} style={{ padding: '10px 16px', color: 'var(--color-text-secondary)', fontSize: 13 }}>
                   {s.email ?? <em style={{ color: 'var(--color-text-muted)' }}>—</em>}
                 </td>
-                <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <td className={admin ? 'row-card-actions' : 'hide-phone'} style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                   {admin && (
                     <>
                       <button onClick={() => openEdit(s)}
@@ -359,9 +368,20 @@ function StaffTab({ admin }: { admin: boolean }) {
 
       {/* Create modal */}
       {showCreate && (
-        <HrOverlay onClose={() => setShowCreate(false)} label="เพิ่มพนักงานใหม่" cardStyle={{ width: 500, maxWidth: '90vw', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700 }}>เพิ่มพนักงานใหม่</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+        <ModalShell
+          title="เพิ่มพนักงานใหม่"
+          onClose={() => setShowCreate(false)}
+          width={500}
+          busy={createStaff.isPending}
+          footer={<>
+            <button onClick={() => setShowCreate(false)} className="pressable" style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
+            <button onClick={handleCreate} disabled={createStaff.isPending} className="pressable"
+              style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
+              {createStaff.isPending ? 'กำลังเพิ่ม…' : 'เพิ่ม'}
+            </button>
+          </>}
+        >
+            <div className="hr-form form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={labelSt}>ชื่อ *</label>
                 <input value={cForm.name} onChange={e => setCForm(f => ({ ...f, name: e.target.value }))} placeholder="ชื่อพนักงาน" style={inputSt} autoFocus />
@@ -376,11 +396,11 @@ function StaffTab({ admin }: { admin: boolean }) {
               </div>
               <div>
                 <label style={labelSt}>เบอร์โทร *</label>
-                <input value={cForm.phone} onChange={e => setCForm(f => ({ ...f, phone: e.target.value }))} placeholder="0812345678" style={{ ...inputSt, fontFamily: 'var(--font-num)' }} />
+                <input value={cForm.phone} onChange={e => setCForm(f => ({ ...f, phone: e.target.value }))} placeholder="0812345678" type="tel" inputMode="tel" autoComplete="off" style={{ ...inputSt, fontFamily: 'var(--font-num)' }} />
               </div>
               <div>
                 <label style={labelSt}>PIN (4–8 หลัก) *</label>
-                <input value={cForm.pin} onChange={e => setCForm(f => ({ ...f, pin: e.target.value }))} placeholder="••••" type="password" style={{ ...inputSt, fontFamily: 'var(--font-num)' }} />
+                <input value={cForm.pin} onChange={e => setCForm(f => ({ ...f, pin: e.target.value }))} placeholder="••••" type="password" inputMode="numeric" autoComplete="new-password" style={{ ...inputSt, fontFamily: 'var(--font-num)' }} />
               </div>
               <div>
                 <label style={labelSt}>อีเมล</label>
@@ -391,21 +411,26 @@ function StaffTab({ admin }: { admin: boolean }) {
                 <textarea value={cForm.address} onChange={e => setCForm(f => ({ ...f, address: e.target.value }))} rows={2} placeholder="ไม่บังคับ" style={{ ...inputSt, resize: 'vertical' }} />
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowCreate(false)} className="pressable" style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
-              <button onClick={handleCreate} disabled={createStaff.isPending}
-                style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
-                {createStaff.isPending ? 'กำลังเพิ่ม…' : 'เพิ่ม'}
-              </button>
-            </div>
-        </HrOverlay>
+        </ModalShell>
       )}
 
       {/* Edit modal */}
       {editTarget && (
-        <HrOverlay onClose={() => setEditTarget(null)} label={`แก้ไขพนักงาน — ${editTarget.name}`} cardStyle={{ width: 500, maxWidth: '90vw', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700 }}>แก้ไขพนักงาน — {editTarget.name}</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+        <ModalShell
+          title="แก้ไขพนักงาน"
+          subtitle={editTarget.name}
+          onClose={() => setEditTarget(null)}
+          width={500}
+          busy={updateStaff.isPending}
+          footer={<>
+            <button onClick={() => setEditTarget(null)} className="pressable" style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
+            <button onClick={handleUpdate} disabled={updateStaff.isPending} className="pressable"
+              style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
+              {updateStaff.isPending ? 'กำลังบันทึก…' : 'บันทึก'}
+            </button>
+          </>}
+        >
+            <div className="hr-form form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={labelSt}>ชื่อ</label>
                 <input value={eName} onChange={e => setEName(e.target.value)} style={inputSt} />
@@ -420,11 +445,11 @@ function StaffTab({ admin }: { admin: boolean }) {
               </div>
               <div>
                 <label style={labelSt}>เบอร์โทร</label>
-                <input value={ePhone} onChange={e => setEPhone(e.target.value)} style={{ ...inputSt, fontFamily: 'var(--font-num)' }} />
+                <input value={ePhone} onChange={e => setEPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="off" style={{ ...inputSt, fontFamily: 'var(--font-num)' }} />
               </div>
               <div>
                 <label style={labelSt}>PIN ใหม่ (ว่าง = ไม่เปลี่ยน)</label>
-                <input value={ePin} onChange={e => setEPin(e.target.value)} placeholder="ว่าง = ไม่เปลี่ยน" type="password" style={{ ...inputSt, fontFamily: 'var(--font-num)' }} />
+                <input value={ePin} onChange={e => setEPin(e.target.value)} placeholder="ว่าง = ไม่เปลี่ยน" type="password" inputMode="numeric" autoComplete="new-password" style={{ ...inputSt, fontFamily: 'var(--font-num)' }} />
               </div>
               <div>
                 <label style={labelSt}>อีเมล (ว่าง = ลบออก)</label>
@@ -435,31 +460,28 @@ function StaffTab({ admin }: { admin: boolean }) {
                 <textarea value={eAddress} onChange={e => setEAddress(e.target.value)} rows={2} style={{ ...inputSt, resize: 'vertical' }} />
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setEditTarget(null)} className="pressable" style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
-              <button onClick={handleUpdate} disabled={updateStaff.isPending}
-                style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
-                {updateStaff.isPending ? 'กำลังบันทึก…' : 'บันทึก'}
-              </button>
-            </div>
-        </HrOverlay>
+        </ModalShell>
       )}
 
       {/* Deactivate confirm */}
       {deactivateTarget && (
-        <HrOverlay onClose={() => setDeactivateTarget(null)} label="ยืนยันการลาออก" cardStyle={{ width: 360 }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700 }}>ยืนยันการลาออก</h3>
-            <p style={{ margin: '0 0 20px', fontSize: 14, color: 'var(--color-text-secondary)' }}>
+        <ModalShell
+          title="ยืนยันการลาออก"
+          onClose={() => setDeactivateTarget(null)}
+          width={380}
+          busy={deactivateStaff.isPending}
+          footer={<>
+            <button onClick={() => setDeactivateTarget(null)} className="pressable" style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
+            <button onClick={handleDeactivate} disabled={deactivateStaff.isPending}
+              className="pressable" style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-danger-strong)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
+              {deactivateStaff.isPending ? 'กำลังดำเนินการ…' : 'ยืนยัน'}
+            </button>
+          </>}
+        >
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: 'var(--color-text-secondary)' }}>
               <strong>{deactivateTarget.name}</strong> จะถูกปิดการใช้งาน ไม่สามารถล็อกอินได้อีก แต่ประวัติการทำงานยังคงอยู่
             </p>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setDeactivateTarget(null)} className="pressable" style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)', fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
-              <button onClick={handleDeactivate} disabled={deactivateStaff.isPending}
-                className="pressable" style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-danger-strong)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
-                {deactivateStaff.isPending ? 'กำลังดำเนินการ…' : 'ยืนยัน'}
-              </button>
-            </div>
-        </HrOverlay>
+        </ModalShell>
       )}
     </>
   );
@@ -486,6 +508,9 @@ function TasksTab({ admin, myId }: { admin: boolean; myId?: string }) {
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', assignee_id: '', due_date: '' });
+  // Phones show one status column at a time (the board's four columns do not fit).
+  const isPhone = useIsPhone();
+  const [phoneCol, setPhoneCol] = useState<TaskStatus>('TODO');
 
   const tasks = allTasks ?? [];
 
@@ -535,9 +560,9 @@ function TasksTab({ admin, myId }: { admin: boolean; myId?: string }) {
           </button>
 
           {showCreateForm && (
-            <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 18, marginTop: 12 }}>
+            <div className="pad-phone" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 18, marginTop: 12 }}>
               <div style={{ fontWeight: 600, marginBottom: 12 }}>งานใหม่</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+              <div className="form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ชื่องาน *</label>
                   <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="เช่น เติมน้ำตาลสถานี" style={inputSt} autoFocus />
@@ -558,7 +583,7 @@ function TasksTab({ admin, myId }: { admin: boolean; myId?: string }) {
                   <input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} style={inputSt} />
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div className="hr-form-actions" style={{ display: 'flex', gap: 8 }}>
                 <button onClick={handleCreate} disabled={createTask.isPending}
                   style={{ minHeight: 44, padding: '8px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none' }}>
                   {createTask.isPending ? '...' : 'สร้าง'}
@@ -573,14 +598,26 @@ function TasksTab({ admin, myId }: { admin: boolean; myId?: string }) {
         </div>
       )}
 
+      {/* Phones: status switch — one column on screen, the counts stay visible on the switch */}
+      {isPhone && (
+        <div className="hr-seg" role="group" aria-label="สถานะงาน">
+          {KANBAN_COLS.map(col => (
+            <button key={col} type="button" aria-pressed={phoneCol === col} onClick={() => setPhoneCol(col)}>
+              <span>{TASK_STATUS_LABEL[col]}</span>
+              <span className="hr-seg-n">{tasks.filter(t => t.status === col).length}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Kanban board */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-        {KANBAN_COLS.map(col => {
+      <div className="cols-1-phone" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+        {KANBAN_COLS.filter(col => !isPhone || col === phoneCol).map(col => {
           const colTasks = tasks.filter(t => t.status === col);
           const { bg, border } = COL_COLORS[col];
           return (
-            <div key={col} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 12, padding: 12, minHeight: 200 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <div key={col} className="hr-col" style={{ background: bg, border: `1px solid ${border}`, borderRadius: 12, padding: 12, minHeight: 200 }}>
+              <div className="hr-col-head" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 <Tag tone={TASK_STATUS_TONE[col]}>{TASK_STATUS_LABEL[col]}</Tag>
                 <span style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 600 }}>{colTasks.length}</span>
               </div>
@@ -620,6 +657,9 @@ export default function HRDashboard() {
   const [tab, setTab] = useState(admin ? 'overview' : 'my-leaves');
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [leaveForm, setLeaveForm] = useState({ start_date: '', end_date: '', leave_type: 'VACATION', note: '' });
+  // Phones: the month grid shows a count per day; the picked day's names list below it.
+  const isPhone = useIsPhone();
+  const [calDay, setCalDay] = useState(() => new Date().toISOString().split('T')[0]);
 
   const handleReview = async (id: string, status: 'APPROVED' | 'REJECTED') => {
     try {
@@ -687,14 +727,26 @@ export default function HRDashboard() {
   const { firstDay, daysInMonth, leaveByDate, year, month } = buildCalendar();
 
   return (
-    <div style={{ padding: 32, maxWidth: 1100, margin: '0 auto' }}>
+    <div className="screen-pad-lg hr-screen" style={{ padding: 32, maxWidth: 1100, margin: '0 auto' }}>
+      <style>{HR_PHONE_CSS}</style>
       <h1 className="text-balance" style={{ fontSize: 22, fontWeight: 700, marginBottom: 'var(--space-2)', color: 'var(--color-text)' }}>
         HR & Admin
       </h1>
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid var(--color-border)' }}>
+      <div className="tab-strip bleed" style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid var(--color-border)' }}>
         {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
+          <button key={t.id} aria-current={tab === t.id ? 'page' : undefined}
+            // Phones: the strip scrolls sideways — bring a half-hidden tab to the strip's
+            // leading edge. Scrolls the strip only (scrollIntoView would also scroll any
+            // ancestor); a no-op on desktop, where the row does not overflow.
+            onClick={e => {
+              setTab(t.id);
+              const el = e.currentTarget, strip = el.parentElement;
+              if (strip && strip.scrollWidth > strip.clientWidth + 1) {
+                const pad = parseFloat(getComputedStyle(strip).paddingLeft) || 0;
+                strip.scrollLeft += el.getBoundingClientRect().left - strip.getBoundingClientRect().left - pad;
+              }
+            }}
             style={{ padding: '8px 18px', borderRadius: '8px 8px 0 0', fontSize: 14, fontWeight: tab === t.id ? 600 : 500, color: tab === t.id ? 'var(--color-accent)' : 'var(--color-text-secondary)', background: tab === t.id ? 'var(--color-surface)' : 'transparent', borderBottom: tab === t.id ? '2px solid var(--color-accent)' : '2px solid transparent', cursor: 'pointer' }}>
             {t.label}
           </button>
@@ -704,12 +756,12 @@ export default function HRDashboard() {
       {/* Admin overview */}
       {tab === 'overview' && admin && (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-4)', marginBottom: 'var(--space-6)' }}>
+          <div className="cols-2-phone" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-4)', marginBottom: 'var(--space-6)' }}>
             {[
               { label: 'คำขอลารออนุมัติ', val: (allLeaves ?? []).filter(l => l.status === 'PENDING').length },
               { label: 'อนุมัติแล้วเดือนนี้', val: (allLeaves ?? []).filter(l => l.status === 'APPROVED').length },
             ].map(k => (
-              <div key={k.label} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
+              <div key={k.label} className="pad-phone" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
                 <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-2)' }}>{k.label}</div>
                 <OverviewStat value={k.val} />
               </div>
@@ -751,9 +803,9 @@ export default function HRDashboard() {
           </div>
 
           {showLeaveForm && (
-            <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 18, marginBottom: 16 }}>
+            <div className="pad-phone" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 18, marginBottom: 16 }}>
               <div style={{ fontWeight: 600, marginBottom: 12 }}>ขอลา</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+              <div className="form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                 <div>
                   <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>วันเริ่ม *</label>
                   <input type="date" value={leaveForm.start_date} onChange={e => setLeaveForm(f => ({ ...f, start_date: e.target.value }))} style={{ ...inputStyle, width: '100%' }} />
@@ -771,7 +823,7 @@ export default function HRDashboard() {
                   <input value={leaveForm.note} onChange={e => setLeaveForm(f => ({ ...f, note: e.target.value }))} placeholder="ไม่บังคับ" style={{ ...inputStyle, width: '100%' }} />
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 10 }}>
+              <div className="hr-form-actions" style={{ display: 'flex', gap: 10 }}>
                 <button onClick={handleCreateLeave} disabled={createLeave.isPending} className="pressable"
                   style={{ minHeight: 44, padding: '9px 18px', borderRadius: 'var(--radius-md)', background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 600, fontSize: 14, cursor: 'pointer', border: 'none' }}>
                   {createLeave.isPending ? 'กำลังส่ง...' : 'ส่งคำขอ'}
@@ -807,6 +859,16 @@ export default function HRDashboard() {
               const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
               const names = leaveByDate[dateStr] ?? [];
               const isToday = dateStr === new Date().toISOString().split('T')[0];
+              if (isPhone) {
+                return (
+                  <button key={d} type="button" className="hr-cal-cell" data-today={isToday ? '' : undefined}
+                    aria-pressed={calDay === dateStr} aria-label={`วันที่ ${d}${names.length ? ` ลา ${names.length} คน` : ''}`}
+                    onClick={() => setCalDay(dateStr)}>
+                    {d}
+                    {names.length > 0 && <span className="hr-cal-n">{names.length}</span>}
+                  </button>
+                );
+              }
               return (
                 <div key={d} style={{ minHeight: 56, borderRadius: 'var(--radius-md)', border: `1px solid ${isToday ? 'var(--color-accent)' : 'var(--color-border)'}`, padding: '4px 6px', background: isToday ? 'var(--color-accent-50)' : 'var(--color-surface)' }}>
                   <div style={{ fontSize: 11, fontWeight: isToday ? 700 : 500, color: isToday ? 'var(--color-accent)' : 'var(--color-text)', marginBottom: 2 }}>{d}</div>
@@ -817,6 +879,37 @@ export default function HRDashboard() {
               );
             })}
           </div>
+          {isPhone && (() => {
+            const dayLeaves = approvedLeaves.filter(l => l.start_date <= calDay && calDay <= l.end_date);
+            return (
+              <div aria-live="polite" style={{ marginTop: 16, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: '12px 14px' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: dayLeaves.length ? 8 : 2 }}>
+                  {new Date(calDay).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </div>
+                {dayLeaves.length === 0 ? (
+                  <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>ไม่มีพนักงานลาในวันนี้</div>
+                ) : (
+                  <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {dayLeaves.map(l => (
+                      <li key={l.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <span style={{ fontSize: 14, fontWeight: 500, minWidth: 0, overflowWrap: 'anywhere' }}>{l.user_name || 'พนักงาน'}</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                            {l.start_date === l.end_date
+                              ? '1 วัน'
+                              : l.start_date.slice(0, 7) === l.end_date.slice(0, 7)
+                                ? `วันที่ ${Number(l.start_date.slice(8))}–${Number(l.end_date.slice(8))}`
+                                : `${l.start_date} → ${l.end_date}`}
+                          </span>
+                          <Tag tone="danger">{LEAVE_TYPE_LABEL[l.leave_type] ?? l.leave_type}</Tag>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })()}
           <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 12 }}>แสดงเฉพาะวันลาที่อนุมัติแล้ว</div>
         </div>
       )}

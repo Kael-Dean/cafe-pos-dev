@@ -48,8 +48,11 @@ const TIER_TONE: Record<MembershipTier, 'neutral' | 'success' | 'info' | 'accent
 const IS: React.CSSProperties = {
   width: '100%', padding: '10px var(--space-3)', minHeight: 44, borderRadius: 'var(--radius-md)', boxSizing: 'border-box',
   border: '1px solid var(--color-border)', background: 'var(--color-surface)',
-  color: 'var(--color-text)', fontSize: 14, outline: 'none',
+  color: 'var(--color-text)', outline: 'none',
 };
+/** Font size for `IS` inputs — a class, not an inline style, so the phone rule in
+ *  globals.css (inputs render at 16px: no iOS zoom on focus) can override it. */
+const IS_CLASS = 'text-[14px]';
 
 interface Props {
   onClose: () => void;
@@ -229,7 +232,7 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
         </div>
 
         {/* Body */}
-        <div className="scroll" style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
+        <div className="scroll pad-phone" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '20px 24px' }}>
           {/* Search-mode toggle (lookup only) */}
           {phase === 'lookup' && (
             <div style={{ display: 'flex', gap: 6, background: 'var(--color-surface-2)', padding: 4, borderRadius: 10, marginBottom: 14, width: 'fit-content' }}>
@@ -257,6 +260,8 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
                   onChange={(e) => { setPhone(e.target.value.replace(/[^\d]/g, '')); if (result) setResult(null); }}
                   inputMode="numeric"
                   placeholder="08XXXXXXXX"
+                  aria-label="เบอร์โทรศัพท์"
+                  className={IS_CLASS}
                   style={IS}
                   onKeyDown={(e) => { if (e.key === 'Enter' && phase === 'lookup') doLookup(); }}
                 />
@@ -280,6 +285,8 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
                   value={nameInput}
                   onChange={(e) => { setNameInput(e.target.value); if (result) setResult(null); }}
                   placeholder="ชื่อ หรือบางส่วนของชื่อ"
+                  aria-label="ชื่อสมาชิก"
+                  className={IS_CLASS}
                   style={IS}
                   onKeyDown={(e) => { if (e.key === 'Enter') doNameSearch(); }}
                   autoFocus
@@ -362,11 +369,11 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
               )}
               <div>
                 <label htmlFor="reg-name" style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ชื่อ *</label>
-                <input id="reg-name" value={regName} onChange={(e) => setRegName(e.target.value)} required aria-required="true" style={IS} placeholder="ชื่อ-นามสกุล" />
+                <input id="reg-name" value={regName} onChange={(e) => setRegName(e.target.value)} required aria-required="true" className={IS_CLASS} style={IS} placeholder="ชื่อ-นามสกุล" />
               </div>
               <div>
                 <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>วันเกิด (ไม่บังคับ)</label>
-                <input value={regDob} onChange={(e) => setRegDob(e.target.value)} type="date" style={IS} />
+                <input value={regDob} onChange={(e) => setRegDob(e.target.value)} type="date" aria-label="วันเกิด" className={IS_CLASS} style={IS} />
                 <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>ใช้สำหรับโบนัสวันเกิด</div>
               </div>
             </div>

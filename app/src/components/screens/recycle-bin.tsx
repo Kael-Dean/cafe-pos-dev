@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useIsPhone } from '@/hooks/use-media-query';
 import { useToast, Tag, baht } from '../app-common';
 import Icon from '../icons';
 import { SkeletonTable } from '@/components/ui/skeleton';
@@ -52,16 +54,28 @@ export default function RecycleBin() {
   ];
 
   return (
-    <div ref={screenRef} style={{ padding: 24, height: '100%', overflowY: 'auto', background: 'var(--color-bg)', boxSizing: 'border-box' }}>
+    <div ref={screenRef} className="screen-pad" style={{ padding: 24, height: '100%', overflowY: 'auto', background: 'var(--color-bg)', boxSizing: 'border-box' }}>
+      {/* Phone-only rules: full-width tab switch, and the 3-column tables stay tables
+          (name wraps, amount and the restore button keep their width). */}
+      <style>{`
+        @media (max-width: 767px) {
+          .rb-tabs { width: 100% !important; }
+          .rb-tabs > button { flex: 1 1 0; }
+          .rb-tbl th, .rb-tbl td { padding: 10px 12px !important; }
+          .rb-tbl td:first-child > div { flex-wrap: wrap; gap: 4px 8px !important; }
+          .rb-tbl td:not(:first-child) { white-space: nowrap; width: 1%; }
+          .rb-tbl td:first-child span:first-child { overflow-wrap: anywhere; }
+        }
+      `}</style>
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>{t.recycleBin.title}</h1>
         <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 4, marginBottom: 0 }}>{t.recycleBin.subtitle}</p>
       </div>
 
       {/* Tab bar */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'var(--color-surface-2)', padding: 4, borderRadius: 10, width: 'fit-content' }}>
+      <div role="tablist" aria-label={t.recycleBin.title} className="rb-tabs" style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'var(--color-surface-2)', padding: 4, borderRadius: 10, width: 'fit-content' }}>
         {tabs.map(([id, label]) => (
-          <button key={id} onClick={() => setTab(id)} style={{
+          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} style={{
             padding: '8px 16px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, cursor: 'pointer',
             background: tab === id ? 'var(--color-surface)' : 'transparent',
             color: tab === id ? 'var(--color-text)' : 'var(--color-text-secondary)',
@@ -116,7 +130,7 @@ function ProductsTab() {
     <>
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+        <table className="rb-tbl" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
             <tr style={{ textAlign: 'left', color: 'var(--color-text-secondary)', fontSize: 12, fontWeight: 600 }}>
               <th style={thCss}>{t.recycleBin.colName}</th>
@@ -197,7 +211,7 @@ function InventoryTab() {
     <>
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+        <table className="rb-tbl" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
             <tr style={{ textAlign: 'left', color: 'var(--color-text-secondary)', fontSize: 12, fontWeight: 600 }}>
               <th style={thCss}>{t.recycleBin.colName}</th>
@@ -255,9 +269,14 @@ function EmptyBin({ label }: { label: string }) {
 
 function RestoreConfirmModal({ name, pending, onConfirm, onClose }: { name: string; pending: boolean; onConfirm: () => void; onClose: () => void }) {
   const { t } = useI18n();
-  return (
+  const isPhone = useIsPhone();
+  // The screen root keeps a transform after its entrance animation, so it becomes
+  // the containing block for this position:fixed backdrop and the dialog scrolls
+  // away with the list. On a phone the list is always scrolled when a lower row is
+  // restored, so phones render the dialog on <body>; desktop is left as it was.
+  const dialog = (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 'min(400px, 94vw)', padding: 24 }}>
+      <div className="modal-card" role="dialog" aria-modal="true" aria-label={t.recycleBin.restoreConfirmTitle} onClick={(e) => e.stopPropagation()} style={{ width: 'min(400px, 94vw)', padding: 24 }}>
         <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700 }}>{t.recycleBin.restoreConfirmTitle}</h3>
         <p style={{ margin: '0 0 20px', fontSize: 14, color: 'var(--color-text-secondary)' }}>{t.recycleBin.restoreConfirm(name)}</p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -269,4 +288,5 @@ function RestoreConfirmModal({ name, pending, onConfirm, onClose }: { name: stri
       </div>
     </div>
   );
+  return isPhone ? createPortal(dialog, document.body) : dialog;
 }

@@ -84,14 +84,14 @@ function ProductMultiSelect({ products, selected, onChange }: {
   const filtered = q ? products.filter(p => p.name.toLowerCase().includes(q.toLowerCase())) : products;
   const toggle = (id: string) => onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
   return (
-    <div>
-      <input value={q} onChange={e => setQ(e.target.value)} placeholder="ค้นหาสินค้า..." style={{ ...IS, marginBottom: 6 }} />
+    <div className="pm-pick">
+      <input aria-label="ค้นหาสินค้า" className="pm-input" value={q} onChange={e => setQ(e.target.value)} placeholder="ค้นหาสินค้า..." style={{ ...IS, marginBottom: 6 }} />
       {selected.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
           {selected.map(id => {
             const p = products.find(x => x.id === id);
             return (
-              <span key={id} onClick={() => toggle(id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 999, background: 'var(--color-accent-50)', color: 'var(--color-primary-700)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              <span key={id} onClick={() => toggle(id)} className="pm-chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 999, background: 'var(--color-accent-50)', color: 'var(--color-primary-700)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                 {p?.name ?? id} <Icon name="x" size={11} />
               </span>
             );
@@ -124,8 +124,8 @@ function PromoCard({ p, products, categories, onToggle, onEdit, onDelete, admin 
   const catName = p.category_id ? (categories.find(c => c.id === p.category_id)?.label ?? p.category_id) : null;
 
   return (
-    <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 14, padding: 20, opacity: p.is_active ? 1 : 0.6, boxShadow: 'var(--shadow-xs)', transition: 'opacity 200ms' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+    <div className="pad-phone" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 14, padding: 20, opacity: p.is_active ? 1 : 0.6, boxShadow: 'var(--shadow-xs)', transition: 'opacity 200ms' }}>
+      <div className="pm-card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -162,12 +162,13 @@ function PromoCard({ p, products, categories, onToggle, onEdit, onDelete, admin 
       </div>
 
       {admin && (
-        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+        <div className="pm-card-actions" style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
           <button onClick={() => onEdit(p)} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>แก้ไข</button>
           <button onClick={() => onToggle(p)} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>
             {p.is_active ? 'ปิด' : 'เปิด'}
           </button>
-          <button onClick={() => onDelete(p.id)} aria-label="ลบโปรโมชั่น" title="ลบ" style={{ minWidth: 24, minHeight: 24, display: 'grid', placeItems: 'center', padding: '6px 8px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-danger)', cursor: 'pointer' }}>
+          {/* No inline min-height: it would beat the 44px phone tap-target rule. */}
+          <button onClick={() => onDelete(p.id)} aria-label={`ลบโปรโมชั่น ${p.name}`} title="ลบ" style={{ display: 'grid', placeItems: 'center', padding: '6px 8px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-danger)', cursor: 'pointer' }}>
             <Icon name="trash" size={13} />
           </button>
         </div>
@@ -268,9 +269,35 @@ export default function PromotionsScreen() {
   const scopeful = form.type !== 'COMBO_BUNDLE';
 
   return (
-    <div ref={screenRef} style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
+    <div ref={screenRef} className="screen-pad-lg" style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
+      {/* Phone-only rules (also cover <LoyaltyConfig> and <PromotionCalculator>,
+          which render inside this screen). 14px inputs would beat the global 16px
+          phone rule, so they are raised here with !important. */}
+      <style>{`
+        @media (max-width: 767px) {
+          .pm-input { font-size: 16px !important; min-height: 44px; }
+          .pm-cta { justify-content: center; }
+          .pm-stats { gap: 8px !important; }
+          .pm-stats > div { padding: 12px !important; min-width: 0; }
+          .pm-dow { gap: 4px !important; }
+          .pm-dow > button { flex: 1 1 0; width: auto !important; min-width: 0; }
+          .pm-check { min-height: 44px; }
+          .pm-check input { width: 20px !important; height: 20px !important; flex-shrink: 0; }
+          .pm-check label { flex: 1; display: flex; align-items: center; min-height: 44px; }
+          .pm-pick label { min-height: 44px; }
+          .pm-chip { min-height: 36px; padding: 6px 12px !important; }
+          .pm-form-actions > button { flex: 1 1 0; }
+          .pm-card-head { gap: 8px; }
+          .pm-card-head > :last-child { flex-shrink: 0; white-space: nowrap; }
+          .pm-card-actions { gap: 8px !important; }
+          .pm-card-actions > button { min-width: 44px; }
+          .pc-inputs { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .pc-inputs > :first-child { grid-column: 1 / -1; }
+          .pc-rec > :first-child { flex-shrink: 0; white-space: nowrap; }
+        }
+      `}</style>
       {/* Top-level section tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+      <div className="tab-strip" style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
         {([['promos', 'โปรโมชั่น / คูปอง'], ['loyalty', 'สมาชิก / สะสมแต้ม']] as const).map(([v, l]) => (
           <button key={v} onClick={() => setMainTab(v)}
             style={{
@@ -285,13 +312,13 @@ export default function PromotionsScreen() {
       {mainTab === 'loyalty' ? <LoyaltyConfig /> : (
       <>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'nowrap', gap: 0, marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>โปรโมชั่น / Promotions</h1>
+          <h1 className="page-title" style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>โปรโมชั่น / Promotions</h1>
           <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>สร้างกฎส่วนลด จัดเซ็ต และ Happy Hour ที่ POS จะนำไปใช้ตอนชำระเงิน</div>
         </div>
         {admin && subTab === 'list' && (
-          <button onClick={openCreate}
+          <button onClick={openCreate} className="pm-cta"
             style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 20px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
             <Icon name="plus" size={15} /> สร้างโปรโมชั่น
           </button>
@@ -299,7 +326,7 @@ export default function PromotionsScreen() {
       </div>
 
       {/* Sub-tabs: list vs calculator */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+      <div className="tab-strip" style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
         {([['list', 'รายการโปรโมชั่น'], ['calculator', 'เครื่องคำนวณ']] as const).map(([v, l]) => (
           <button key={v} onClick={() => setSubTab(v)}
             style={{
@@ -314,7 +341,7 @@ export default function PromotionsScreen() {
       {subTab === 'calculator' ? <PromotionCalculator /> : (
       <>
       {/* Stats row */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+      <div className="pm-stats" style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
         {[
           { label: 'โปรโมชั่นที่ใช้งาน', val: activeCount,    suffix: 'รายการ', color: 'var(--color-success)',        bg: 'var(--color-success-50)' },
           { label: 'ปิดใช้งาน',          val: all.length - activeCount, suffix: 'รายการ', color: 'var(--color-text-secondary)', bg: 'var(--color-surface-2)' },
@@ -329,12 +356,12 @@ export default function PromotionsScreen() {
 
       {/* Create / edit form */}
       {showForm && (
-        <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 22, marginBottom: 22, boxShadow: 'var(--shadow-md)' }}>
+        <div className="pad-phone" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 22, marginBottom: 22, boxShadow: 'var(--shadow-md)' }}>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>{editingId ? 'แก้ไขโปรโมชั่น' : 'โปรโมชั่นใหม่'}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <div style={{ gridColumn: '1/-1' }}>
-              <label style={LB}>ชื่อโปรโมชั่น *</label>
-              <input value={form.name} onChange={e => set('name', e.target.value)} maxLength={120} style={IS} placeholder="เช่น Happy Hour เครื่องดื่ม" />
+              <label htmlFor="pm-name" style={LB}>ชื่อโปรโมชั่น *</label>
+              <input id="pm-name" className="pm-input" value={form.name} onChange={e => set('name', e.target.value)} maxLength={120} style={IS} placeholder="เช่น Happy Hour เครื่องดื่ม" />
             </div>
             <div>
               <label style={LB}>ประเภท</label>
@@ -346,8 +373,8 @@ export default function PromotionsScreen() {
               ]} />
             </div>
             <div>
-              <label style={LB}>ส่วนลด (%) *</label>
-              <input type="number" min={0} max={100} value={form.discount_pct} onChange={e => set('discount_pct', e.target.value)} style={IS} placeholder="15" />
+              <label htmlFor="pm-pct" style={LB}>ส่วนลด (%) *</label>
+              <input id="pm-pct" className="pm-input" type="number" inputMode="decimal" min={0} max={100} value={form.discount_pct} onChange={e => set('discount_pct', e.target.value)} style={IS} placeholder="15" />
             </div>
 
             {/* Scope (not for bundle) */}
@@ -363,8 +390,8 @@ export default function PromotionsScreen() {
             )}
             {form.type === 'COMBO_QUANTITY' && (
               <div>
-                <label style={LB}>จำนวนขั้นต่ำ *</label>
-                <input type="number" min={1} value={form.min_quantity} onChange={e => set('min_quantity', e.target.value)} style={IS} placeholder="2" />
+                <label htmlFor="pm-minq" style={LB}>จำนวนขั้นต่ำ *</label>
+                <input id="pm-minq" className="pm-input" type="number" inputMode="numeric" min={1} value={form.min_quantity} onChange={e => set('min_quantity', e.target.value)} style={IS} placeholder="2" />
               </div>
             )}
 
@@ -396,20 +423,20 @@ export default function PromotionsScreen() {
             {form.type === 'HAPPY_HOUR' && (
               <>
                 <div>
-                  <label style={LB}>เริ่ม *</label>
-                  <input type="time" value={form.time_start} onChange={e => set('time_start', e.target.value)} style={IS} />
+                  <label htmlFor="pm-t1" style={LB}>เริ่ม *</label>
+                  <input id="pm-t1" className="pm-input" type="time" value={form.time_start} onChange={e => set('time_start', e.target.value)} style={IS} />
                 </div>
                 <div>
-                  <label style={LB}>สิ้นสุด *</label>
-                  <input type="time" value={form.time_end} onChange={e => set('time_end', e.target.value)} style={IS} />
+                  <label htmlFor="pm-t2" style={LB}>สิ้นสุด *</label>
+                  <input id="pm-t2" className="pm-input" type="time" value={form.time_end} onChange={e => set('time_end', e.target.value)} style={IS} />
                 </div>
                 <div style={{ gridColumn: '1/-1' }}>
                   <label style={LB}>วันในสัปดาห์ (เว้นว่าง = ทุกวัน)</label>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div className="pm-dow" style={{ display: 'flex', gap: 6 }}>
                     {DOW.map((d, i) => {
                       const on = form.days_of_week.includes(i);
                       return (
-                        <button key={i} type="button"
+                        <button key={i} type="button" aria-pressed={on}
                           onClick={() => set('days_of_week', on ? form.days_of_week.filter(x => x !== i) : [...form.days_of_week, i])}
                           style={{ width: 42, padding: '7px 0', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
                             border: `1px solid ${on ? 'var(--color-accent)' : 'var(--color-border)'}`,
@@ -423,20 +450,20 @@ export default function PromotionsScreen() {
             )}
 
             <div>
-              <label style={LB}>วันเริ่ม</label>
-              <input type="date" value={form.valid_from} onChange={e => set('valid_from', e.target.value)} style={IS} />
+              <label htmlFor="pm-d1" style={LB}>วันเริ่ม</label>
+              <input id="pm-d1" className="pm-input" type="date" value={form.valid_from} onChange={e => set('valid_from', e.target.value)} style={IS} />
             </div>
             <div>
-              <label style={LB}>วันสิ้นสุด</label>
-              <input type="date" value={form.valid_until} onChange={e => set('valid_until', e.target.value)} style={IS} />
+              <label htmlFor="pm-d2" style={LB}>วันสิ้นสุด</label>
+              <input id="pm-d2" className="pm-input" type="date" value={form.valid_until} onChange={e => set('valid_until', e.target.value)} style={IS} />
             </div>
 
-            <div style={{ gridColumn: '1/-1', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="pm-check" style={{ gridColumn: '1/-1', display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="checkbox" id="excl" checked={form.is_exclusive} onChange={e => set('is_exclusive', e.target.checked)} style={{ width: 15, height: 15 }} />
               <label htmlFor="excl" style={{ fontSize: 13, cursor: 'pointer' }}>ใช้เดี่ยว (ห้ามใช้ร่วมกับโปรอื่น)</label>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+          <div className="pm-form-actions" style={{ display: 'flex', gap: 10, marginTop: 16 }}>
             <button onClick={handleSubmit} disabled={saving}
               style={{ padding: '10px 22px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
               {saving ? 'กำลังบันทึก...' : 'บันทึก'}
@@ -447,7 +474,7 @@ export default function PromotionsScreen() {
       )}
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--color-border)' }}>
+      <div className="tab-strip" style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--color-border)' }}>
         {([['all', 'ทั้งหมด', all.length], ['active', 'ใช้งานอยู่', activeCount], ['inactive', 'ปิดใช้งาน', all.length - activeCount]] as const).map(([v, l, n]) => (
           <button key={v} onClick={() => setFilterActive(v)}
             style={{ padding: '7px 16px', borderRadius: '7px 7px 0 0', fontSize: 13, fontWeight: filterActive === v ? 600 : 500, color: filterActive === v ? 'var(--color-accent)' : 'var(--color-text-secondary)', background: filterActive === v ? 'var(--color-surface)' : 'transparent', borderBottom: filterActive === v ? '2px solid var(--color-accent)' : '2px solid transparent', cursor: 'pointer' }}>
@@ -458,7 +485,7 @@ export default function PromotionsScreen() {
 
       {/* Promo cards */}
       {isLoading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }} aria-busy="true">
+        <div className="cols-1-phone" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }} aria-busy="true">
           <span className="sr-only">กำลังโหลดโปรโมชั่น</span>
           {Array.from({ length: 4 }).map((_, i) => (
             <SkeletonCard key={i} lines={3} style={{ borderRadius: 14, padding: 20 }} />
@@ -470,7 +497,7 @@ export default function PromotionsScreen() {
           <div style={{ marginTop: 12, fontSize: 15 }}>ไม่มีโปรโมชั่น</div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+        <div className="cols-1-phone" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
           {list.map(p => (
             <PromoCard key={p.id} p={p} products={products} categories={categories} onToggle={handleToggle} onEdit={openEdit} onDelete={handleDelete} admin={admin} />
           ))}

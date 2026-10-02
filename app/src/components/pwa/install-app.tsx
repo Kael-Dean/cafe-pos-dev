@@ -83,6 +83,7 @@ export function InstallCard() {
       ref={sectionRef}
       tabIndex={-1}
       aria-labelledby={titleId}
+      className="pad-phone" // 24px card padding → 16px on phones
       style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, maxWidth: 560 }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>

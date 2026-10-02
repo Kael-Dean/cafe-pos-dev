@@ -84,7 +84,7 @@ export default function CashReconciliation() {
 
   if (isLoading) {
     return (
-      <div style={{ padding: 'var(--space-8)', maxWidth: 860, margin: '0 auto' }} aria-busy="true">
+      <div className="screen-pad-lg" style={{ padding: 'var(--space-8)', maxWidth: 860, margin: '0 auto' }} aria-busy="true">
         <span className="sr-only">กำลังโหลดข้อมูลกะเงินสด…</span>
         <Skeleton height={28} width={260} radius="var(--radius-md)" style={{ marginBottom: 'var(--space-6)' }} />
         {/* Status-summary cards placeholder — mirrors the real row */}
@@ -101,31 +101,35 @@ export default function CashReconciliation() {
   }
 
   return (
-    <div ref={contentRef} style={{ padding: 'var(--space-8)', maxWidth: 860, margin: '0 auto' }}>
-      <h1 className="text-balance" style={{ fontSize: 22, fontWeight: 700, marginBottom: 'var(--space-6)', color: 'var(--color-text)' }}>
+    <div ref={contentRef} className="screen-pad-lg" style={{ padding: 'var(--space-8)', maxWidth: 860, margin: '0 auto' }}>
+      <h1 className="text-balance max-md:flex max-md:items-center" style={{ fontSize: 22, fontWeight: 700, marginBottom: 'var(--space-6)', color: 'var(--color-text)' }}>
         <Icon name="cash" size={20} style={{ marginRight: 8 }} />
         การเงิน / Cash Session
       </h1>
 
       {/* No open session */}
       {!session && (
-        <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 28 }}>
+        <div className="pad-phone" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 28 }}>
           <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 'var(--space-4)' }}>เปิดกะวันนี้</div>
           {admin ? (
             <>
               <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 180 }}>
-                  <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ยอดเงินเปิดลิ้นชัก (฿)</label>
-                  <input value={openAmount} onChange={e => setOpenAmount(e.target.value)} type="number" min="0" step="0.01" placeholder="0.00"
-                    style={{ width: '100%', minHeight: 44, padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text)', fontSize: 15, boxSizing: 'border-box' }} />
+                  <label htmlFor="cash-open-amount" style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ยอดเงินเปิดลิ้นชัก (฿)</label>
+                  {/* Font size is a class, not an inline style: the global 16px phone rule
+                      (no iOS focus-zoom) cannot beat an inline fontSize. */}
+                  <input id="cash-open-amount" value={openAmount} onChange={e => setOpenAmount(e.target.value)} type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00"
+                    className="text-[15px]"
+                    style={{ width: '100%', minHeight: 44, padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text)', boxSizing: 'border-box' }} />
                 </div>
                 <div style={{ flex: 2, minWidth: 200 }}>
-                  <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>หมายเหตุ</label>
-                  <input value={openNotes} onChange={e => setOpenNotes(e.target.value)} placeholder="เช่น Opening shift"
-                    style={{ width: '100%', minHeight: 44, padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text)', fontSize: 14, boxSizing: 'border-box' }} />
+                  <label htmlFor="cash-open-notes" style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>หมายเหตุ</label>
+                  <input id="cash-open-notes" value={openNotes} onChange={e => setOpenNotes(e.target.value)} placeholder="เช่น Opening shift"
+                    className="text-[14px]"
+                    style={{ width: '100%', minHeight: 44, padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text)', boxSizing: 'border-box' }} />
                 </div>
               </div>
-              <button onClick={handleOpen} disabled={openSession.isPending} className="pressable"
+              <button onClick={handleOpen} disabled={openSession.isPending} className="pressable full-phone"
                 style={{ minHeight: 44, padding: '10px 20px', borderRadius: 'var(--radius-md)', background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 600, fontSize: 14, cursor: 'pointer', border: 'none' }}>
                 {openSession.isPending ? 'กำลังบันทึก...' : 'เปิดลิ้นชัก'}
               </button>
@@ -178,18 +182,20 @@ export default function CashReconciliation() {
 
           {/* Close session (admin only, when still open) */}
           {admin && sessionOpen && (
-            <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
+            <div className="pad-phone" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
               <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 'var(--space-4)' }}>ปิดกะ / Reconcile</div>
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 180 }}>
-                  <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ยอดนับจริง (฿)</label>
-                  <input value={closeAmount} onChange={e => setCloseAmount(e.target.value)} type="number" min="0" step="0.01" placeholder="0.00"
-                    style={{ minHeight: 44, padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text)', fontSize: 15, width: '100%', boxSizing: 'border-box' }} />
+                  <label htmlFor="cash-close-amount" style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ยอดนับจริง (฿)</label>
+                  <input id="cash-close-amount" value={closeAmount} onChange={e => setCloseAmount(e.target.value)} type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00"
+                    className="text-[15px]"
+                    style={{ minHeight: 44, padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text)', width: '100%', boxSizing: 'border-box' }} />
                 </div>
                 <div style={{ flex: 2, minWidth: 200 }}>
-                  <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>หมายเหตุ</label>
-                  <input value={closeNotes} onChange={e => setCloseNotes(e.target.value)} placeholder="เช่น End of day — ส่วนต่างบันทึกไว้"
-                    style={{ minHeight: 44, padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text)', fontSize: 14, width: '100%', boxSizing: 'border-box' }} />
+                  <label htmlFor="cash-close-notes" style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>หมายเหตุ</label>
+                  <input id="cash-close-notes" value={closeNotes} onChange={e => setCloseNotes(e.target.value)} placeholder="เช่น End of day — ส่วนต่างบันทึกไว้"
+                    className="text-[14px]"
+                    style={{ minHeight: 44, padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text)', width: '100%', boxSizing: 'border-box' }} />
                 </div>
               </div>
               {closeAmount && !isNaN(parseFloat(closeAmount)) && (
@@ -198,7 +204,7 @@ export default function CashReconciliation() {
                 </div>
               )}
               <div style={{ marginTop: 'var(--space-4)' }}>
-                <button onClick={handleClose} disabled={closeSession.isPending} className="pressable"
+                <button onClick={handleClose} disabled={closeSession.isPending} className="pressable full-phone"
                   style={{ minHeight: 44, padding: '10px 20px', borderRadius: 'var(--radius-md)', background: 'var(--color-danger-strong)', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', border: 'none' }}>
                   {closeSession.isPending ? 'กำลังปิด...' : 'ปิดกะ'}
                 </button>

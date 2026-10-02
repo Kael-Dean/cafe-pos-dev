@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQueries } from '@tanstack/react-query';
 import Icon from '../icons';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -36,6 +37,36 @@ function formatTime(iso: string): string {
 // Shared column template for the order table (header, rows, skeleton must match):
 // ออเดอร์ · เวลา · รายการ · ลูกค้า · ยอดรวม · วิธีจ่าย
 const GRID_COLS = '84px 72px 1fr 150px 112px 96px';
+
+/**
+ * Phones (< 768px): the six fixed columns need ~700px, and the card clipped the
+ * total + payment columns. Each order becomes a three-line card instead:
+ *   #no · time ........ total
+ *   items (one line, ellipsis)
+ *   customer ........ payment
+ * Everything is inside the media query, so tablet / desktop keep the table.
+ */
+const RC_PHONE_CSS = `
+@media (max-width: 767px) {
+  .rc-controls { gap: 12px !important; }
+  .rc-date { min-height: 44px !important; font-size: 16px !important; }
+  .rc-table { display: flex; flex-direction: column; gap: 8px; border: 0 !important; border-radius: 0 !important; overflow: visible !important; background: transparent !important; }
+  .rc-head { display: none !important; }
+  .rc-row {
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+    grid-template-areas: "no time total" "items items items" "cust cust pay";
+    gap: 2px 10px !important; padding: 10px 12px !important;
+    border: 1px solid var(--color-border) !important; border-radius: var(--radius-lg);
+    background: var(--color-surface) !important;
+  }
+  .rc-row > :nth-child(1) { grid-area: no; font-size: 15px; }
+  .rc-row > :nth-child(2) { grid-area: time; align-self: center; }
+  .rc-row > :nth-child(3) { grid-area: items; }
+  .rc-row > :nth-child(4) { grid-area: cust; min-width: 0; }
+  .rc-row > :nth-child(5) { grid-area: total; font-size: 15px; }
+  .rc-row > :nth-child(6) { grid-area: pay; text-align: right; white-space: nowrap; }
+}
+`;
 
 export default function ReceiptCopies() {
   const toast = useToast();
@@ -154,7 +185,8 @@ export default function ReceiptCopies() {
   const disabledPrint = !orders || orders.length === 0 || printingAll;
 
   return (
-    <div ref={rootRef} style={{ padding: 'var(--space-8)', maxWidth: 960, margin: '0 auto' }}>
+    <div ref={rootRef} className="screen-pad-lg" style={{ padding: 'var(--space-8)', maxWidth: 960, margin: '0 auto' }}>
+      <style>{RC_PHONE_CSS}</style>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 'var(--space-1)', color: 'var(--color-text)' }}>
         สำเนาใบเสร็จ
       </h1>
@@ -163,7 +195,7 @@ export default function ReceiptCopies() {
       </p>
 
       {/* ── Controls ── */}
-      <div style={{
+      <div className="rc-controls" style={{
         display: 'flex', alignItems: 'flex-end', gap: 'var(--space-4)', flexWrap: 'wrap',
         marginBottom: 'var(--space-5)',
       }}>
@@ -174,7 +206,7 @@ export default function ReceiptCopies() {
             value={date}
             max={todayISO()}
             onChange={e => setDate(e.target.value)}
-            className="input-std"
+            className="input-std rc-date"
             style={{
               padding: '9px var(--space-3)', minHeight: 40, borderRadius: 'var(--radius-md)', fontSize: 14,
               border: '1px solid var(--color-border)',
@@ -188,15 +220,15 @@ export default function ReceiptCopies() {
           <Stat label="ยอดรวม" value={baht(summary.revenue)} />
         </div>
 
-        <div style={{ flex: 1 }} />
+        <div className="hide-phone" style={{ flex: 1 }} />
 
         <button
           onClick={() => setConfirmAll(true)}
           disabled={disabledPrint}
-          className="pressable"
+          className="pressable full-phone"
           style={{
             padding: '10px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 700,
-            display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
             background: disabledPrint ? 'var(--color-border)' : 'var(--color-primary)',
             color: disabledPrint ? 'var(--color-text-muted)' : 'var(--color-text-inverse)',
             opacity: disabledPrint ? 0.6 : 1,
@@ -232,12 +264,12 @@ export default function ReceiptCopies() {
           ไม่มีใบเสร็จในวันที่เลือก
         </div>
       ) : (
-        <div style={{
+        <div className="rc-table" style={{
           border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden',
           background: 'var(--color-surface)',
         }}>
           {/* Header row */}
-          <div style={{
+          <div className="rc-head" style={{
             display: 'grid', gridTemplateColumns: GRID_COLS,
             gap: 12, padding: '12px 16px', fontSize: 12, fontWeight: 700,
             color: 'var(--color-text-secondary)', borderBottom: '1px solid var(--color-border)',
@@ -258,6 +290,7 @@ export default function ReceiptCopies() {
               <button
                 key={o.id}
                 onClick={() => setSelected(o)}
+                className="rc-row"
                 style={{
                   display: 'grid', gridTemplateColumns: GRID_COLS,
                   gap: 12, padding: '12px 16px', width: '100%', textAlign: 'left',
@@ -345,17 +378,18 @@ function ReceiptListSkeleton() {
   return (
     <div
       aria-busy="true"
+      className="rc-table"
       style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', background: 'var(--color-surface)' }}
     >
       <span className="sr-only">กำลังโหลดสำเนาใบเสร็จ</span>
-      <div style={{
+      <div className="rc-head" style={{
         display: 'grid', gridTemplateColumns: GRID_COLS, gap: 'var(--space-3)', padding: '12px var(--space-4)',
         borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
       }}>
         {Array.from({ length: 6 }).map((_, c) => <Skeleton key={c} width="60%" height="var(--space-3)" />)}
       </div>
       {Array.from({ length: 7 }).map((_, r) => (
-        <div key={r} style={{
+        <div key={r} className="rc-row" style={{
           display: 'grid', gridTemplateColumns: GRID_COLS, gap: 'var(--space-3)', padding: '14px var(--space-4)',
           alignItems: 'center', borderBottom: '1px solid var(--color-border)',
         }}>
@@ -378,8 +412,12 @@ function ReceiptListSkeleton() {
  */
 function ConfirmPrintAll({ count, onCancel, onConfirm }: { count: number; onCancel: () => void; onConfirm: () => void }) {
   const ref = useModalA11y(onCancel);
+  if (typeof document === 'undefined') return null;
 
-  return (
+  // Portaled to <body>: this screen's root keeps a transform from its entrance
+  // animation, which made it the containing block for the fixed backdrop — the
+  // dialog was centred in the page column and, on phones, sat under the tab bar.
+  return createPortal(
     <div className="modal-backdrop" style={{ zIndex: 320 }} onClick={onCancel}>
       <div
         ref={ref}
@@ -417,7 +455,8 @@ function ConfirmPrintAll({ count, onCancel, onConfirm }: { count: number; onCanc
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

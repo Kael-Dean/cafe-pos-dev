@@ -12,6 +12,23 @@ import {
 } from '@/hooks/use-shopping-list';
 import { useInventory } from '@/hooks/use-inventory';
 
+// ── Phone layout (< 768px) — phone-only rules; nothing here applies at ≥ 768px ──
+const SL_CSS = `
+@media (max-width: 767px) {
+  .sl-root input { font-size: 16px !important; min-height: 44px; }
+  .sl-head-actions > button { flex: 1 1 0; justify-content: center; }
+  .sl-add-actions > button { flex: 1 1 0; }
+  .sl-opt { min-height: 44px; align-items: center; font-size: 15px !important; }
+  /* Row: name on the first line, then the buy amount with its two actions. */
+  .sl-row { flex-wrap: wrap; gap: 8px !important; padding: 12px 14px !important; }
+  .sl-row > .sl-row-name { order: 0; flex: 1 1 100% !important; }
+  .sl-row > .sl-row-qty { order: 1; flex: 1 1 0; min-width: 0; }
+  .sl-row > .sl-row-remove { order: 2; }
+  .sl-row-qty > input { flex: 1 1 0; width: auto !important; min-width: 0; }
+  .sl-row .icon-btn { width: 44px !important; height: 44px !important; }
+}
+`;
+
 /** Display amount with up to 3 decimals and thousands separators (e.g. 1,250 / 3.5). */
 const fmtQty = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 3 });
 
@@ -80,11 +97,13 @@ export default function ShoppingListScreen() {
   };
 
   return (
-    <div style={{ height: '100%', overflow: 'auto', padding: 24, background: 'var(--color-bg)' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>{t.shoppingList.title}</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
+    <div className="screen-pad sl-root" style={{ height: '100%', overflow: 'auto', padding: 24, background: 'var(--color-bg)' }}>
+      <style>{SL_CSS}</style>
+      {/* Header — inline nowrap / gap keep the desktop row exactly as it was; the
+          .page-header phone rules (stack, full-width actions) are !important. */}
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'nowrap', gap: 0, marginBottom: 20 }}>
+        <h1 className="page-title" style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>{t.shoppingList.title}</h1>
+        <div className="page-header-actions sl-head-actions" style={{ display: 'flex', flexWrap: 'nowrap', gap: 8 }}>
           <button
             onClick={() => window.open('/api/v1/shopping-list/print', '_blank')}
             className="pressable"
@@ -107,7 +126,7 @@ export default function ShoppingListScreen() {
       {/* Inline add form */}
       {addOpen && (
         <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 16, marginBottom: 16 }}>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div className="stack-phone" style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
             {/* Ingredient search */}
             <div
               style={{ flex: 2, minWidth: 200, position: 'relative' }}
@@ -134,6 +153,7 @@ export default function ShoppingListScreen() {
                       onMouseDown={(e) => { e.preventDefault(); setAddItemId(it.id); setInvSearch(it.name); setInvFocused(false); }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-2)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                      className="sl-opt"
                       style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', background: 'transparent' }}
                     >
                       <span>{it.name}</span>
@@ -149,6 +169,7 @@ export default function ShoppingListScreen() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <input
                   type="number"
+                  inputMode="decimal"
                   min={0}
                   step="any"
                   placeholder={t.shoppingList.auto}
@@ -173,7 +194,7 @@ export default function ShoppingListScreen() {
               />
             </div>
             {/* Buttons */}
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className="sl-add-actions" style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={handleAdd}
                 disabled={!addItemId || addMut.isPending}
@@ -273,13 +294,14 @@ function ShoppingRow({ item, isLast, removing, onRemove }: {
 
   return (
     <div
+      className="sl-row"
       style={{
         display: 'flex', alignItems: 'center', padding: '12px 16px', gap: 12,
         borderBottom: isLast ? 'none' : '1px solid var(--color-border)',
       }}
     >
       {/* Name + note */}
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="sl-row-name" style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span>{item.inventoryItemName}</span>
           {isOverride ? (
@@ -303,9 +325,10 @@ function ShoppingRow({ item, isLast, removing, onRemove }: {
       </div>
 
       {/* Editable buy amount */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+      <div className="sl-row-qty" style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
         <input
           type="number"
+          inputMode="decimal"
           min={0}
           step="any"
           value={draft}
@@ -346,7 +369,7 @@ function ShoppingRow({ item, isLast, removing, onRemove }: {
         onClick={onRemove}
         disabled={removing}
         aria-label={`${t.common.remove} ${item.inventoryItemName}`}
-        className="icon-btn hit-44"
+        className="icon-btn hit-44 sl-row-remove"
         style={{ width: 32, height: 32, borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--color-text-secondary)', flexShrink: 0 }}
       >
         <Icon name="x" size={14} />

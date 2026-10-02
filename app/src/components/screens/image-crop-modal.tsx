@@ -60,10 +60,14 @@ export default function ImageCropModal({ file, onCancel, onConfirm, onDelete, on
     const url = URL.createObjectURL(file);
     setImgUrl(url);
     const img = new Image();
-    img.onload = () => setNatural({ w: img.naturalWidth, h: img.naturalHeight });
-    img.onerror = () => setLoadErr(true);
+    // `alive` guards against a stale result: revoking the object URL of a load that is
+    // still in flight (a second file picked quickly, or React's dev double-effect)
+    // fires `onerror` for the OLD image, which must not mark the current one as broken.
+    let alive = true;
+    img.onload = () => { if (alive) setNatural({ w: img.naturalWidth, h: img.naturalHeight }); };
+    img.onerror = () => { if (alive) setLoadErr(true); };
     img.src = url;
-    return () => URL.revokeObjectURL(url);
+    return () => { alive = false; URL.revokeObjectURL(url); };
   }, [file]);
 
   // ── Measure the square window once the stage is laid out (and on resize).
@@ -217,6 +221,20 @@ export default function ImageCropModal({ file, onCancel, onConfirm, onDelete, on
       }}
       onClick={onCancel}
     >
+      {/* Secondary actions are 40px on desktop; phones need the 44px touch minimum
+          (an inline min-height would beat the global phone rule), and the zoom slider
+          gets a 44px-tall hit area. */}
+      <style>{`
+        .imgcrop-alt { min-height: 40px; }
+        @media (max-width: 767px) {
+          .imgcrop-alt { min-height: 44px; }
+          .imgcrop-zoom { height: 44px; }
+          /* The card cannot scroll (the crop surface owns touch gestures), so on a short
+             screen the square shrinks instead of pushing Cancel / Save out of the card.
+             340px = header + paddings + zoom row + secondary row + footer + backdrop gutter. */
+          .imgcrop-stage { max-width: max(160px, calc(var(--app-h, 100dvh) - 340px)); margin-inline: auto; }
+        }
+      `}</style>
       <div
         ref={dialogRef}
         role="dialog"
@@ -263,6 +281,7 @@ export default function ImageCropModal({ file, onCancel, onConfirm, onDelete, on
         <div style={{ padding: 'var(--space-5)', flexShrink: 0 }}>
           <div
             ref={stageRef}
+            className="imgcrop-stage"
             role="group"
             aria-label="พื้นที่ครอบตัดรูปแบบสี่เหลี่ยมจัตุรัส"
             onPointerDown={onPointerDown}
@@ -327,6 +346,7 @@ export default function ImageCropModal({ file, onCancel, onConfirm, onDelete, on
                 zoomTo(minScale + t * (maxScale - minScale));
               }}
               disabled={!natural || loadErr}
+              className="imgcrop-zoom"
               style={{ flex: 1, accentColor: 'var(--color-primary)', cursor: 'pointer' }}
             />
             <Icon name="plus" size={14} aria-hidden />
@@ -343,8 +363,9 @@ export default function ImageCropModal({ file, onCancel, onConfirm, onDelete, on
                 type="button"
                 onClick={onPickNew}
                 disabled={saving}
+                className="imgcrop-alt"
                 style={{
-                  flex: 1, minHeight: 40, padding: '6px 12px', borderRadius: 'var(--radius-md, 8px)',
+                  flex: 1, padding: '6px 12px', borderRadius: 'var(--radius-md, 8px)',
                   fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: saving ? 'not-allowed' : 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                   background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)',
@@ -359,8 +380,9 @@ export default function ImageCropModal({ file, onCancel, onConfirm, onDelete, on
                 type="button"
                 onClick={onDelete}
                 disabled={saving}
+                className="imgcrop-alt"
                 style={{
-                  flex: 1, minHeight: 40, padding: '6px 12px', borderRadius: 'var(--radius-md, 8px)',
+                  flex: 1, padding: '6px 12px', borderRadius: 'var(--radius-md, 8px)',
                   fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: saving ? 'not-allowed' : 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                   background: 'transparent', color: 'var(--color-danger, #c0392b)',

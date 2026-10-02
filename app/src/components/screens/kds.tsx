@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import Icon from '../icons';
-import { useToast, Tag } from '../app-common';
+import { useToast, Tag, ModalShell } from '../app-common';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useI18n } from '@/lib/i18n';
 import { useKDSOrders, useUpdateOrderStatus, useVoidOrder, type KDSTicket } from '@/hooks/use-orders';
 import { ApiError } from '@/lib/api-client';
@@ -10,7 +11,6 @@ import { useAllProducts } from '@/hooks/use-products';
 import { useModifierGroups } from '@/hooks/use-modifier-groups';
 import { useCookingSteps } from '@/hooks/use-cooking-steps';
 import CancelOrderModal from './cancel-order-modal';
-import { useModalA11y } from '@/hooks/use-modal-a11y';
 
 const STATUS_RANK: Record<KDSTicket['status'], number> = { new: 0, progress: 1, ready: 2 };
 const ACTION_COOLDOWN_MS = 600;
@@ -185,12 +185,13 @@ export default function KDS() {
   return (
     <>
     <div className="surface-inverse" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 24, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-        <div>
-          <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em' }}>{t.kds.title}</div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>Sukhumvit 49 • {t.kds.station}</div>
+      <style>{KDS_PHONE_CSS}</style>
+      <div className="kds-head" style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 24, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div className="kds-head-title">
+          <div className="kds-title" style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em' }}>{t.kds.title}</div>
+          <div className="kds-sub" style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>Sukhumvit 49 • {t.kds.station}</div>
         </div>
-        <div style={{ flex: 1, display: 'flex', gap: 12 }}>
+        <div className="kds-head-stats" style={{ flex: 1, display: 'flex', gap: 12 }}>
           <KDSStatChip label={t.kds.statNew} count={counts.new} color="var(--color-warning)" />
           <KDSStatChip label={t.kds.statProgress} count={counts.progress} color="var(--color-accent)" />
           <KDSStatChip label={t.kds.statReady} count={counts.ready} color="var(--color-success)" />
@@ -200,7 +201,7 @@ export default function KDS() {
         </div>
       </div>
 
-      <div className="scroll" style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+      <div className="scroll screen-pad" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 24 }}>
         {isLoading && localTickets.length === 0 ? (
           /* Skeleton ticket grid mirrors the real card layout (no layout shift when
              orders arrive). Built with white-on-dark fills because the KDS root is
@@ -274,7 +275,7 @@ const Clock = () => {
 };
 
 const KDSStatChip = ({ label, count, color }: { label: string; count: number; color: string }) => (
-  <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+  <div className="kds-stat" style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
     <span style={{ width: 8, height: 8, borderRadius: 999, background: color }} />
     <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{label}</span>
     <span className="num" style={{ fontSize: 16, fontWeight: 700, color }}>{count}</span>
@@ -370,7 +371,7 @@ const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, modGroup, onB
                     title={t.kds.howTo}
                     aria-label={t.kds.howToAria(it.name)}
                     className="help-badge hit-44"
-                    style={{ width: 22, height: 22, borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}
+                    style={{ width: 22, height: 22, minHeight: 22, borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}
                   >?</button>
                 )}
               </div>
@@ -415,8 +416,8 @@ const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, modGroup, onB
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button
             onClick={onCancel}
-            className="btn btn-ghost"
-            style={{ padding: '4px 10px', minHeight: 32, fontSize: 12, color: 'var(--color-danger-fg)' }}
+            className="btn btn-ghost kds-cancel"
+            style={{ padding: '4px 10px', fontSize: 12, color: 'var(--color-danger-fg)' }}
           >
             <Icon name="trash" size={12} /> {t.kds.cancel}
           </button>
@@ -433,57 +434,57 @@ const CookingStepsModal = ({ productId, productName, onClose }: {
 }) => {
   const { t } = useI18n();
   const { data: steps, isLoading } = useCookingSteps(productId);
-  const dialogRef = useModalA11y(onClose);
 
+  // Shared ModalShell: capped to the visible screen, body scrolls, Escape / focus
+  // trap / focus restore built in, portaled above the phone tab bar.
   return (
-    <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(26, 16, 8, 0.7)', display: 'grid', placeItems: 'center', zIndex: 200, padding: 20, animation: 'backdrop-in var(--dur-base) var(--ease-out)' }}
-      onClick={onClose}
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label={`${t.kds.howTo} ${productName}`}
-        onClick={e => e.stopPropagation()}
-        className="surface-inverse"
-        style={{ borderRadius: 16, width: '100%', maxWidth: 420, maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', animation: 'modal-in var(--dur-slow) var(--ease-out)' }}
-      >
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>{t.kds.howTo}</div>
-            <div style={{ fontSize: 16, fontWeight: 700 }}>{productName}</div>
-          </div>
-          <button onClick={onClose} aria-label={t.common.close} className="icon-btn-soft hit-44" style={{ border: 'none', cursor: 'pointer', width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center' }}>
-            <Icon name="x" size={16} />
-          </button>
-        </div>
-        <div className="scroll" style={{ overflow: 'auto', padding: 20, flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {isLoading ? (
-            /* Step placeholders mirror the numbered-step rows below so the modal
-               body doesn't jump when the real steps land. */
-            <div aria-busy="true" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <span className="sr-only">{t.common.loading}</span>
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-                  <DarkBar w={28} h={28} r="var(--radius-pill)" />
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
-                    <DarkBar w="92%" h={13} />
-                    <DarkBar w="64%" h={13} />
-                  </div>
+    <ModalShell title={productName} subtitle={t.kds.howTo} onClose={onClose} width={420}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {isLoading ? (
+          /* Step placeholders mirror the numbered-step rows below so the modal
+             body doesn't jump when the real steps land. */
+          <div aria-busy="true" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <span className="sr-only">{t.common.loading}</span>
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                <Skeleton width={28} height={28} radius="var(--radius-pill)" />
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
+                  <Skeleton width="92%" height={13} />
+                  <Skeleton width="64%" height={13} />
                 </div>
-              ))}
-            </div>
-          ) : !steps || steps.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 32, color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>{t.kds.noSteps}</div>
-          ) : steps.map((step, idx) => (
-            <div key={step.id} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-              <div style={{ width: 28, height: 28, borderRadius: 999, background: 'var(--color-accent)', color: 'var(--color-primary-700)', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>{idx + 1}</div>
-              <div style={{ fontSize: 15, lineHeight: 1.6, paddingTop: 4 }}>{step.instruction}</div>
-            </div>
-          ))}
-        </div>
+              </div>
+            ))}
+          </div>
+        ) : !steps || steps.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 32, color: 'var(--color-text-secondary)', fontSize: 14 }}>{t.kds.noSteps}</div>
+        ) : steps.map((step, idx) => (
+          <div key={step.id} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+            <div className="num" style={{ width: 28, height: 28, borderRadius: 999, background: 'var(--color-accent)', color: 'var(--color-on-accent)', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>{idx + 1}</div>
+            <div style={{ fontSize: 15, lineHeight: 1.6, paddingTop: 4 }}>{step.instruction}</div>
+          </div>
+        ))}
       </div>
-    </div>
+    </ModalShell>
   );
 };
+
+/**
+ * Phone layout (< 768px): the header wraps to title + clock over a row of three
+ * equal stat chips (it was one ~540px row that pushed the page sideways).
+ * .kds-cancel keeps its compact 32px on tablet / desktop as a class instead of an
+ * inline minHeight, so the 44px phone tap-target rule in globals.css can apply.
+ */
+const KDS_PHONE_CSS = `
+.kds-cancel { min-height: 32px; }
+@media (max-width: 767px) {
+  .kds-head { flex-wrap: wrap; padding: 10px 12px !important; gap: 8px 12px !important; }
+  .kds-head-title { flex: 1; min-width: 0; }
+  .kds-title { font-size: 17px !important; }
+  .kds-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kds-head-stats { order: 3; flex: 1 0 100% !important; gap: 6px !important; }
+  .kds-stat { flex: 1 1 0; min-width: 0; justify-content: center; padding: 6px 8px !important; gap: 6px !important; }
+  .kds-stat > span:first-child { flex-shrink: 0; }
+  .kds-stat > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kds-cancel { min-height: 44px; padding: 4px 12px !important; font-size: 13px !important; }
+}
+`;

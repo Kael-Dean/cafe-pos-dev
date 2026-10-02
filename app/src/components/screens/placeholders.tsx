@@ -7,17 +7,17 @@ const PlaceholderScreen = ({ title, subtitle, icon, sections }: {
   title: string; subtitle?: string; icon: string;
   sections: { title: string; desc: string }[];
 }) => (
-  <div className="scroll" style={{height: '100%', overflow: 'auto', padding: 24, background: 'var(--color-bg)'}}>
-    <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20}}>
-      <div>
+  <div className="scroll screen-pad" style={{height: '100%', overflow: 'auto', padding: 24, background: 'var(--color-bg)'}}>
+    <div className="page-header inline" style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'nowrap', gap: 0, marginBottom: 20}}>
+      <div style={{minWidth: 0}}>
         <div style={{fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 2}}>P1 — Important</div>
-        <h1 style={{margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em'}}>{title}</h1>
+        <h1 className="page-title" style={{margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em'}}>{title}</h1>
         {subtitle && <div style={{fontSize: 14, color: 'var(--color-text-secondary)', marginTop: 4}}>{subtitle}</div>}
       </div>
       <Tag tone="warning">Coming next</Tag>
     </div>
 
-    <div style={{
+    <div className="pad-phone" style={{
       background: 'var(--color-surface)', border: '1px solid var(--color-border)',
       borderRadius: 12, padding: 32, display: 'flex', alignItems: 'center', gap: 24,
     }}>
@@ -36,7 +36,7 @@ const PlaceholderScreen = ({ title, subtitle, icon, sections }: {
       </div>
     </div>
 
-    <div style={{marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16}}>
+    <div className="cols-1-phone" style={{marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16}}>
       {sections.map((s, i) => (
         <div key={i} style={{background: 'var(--color-surface)', border: '1px dashed var(--color-border-strong)', borderRadius: 12, padding: 20}}>
           <div style={{fontSize: 14, fontWeight: 600, marginBottom: 8}}>{s.title}</div>

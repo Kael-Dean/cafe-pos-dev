@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Icon from '../icons';
 import { KPICard, Tag, baht, Select } from '../app-common';
@@ -20,6 +20,7 @@ import {
 } from '@/hooks/use-dashboard';
 import { useFadeRise, useStagger, useCountUp } from '@/lib/motion';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useIsPhone } from '@/hooks/use-media-query';
 
 // Preset date-range options for the header dropdown (labels inline, app convention).
 const PRESET_OPTIONS: { value: DashboardPreset; label: string }[] = [
@@ -102,14 +103,25 @@ export default function Dashboard() {
   const kpiText = t.dashboard.kpi as Record<string, { label: string; vsLabel: string; suffix: string }>;
 
   return (
-    <div className="scroll" style={{height: '100%', overflow: 'auto', padding: 'var(--space-6)', background: 'var(--color-bg)'}}>
-      <div ref={headerRef} style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-5)'}}>
+    <div className="scroll screen-pad" style={{height: '100%', overflow: 'auto', padding: 'var(--space-6)', background: 'var(--color-bg)'}}>
+      {/* Phone-only layout rules (desktop keeps its inline styles untouched). On a
+          phone the period picker is the control the owner reaches for, so it takes
+          the row and Refresh collapses to its icon. */}
+      <style>{`
+        @media (max-width: 767px) {
+          .dash-actions > div { flex: 1 1 0; min-width: 0; }
+          .dash-actions > .dash-refresh { flex: 0 0 44px; padding-inline: 0; }
+          .dash-actions > .btn-primary { flex: 0 0 auto; padding-inline: 14px; }
+          .dash-card-head { flex-wrap: wrap; }
+        }
+      `}</style>
+      <div ref={headerRef} className="page-header" style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'nowrap', gap: 0, marginBottom: 'var(--space-5)'}}>
         <div>
           <div style={{fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 2}}>{t.dashboard.overline}</div>
-          <h1 className="text-balance" style={{margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em'}}>{t.dashboard.title}</h1>
+          <h1 className="text-balance page-title" style={{margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em'}}>{t.dashboard.title}</h1>
         </div>
-        <div style={{display: 'flex', gap: 'var(--space-2)', alignItems: 'center'}}>
-          <button className="btn btn-ghost" onClick={refresh}><Icon name="refresh" size={14}/> {t.dashboard.refresh}</button>
+        <div className="page-header-actions dash-actions" style={{display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'nowrap'}}>
+          <button className="btn btn-ghost dash-refresh" onClick={refresh} aria-label={t.dashboard.refresh}><Icon name="refresh" size={14}/> <span className="hide-phone">{t.dashboard.refresh}</span></button>
           <Select
             value={preset}
             onChange={(v) => setPreset(v as DashboardPreset)}
@@ -127,6 +139,7 @@ export default function Dashboard() {
       <div
         key={kpiLoading ? 'kpi-loading' : 'kpi-ready'}
         ref={kpiGridRef}
+        className="kpi-grid"
         style={{display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-4)', marginBottom: 'var(--space-4)'}}
         aria-busy={kpiLoading || undefined}
       >
@@ -144,7 +157,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      <div style={{display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 'var(--space-4)', marginBottom: 'var(--space-4)'}}>
+      <div className="cols-1-phone" style={{display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 'var(--space-4)', marginBottom: 'var(--space-4)'}}>
         <Card>
           <CardHeader
             title={range.isSingleDay ? t.dashboard.hourlyTitle : 'ยอดขายรายวัน'}
@@ -176,7 +189,7 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <div ref={panelRowRef} style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-4)'}}>
+      <div ref={panelRowRef} className="cols-1-phone" style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-4)'}}>
         <Card>
           <CardHeader title={t.dashboard.liveTitle} sub={t.dashboard.liveSub}>
             <span style={{fontSize: 11, color: 'var(--color-success)', display: 'inline-flex', alignItems: 'center', gap: 4}}>
@@ -218,12 +231,9 @@ export default function Dashboard() {
 
 /* Mirrors KPICard's exact box metrics so swapping skeleton → data causes no layout shift */
 const KPICardSkeleton = () => (
-  <div aria-hidden style={{
-    background: 'var(--color-surface)',
-    border: '1px solid var(--color-border)',
-    borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)',
-    display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
-  }}>
+  // .kpi-card carries the same surface/padding as KPICard, including its tighter
+  // phone padding, so the skeleton and the card stay the same size at every width.
+  <div aria-hidden className="kpi-card">
     <Skeleton height={13} width="55%" />
     <Skeleton height={32} width="70%" />
     <Skeleton height={17} width="45%" />
@@ -234,6 +244,7 @@ const KPICardSkeleton = () => (
    chart card holds its height while the hourly report loads (no layout shift). */
 const LineChartSkeleton = () => {
   const { t } = useI18n();
+  const isPhone = useIsPhone();
   return (
     <div aria-busy="true">
       <span className="sr-only">{t.dashboard.loadingChart}</span>
@@ -242,7 +253,7 @@ const LineChartSkeleton = () => {
         <Skeleton height={28} width="42%" radius="var(--radius-md)" />
       </div>
       <div style={{ marginTop: 'var(--space-3)' }}>
-        <Skeleton height={220} radius="var(--radius-lg)" />
+        <Skeleton height={isPhone ? PHONE_CHART_H : 220} radius="var(--radius-lg)" />
       </div>
     </div>
   );
@@ -255,7 +266,7 @@ const Card = ({ children }: { children: React.ReactNode }) => (
 );
 
 const CardHeader = ({ title, sub, children }: { title: string; sub?: string; children?: React.ReactNode }) => (
-  <div style={{display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, gap: 12}}>
+  <div className="dash-card-head" style={{display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, gap: 12}}>
     <div>
       <div style={{fontSize: 14, fontWeight: 600}}>{title}</div>
       {sub && <div style={{fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2}}>{sub}</div>}
@@ -280,25 +291,48 @@ const LineChart = ({
   total: number;
   totalLabel: string;
 }) => {
-  const W = 600, H = 220, P = 28;
+  // Desktop / tablet: the original 600×220 viewBox stretched to the card.
+  // Phones: that stretch squashes a 600-wide drawing into ~300px (oval dots, 5px
+  // axis text), so the chart is drawn 1:1 at the measured card width instead —
+  // round dots, 11px labels, and only as many x labels as actually fit.
+  const isPhone = useIsPhone();
+  const [boxRef, boxW] = useElementWidth<HTMLDivElement>();
+  const fit = isPhone && boxW > 0;
+
+  const W = fit ? boxW : 600;
+  const H = fit ? PHONE_CHART_H : 220;
+  const PX = fit ? 20 : 28;   // left / right
+  const PT = fit ? 10 : 28;   // top
+  const PB = fit ? 26 : 28;   // bottom (x-axis labels live here)
   const n = Math.max(1, labels.length);
-  // Label every point when sparse, but thin out dense per-day axes to avoid overlap.
-  const labelStep = Math.max(1, Math.ceil(n / 12));
+  // Label every point when sparse, but thin out dense axes to avoid overlap. On
+  // phones the step comes from the widest label; ticks are anchored to the LAST
+  // point so the most recent hour / day is always named.
+  const longest = labels.reduce((m, l) => Math.max(m, l.length), 0);
+  const labelStep = fit
+    ? Math.max(1, Math.ceil(n / Math.max(2, Math.floor((W - PX * 2) / (longest * 6.5 + 12)))))
+    : Math.max(1, Math.ceil(n / 12));
+  const showLabel = (i: number) => (fit ? (n - 1 - i) % labelStep === 0 : i % labelStep === 0);
   const max = (Math.max(0, ...series, ...(compare ?? [])) || 1) * 1.1;
-  const x = (i: number) => (n > 1 ? P + (i * (W - P * 2)) / (n - 1) : W / 2);
-  const y = (v: number) => H - P - (v / max) * (H - P * 2);
+  const x = (i: number) => (n > 1 ? PX + (i * (W - PX * 2)) / (n - 1) : W / 2);
+  const y = (v: number) => H - PB - (v / max) * (H - PT - PB);
   const path = (data: number[]) => data.map((v, i) => `${i ? 'L' : 'M'} ${x(i)} ${y(v)}`).join(' ');
   const area = (data: number[]) =>
-    data.length ? `${path(data)} L ${x(data.length - 1)} ${H - P} L ${x(0)} ${H - P} Z` : '';
+    data.length ? `${path(data)} L ${x(data.length - 1)} ${H - PB} L ${x(0)} ${H - PB} Z` : '';
   const totalRef = useCountUp(total, { format: (v) => `฿${Math.round(v).toLocaleString('en-US')}` });
 
   return (
-    <div>
+    <div ref={boxRef}>
       <div style={{fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 4}}>{totalLabel}</div>
       <div className="num" style={{fontSize: 28, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 12}}>
         <span ref={totalRef}>฿{Math.round(total).toLocaleString('en-US')}</span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
+      <svg
+        viewBox={`0 0 ${W} ${H}`} width="100%" height={H}
+        preserveAspectRatio={fit ? undefined : 'none'}
+        style={fit ? { display: 'block' } : undefined}
+        role="img" aria-label={`${totalLabel} ฿${Math.round(total).toLocaleString('en-US')}`}
+      >
         <defs>
           <linearGradient id="todayFill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.18"/>
@@ -306,19 +340,37 @@ const LineChart = ({
           </linearGradient>
         </defs>
         {[0, 0.25, 0.5, 0.75, 1].map((tick, i) => (
-          <line key={i} x1={P} x2={W - P} y1={P + tick * (H - 2 * P)} y2={P + tick * (H - 2 * P)} stroke="var(--color-border)" strokeDasharray="2 4"/>
+          <line key={i} x1={PX} x2={W - PX} y1={PT + tick * (H - PT - PB)} y2={PT + tick * (H - PT - PB)} stroke="var(--color-border)" strokeDasharray="2 4"/>
         ))}
-        {labels.map((h, i) => i % labelStep === 0 && (
-          <text key={`${h}-${i}`} x={x(i)} y={H - 8} fontSize="10" textAnchor="middle" fill="var(--color-text-muted)">{h}</text>
+        {labels.map((h, i) => showLabel(i) && (
+          <text key={`${h}-${i}`} x={x(i)} y={H - 8} fontSize={fit ? 11 : 10} textAnchor="middle" fill="var(--color-text-muted)">{h}</text>
         ))}
         {compare && <path d={path(compare)} fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeDasharray="4 4"/>}
         <path d={area(series)} fill="url(#todayFill)"/>
-        <path d={path(series)} fill="none" stroke="var(--color-primary)" strokeWidth="2.5"/>
-        {series.map((v, i) => <circle key={i} cx={x(i)} cy={y(v)} r="3" fill="var(--color-primary)"/>)}
+        <path d={path(series)} fill="none" stroke="var(--color-primary)" strokeWidth={fit ? 2 : 2.5}/>
+        {series.map((v, i) => <circle key={i} cx={x(i)} cy={y(v)} r={fit && n > 16 ? 2.25 : 3} fill="var(--color-primary)"/>)}
       </svg>
     </div>
   );
 };
+
+/** Height of the trend chart when it is drawn 1:1 on a phone. */
+const PHONE_CHART_H = 190;
+
+/** Content-box width of an element, tracked with a ResizeObserver (0 until measured). */
+function useElementWidth<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    // The observer fires once on observe(), so no synchronous setState is needed here.
+    const ro = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width] as const;
+}
 
 const BarList = ({ items }: { items: typeof DASHBOARD['topItems'] }) => {
   // Floor at 1: an all-zero (or empty) top-items list would otherwise divide by

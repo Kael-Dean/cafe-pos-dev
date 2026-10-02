@@ -84,6 +84,8 @@ function fromProgram(p: ProgramRead): FormState {
 
 const numOrNull = (v: string): number | null => (v.trim() === '' ? null : Number(v));
 
+// Phone styles (.pm-input / .pm-check / .pm-pick) come from the <style> block in
+// promotions.tsx — this component only ever renders inside that screen.
 export default function LoyaltyConfig() {
   const toast = useToast();
   const { t } = useI18n();
@@ -193,7 +195,7 @@ export default function LoyaltyConfig() {
 
       {/* Status */}
       <Section title={t.loyalty.statusSection}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: dis ? 'default' : 'pointer' }}>
+        <label className="pm-check" style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: dis ? 'default' : 'pointer' }}>
           <input type="checkbox" checked={form.is_active} disabled={dis} onChange={e => set('is_active', e.target.checked)} style={{ accentColor: 'var(--color-accent)', width: 18, height: 18 }} />
           <div>
             <div style={{ fontSize: 14, fontWeight: 600 }}>{t.loyalty.activeLabel}</div>
@@ -210,7 +212,7 @@ export default function LoyaltyConfig() {
           </Field>
           {form.earn_mode === 'PER_BAHT' && (
             <Field label={t.loyalty.bahtPerPointLabel}>
-              <input type="number" value={form.baht_per_point} disabled={dis} onChange={e => set('baht_per_point', e.target.value)} style={IS} placeholder="50" />
+              <input type="number" inputMode="decimal" className="pm-input" value={form.baht_per_point} disabled={dis} onChange={e => set('baht_per_point', e.target.value)} style={IS} placeholder="50" />
             </Field>
           )}
           {form.earn_mode === 'PER_ITEM' && (
@@ -226,14 +228,14 @@ export default function LoyaltyConfig() {
       <Section title={t.loyalty.rewardSection}>
         <Grid>
           <Field label={t.loyalty.pointsToRedeemLabel}>
-            <input type="number" value={form.points_to_redeem} disabled={dis} onChange={e => set('points_to_redeem', e.target.value)} style={IS} placeholder="100" />
+            <input type="number" inputMode="decimal" className="pm-input" value={form.points_to_redeem} disabled={dis} onChange={e => set('points_to_redeem', e.target.value)} style={IS} placeholder="100" />
           </Field>
           <Field label={t.loyalty.rewardTypeLabel}>
             <Select value={form.reward_type} disabled={dis} onChange={v => set('reward_type', v as RewardType)} ariaLabel={t.loyalty.rewardTypeLabel} options={REWARD_TYPE_VALUES.map(v => ({ value: v, label: t.loyalty.rewardTypes[v] }))} />
           </Field>
           {form.reward_type !== 'FREE_ITEM' && (
             <Field label={form.reward_type === 'DISCOUNT_PERCENT' ? t.loyalty.discountPercentLabel : t.loyalty.discountFixedLabel}>
-              <input type="number" value={form.reward_value} disabled={dis} onChange={e => set('reward_value', e.target.value)} style={IS} placeholder={form.reward_type === 'DISCOUNT_PERCENT' ? '10' : '50'} />
+              <input type="number" inputMode="decimal" className="pm-input" value={form.reward_value} disabled={dis} onChange={e => set('reward_value', e.target.value)} style={IS} placeholder={form.reward_type === 'DISCOUNT_PERCENT' ? '10' : '50'} />
             </Field>
           )}
           <Field label={t.loyalty.rewardScopeLabel}>
@@ -249,7 +251,7 @@ export default function LoyaltyConfig() {
         {form.reward_scope === 'SPECIFIC_PRODUCTS' && (
           <div style={{ marginTop: 12 }}>
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{t.loyalty.selectedCount(selectedProductIds.length)}</div>
-            <div className="scroll" style={{ maxHeight: 220, overflow: 'auto', border: '1px solid var(--color-border)', borderRadius: 8, padding: 8, display: 'grid', gap: 4 }}>
+            <div className="scroll pm-pick" style={{ maxHeight: 220, overflow: 'auto', border: '1px solid var(--color-border)', borderRadius: 8, padding: 8, display: 'grid', gap: 4 }}>
               {(products ?? []).map(p => {
                 const checked = selectedProductIds.includes(p.id);
                 return (
@@ -271,26 +273,26 @@ export default function LoyaltyConfig() {
       {/* Tiers */}
       <Section title={t.loyalty.tierSection}>
         <Grid cols={3}>
-          <Field label={t.loyalty.tierBronzeLabel}><input type="number" value={form.tier_bronze_threshold} disabled={dis} onChange={e => set('tier_bronze_threshold', e.target.value)} style={IS} placeholder={t.loyalty.tierBronzePlaceholder} /></Field>
-          <Field label={t.loyalty.tierSilverLabel}><input type="number" value={form.tier_silver_threshold} disabled={dis} onChange={e => set('tier_silver_threshold', e.target.value)} style={IS} placeholder={t.loyalty.tierSilverPlaceholder} /></Field>
-          <Field label={t.loyalty.tierGoldLabel}><input type="number" value={form.tier_gold_threshold} disabled={dis} onChange={e => set('tier_gold_threshold', e.target.value)} style={IS} placeholder={t.loyalty.tierGoldPlaceholder} /></Field>
-          <Field label={t.loyalty.multiplierBronzeLabel}><input type="number" value={form.bronze_earn_multiplier} disabled={dis} onChange={e => set('bronze_earn_multiplier', e.target.value)} style={IS} placeholder="1.0" /></Field>
-          <Field label={t.loyalty.multiplierSilverLabel}><input type="number" value={form.silver_earn_multiplier} disabled={dis} onChange={e => set('silver_earn_multiplier', e.target.value)} style={IS} placeholder="1.5" /></Field>
-          <Field label={t.loyalty.multiplierGoldLabel}><input type="number" value={form.gold_earn_multiplier} disabled={dis} onChange={e => set('gold_earn_multiplier', e.target.value)} style={IS} placeholder="2.0" /></Field>
+          <Field label={t.loyalty.tierBronzeLabel}><input type="number" inputMode="decimal" className="pm-input" value={form.tier_bronze_threshold} disabled={dis} onChange={e => set('tier_bronze_threshold', e.target.value)} style={IS} placeholder={t.loyalty.tierBronzePlaceholder} /></Field>
+          <Field label={t.loyalty.tierSilverLabel}><input type="number" inputMode="decimal" className="pm-input" value={form.tier_silver_threshold} disabled={dis} onChange={e => set('tier_silver_threshold', e.target.value)} style={IS} placeholder={t.loyalty.tierSilverPlaceholder} /></Field>
+          <Field label={t.loyalty.tierGoldLabel}><input type="number" inputMode="decimal" className="pm-input" value={form.tier_gold_threshold} disabled={dis} onChange={e => set('tier_gold_threshold', e.target.value)} style={IS} placeholder={t.loyalty.tierGoldPlaceholder} /></Field>
+          <Field label={t.loyalty.multiplierBronzeLabel}><input type="number" inputMode="decimal" className="pm-input" value={form.bronze_earn_multiplier} disabled={dis} onChange={e => set('bronze_earn_multiplier', e.target.value)} style={IS} placeholder="1.0" /></Field>
+          <Field label={t.loyalty.multiplierSilverLabel}><input type="number" inputMode="decimal" className="pm-input" value={form.silver_earn_multiplier} disabled={dis} onChange={e => set('silver_earn_multiplier', e.target.value)} style={IS} placeholder="1.5" /></Field>
+          <Field label={t.loyalty.multiplierGoldLabel}><input type="number" inputMode="decimal" className="pm-input" value={form.gold_earn_multiplier} disabled={dis} onChange={e => set('gold_earn_multiplier', e.target.value)} style={IS} placeholder="2.0" /></Field>
         </Grid>
       </Section>
 
       {/* Extra conditions */}
       <Section title={t.loyalty.extraSection}>
         <Grid>
-          <Field label={t.loyalty.minOrderLabel}><input type="number" value={form.min_order_baht} disabled={dis} onChange={e => set('min_order_baht', e.target.value)} style={IS} placeholder={t.loyalty.minOrderPlaceholder} /></Field>
-          <Field label={t.loyalty.expireLabel}><input type="number" value={form.points_expire_after_days} disabled={dis} onChange={e => set('points_expire_after_days', e.target.value)} style={IS} placeholder="365" /></Field>
+          <Field label={t.loyalty.minOrderLabel}><input type="number" inputMode="decimal" className="pm-input" value={form.min_order_baht} disabled={dis} onChange={e => set('min_order_baht', e.target.value)} style={IS} placeholder={t.loyalty.minOrderPlaceholder} /></Field>
+          <Field label={t.loyalty.expireLabel}><input type="number" inputMode="decimal" className="pm-input" value={form.points_expire_after_days} disabled={dis} onChange={e => set('points_expire_after_days', e.target.value)} style={IS} placeholder="365" /></Field>
         </Grid>
       </Section>
 
       {canEdit && (
         <div>
-          <button onClick={handleSave} disabled={saveProgram.isPending}
+          <button onClick={handleSave} disabled={saveProgram.isPending} className="full-phone"
             style={{ padding: '11px 26px', borderRadius: 8, background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
             {saveProgram.isPending ? t.loyalty.saving : t.loyalty.saveBtn}
           </button>
@@ -310,7 +312,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function Grid({ children, cols = 2 }: { children: React.ReactNode; cols?: number }) {
-  return <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 14 }}>{children}</div>;
+  // .cols-1-phone: one field per row on phones (three inputs across leave ~90px each).
+  return <div className="cols-1-phone" style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 14 }}>{children}</div>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
