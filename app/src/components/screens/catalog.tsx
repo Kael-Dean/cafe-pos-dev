@@ -158,7 +158,7 @@ export default function CatalogAdmin() {
     <div ref={screenRef} className="screen-pad cat-screen" style={{ padding: 24, height: '100%', overflowY: 'auto', background: 'var(--color-bg)', boxSizing: 'border-box' }}>
       <style>{CAT_PHONE_CSS}</style>
       <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>Catalog</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>หมวดหมู่สินค้า</h1>
         <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 4, marginBottom: 0 }}>
           จัดการสินค้า หมวดหมู่ และกลุ่มตัวเลือก
         </p>
