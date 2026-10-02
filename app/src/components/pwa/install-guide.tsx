@@ -62,6 +62,24 @@ const STYLES = `
 .ig-track:focus { outline: none; }
 .ig-track:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
 .ig-slide { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; scroll-snap-stop: always; }
+/* ‹ › arrows over the picture, so it's obvious there are more steps to the side.
+   Centred on the scene stage (its height is measured into --ig-stage-h). */
+.ig-viewport { position: relative; }
+.ig-arrow {
+  position: absolute; top: calc(var(--ig-stage-h, 200px) / 2); transform: translateY(-50%);
+  width: 44px; height: 44px; padding: 0; border-radius: 999px; cursor: pointer;
+  display: grid; place-items: center;
+  background: var(--color-surface); color: var(--color-text);
+  border: 1px solid var(--color-border-strong, var(--color-border)); box-shadow: var(--shadow-sm, 0 2px 6px rgb(0 0 0 / .12));
+  transition: background var(--dur-base, 150ms) var(--ease-out, ease), opacity var(--dur-base, 150ms) var(--ease-out, ease);
+}
+.ig-arrow--prev { left: 6px; }
+.ig-arrow--next { right: 6px; }
+.ig-arrow[hidden] { display: none; }
+.ig-arrow--next.ig-arrow--hint { background: var(--color-primary); color: var(--color-text-inverse); border-color: var(--color-primary); animation: ig-nudge 1.2s var(--ease-out, ease) 3; }
+@media (hover: hover) { .ig-arrow:hover { background: var(--color-surface-2); } .ig-arrow--next.ig-arrow--hint:hover { background: var(--color-primary); } }
+.ig-arrow:active { transform: translateY(-50%) scale(.94); }
+@keyframes ig-nudge { 0%, 60%, 100% { transform: translateY(-50%) translateX(0); } 30% { transform: translateY(-50%) translateX(4px); } }
 .ig-stage {
   display: flex; justify-content: center; align-items: center;
   padding: 12px; border-radius: var(--radius-lg); background: var(--color-surface-2);
@@ -110,7 +128,8 @@ const STYLES = `
   .ig-step-title { font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ig-dot > span, .ig-tab { transition: none; }
+  .ig-dot > span, .ig-tab, .ig-arrow { transition: none; }
+  .ig-arrow--next.ig-arrow--hint { animation: none; }
 }
 `;
 
@@ -168,6 +187,25 @@ export function InstallGuideDialog({ initialPlatform, onClose }: { initialPlatfo
     window.clearTimeout(settleTimer.current);
     if (rafId.current) cancelAnimationFrame(rafId.current);
   }, []);
+
+  // Centre the ‹ › arrows on the picture: measure the scene stage of the first
+  // slide (all slides of a platform share one aspect, so one stage is enough).
+  const viewportRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const stage = trackRef.current?.querySelector<HTMLElement>('.ig-stage');
+    if (!viewport || !stage) return;
+    const sync = () => viewport.style.setProperty('--ig-stage-h', `${stage.offsetHeight}px`);
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(stage);
+    return () => ro.disconnect();
+  }, [platform]);
+
+  // The next arrow nudges until the user has moved past step 1 once, so nobody
+  // mistakes the first picture for the whole guide.
+  const [movedOn, setMovedOn] = useState(false);
+  if (index > 0 && !movedOn) setMovedOn(true);
 
   const nearestSlide = useCallback((): number => {
     const track = trackRef.current;
@@ -377,6 +415,7 @@ export function InstallGuideDialog({ initialPlatform, onClose }: { initialPlatfo
           aria-label={g.slidesLabel}
           onKeyDown={onSliderKey}
         >
+          <div ref={viewportRef} className="ig-viewport">
           {/* key: a new platform gets a fresh track, scrolled to step 1. */}
           <div
             key={platform}
@@ -409,6 +448,33 @@ export function InstallGuideDialog({ initialPlatform, onClose }: { initialPlatfo
                 </div>
               );
             })}
+          </div>
+            <button
+              type="button"
+              className="ig-arrow ig-arrow--prev"
+              aria-label={g.prev}
+              hidden={index === 0}
+              onClick={(e) => {
+                // Arriving at step 1 hides this arrow; keep keyboard focus in the carousel.
+                if (index === 1 && document.activeElement === e.currentTarget) trackRef.current?.focus({ preventScroll: true });
+                onPrev();
+              }}
+            >
+              <Icon name="chevronLeft" size={20} />
+            </button>
+            <button
+              type="button"
+              className={`ig-arrow ig-arrow--next${movedOn ? '' : ' ig-arrow--hint'}`}
+              aria-label={g.next}
+              hidden={isLast}
+              onClick={(e) => {
+                // Arriving at the last step hides this arrow; keep keyboard focus in the carousel.
+                if (index === total - 2 && document.activeElement === e.currentTarget) trackRef.current?.focus({ preventScroll: true });
+                goTo(index + 1);
+              }}
+            >
+              <Icon name="chevronRight" size={20} />
+            </button>
           </div>
 
           <div className="ig-dots">
