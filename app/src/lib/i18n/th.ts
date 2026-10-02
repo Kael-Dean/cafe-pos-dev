@@ -82,10 +82,11 @@ export const th = {
     kds: 'KDS',
     inventory: 'คลัง',
     dashboard: 'แดชบอร์ด',
-    more: 'เพิ่มเติม',
-    moreTitle: 'เมนูเพิ่มเติม',
-    moreOptions: 'เมนูเพิ่มเติม',
-    closeMore: 'ปิดเมนูเพิ่มเติม',
+    protocols: 'SOP',
+    // The 5th tab: opens the sheet that lists every screen the role can see.
+    menu: 'เมนู',
+    menuTitle: 'เมนูทั้งหมด',
+    closeMenu: 'ปิดเมนู',
   },
 
   // ── Roles ─────────────────────────────────────────────────────────────────

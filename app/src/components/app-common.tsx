@@ -119,13 +119,55 @@ export const NAV: NavItem[] = [
 ];
 
 /** The group (header id) a screen belongs to — from the raw NAV, independent of role filtering. */
-const groupOfScreen = (screen: string): string | undefined => {
+export const groupOfScreen = (screen: string): string | undefined => {
   let group: string | undefined;
   for (const n of NAV) {
     if (n.header) group = n.id;
     else if (n.id === screen) return group;
   }
   return undefined;
+};
+
+export interface NavSection { id: string; icon?: string; items: NavItem[] }
+
+/**
+ * NAV grouped into { header, items } sections with everything this role / store
+ * cannot see removed (and any section left empty dropped).
+ *
+ * THE single source of nav visibility: the desktop Sidebar and the phone nav
+ * (mobile-nav.tsx) both render from this, so a screen can never be visible in one
+ * and unreachable in the other. Add new visibility rules here, nowhere else.
+ */
+export const visibleNavSections = (role: string | undefined, features: readonly string[] | undefined): NavSection[] => {
+  const isAdmin = role === 'OWNER' || role === 'MANAGER';
+  const sections: NavSection[] = [];
+  for (const n of NAV) {
+    if (n.header) { sections.push({ id: n.id, icon: n.icon, items: [] }); continue; }
+    if (n.divider) continue;
+    if (n.adminOnly && !isAdmin) continue;
+    if (n.ownerOnly && role !== 'OWNER') continue;
+    if (n.feature && !features?.includes(n.feature)) continue;
+    sections[sections.length - 1]?.items.push(n);
+  }
+  return sections.filter((s) => s.items.length > 0);
+};
+
+/** The current user's visible nav + the bits of identity both navs display. */
+export const useVisibleNav = () => {
+  const { t } = useI18n();
+  const { data: me } = useCurrentUser();
+  const { data: features } = useFeatures();
+  const role = me?.role;
+  return {
+    sections: visibleNavSections(role, features),
+    me,
+    role,
+    isAdmin: role === 'OWNER' || role === 'MANAGER',
+    initial: me?.name ? me.name.charAt(0).toUpperCase() : '?',
+    roleLabel: role ? (t.roles as Record<string, string>)[role] ?? role : '',
+    navLabel: (id: string) => (t.nav as Record<string, string>)[id] ?? id,
+    sectionLabel: (id: string) => (t.navSection as Record<string, string>)[id] ?? id,
+  };
 };
 
 // Which sidebar groups are open, remembered per device. Storage can be blocked
@@ -149,26 +191,8 @@ interface SidebarProps { current: string; onNavigate: (id: string) => void; onLo
 
 export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit 49', collapsed = false, onToggle }: SidebarProps) => {
   const { t } = useI18n();
-  const navLabel = (id: string) => (t.nav as Record<string, string>)[id] ?? id;
-  const sectionLabel = (id: string) => (t.navSection as Record<string, string>)[id] ?? id;
-  const { data: me } = useCurrentUser();
-  const { data: features } = useFeatures();
-  const role = me?.role;
-  const isAdmin = role === 'OWNER' || role === 'MANAGER';
-  const initial = me?.name ? me.name.charAt(0).toUpperCase() : '?';
-
-  // Group the flat NAV into { header, items } sections, dropping items the current
-  // role can't see (and any section left empty as a result).
-  const sections: { id: string; icon?: string; items: NavItem[] }[] = [];
-  for (const n of NAV) {
-    if (n.header) { sections.push({ id: n.id, icon: n.icon, items: [] }); continue; }
-    if (n.divider) continue;
-    if (n.adminOnly && !isAdmin) continue;
-    if (n.ownerOnly && role !== 'OWNER') continue;
-    if (n.feature && !features?.includes(n.feature)) continue;
-    sections[sections.length - 1]?.items.push(n);
-  }
-  const visibleSections = sections.filter((s) => s.items.length > 0);
+  // Role / feature filtering is shared with the phone nav — see visibleNavSections.
+  const { sections: visibleSections, me, initial, roleLabel, navLabel, sectionLabel } = useVisibleNav();
   const currentGroupId = groupOfScreen(current);
 
   // Each group is a collapsible section. The open set is explicit and remembered
@@ -204,6 +228,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
     const active = current === n.id;
     return (
       <button key={n.id} type="button" onClick={() => onNavigate(n.id)}
+        data-nav-id={n.id}
         className={`sb-item${active ? ' active' : ''}`}
         title={collapsed ? navLabel(n.id) : undefined}
         aria-current={active ? 'page' : undefined}
@@ -224,9 +249,9 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
   };
 
   return (
-    // Desktop/tablet only: below 768px the BottomTabBar is the nav, so the
-    // sidebar is hidden to avoid a duplicate nav landmark and to free the full
-    // width for content on phones.
+    // Desktop/tablet only: below 768px <MobileNav> (mobile-nav.tsx — bottom tab bar
+    // + menu sheet) is the nav, so the sidebar is hidden to avoid a duplicate nav
+    // landmark and to free the full width for content on phones.
     <div className="hidden md:block" style={{ position: 'relative', flexShrink: 0 }}>
     <aside className="sidebar-surface" style={{
       width: collapsed ? 64 : 240,
@@ -345,7 +370,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
           {!collapsed && (
             <div className="sb-fade" style={{flex: 1, minWidth: 0}}>
               <div style={{fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--sb-text-strong)'}}>{me?.name ?? '...'}</div>
-              <div style={{fontSize: 11, color: 'var(--sb-text-muted)'}}>{role ? (t.roles as Record<string, string>)[role] ?? role : ''}</div>
+              <div style={{fontSize: 11, color: 'var(--sb-text-muted)'}}>{roleLabel}</div>
             </div>
           )}
         </div>
@@ -410,14 +435,11 @@ const KPIValue = ({ value, prefix, suffix, countUp }: { value: number | string; 
 export const KPICard = ({ label, value, prefix='', suffix='', delta, vsLabel, countUp }: KPICardProps) => {
   const positive = (delta ?? 0) >= 0;
   return (
-    <div style={{
-      background: 'var(--color-surface)',
-      border: '1px solid var(--color-border)',
-      borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)',
-      display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
-    }}>
+    // .kpi-card / .kpi-value (globals.css): same look as before on desktop, tighter
+    // padding and a smaller figure on phones so two cards fit side by side.
+    <div className="kpi-card">
       <div style={{fontSize: 13, color: 'var(--color-text-secondary)', fontWeight: 500}}>{label}</div>
-      <div className="num" style={{fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--color-text)'}}>
+      <div className="num kpi-value">
         <KPIValue value={value} prefix={prefix} suffix={suffix} countUp={countUp} />
       </div>
       {delta != null && (
@@ -571,7 +593,7 @@ export const Select = ({
             top: pos.up ? undefined : pos.top,
             bottom: pos.up ? window.innerHeight - pos.top : undefined,
             background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-            borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 2000,
+            borderRadius: 8, boxShadow: 'var(--shadow-md)', zIndex: 'var(--z-popover)',
             overflowY: 'auto', maxHeight: pos.maxHeight, padding: 4,
           }}
         >
@@ -610,199 +632,12 @@ export const Select = ({
   );
 };
 
-// ---------- Bottom Tab Bar (mobile only) ----------
-interface BottomTabBarProps {
-  currentScreen: string;
-  onNavigate: (screen: string) => void;
-}
-
-// Labels resolved at render time: main tabs from `t.tabs[id]`, more-sheet items from `t.nav[id]`.
-const MAIN_TABS = [
-  { id: 'pos',       icon: 'pos' },
-  { id: 'kds',       icon: 'kds' },
-  { id: 'inventory', icon: 'inv' },
-  { id: 'dashboard', icon: 'chart' },
-] as const;
-
-const MORE_ITEMS: { id: string; icon: string; feature?: string }[] = [
-  { id: 'floor',        icon: 'park', feature: FEATURE_BOARDGAME },
-  { id: 'bom',          icon: 'inv' },
-  { id: 'pre-orders',   icon: 'calendar' },
-  { id: 'catalog',      icon: 'tag' },
-  { id: 'hr',           icon: 'staff' },
-  { id: 'promotions',   icon: 'tag' },
-  { id: 'protocols',    icon: 'check' },
-  { id: 'shifts',       icon: 'calendar' },
-  { id: 'cash',         icon: 'cash' },
-  { id: 'shopping-list',icon: 'cart' },
-  { id: 'hardware',     icon: 'printer' },
-];
-
-const MAIN_TAB_IDS = new Set<string>(MAIN_TABS.map((t) => t.id));
-
-export const BottomTabBar = ({ currentScreen, onNavigate }: BottomTabBarProps) => {
-  const { t } = useI18n();
-  const { data: features } = useFeatures();
-  const moreItems = MORE_ITEMS.filter((item) => !item.feature || features?.includes(item.feature));
-  const tabLabel = (id: string) => (t.tabs as Record<string, string>)[id] ?? id;
-  const navLabel = (id: string) => (t.nav as Record<string, string>)[id] ?? id;
-  const [moreOpen, setMoreOpen] = useState(false);
-  const sheetRef = useRef<HTMLDivElement>(null);
-
-  // Close sheet on outside tap
-  useEffect(() => {
-    if (!moreOpen) return;
-    const handler = (e: PointerEvent) => {
-      if (sheetRef.current && !sheetRef.current.contains(e.target as Node)) {
-        setMoreOpen(false);
-      }
-    };
-    document.addEventListener('pointerdown', handler);
-    return () => document.removeEventListener('pointerdown', handler);
-  }, [moreOpen]);
-
-  const activeIsMore = !MAIN_TAB_IDS.has(currentScreen);
-
-  return (
-    <>
-      {/* Sheet overlay */}
-      {moreOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={t.tabs.moreOptions}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 60,
-            background: 'rgba(26,16,8,0.45)',
-            backdropFilter: 'blur(4px)',
-          }}
-        >
-          <div
-            ref={sheetRef}
-            style={{
-              position: 'absolute', left: 0, right: 0, bottom: 0,
-              background: 'var(--color-surface)',
-              borderRadius: '16px 16px 0 0',
-              paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)',
-              boxShadow: 'var(--shadow-lg)',
-              animation: 'sheet-in 220ms var(--ease-out)',
-            }}
-          >
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '16px 20px 12px',
-              borderBottom: '1px solid var(--color-border)',
-            }}>
-              <span style={{ fontWeight: 700, fontSize: 16 }}>{t.tabs.moreTitle}</span>
-              <button
-                onClick={() => setMoreOpen(false)}
-                aria-label={t.tabs.closeMore}
-                className="icon-btn hit-44"
-                style={{
-                  width: 32, height: 32, borderRadius: 999,
-                  background: 'var(--color-surface-2)',
-                  display: 'grid', placeItems: 'center',
-                  border: 'none', cursor: 'pointer',
-                }}
-              >
-                <Icon name="x" size={16} />
-              </button>
-            </div>
-            <div style={{
-              display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
-              padding: '12px 8px',
-              gap: 4,
-            }}>
-              {moreItems.map((item) => {
-                const active = currentScreen === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => { onNavigate(item.id); setMoreOpen(false); }}
-                    className="pressable"
-                    aria-current={active ? 'page' : undefined}
-                    style={{
-                      display: 'flex', flexDirection: 'column', alignItems: 'center',
-                      gap: 6, padding: '12px 4px', borderRadius: 10,
-                      background: active ? 'rgba(212,165,116,0.15)' : 'transparent',
-                      color: active ? 'var(--color-accent)' : 'var(--color-text-secondary)',
-                      border: 'none', cursor: 'pointer',
-                      minHeight: 72,
-                    }}
-                  >
-                    <Icon name={item.icon} size={22} color={active ? 'var(--color-accent)' : 'var(--color-text-secondary)'} />
-                    <span style={{ fontSize: 11, fontWeight: active ? 600 : 500, textAlign: 'center', lineHeight: 1.2 }}>
-                      {navLabel(item.id)}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tab Bar */}
-      <nav
-        aria-label="Main navigation"
-        className="md:hidden"
-        style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
-          height: 64,
-          background: 'var(--color-surface)',
-          borderTop: '1px solid var(--color-border)',
-          display: 'flex',
-          paddingBottom: 'env(safe-area-inset-bottom)',
-          boxShadow: '0 -2px 12px rgba(61,40,23,0.08)',
-        }}
-      >
-        {MAIN_TABS.map((tab) => {
-          const active = currentScreen === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => onNavigate(tab.id)}
-              aria-current={active ? 'page' : undefined}
-              style={{
-                flex: 1, display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                gap: 3, border: 'none', background: 'transparent',
-                color: active ? 'var(--color-accent)' : 'var(--color-text-muted)',
-                cursor: 'pointer', padding: '4px 0',
-                transition: 'color 150ms',
-              }}
-            >
-              <Icon name={tab.icon} size={22} color={active ? 'var(--color-accent)' : 'var(--color-text-muted)'} />
-              <span style={{ fontSize: 10, fontWeight: active ? 700 : 500, letterSpacing: '0.01em' }}>
-                {tabLabel(tab.id)}
-              </span>
-            </button>
-          );
-        })}
-
-        {/* More tab */}
-        <button
-          onClick={() => setMoreOpen((v) => !v)}
-          aria-current={activeIsMore ? 'page' : undefined}
-          style={{
-            flex: 1, display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            gap: 3, border: 'none', background: 'transparent',
-            color: activeIsMore || moreOpen ? 'var(--color-accent)' : 'var(--color-text-muted)',
-            cursor: 'pointer', padding: '4px 0',
-            transition: 'color 150ms',
-          }}
-        >
-          <Icon name="dots" size={22} color={activeIsMore || moreOpen ? 'var(--color-accent)' : 'var(--color-text-muted)'} />
-          <span style={{ fontSize: 10, fontWeight: activeIsMore || moreOpen ? 700 : 500, letterSpacing: '0.01em' }}>
-            {t.tabs.more}
-          </span>
-        </button>
-      </nav>
-
-    </>
-  );
-};
+// ---------- Layout primitives ----------
+// <MasterDetail> and <ModalShell> live in ./layout; re-exported so screens can keep
+// importing shared UI from one place. The phone nav (bottom tab bar + menu sheet)
+// is in ./mobile-nav and is mounted once, by app/page.tsx.
+export { MasterDetail, ModalShell } from './layout';
+export type { MasterDetailProps, ModalShellProps } from './layout';
 
 // ---------- NumberInput ----------
 // Controlled numeric <input> that can actually be CLEARED.

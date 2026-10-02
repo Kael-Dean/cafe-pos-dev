@@ -75,10 +75,10 @@ export const en: Messages = {
     kds: 'KDS',
     inventory: 'Inventory',
     dashboard: 'Dashboard',
-    more: 'More',
-    moreTitle: 'More menu',
-    moreOptions: 'More options',
-    closeMore: 'Close more options',
+    protocols: 'SOP',
+    menu: 'Menu',
+    menuTitle: 'All screens',
+    closeMenu: 'Close menu',
   },
 
   roles: {

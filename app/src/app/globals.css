@@ -334,11 +334,36 @@ input, textarea, select { font-family: inherit; color: inherit; }
 /* ---------- Utility ---------- */
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 
+/* ---------- Layering scale ----------
+   One documented z-index ladder for app chrome. Lowest to highest:
+     --z-tabbar   phone bottom tab bar — below every overlay, so any modal covers it
+     --z-screen   .app-main on phones. The screen area is its own stacking context
+                  (the screen fade already made it one), so an overlay rendered INSIDE
+                  a screen competes only with its siblings, whatever z-index it uses
+                  (the existing 50–1000). Lifting the whole context above the bar is
+                  what lets those in-screen modals cover the tab bar.
+     --z-modal    .modal-backdrop default (portaled dialogs sit above the screen area)
+     --z-sheet    phone nav sheet (above screen overlays, below Select menus)
+     --z-popover  portaled Select / row menus
+     --z-toast    toasts — never covered or blurred by a popup's backdrop
+     --z-sysbar   offline / update strip — "offline" matters most mid-payment
+   A bar that a screen pins to the bottom edge with position:fixed must offset
+   itself by --tabbar-h, or it will sit on top of the tab bar. */
+:root {
+  --z-tabbar: 40;
+  --z-screen: 45;
+  --z-modal: 50;
+  --z-sheet: 1900;
+  --z-popover: 2000;
+  --z-toast: 2100;
+  --z-sysbar: 2200;
+}
+
 /* ---------- Toast ---------- */
 /* Above every modal/overlay (receipt modal 300, confirm 320, lightbox 1000,
    Select menu 2000, …) so toasts are never covered or blurred by an open
    popup's backdrop-filter. */
-.toast-stack { position: fixed; right: 24px; bottom: 24px; z-index: 2100; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast-stack { position: fixed; right: 24px; bottom: 24px; z-index: var(--z-toast); display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
 .toast {
   pointer-events: auto;
   min-width: 280px; max-width: 380px;
@@ -362,7 +387,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 
 /* ---------- Modal backdrop ---------- */
 .modal-backdrop {
-  position: fixed; inset: 0; z-index: 50;
+  position: fixed; inset: 0; z-index: var(--z-modal);
   background: rgba(26, 16, 8, 0.45);
   backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center;
@@ -421,13 +446,9 @@ html[data-kb-open] .modal-card {
   input, select, textarea {
     font-size: 16px; /* prevent iOS auto-zoom on focus */
   }
-  /* Reserve the fixed BottomTabBar's footprint (64px + safe area) so the last
-     row of any screen — and a focused control near the bottom — is never hidden
-     behind the tab bar (WCAG 2.4.11 Focus Not Obscured). Screens fill the
-     padded content box (box-sizing: border-box) and scroll above the bar. */
-  .app-main {
-    padding-bottom: calc(64px + env(safe-area-inset-bottom));
-  }
+  /* NOTE: an inline `minHeight` below 44 on a button beats this rule — on phones
+     keep inline min-heights ≥ 44 or drop them (see AGENTS.md). The bottom tab bar
+     footprint is reserved in the "Phone shell" section below. */
 }
 
 /* ---------- Safe area ---------- */
@@ -443,15 +464,20 @@ html[data-kb-open] .modal-card {
    --sys-bar-h is 0 and nothing moves. */
 :root {
   --sys-bar-h: 0px;
-  --app-h: calc(100dvh - var(--sys-bar-h));
+  /* Space taken at the top edge: the strip when one is showing (its height already
+     includes the notch inset, see .sys-bars:has below), otherwise just the
+     status-bar / notch inset of an installed app with viewport-fit=cover. max()
+     rather than a sum, so the inset is never applied twice. 0 in a normal tab. */
+  --top-inset: max(var(--sys-bar-h), env(safe-area-inset-top, 0px));
+  --app-h: calc(100dvh - var(--top-inset));
 }
-body { padding-top: var(--sys-bar-h); }
+body { padding-top: var(--top-inset); }
 /* Centered modals keep clear of the strip too (0 when nothing is showing). */
-.modal-backdrop { padding-top: var(--sys-bar-h); }
+.modal-backdrop { padding-top: var(--top-inset); }
 
 .sys-bars {
   position: fixed; top: 0; left: 0; right: 0;
-  z-index: 2200; /* above modals and toasts: "offline" matters most mid-payment */
+  z-index: var(--z-sysbar); /* above modals and toasts: "offline" matters most mid-payment */
 }
 /* Notch / status-bar inset only while a strip is actually showing. */
 .sys-bars:has(.sys-bar) { padding-top: env(safe-area-inset-top); }
@@ -753,6 +779,395 @@ label:focus-visible {
   border: 2px solid currentColor;
   border-right-color: transparent;
   animation: spin 700ms linear infinite;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Phone shell (< 768px) — bottom tab bar, nav sheet, toasts, modals.
+   Tablet/desktop (≥ 768px) keep the sidebar and are untouched: everything
+   here is either inside the phone media query or resolves to 0 there.
+   ════════════════════════════════════════════════════════════════ */
+
+/* The shell row (sidebar + main). Side insets are 0 except on a notched phone held
+   in landscape, where they keep the sidebar and content clear of the notch. */
+.app-shell {
+  display: flex;
+  height: var(--app-h, 100dvh);
+  width: 100%;
+  overflow: hidden;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* --tabbar-h = the real footprint of the bottom tab bar: 58px of content plus the
+   home-indicator inset BELOW it. 0 on tablet/desktop and while the on-screen
+   keyboard is open (the bar hides so it cannot float above the keyboard).
+   Anything pinned to the bottom of a phone screen offsets itself with this. */
+:root { --tabbar-h: 0px; }
+@media (max-width: 767px) {
+  :root { --tabbar-h: calc(58px + env(safe-area-inset-bottom, 0px)); }
+  /* data-kb-open: VisualViewport keyboards (iOS), set by use-keyboard-inset.
+     data-kb-resized: keyboards that resize the layout (Android), set by mobile-nav. */
+  html[data-kb-open], html[data-kb-resized] { --tabbar-h: 0px; }
+
+  /* Reserve the bar's footprint: screens fill the area above it and scroll there, so
+     the last row — and a focused control near the bottom — is never hidden behind it.
+     A margin, not padding: .app-main is lifted above the bar (--z-screen) so that
+     in-screen modals cover it, and a padded box would overlap the bar and swallow
+     its taps. With the margin the screen area simply ends where the bar begins. */
+  .app-main { margin-bottom: var(--tabbar-h); z-index: var(--z-screen); }
+}
+
+.tabbar { display: none; }
+@media (max-width: 767px) {
+  .tabbar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    z-index: var(--z-tabbar);
+    height: var(--tabbar-h);
+    display: flex;
+    padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+  }
+  html[data-kb-open] .tabbar, html[data-kb-resized] .tabbar { display: none; }
+}
+.tabbar-tab {
+  flex: 1 1 0; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; padding: 4px 2px;
+  color: var(--color-text-secondary);
+  font-size: 11px; font-weight: 500; line-height: 1.35;
+  -webkit-tap-highlight-color: transparent;
+}
+/* The active tab: caramel pill behind the icon (same fill as the sidebar's
+   current-group tile) plus a heavier label — never colour alone. */
+.tabbar-pill {
+  width: 52px; height: 28px; border-radius: var(--radius-pill);
+  display: grid; place-items: center;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.tabbar-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabbar-tab:active .tabbar-pill { background: var(--color-surface-2); }
+.tabbar-tab.active { color: var(--color-text); font-weight: 700; }
+.tabbar-tab.active .tabbar-pill { background: var(--color-accent); color: var(--color-on-accent); }
+.tabbar-tab:focus-visible { outline-offset: -3px; border-radius: var(--radius-md); }
+
+/* ---------- Phone nav sheet ("เมนู" tab) ----------
+   The sidebar re-housed as a bottom sheet: same --sb-* surface, same group
+   headings and item rows, with the user card on top and theme / language /
+   logout pinned at the bottom where the thumb is. */
+.navsheet-backdrop {
+  position: fixed; inset: 0; z-index: var(--z-sheet);
+  display: flex; align-items: flex-end;
+  padding-top: calc(var(--top-inset) + 24px);
+  background: rgba(26, 16, 8, 0.5);
+  animation: backdrop-in var(--dur-base) var(--ease-out);
+}
+.navsheet {
+  width: 100%; max-height: 100%;
+  display: flex; flex-direction: column;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  box-shadow: 0 -8px 32px rgba(26, 16, 8, 0.18);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  animation: sheet-in 220ms var(--ease-out);
+}
+.navsheet-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 8px 12px 16px; flex-shrink: 0;
+  border-bottom: 1px solid var(--sb-divider);
+}
+.navsheet-avatar {
+  width: 40px; height: 40px; border-radius: var(--radius-pill); flex-shrink: 0;
+  display: grid; place-items: center;
+  background: var(--color-accent); color: var(--sb-avatar-fg);
+  font-weight: 700; font-size: 16px;
+}
+.navsheet-user { flex: 1; min-width: 0; }
+.navsheet-name {
+  font-size: 15px; font-weight: 700; line-height: 1.4; color: var(--sb-text-strong);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.navsheet-meta {
+  font-size: 13px; line-height: 1.4; color: var(--sb-text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.navsheet-close {
+  width: 44px; height: 44px; border-radius: var(--radius-md); flex-shrink: 0;
+  display: grid; place-items: center; color: var(--sb-text);
+}
+.navsheet-close:active { background: var(--sb-press); }
+.navsheet-body {
+  flex: 1; min-height: 0; overflow-y: auto;
+  overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding: 10px 12px 12px;
+}
+.navsheet-group + .navsheet-group { margin-top: 10px; }
+.navsheet-group-head {
+  display: flex; align-items: center; gap: 10px;
+  min-height: 40px; padding: 0 4px; margin: 0;
+  color: var(--sb-text-strong);
+}
+.navsheet-group-head.current .sb-group-icon { background: var(--color-accent); color: var(--sb-avatar-fg); }
+.navsheet .sb-item {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; min-height: 46px; padding: 10px 12px;
+  border-radius: var(--radius-md);
+  font-size: 15px; text-align: left;
+}
+.navsheet-soft { font-size: 11px; font-weight: 500; opacity: 0.6; }
+.navsheet-foot {
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--sb-divider);
+}
+/* Two-option switches (theme, language): the pressed option is the raised pill. */
+.navsheet-seg {
+  display: flex; flex-shrink: 0; padding: 2px; gap: 2px;
+  border: 1px solid var(--sb-logout-border); border-radius: 10px;
+}
+.navsheet-seg button {
+  min-width: 44px; min-height: 44px; padding: 0 8px; border-radius: 7px;
+  display: grid; place-items: center;
+  color: var(--sb-text-muted); font-size: 13px; font-weight: 600;
+}
+.navsheet-seg button[aria-pressed='true'] {
+  background: var(--sb-active-bg); color: var(--sb-active-text); box-shadow: var(--sb-active-shadow);
+}
+.navsheet-logout {
+  flex: 1; min-width: 0; min-height: 50px; padding: 0 8px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: 10px; font-size: 14px; font-weight: 600; white-space: nowrap;
+  border: 1px solid var(--sb-logout-border); color: var(--sb-text);
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+/* Danger tint on press only — no :hover here: the sheet opens under the thumb that
+   just tapped the "เมนู" tab, and a sticky touch-hover would paint logout red. */
+.navsheet-logout:active { background: var(--sb-logout-hover-bg); color: var(--sb-logout-hover-fg); border-color: var(--sb-logout-hover-border); }
+
+@media (max-width: 767px) {
+  /* ---------- Toasts: full width minus gutters, above the tab bar ---------- */
+  .toast-stack {
+    left: max(12px, env(safe-area-inset-left, 0px));
+    right: max(12px, env(safe-area-inset-right, 0px));
+    /* Above the tab bar; when the keyboard is up the bar is gone (--tabbar-h: 0)
+       and --kb-inset lifts the stack clear of the keyboard instead. */
+    bottom: calc(max(var(--tabbar-h), env(safe-area-inset-bottom, 0px)) + var(--kb-inset, 0px) + 12px);
+  }
+  .toast { min-width: 0; max-width: none; width: 100%; animation-name: toast-in-up; }
+  /* Full-width on a phone, the 3px status stripe reads as a heavy coloured edge;
+     the status icon already carries the kind, so the edge goes back to a hairline. */
+  .toast-stack .toast { border-left: 1px solid var(--color-border); }
+
+  /* ---------- Modals: never wider or taller than the visible screen ----------
+     Applies to every .modal-backdrop / .modal-card. Cards that already manage an
+     inner scroll area + pinned footer are unaffected (their body shrinks first);
+     a card with no scroll area of its own now scrolls as a whole instead of
+     running off-screen. !important because most cards size themselves inline. */
+  .modal-backdrop {
+    padding: calc(var(--top-inset) + 12px) max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  }
+  .modal-card {
+    max-width: calc(100vw - 24px) !important;
+    max-height: calc(var(--app-h, 100dvh) - 24px - env(safe-area-inset-bottom, 0px)) !important;
+    overflow: hidden auto;
+    overscroll-behavior: contain;
+  }
+}
+/* Phones: rise from below rather than slide in from the side (a sideways offset
+   on a full-width toast would poke past the viewport edge). */
+@keyframes toast-in-up { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ── Responsive toolkit ──────────────────────────────────────────────
+   Shared building blocks for phone layouts (< 768px). How they work:
+   · Desktop values are plain defaults — an inline style still wins, so adding a
+     class to an element that keeps its inline desktop style changes nothing ≥ 768px.
+   · Phone values are `!important`, so the class fixes the phone layout WITHOUT
+     having to delete the inline desktop style first.
+   Documented for screen authors in AGENTS.md ("Responsive conventions").
+   ──────────────────────────────────────────────────────────────────── */
+
+/* --screen-pad: the page gutter. 24px on desktop, fluid 12–20px on phones. */
+:root { --screen-pad: 24px; }
+@media (max-width: 767px) { :root { --screen-pad: clamp(12px, 4vw, 20px); } }
+
+/* .screen-pad — page padding for a screen root (24px desktop → gutter on phones). */
+.screen-pad { padding: var(--screen-pad); }
+/* .screen-pad-lg — same, for screens that use 32px on desktop. */
+.screen-pad-lg { padding: 32px; }
+
+/* .page-header — title + actions row; on phones the actions drop below the title. */
+.page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 16px; }
+/* .page-header-actions — the button group inside .page-header (full width on phones). */
+.page-header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+/* .page-title — screen <h1>: 24px desktop → 20px phones. */
+.page-title { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
+
+/* .kpi-grid — stat row: N columns desktop (--cols, default 4) → 2 on phones (--cols-phone). */
+.kpi-grid { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 16px; }
+/* .kpi-card / .kpi-value — the shared KPICard surface; tighter + smaller figure on phones. */
+.kpi-card {
+  display: flex; flex-direction: column; gap: var(--space-3); min-width: 0;
+  padding: var(--space-5);
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+}
+.kpi-value { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; color: var(--color-text); }
+
+/* .form-2col — two form columns desktop → one on phones. */
+.form-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* .stack-phone — flex row desktop → stretched column on phones. */
+.stack-phone { display: flex; gap: 12px; }
+
+/* .tab-strip — tab / chip row; on phones it scrolls sideways instead of wrapping. */
+.tab-strip { display: flex; gap: 8px; }
+
+/* .table-scroll — sideways scroll wrapper for a wide table / grid-table (all widths).
+   Give it tabIndex={0} role="region" aria-label so keyboard users can scroll it. */
+.table-scroll { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+
+/* .only-phone — rendered on phones only. (.hide-phone is the opposite, below.) */
+@media (min-width: 768px) { .only-phone { display: none !important; } }
+
+@media (max-width: 767px) {
+  .screen-pad, .screen-pad-lg { padding: var(--screen-pad) !important; }
+
+  .page-header { flex-direction: column !important; align-items: stretch !important; flex-wrap: nowrap !important; gap: 12px !important; }
+  /* .page-header.inline — keep title and a single small action on one row. */
+  .page-header.inline { flex-direction: row !important; align-items: center !important; }
+  .page-header-actions { width: 100%; }
+  /* .grow — inside .page-header-actions: this action takes the remaining width. */
+  .page-header-actions > .grow { flex: 1 1 auto; }
+  .page-header.inline > .page-header-actions { width: auto; }
+  .page-title { font-size: 20px !important; }
+
+  .kpi-grid { grid-template-columns: repeat(var(--cols-phone, 2), minmax(0, 1fr)) !important; gap: 10px !important; }
+  .kpi-card { padding: 14px; gap: var(--space-2); }
+  .kpi-value { font-size: 22px; }
+
+  .form-2col { grid-template-columns: minmax(0, 1fr) !important; }
+  /* .cols-1-phone / .cols-2-phone — force any inline grid to 1 / 2 columns on phones. */
+  .cols-1-phone { grid-template-columns: minmax(0, 1fr) !important; }
+  .cols-2-phone { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+
+  .stack-phone { flex-direction: column !important; align-items: stretch !important; }
+  /* .wrap-phone — let a flex row wrap on phones. */
+  .wrap-phone { flex-wrap: wrap !important; }
+  /* .full-phone — drop a fixed width: fill the row on phones. */
+  .full-phone { width: 100% !important; min-width: 0 !important; max-width: 100% !important; flex-basis: auto !important; }
+  /* .pad-phone — a card / panel with roomy inline padding (20–32px) tightens to 16px. */
+  .pad-phone { padding: 16px !important; }
+  /* .hide-phone — not rendered on phones. */
+  .hide-phone { display: none !important; }
+
+  .tab-strip {
+    flex-wrap: nowrap !important; overflow-x: auto;
+    scroll-snap-type: x proximity; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+  }
+  .tab-strip::-webkit-scrollbar { display: none; }
+  .tab-strip > * { flex-shrink: 0 !important; scroll-snap-align: start; }
+  /* .tab-strip.bleed — run edge to edge through the page gutter of a .screen-pad parent. */
+  .tab-strip.bleed {
+    margin-inline: calc(-1 * var(--screen-pad)); padding-inline: var(--screen-pad);
+    scroll-padding-inline: var(--screen-pad);
+  }
+
+  /* .table-scroll > child keeps a readable minimum width (--table-min, default 640px)
+     so columns are scrolled to, never crushed or clipped. */
+  .table-scroll > * { min-width: var(--table-min, 640px); }
+
+  /* .row-cards — "table row → stacked card" on phones. Mark the header row
+     .row-cards-head, each row .row-card, each cell data-label="…" (label left,
+     value right); .row-card-title = the headline cell, .row-card-actions = buttons. */
+  .row-cards, .row-cards > tbody { display: flex !important; flex-direction: column; gap: 8px; }
+  .row-cards-head { display: none !important; }
+  .row-card {
+    display: flex !important; flex-direction: column; gap: 6px;
+    padding: 12px 14px !important;
+    background: var(--color-surface); border: 1px solid var(--color-border) !important; border-radius: var(--radius-lg);
+  }
+  .row-card > [data-label] {
+    display: flex !important; align-items: baseline; justify-content: space-between; gap: 12px;
+    padding: 0 !important; border: 0 !important; text-align: right; min-width: 0;
+  }
+  .row-card > [data-label]::before {
+    content: attr(data-label); flex-shrink: 0;
+    color: var(--color-text-secondary); font-size: 13px; font-weight: 500; text-align: left;
+  }
+  .row-card > .row-card-title { padding: 0 !important; border: 0 !important; font-size: 15px; font-weight: 600; text-align: left; }
+  .row-card > .row-card-actions {
+    display: flex !important; justify-content: flex-end; gap: 8px;
+    padding: 8px 0 0 !important; margin-top: 2px; border: 0 !important; border-top: 1px solid var(--color-border) !important;
+  }
+}
+
+/* ---------- MasterDetail (<MasterDetail> in components/layout.tsx) ----------
+   Desktop: a plain flex row — fixed-width list pane + flexible detail pane.
+   Phones: one pane at a time; the detail takes the full width under a back bar. */
+.md-split { display: flex; height: 100%; min-width: 0; min-height: 0; }
+.md-split-list { width: var(--md-list-w, 320px); flex-shrink: 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.md-split-detail { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+/* Each pane's own root fills its pane (put borders / backgrounds on that root). */
+.md-split-list > *, .md-split-detail > * { flex: 1 1 auto; min-height: 0; }
+.md-split-detail > .md-back-bar { flex: 0 0 auto; }
+.md-back-bar {
+  display: flex; align-items: center; gap: 4px;
+  min-height: 48px; padding: 2px 12px 2px 4px;
+  background: var(--color-surface); border-bottom: 1px solid var(--color-border);
+}
+.md-back {
+  display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0;
+  min-height: 44px; padding: 0 10px 0 6px; border-radius: var(--radius-md);
+  font-size: 14px; font-weight: 600; color: var(--color-text);
+}
+.md-back:active { background: var(--color-surface-2); }
+.md-back-title { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 767px) {
+  .md-split { position: relative; }
+  .md-split-list { width: 100%; }
+  .md-split-list > * { width: 100% !important; max-width: none !important; }
+  /* Kept mounted (scroll position + local state survive) but out of reach while
+     the detail is showing. */
+  .md-split-list[data-covered] { position: absolute; inset: 0; visibility: hidden; pointer-events: none; }
+  /* No transition on the un-hide: the reduced-motion reset below gives every
+     property a 0.01ms transition, and `visibility` would then still compute to
+     `hidden` at the moment MasterDetail hands focus back to the list. */
+  .md-split-list { transition-property: none !important; }
+}
+
+/* ---------- ModalShell (<ModalShell> in components/layout.tsx) ----------
+   Header + scrollable body + pinned footer on the shared .modal-card surface. */
+.modal-card.modal-shell {
+  display: flex; flex-direction: column;
+  width: min(var(--modal-w, 520px), 94vw);
+  max-height: calc(var(--app-h, 100dvh) - 32px);
+  overflow: hidden;
+}
+.modal-shell-head {
+  display: flex; align-items: flex-start; gap: var(--space-3); flex-shrink: 0;
+  padding: var(--space-5) var(--space-5) var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+.modal-shell-titles { flex: 1; min-width: 0; }
+.modal-shell-title { margin: 0; font-size: 16px; font-weight: 700; line-height: 1.4; text-wrap: balance; }
+.modal-shell-sub { margin-top: 2px; font-size: 13px; line-height: 1.5; color: var(--color-text-secondary); }
+.modal-shell-close {
+  width: 36px; height: 36px; margin: -6px -6px -6px 0; border-radius: var(--radius-md); flex-shrink: 0;
+  display: grid; place-items: center; color: var(--color-text-secondary);
+}
+.modal-shell-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: var(--space-6); }
+.modal-shell-foot {
+  display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-2); flex-shrink: 0;
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--color-border);
+}
+@media (max-width: 767px) {
+  .modal-shell-head { padding: 14px 12px 12px 16px; }
+  .modal-shell-close { width: 44px; height: 44px; margin: -8px -4px -8px 0; }
+  .modal-shell-body { padding: var(--space-4); }
+  /* Footer actions share the row equally — easier to hit than right-aligned buttons. */
+  .modal-shell-foot { padding: var(--space-3) var(--space-4); }
+  .modal-shell-foot > * { flex: 1 1 0; }
 }
 
 /* ---------- Reduced motion: kill decorative animation, keep functional spinner ---------- */

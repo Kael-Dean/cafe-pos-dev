@@ -97,7 +97,11 @@ export default function LoginScreen({ onLogin }: Props) {
 
   return (
     <main style={{
-      height: 'var(--app-h, 100dvh)', width: '100vw',
+      // 100% (not 100vw): vw ignores a classic scrollbar and can force a sideways
+      // scroll. Side / bottom safe-area insets keep the form clear of a notch or the
+      // home indicator in the installed app; the top inset is handled by <body>.
+      height: 'var(--app-h, 100dvh)', width: '100%',
+      padding: '0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px)',
       background: 'var(--color-bg)',
       // Centred via the child's auto margins (not place-items) so that when the
       // install steps open on a short phone the column scrolls from the top

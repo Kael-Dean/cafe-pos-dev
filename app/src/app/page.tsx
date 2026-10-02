@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import type { ComponentType } from 'react';
 import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
-import { ToastProvider, Sidebar, BottomTabBar } from '@/components/app-common';
+import { ToastProvider, Sidebar } from '@/components/app-common';
+import { MobileNav } from '@/components/mobile-nav';
 import { getToken, clearToken, subscribeAuth } from '@/lib/token-store';
 import { canLeave } from '@/lib/nav-guard';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -148,8 +149,10 @@ export default function POS() {
 
   return (
     <ToastProvider>
-      {/* --app-h = 100dvh minus the system bar (offline / update strip), see globals.css */}
-      <div style={{ display: 'flex', height: 'var(--app-h, 100dvh)', width: '100vw', overflow: 'hidden' }}>
+      {/* .app-shell (globals.css): flex row, height --app-h = 100dvh minus the system
+          bar / top safe-area inset, side safe-area insets as padding. */}
+      <div className="app-shell">
+        {/* ≥ 768px. Below that it is display:none and <MobileNav> is the nav. */}
         <Sidebar current={screen} onNavigate={(s) => { void navigate(s as Screen); }} onLogout={() => { void handleLogout(); }} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
         <main className="app-main" style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'auto' }}>
           {/* key={screen} remounts on navigation so the screen fade (.screen-enter,
@@ -160,6 +163,11 @@ export default function POS() {
           <ScreenFrame key={screen}>{screens[screen]}</ScreenFrame>
         </main>
       </div>
+      {/* Phones (< 768px): bottom tab bar + menu sheet. Renders nothing on wider
+          screens. Goes through the same navigate() / handleLogout() as the sidebar,
+          so the unsaved-changes guard applies. .app-main reserves its height
+          (--tabbar-h) so no screen content sits behind it. */}
+      <MobileNav current={screen} onNavigate={(s) => { void navigate(s as Screen); }} onLogout={() => { void handleLogout(); }} />
     </ToastProvider>
   );
 }
