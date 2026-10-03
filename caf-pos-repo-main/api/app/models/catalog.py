@@ -34,6 +34,7 @@ class Product(Base, TimestampMixin):
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     product_type: Mapped[ProductType] = mapped_column(
@@ -104,6 +105,23 @@ class ProductModifierGroup(Base):
         String(24), ForeignKey("modifier_groups.id", ondelete="CASCADE"), nullable=False
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class ModifierRecipeItem(Base):
+    __tablename__ = "modifier_recipe_items"
+    __table_args__ = (
+        UniqueConstraint("modifier_id", "inventory_item_id", name="uq_mri_modifier_item"),
+    )
+
+    id: Mapped[str] = mapped_column(String(24), primary_key=True, default=new_cuid)
+    modifier_id: Mapped[str] = mapped_column(
+        String(24), ForeignKey("modifiers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    inventory_item_id: Mapped[str] = mapped_column(
+        String(24), ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False
+    )
+    quantity: Mapped[Decimal] = mapped_column(Numeric(10, 3), nullable=False)
+    mode: Mapped[str] = mapped_column(String(10), nullable=False, default="override")
 
 
 class CookingStep(Base):

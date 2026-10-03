@@ -4,5 +4,7 @@
   "storeTaxId": "0105544000001",
   "storeBranch": "สาขาที่ 00001",
   "ip": "192.168.1.252",
-  "port": 9100
+  "port": 9100,
+  "mode": "usb",
+  "printerName": "AN581-C"
 }

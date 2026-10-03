@@ -3,7 +3,16 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.enums import EarnMode, MembershipTier, PointTxType, RewardScope, RewardType
+from app.enums import (
+    Channel,
+    EarnMode,
+    MembershipTier,
+    OrderStatus,
+    PaymentMethod,
+    PointTxType,
+    RewardScope,
+    RewardType,
+)
 
 
 class UpsertProgramRequest(BaseModel):
@@ -158,5 +167,40 @@ class MemberRead(BaseModel):
 class MembersPage(BaseModel):
     items: list[AccountRead]
     total: int
+    page: int
+    limit: int
+
+
+class MemberOrderItemRead(BaseModel):
+    model_config = {"from_attributes": True}
+
+    product_name: str
+    quantity: int
+    unit_price: Decimal
+    line_total: Decimal
+
+
+class MemberOrderRead(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: str
+    order_number: int
+    status: OrderStatus
+    channel: Channel
+    payment_method: PaymentMethod | None
+    subtotal: Decimal
+    discount: Decimal
+    total: Decimal
+    points_earned: int | None
+    reward_redeemed: bool
+    created_at: datetime
+    items: list[MemberOrderItemRead] = []
+
+
+class MemberOrdersPage(BaseModel):
+    items: list[MemberOrderRead]
+    total: int
+    total_spent: Decimal
+    total_discount: Decimal
     page: int
     limit: int

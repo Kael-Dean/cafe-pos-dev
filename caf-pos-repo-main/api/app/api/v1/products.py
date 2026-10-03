@@ -7,6 +7,9 @@ from app.schemas.catalog import (
     CookingStepRead,
     CookingStepsBulkReplace,
     CookingStepUpdate,
+    ImageConfirm,
+    ImageUploadRequest,
+    ImageUploadResponse,
     ProductCreate,
     ProductDetail,
     ProductModifierGroupsReplace,
@@ -95,6 +98,20 @@ async def delete_product(product_id: str, user: StoreUser, db: DbSession) -> Non
     await svc.delete_product(db, store_id=user.store_id, product_id=product_id)
 
 
+@router.post(
+    "/{product_id}/duplicate",
+    response_model=ProductDetail,
+    status_code=201,
+    summary="Duplicate a product with its recipe, modifier groups, and cooking steps",
+    operation_id="products_duplicate",
+    dependencies=[Depends(_MANAGER_PLUS)],
+)
+async def duplicate_product(
+    product_id: str, user: StoreUser, db: DbSession
+) -> ProductDetail:
+    return await svc.duplicate_product(db, store_id=user.store_id, product_id=product_id)
+
+
 @router.put(
     "/{product_id}/recipe",
     response_model=list[RecipeItemRead],
@@ -126,6 +143,55 @@ async def replace_product_modifier_groups(
     await svc.replace_product_modifier_groups(
         db, store_id=user.store_id, product_id=product_id, payload=payload
     )
+
+
+# ---------------------------------------------------------------------------
+# Product image (Cloudflare R2 presigned upload)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{product_id}/image-upload-url",
+    response_model=ImageUploadResponse,
+    summary="Get a presigned URL to upload a product image to R2",
+    operation_id="products_image_upload_url",
+    dependencies=[Depends(_MANAGER_PLUS)],
+)
+async def create_image_upload_url(
+    product_id: str, payload: ImageUploadRequest, user: StoreUser, db: DbSession
+) -> ImageUploadResponse:
+    result = await svc.create_product_image_upload(
+        db, store_id=user.store_id, product_id=product_id, content_type=payload.content_type
+    )
+    return ImageUploadResponse(**result)
+
+
+@router.put(
+    "/{product_id}/image",
+    response_model=ProductRead,
+    summary="Confirm an uploaded image and set it as the product's image_url",
+    operation_id="products_confirm_image",
+    dependencies=[Depends(_MANAGER_PLUS)],
+)
+async def confirm_image(
+    product_id: str, payload: ImageConfirm, user: StoreUser, db: DbSession
+) -> ProductRead:
+    product = await svc.confirm_product_image(
+        db, store_id=user.store_id, product_id=product_id, key=payload.key
+    )
+    return ProductRead.model_validate(product)
+
+
+@router.delete(
+    "/{product_id}/image",
+    response_model=ProductRead,
+    summary="Remove a product's image",
+    operation_id="products_delete_image",
+    dependencies=[Depends(_MANAGER_PLUS)],
+)
+async def delete_image(product_id: str, user: StoreUser, db: DbSession) -> ProductRead:
+    product = await svc.clear_product_image(db, store_id=user.store_id, product_id=product_id)
+    return ProductRead.model_validate(product)
 
 
 # ---------------------------------------------------------------------------

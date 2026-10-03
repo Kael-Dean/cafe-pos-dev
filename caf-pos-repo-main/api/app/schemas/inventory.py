@@ -50,6 +50,10 @@ class InventoryItemCreate(BaseModel):
 
 
 class InventoryItemUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=120)
+    unit: str | None = Field(None, min_length=1, max_length=24)
+    unit_size: Decimal | None = Field(None, gt=0, le=Decimal("9999999.999"))
+    unit_price: Decimal | None = Field(None, ge=0, le=Decimal("9999999999.99"))
     par_level: Decimal | None = Field(None, ge=0, le=Decimal("9999999.999"))
     cost_per_unit: Decimal | None = Field(None, ge=0, le=Decimal("99999.9999"))
 

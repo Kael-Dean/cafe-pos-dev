@@ -8,6 +8,8 @@ from app.schemas.catalog import (
     ModifierGroupRead,
     ModifierGroupUpdate,
     ModifierRead,
+    ModifierRecipeItemRead,
+    ModifierRecipeItemsBulkReplace,
     ModifierUpdate,
 )
 from app.services import catalog as svc
@@ -55,9 +57,7 @@ async def create_modifier_group(
 async def update_modifier_group(
     group_id: str, payload: ModifierGroupUpdate, user: StoreUser, db: DbSession
 ) -> ModifierGroupRead:
-    return await svc.update_modifier_group(
-        db, store_id=user.store_id, group_id=group_id, payload=payload
-    )
+    return await svc.update_modifier_group(db, store_id=user.store_id, group_id=group_id, payload=payload)
 
 
 @router.delete(
@@ -107,9 +107,44 @@ async def update_modifier_in_group(
     operation_id="modifier_groups_delete_modifier",
     dependencies=[Depends(_MANAGER_PLUS)],
 )
-async def delete_modifier_from_group(
+async def delete_modifier_from_group(group_id: str, modifier_id: str, user: StoreUser, db: DbSession) -> None:
+    await svc.remove_modifier(db, store_id=user.store_id, group_id=group_id, modifier_id=modifier_id)
+
+
+@router.get(
+    "/{group_id}/modifiers/{modifier_id}/recipe-items",
+    response_model=list[ModifierRecipeItemRead],
+    summary="List recipe item overrides/deltas for a modifier option",
+    operation_id="modifier_recipe_items_list",
+)
+async def list_modifier_recipe_items(
     group_id: str, modifier_id: str, user: StoreUser, db: DbSession
-) -> None:
-    await svc.remove_modifier(
+) -> list[ModifierRecipeItemRead]:
+    items = await svc.get_modifier_recipe_items(
         db, store_id=user.store_id, group_id=group_id, modifier_id=modifier_id
     )
+    return [ModifierRecipeItemRead.model_validate(i) for i in items]
+
+
+@router.put(
+    "/{group_id}/modifiers/{modifier_id}/recipe-items",
+    response_model=list[ModifierRecipeItemRead],
+    summary="Bulk-replace recipe item overrides/deltas for a modifier option",
+    operation_id="modifier_recipe_items_replace",
+    dependencies=[Depends(_MANAGER_PLUS)],
+)
+async def replace_modifier_recipe_items(
+    group_id: str,
+    modifier_id: str,
+    payload: ModifierRecipeItemsBulkReplace,
+    user: StoreUser,
+    db: DbSession,
+) -> list[ModifierRecipeItemRead]:
+    items = await svc.replace_modifier_recipe_items(
+        db,
+        store_id=user.store_id,
+        group_id=group_id,
+        modifier_id=modifier_id,
+        payload=payload,
+    )
+    return [ModifierRecipeItemRead.model_validate(i) for i in items]

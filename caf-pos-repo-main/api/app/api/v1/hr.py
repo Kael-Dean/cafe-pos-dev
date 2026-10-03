@@ -6,12 +6,15 @@ from sqlalchemy.exc import IntegrityError
 from app.deps import DbSession, StoreUser, require_role
 from app.enums import Role, TaskStatus
 from app.schemas.hr import (
-    CashSessionClose,
+    CashSessionClosePayload,
     CashSessionCreate,
+    CashSessionDetailRead,
     CashSessionRead,
     LeaveCreate,
     LeaveRead,
     LeaveReview,
+    PaymentGroupConfig,
+    SessionSummaryRead,
     ShiftCreate,
     ShiftRead,
     StaffCreate,
@@ -205,6 +208,36 @@ async def create_shift(payload: ShiftCreate, user: StoreUser, db: DbSession) -> 
 
 
 # ---------------------------------------------------------------------------
+# Payment group config
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/payment-groups",
+    response_model=list[PaymentGroupConfig],
+    summary="Get store's payment group configuration",
+    operation_id="hr_payment_groups_get",
+)
+async def get_payment_groups(user: StoreUser, db: DbSession) -> list[PaymentGroupConfig]:
+    groups = await hr_svc.get_payment_groups(db, store_id=user.store_id)
+    return [PaymentGroupConfig(name=g["name"], methods=g["methods"]) for g in groups]
+
+
+@router.patch(
+    "/payment-groups",
+    response_model=list[PaymentGroupConfig],
+    summary="Replace store's payment group configuration",
+    operation_id="hr_payment_groups_update",
+    dependencies=[Depends(_MANAGER_PLUS)],
+)
+async def set_payment_groups(
+    payload: list[PaymentGroupConfig], user: StoreUser, db: DbSession
+) -> list[PaymentGroupConfig]:
+    groups = await hr_svc.set_payment_groups(db, store_id=user.store_id, groups=payload)
+    return [PaymentGroupConfig(name=g["name"], methods=g["methods"]) for g in groups]
+
+
+# ---------------------------------------------------------------------------
 # Cash sessions
 # ---------------------------------------------------------------------------
 
@@ -230,6 +263,19 @@ async def get_current_cash_session(user: StoreUser, db: DbSession) -> CashSessio
     return await hr_svc.get_open_cash_session(db, store_id=user.store_id)
 
 
+@router.get(
+    "/cash-sessions/{session_id}/summary",
+    response_model=SessionSummaryRead,
+    summary="Get system sales totals by payment group for a session",
+    operation_id="hr_cash_sessions_summary",
+    dependencies=[Depends(_MANAGER_PLUS)],
+)
+async def get_cash_session_summary(
+    session_id: str, user: StoreUser, db: DbSession
+) -> SessionSummaryRead:
+    return await hr_svc.get_session_summary(db, store_id=user.store_id, session_id=session_id)
+
+
 @router.post(
     "/cash-sessions",
     response_model=CashSessionRead,
@@ -248,14 +294,14 @@ async def open_cash_session(
 
 @router.patch(
     "/cash-sessions/{session_id}/close",
-    response_model=CashSessionRead,
-    summary="Close a cash session (record closing float)",
+    response_model=CashSessionDetailRead,
+    summary="Close a cash session with per-payment-group reconciliation",
     operation_id="hr_cash_sessions_close",
     dependencies=[Depends(_MANAGER_PLUS)],
 )
 async def close_cash_session(
-    session_id: str, payload: CashSessionClose, user: StoreUser, db: DbSession
-) -> CashSessionRead:
+    session_id: str, payload: CashSessionClosePayload, user: StoreUser, db: DbSession
+) -> CashSessionDetailRead:
     return await hr_svc.close_cash_session(
         db,
         store_id=user.store_id,

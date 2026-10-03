@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    Boolean,
     JSON,
+    Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -31,8 +32,11 @@ class Order(Base, TimestampMixin):
     __tablename__ = "orders"
     __table_args__ = (
         UniqueConstraint("store_id", "idempotency_key", name="uq_orders_store_idempotency"),
+        UniqueConstraint("store_id", "business_date", "daily_number", name="uq_orders_store_date_daily"),
+        UniqueConstraint("store_id", "receipt_no", name="uq_orders_store_receipt_no"),
         Index("ix_orders_store_status", "store_id", "status"),
         Index("ix_orders_store_created", "store_id", "created_at"),
+        Index("ix_orders_store_business_date", "store_id", "business_date"),
     )
 
     id: Mapped[str] = mapped_column(String(24), primary_key=True, default=new_cuid)
@@ -67,6 +71,9 @@ class Order(Base, TimestampMixin):
     )
     points_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reward_redeemed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    daily_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    receipt_no: Mapped[str] = mapped_column(String(32), nullable=False)
 
 
 class OrderItem(Base):
@@ -100,3 +107,15 @@ class OrderVoidLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class OrderDailyCounter(Base):
+    """Atomic per-store, per-day sequence allocator for daily_number."""
+
+    __tablename__ = "order_daily_counters"
+
+    store_id: Mapped[str] = mapped_column(
+        String(24), ForeignKey("stores.id", ondelete="CASCADE"), primary_key=True
+    )
+    business_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    last_number: Mapped[int] = mapped_column(Integer, nullable=False)

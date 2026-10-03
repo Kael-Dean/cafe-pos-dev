@@ -625,3 +625,33 @@ async def test_start_from_inventory_no_fg_stock_but_sufficient_raw_succeeds(clie
 
     raw_resp = await client.get(f"/api/v1/inventory/{raw_item.id}", headers=_h(token))
     assert Decimal(raw_resp.json()["stock_on_hand"]) == Decimal("9500.000")  # 10000 - 500
+
+
+async def test_list_pre_orders_date_range_filter(client, db, store_a, user_a):
+    token = await _login(client, store_a.slug, "1111")
+    product, _ = await _make_product_with_recipe(db, store_a.id)
+
+    base = {"order_date": _today(), "customer_name": "Cal", "customer_phone": "000",
+            "items": [{"product_id": product.id, "quantity": 1}]}
+
+    await client.post("/api/v1/pre-orders", headers=_h(token), json={**base, "due_date": _due(1)})
+    await client.post("/api/v1/pre-orders", headers=_h(token), json={**base, "due_date": _due(5)})
+    await client.post("/api/v1/pre-orders", headers=_h(token), json={**base, "due_date": _due(30)})
+
+    date_from = _due(0)
+    date_to = _due(10)
+    resp = await client.get(
+        f"/api/v1/pre-orders?due_date_from={date_from}&due_date_to={date_to}",
+        headers=_h(token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 2
+    assert all(r["due_date"] <= date_to for r in data["items"])
+
+    resp_from = await client.get(
+        f"/api/v1/pre-orders?due_date_from={_due(4)}",
+        headers=_h(token),
+    )
+    assert resp_from.status_code == 200
+    assert resp_from.json()["total"] == 2

@@ -81,6 +81,9 @@ async def get_promptpay_qr(db: AsyncSession, *, store_id: str, order_id: str) ->
     return PromptPayQRResponse(
         order_id=order.id,
         order_number=order.order_number,
+        daily_number=order.daily_number,
+        business_date=order.business_date,
+        receipt_no=order.receipt_no,
         amount=order.total,
         payload=payload,
         qr_image_base64=qr_image_base64,

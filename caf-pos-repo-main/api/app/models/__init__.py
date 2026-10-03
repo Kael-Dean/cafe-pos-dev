@@ -3,25 +3,27 @@ from app.models.catalog import (
     CookingStep,
     Modifier,
     ModifierGroup,
+    ModifierRecipeItem,
     Product,
     ProductModifierGroup,
     RecipeItem,
 )
 from app.models.customers import Customer
-from app.models.hr import CashSession, Leave, ShiftAssignment, StaffTask
+from app.models.hr import CashSession, Leave, SessionPaymentEntry, ShiftAssignment, StaffTask
 from app.models.identity import User
 from app.models.inventory import InventoryItem, StockMovement
-from app.models.orders import Order, OrderItem, OrderVoidLog
 from app.models.membership import (
     MembershipAccount,
     MembershipProgram,
     MembershipRewardProduct,
     PointTransaction,
 )
+from app.models.orders import Order, OrderDailyCounter, OrderItem, OrderVoidLog
 from app.models.pre_orders import PreOrder, PreOrderItem, ShoppingListItem
 from app.models.production import ProductionOrder
 from app.models.promotions import Promotion, PromotionRedemption
 from app.models.receipts import StockLot, StockReceipt
+from app.models.sales import Salesperson
 from app.models.tenancy import Store, Tenant
 
 __all__ = [
@@ -29,6 +31,7 @@ __all__ = [
     "Customer",
     "CashSession",
     "Leave",
+    "SessionPaymentEntry",
     "ShiftAssignment",
     "StaffTask",
     "Tenant",
@@ -43,8 +46,10 @@ __all__ = [
     "RecipeItem",
     "ModifierGroup",
     "Modifier",
+    "ModifierRecipeItem",
     "ProductModifierGroup",
     "Order",
+    "OrderDailyCounter",
     "OrderItem",
     "OrderVoidLog",
     "PreOrder",
@@ -57,4 +62,5 @@ __all__ = [
     "MembershipProgram",
     "MembershipRewardProduct",
     "PointTransaction",
+    "Salesperson",
 ]

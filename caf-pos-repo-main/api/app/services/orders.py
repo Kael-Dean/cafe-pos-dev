@@ -2,17 +2,19 @@ import logging
 from datetime import date as _date
 from datetime import datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import Conflict, NotFound
-from app.enums import MovementType, OrderStatus, ProductType, ReceiptStatus
-from app.models.catalog import Modifier, Product, RecipeItem
+from app.core.errors import Conflict, NotFound, Unprocessable
+from app.enums import MovementType, OrderStatus, ProductType, ReceiptStatus, WastageReason
+from app.models.catalog import Modifier, ModifierRecipeItem, Product, RecipeItem
 from app.models.inventory import InventoryItem, StockMovement
-from app.models.orders import Order, OrderItem, OrderVoidLog
+from app.models.orders import Order, OrderDailyCounter, OrderItem, OrderVoidLog
 from app.models.promotions import PromotionRedemption
 from app.models.receipts import StockLot, StockReceipt
 from app.realtime.pusher import PusherClient
@@ -22,6 +24,7 @@ from app.schemas.orders import (
     OrderRead,
     OrdersPage,
     PayOrderRequest,
+    SetOrderDateRequest,
     UpdateStatusRequest,
     VoidOrderRequest,
 )
@@ -36,6 +39,19 @@ _VALID_TRANSITIONS: dict[OrderStatus, set[OrderStatus]] = {
     OrderStatus.IN_PROGRESS: {OrderStatus.READY},
     OrderStatus.READY: {OrderStatus.COMPLETED},
 }
+
+STORE_TZ = ZoneInfo("Asia/Bangkok")
+
+
+def _business_date() -> _date:
+    """Return the current Asia/Bangkok calendar date. Extracted for testability."""
+    return datetime.now(STORE_TZ).date()
+
+
+def make_receipt_no(business_date: _date, daily_number: int) -> str:
+    """Format the receipt number in Thai Buddhist calendar series."""
+    be_year = business_date.year + 543
+    return f"IV{be_year}{business_date.month:02d}{business_date.day:02d}-{daily_number:04d}"
 
 
 async def create_order(
@@ -57,29 +73,35 @@ async def create_order(
 
             for item_in in req.items:
                 product = await _load_product(db, store_id=store_id, product_id=item_in.product_id)
-                modifiers, mod_inv = await _load_modifiers(db, modifier_ids=item_in.modifier_ids)
+                modifiers, mod_inv, mod_recipe_items = await _load_modifiers(
+                    db, modifier_ids=item_in.modifier_ids
+                )
 
                 price_delta = sum((m.price_delta for m in modifiers), Decimal("0"))
                 unit_price = product.price + price_delta
                 grand_total += unit_price * item_in.quantity
 
-                line_data.append({
-                    "product_id": product.id,
-                    "category_id": product.category_id,
-                    "product_name": product.name,
-                    "quantity": item_in.quantity,
-                    "unit_price": unit_price,
-                    "line_total": unit_price * item_in.quantity,
-                    "modifiers_json": _snapshot_modifiers(modifiers) if modifiers else None,
-                    "mod_inv": mod_inv,
-                    "product_type": product.product_type,
-                    "finished_goods_item_id": product.finished_goods_item_id,
-                })
+                line_data.append(
+                    {
+                        "product_id": product.id,
+                        "category_id": product.category_id,
+                        "product_name": product.name,
+                        "quantity": item_in.quantity,
+                        "unit_price": unit_price,
+                        "line_total": unit_price * item_in.quantity,
+                        "modifiers_json": _snapshot_modifiers(modifiers) if modifiers else None,
+                        "mod_inv": mod_inv,
+                        "mod_recipe_items": mod_recipe_items,
+                        "product_type": product.product_type,
+                        "finished_goods_item_id": product.finished_goods_item_id,
+                    }
+                )
 
             promotion_discount = Decimal("0")
             applied_promotions: list[tuple[str, Decimal]] = []
             if req.promotion_ids:
                 from app.services.promotions import apply_promotions
+
                 promo_cart_lines = [
                     {
                         "product_id": ld["product_id"],
@@ -96,6 +118,22 @@ async def create_order(
                     cart_lines=promo_cart_lines,
                 )
 
+            # Atomically claim the next daily_number for this store+day.
+            # ON CONFLICT DO UPDATE takes a row-lock on the counter row, serializing
+            # concurrent creates — no two orders get the same daily_number.
+            _bdate = _business_date()
+            _counter_stmt = (
+                pg_insert(OrderDailyCounter)
+                .values(store_id=store_id, business_date=_bdate, last_number=1)
+                .on_conflict_do_update(
+                    index_elements=["store_id", "business_date"],
+                    set_={"last_number": OrderDailyCounter.last_number + 1},
+                )
+                .returning(OrderDailyCounter.last_number)
+            )
+            _daily_number = (await db.execute(_counter_stmt)).scalar_one()
+            _receipt_no = make_receipt_no(_bdate, _daily_number)
+
             order = Order(
                 store_id=store_id,
                 status=OrderStatus.PENDING,
@@ -107,6 +145,9 @@ async def create_order(
                 discount=promotion_discount,
                 total=grand_total - promotion_discount,
                 created_by_id=user_id,
+                business_date=_bdate,
+                daily_number=_daily_number,
+                receipt_no=_receipt_no,
             )
             db.add(order)
             await db.flush()
@@ -114,15 +155,17 @@ async def create_order(
             inv_deductions: dict[str, Decimal] = {}
 
             for ld in line_data:
-                db.add(OrderItem(
-                    order_id=order.id,
-                    product_id=ld["product_id"],
-                    product_name=ld["product_name"],
-                    quantity=ld["quantity"],
-                    unit_price=ld["unit_price"],
-                    line_total=ld["line_total"],
-                    modifiers_json=ld["modifiers_json"],
-                ))
+                db.add(
+                    OrderItem(
+                        order_id=order.id,
+                        product_id=ld["product_id"],
+                        product_name=ld["product_name"],
+                        quantity=ld["quantity"],
+                        unit_price=ld["unit_price"],
+                        line_total=ld["line_total"],
+                        modifiers_json=ld["modifiers_json"],
+                    )
+                )
 
                 if ld["product_type"] == ProductType.PRODUCED:
                     if not ld["finished_goods_item_id"]:
@@ -135,11 +178,26 @@ async def create_order(
                         inv_deductions.get(ld["finished_goods_item_id"], Decimal("0")) + qty
                     )
                 else:
-                    for ri in await _load_recipe(db, product_id=ld["product_id"]):
-                        qty = ri.quantity * ld["quantity"]
-                        inv_deductions[ri.inventory_item_id] = (
-                            inv_deductions.get(ri.inventory_item_id, Decimal("0")) + qty
-                        )
+                    recipe_qty: dict[str, Decimal] = {
+                        ri.inventory_item_id: ri.quantity
+                        for ri in await _load_recipe(db, product_id=ld["product_id"])
+                    }
+                    # Apply overrides first (can set quantity to 0 to skip deduction)
+                    for mri in ld["mod_recipe_items"]:
+                        if mri.mode == "override":
+                            recipe_qty[mri.inventory_item_id] = mri.quantity
+                    # Apply deltas second (adds/subtracts; can introduce ingredients not in base recipe)
+                    for mri in ld["mod_recipe_items"]:
+                        if mri.mode == "delta":
+                            recipe_qty[mri.inventory_item_id] = (
+                                recipe_qty.get(mri.inventory_item_id, Decimal("0")) + mri.quantity
+                            )
+                    for item_id, base_qty in recipe_qty.items():
+                        effective_qty = base_qty * ld["quantity"]
+                        if effective_qty > Decimal("0"):
+                            inv_deductions[item_id] = (
+                                inv_deductions.get(item_id, Decimal("0")) + effective_qty
+                            )
 
                 for inv_item_id, qty_per_unit in ld["mod_inv"]:
                     qty = qty_per_unit * ld["quantity"]
@@ -159,11 +217,13 @@ async def create_order(
             # Write promotion redemption rows
             if applied_promotions:
                 for promo_id, disc_amount in applied_promotions:
-                    db.add(PromotionRedemption(
-                        promotion_id=promo_id,
-                        order_id=order.id,
-                        discount_amount=disc_amount,
-                    ))
+                    db.add(
+                        PromotionRedemption(
+                            promotion_id=promo_id,
+                            order_id=order.id,
+                            discount_amount=disc_amount,
+                        )
+                    )
 
             # Membership: earn or redeem (mutually exclusive)
             if req.member_id:
@@ -173,10 +233,9 @@ async def create_order(
                     _load_account_for_update,
                     _redeem_reward,
                 )
+
                 await db.flush()  # ensure OrderItems are persisted for FREE_ITEM scope check
-                account = await _load_account_for_update(
-                    db, account_id=req.member_id, store_id=store_id
-                )
+                account = await _load_account_for_update(db, account_id=req.member_id, store_id=store_id)
                 program = await _get_active_program(db, store_id=store_id)
                 if program:
                     if req.redeem_reward:
@@ -237,7 +296,9 @@ async def list_orders(
         stmt = stmt.where(Order.created_at <= to_dt)
 
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
-    rows = list((await db.execute(stmt.order_by(Order.created_at.desc()).offset(offset).limit(limit))).scalars())
+    rows = list(
+        (await db.execute(stmt.order_by(Order.created_at.desc()).offset(offset).limit(limit))).scalars()
+    )
     items = [await _order_to_read(db, o) for o in rows]
     return OrdersPage(items=items, total=total, page=page, limit=limit)
 
@@ -298,12 +359,16 @@ async def void_order(
         if order.status == OrderStatus.VOID:
             raise Conflict("Order is already voided")
 
-        sale_movements = list((await db.execute(
-            select(StockMovement).where(
-                StockMovement.ref_order_id == order.id,
-                StockMovement.type == MovementType.SALE,
-            )
-        )).scalars())
+        sale_movements = list(
+            (
+                await db.execute(
+                    select(StockMovement).where(
+                        StockMovement.ref_order_id == order.id,
+                        StockMovement.type == MovementType.SALE,
+                    )
+                )
+            ).scalars()
+        )
 
         cancel_receipt = StockReceipt(
             store_id=store_id,
@@ -320,36 +385,127 @@ async def void_order(
             inv_item = await db.get(InventoryItem, mv.inventory_item_id)
             if inv_item:
                 inv_item.stock_on_hand = inv_item.stock_on_hand + mv.quantity
-                db.add(StockLot(
+                db.add(
+                    StockLot(
+                        store_id=store_id,
+                        receipt_id=cancel_receipt.id,
+                        inventory_item_id=mv.inventory_item_id,
+                        qty_received=mv.quantity,
+                        qty_remaining=mv.quantity,
+                        cost_per_unit=inv_item.cost_per_unit,
+                    )
+                )
+            db.add(
+                StockMovement(
                     store_id=store_id,
-                    receipt_id=cancel_receipt.id,
                     inventory_item_id=mv.inventory_item_id,
-                    qty_received=mv.quantity,
-                    qty_remaining=mv.quantity,
-                    cost_per_unit=inv_item.cost_per_unit,
-                ))
-            db.add(StockMovement(
-                store_id=store_id,
-                inventory_item_id=mv.inventory_item_id,
-                type=MovementType.ADJUST,
-                quantity=mv.quantity,
-                reason=f"VOID|Order #{order.order_number}",
-                ref_order_id=order.id,
-                created_by_id=user_id,
-            ))
+                    type=MovementType.ADJUST,
+                    quantity=mv.quantity,
+                    reason=f"VOID|Order #{order.order_number}",
+                    ref_order_id=order.id,
+                    created_by_id=user_id,
+                )
+            )
+
+        # If the order was already prepared, the ingredients were physically used.
+        # Reversing the sale above put them back into stock, so write them off as
+        # waste here — net inventory stays down and the loss is attributed to waste
+        # (visible in the wastage report) instead of a phantom sale.
+        if not req.restock:
+            from app.services.inventory import _encode_waste_reason
+
+            note = f"Canceled order #{order.order_number}"
+            if req.reason:
+                note = f"{note}: {req.reason}"
+            waste_reason = _encode_waste_reason(WastageReason.CANCELED, note)
+            for mv in sale_movements:
+                await _deduct_fifo(
+                    db,
+                    store_id=store_id,
+                    user_id=user_id,
+                    inventory_item_id=mv.inventory_item_id,
+                    total_qty=mv.quantity,
+                    ref_order_id=order.id,
+                    reason=waste_reason,
+                    movement_type=MovementType.WASTE,
+                )
 
         order.status = OrderStatus.VOID
         db.add(OrderVoidLog(order_id=order.id, voided_by_id=user_id, reason=req.reason))
 
         # Reverse membership points if applicable
         from app.services.membership import _reverse_points
+
         await _reverse_points(db, order=order, user_id=user_id)
 
-    await _publish_order_voided(pusher, order, user_id=user_id, reason=req.reason)
+    await _publish_order_voided(pusher, order, user_id=user_id, reason=req.reason, restock=req.restock)
+    return order
+
+
+async def set_order_date(
+    db: AsyncSession,
+    *,
+    store_id: str,
+    order_id: str,
+    req: SetOrderDateRequest,
+) -> Order:
+    """Backdate an order to a past day so it counts as a sale on that date.
+
+    Reports and the receipt-copies list group sales by ``created_at``, while
+    ``business_date`` drives the daily number + receipt number. To keep a
+    backdated sale fully consistent we move all four together: claim a fresh
+    ``daily_number`` for the target day, recompute ``receipt_no``, and shift
+    ``created_at`` (and the order's stock movements) to the new day, preserving
+    each record's original time-of-day.
+    """
+    new_date = req.business_date
+    if new_date > _business_date():
+        raise Unprocessable("Cannot set a future date")
+
+    async with db.begin():
+        order = await _load_order(db, store_id=store_id, order_id=order_id)
+        if order.status == OrderStatus.VOID:
+            raise Conflict("Cannot change the date of a voided order")
+        if order.business_date == new_date:
+            return order  # already on this day — nothing to do
+
+        # Atomically claim the next daily_number for the target store+day, the
+        # same way create_order does (serialized by the counter row lock).
+        counter_stmt = (
+            pg_insert(OrderDailyCounter)
+            .values(store_id=store_id, business_date=new_date, last_number=1)
+            .on_conflict_do_update(
+                index_elements=["store_id", "business_date"],
+                set_={"last_number": OrderDailyCounter.last_number + 1},
+            )
+            .returning(OrderDailyCounter.last_number)
+        )
+        new_daily = (await db.execute(counter_stmt)).scalar_one()
+
+        order.business_date = new_date
+        order.daily_number = new_daily
+        order.receipt_no = make_receipt_no(new_date, new_daily)
+        order.created_at = _shift_to_day(order.created_at, new_date)
+
+        # Move the order's stock movements too, so inventory/wastage reports
+        # (also grouped by created_at) attribute the usage to the backdated day.
+        movements = (
+            await db.execute(select(StockMovement).where(StockMovement.ref_order_id == order.id))
+        ).scalars()
+        for mv in movements:
+            mv.created_at = _shift_to_day(mv.created_at, new_date)
+
     return order
 
 
 # -- helpers ----------------------------------------------------------------
+
+
+def _shift_to_day(ts: datetime, new_date: _date) -> datetime:
+    """Return ``ts`` moved to ``new_date``, preserving its time-of-day in the
+    store timezone (Asia/Bangkok)."""
+    local = ts.astimezone(STORE_TZ)
+    return datetime.combine(new_date, local.timetz())
 
 
 async def _deduct_fifo(
@@ -362,21 +518,26 @@ async def _deduct_fifo(
     ref_order_id: str | None = None,
     order_number: int = 0,
     reason: str | None = None,
+    movement_type: MovementType = MovementType.SALE,
 ) -> None:
     inv_item = await db.get(InventoryItem, inventory_item_id)
     if not inv_item:
         return
 
     remaining = total_qty
-    lots = list((await db.execute(
-        select(StockLot)
-        .where(
-            StockLot.inventory_item_id == inventory_item_id,
-            StockLot.store_id == store_id,
-            StockLot.qty_remaining > 0,
-        )
-        .order_by(StockLot.created_at.asc())
-    )).scalars())
+    lots = list(
+        (
+            await db.execute(
+                select(StockLot)
+                .where(
+                    StockLot.inventory_item_id == inventory_item_id,
+                    StockLot.store_id == store_id,
+                    StockLot.qty_remaining > 0,
+                )
+                .order_by(StockLot.created_at.asc())
+            )
+        ).scalars()
+    )
 
     for lot in lots:
         if remaining <= 0:
@@ -397,21 +558,21 @@ async def _deduct_fifo(
             },
         )
 
-    db.add(StockMovement(
-        store_id=store_id,
-        inventory_item_id=inventory_item_id,
-        type=MovementType.SALE,
-        quantity=total_qty,
-        reason=reason or f"Order #{order_number}",
-        ref_order_id=ref_order_id,
-        created_by_id=user_id,
-    ))
+    db.add(
+        StockMovement(
+            store_id=store_id,
+            inventory_item_id=inventory_item_id,
+            type=movement_type,
+            quantity=total_qty,
+            reason=reason or f"Order #{order_number}",
+            ref_order_id=ref_order_id,
+            created_by_id=user_id,
+        )
+    )
 
 
 async def _load_order(db: AsyncSession, *, store_id: str, order_id: str) -> Order:
-    result = await db.execute(
-        select(Order).where(Order.id == order_id, Order.store_id == store_id)
-    )
+    result = await db.execute(select(Order).where(Order.id == order_id, Order.store_id == store_id))
     order = result.scalar_one_or_none()
     if not order:
         raise NotFound("Order not found")
@@ -419,9 +580,7 @@ async def _load_order(db: AsyncSession, *, store_id: str, order_id: str) -> Orde
 
 
 async def _find_by_idempotency(db: AsyncSession, *, store_id: str, key: str) -> Order | None:
-    result = await db.execute(
-        select(Order).where(Order.store_id == store_id, Order.idempotency_key == key)
-    )
+    result = await db.execute(select(Order).where(Order.store_id == store_id, Order.idempotency_key == key))
     return result.scalar_one_or_none()
 
 
@@ -441,17 +600,19 @@ async def _load_product(db: AsyncSession, *, store_id: str, product_id: str) -> 
 
 async def _load_modifiers(
     db: AsyncSession, *, modifier_ids: list[str]
-) -> tuple[list[Modifier], list[tuple[str, Decimal]]]:
+) -> tuple[list[Modifier], list[tuple[str, Decimal]], list[ModifierRecipeItem]]:
     if not modifier_ids:
-        return [], []
+        return [], [], []
     result = await db.execute(select(Modifier).where(Modifier.id.in_(modifier_ids)))
     modifiers = list(result.scalars())
     inv_deductions = [
-        (m.inventory_item_id, m.inventory_qty)
-        for m in modifiers
-        if m.inventory_item_id and m.inventory_qty
+        (m.inventory_item_id, m.inventory_qty) for m in modifiers if m.inventory_item_id and m.inventory_qty
     ]
-    return modifiers, inv_deductions
+    mri_result = await db.execute(
+        select(ModifierRecipeItem).where(ModifierRecipeItem.modifier_id.in_(modifier_ids))
+    )
+    mod_recipe_items = list(mri_result.scalars())
+    return modifiers, inv_deductions, mod_recipe_items
 
 
 async def _load_recipe(db: AsyncSession, *, product_id: str) -> list[RecipeItem]:
@@ -465,6 +626,9 @@ async def _order_to_read(db: AsyncSession, order: Order) -> OrderRead:
     return OrderRead(
         id=order.id,
         order_number=order.order_number,
+        daily_number=order.daily_number,
+        business_date=order.business_date,
+        receipt_no=order.receipt_no,
         store_id=order.store_id,
         customer_id=order.customer_id,
         status=order.status,
@@ -509,8 +673,7 @@ async def _publish_order_created(pusher: PusherClient, order: Order, line_data: 
                 "status": order.status.value,
                 "channel": order.channel.value,
                 "items": [
-                    {"product_name": ld["product_name"], "quantity": ld["quantity"]}
-                    for ld in line_data
+                    {"product_name": ld["product_name"], "quantity": ld["quantity"]} for ld in line_data
                 ],
             },
         )
@@ -533,12 +696,14 @@ async def _publish_status_changed(pusher: PusherClient, order: Order, *, previou
         logger.warning("pusher.status_changed.failed", extra={"order_id": order.id})
 
 
-async def _publish_order_voided(pusher: PusherClient, order: Order, *, user_id: str, reason: str | None) -> None:
+async def _publish_order_voided(
+    pusher: PusherClient, order: Order, *, user_id: str, reason: str | None, restock: bool = True
+) -> None:
     try:
         await pusher.publish(
             f"kds-store-{order.store_id}",
             "order.voided",
-            {"order_id": order.id, "voided_by": user_id, "reason": reason},
+            {"order_id": order.id, "voided_by": user_id, "reason": reason, "restock": restock},
         )
     except Exception:
         logger.warning("pusher.order_voided.failed", extra={"order_id": order.id})

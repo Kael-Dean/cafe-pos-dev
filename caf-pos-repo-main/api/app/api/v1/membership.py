@@ -7,6 +7,7 @@ from app.schemas.membership import (
     AdjustPointsRequest,
     LookupRequest,
     LookupResponse,
+    MemberOrdersPage,
     MemberRead,
     MembersPage,
     ProgramRead,
@@ -101,6 +102,24 @@ async def list_members(
 )
 async def get_member(account_id: str, user: StoreUser, db: DbSession) -> MemberRead:
     return await svc.get_member(db, store_id=user.store_id, account_id=account_id)
+
+
+@router.get(
+    "/members/{account_id}/orders",
+    response_model=MemberOrdersPage,
+    operation_id="membership_get_member_orders",
+    dependencies=[Depends(_MANAGER_PLUS)],
+)
+async def get_member_orders(
+    account_id: str,
+    user: StoreUser,
+    db: DbSession,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> MemberOrdersPage:
+    return await svc.get_member_orders(
+        db, store_id=user.store_id, account_id=account_id, page=page, limit=limit
+    )
 
 
 @router.post(

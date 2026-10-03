@@ -3,7 +3,11 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from app.deps import DbSession, StoreUser
-from app.schemas.pre_orders import ShoppingListItemCreate, ShoppingListItemRead
+from app.schemas.pre_orders import (
+    ShoppingListItemCreate,
+    ShoppingListItemRead,
+    ShoppingListItemUpdate,
+)
 from app.services import shopping_list as svc
 
 router = APIRouter(prefix="/shopping-list", tags=["shopping-list"])
@@ -31,6 +35,17 @@ async def add_to_shopping_list(
     )
     status_code = 201 if created else 200
     return JSONResponse(content=jsonable_encoder(item), status_code=status_code)
+
+
+@router.patch("/{item_id}", response_model=ShoppingListItemRead,
+              summary="Set buy-amount override for a shopping list item",
+              operation_id="shopping_list_update")
+async def update_shopping_list_item(
+    item_id: str, payload: ShoppingListItemUpdate, user: StoreUser, db: DbSession
+) -> ShoppingListItemRead:
+    return await svc.update_shopping_list_item(
+        db, store_id=user.store_id, item_id=item_id, quantity=payload.quantity
+    )
 
 
 @router.delete("/{item_id}", status_code=204,

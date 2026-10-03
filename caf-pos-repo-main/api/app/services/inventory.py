@@ -85,6 +85,23 @@ async def update_item(
 ) -> InventoryItem:
     async with db.begin():
         item = await _load_item(db, store_id=store_id, item_id=item_id)
+        if payload.name is not None and payload.name != item.name:
+            clash = await db.execute(
+                select(InventoryItem.id).where(
+                    InventoryItem.store_id == store_id,
+                    InventoryItem.name == payload.name,
+                    InventoryItem.id != item_id,
+                )
+            )
+            if clash.scalar_one_or_none():
+                raise Conflict("An inventory item with this name already exists")
+            item.name = payload.name
+        if payload.unit is not None:
+            item.unit = payload.unit
+        if payload.unit_size is not None:
+            item.unit_size = payload.unit_size
+        if payload.unit_price is not None:
+            item.unit_price = payload.unit_price
         if payload.par_level is not None:
             item.par_level = payload.par_level
         if payload.cost_per_unit is not None:

@@ -3,7 +3,7 @@ from datetime import date, datetime, time
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.enums import LeaveStatus, LeaveType, Role, StaffPosition, TaskStatus
+from app.enums import LeaveStatus, LeaveType, PaymentMethod, Role, StaffPosition, TaskStatus
 
 
 class StaffRead(BaseModel):
@@ -95,9 +95,43 @@ class CashSessionCreate(BaseModel):
     notes: str | None = Field(None, max_length=500)
 
 
-class CashSessionClose(BaseModel):
-    cash_close: decimal.Decimal = Field(ge=0, decimal_places=2)
-    notes: str | None = Field(None, max_length=500)
+class PaymentGroupConfig(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    methods: list[PaymentMethod] = Field(min_length=1)
+
+
+class ReconciliationEntryCreate(BaseModel):
+    group_name: str = Field(min_length=1, max_length=100)
+    actual_amount: decimal.Decimal = Field(ge=0, decimal_places=2)
+    notes: str | None = Field(None, max_length=1000)
+
+
+class CashSessionClosePayload(BaseModel):
+    entries: list[ReconciliationEntryCreate] = Field(min_length=1)
+
+
+class SessionPaymentEntryRead(BaseModel):
+    id: str
+    session_id: str
+    group_name: str
+    methods: list[str]
+    system_total: decimal.Decimal
+    actual_amount: decimal.Decimal
+    variance: decimal.Decimal
+    notes: str | None
+
+
+class SessionGroupSummary(BaseModel):
+    name: str
+    methods: list[str]
+    system_total: decimal.Decimal
+
+
+class SessionSummaryRead(BaseModel):
+    session_id: str
+    period_from: datetime
+    period_to: datetime
+    groups: list[SessionGroupSummary]
 
 
 class CashSessionRead(BaseModel):
@@ -112,6 +146,10 @@ class CashSessionRead(BaseModel):
     notes: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class CashSessionDetailRead(CashSessionRead):
+    entries: list[SessionPaymentEntryRead]
 
 
 class TaskRead(BaseModel):

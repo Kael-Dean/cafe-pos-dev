@@ -21,3 +21,6 @@ class Customer(Base, TimestampMixin):
     email: Mapped[str | None] = mapped_column(String(120), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sales_id: Mapped[str | None] = mapped_column(
+        String(24), ForeignKey("salespeople.id", ondelete="SET NULL"), nullable=True, index=True
+    )

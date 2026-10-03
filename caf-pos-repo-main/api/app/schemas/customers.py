@@ -44,6 +44,8 @@ class CustomerRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     recent_orders: list[OrderSummary] = []
+    sales_id: str | None = None
+    sales_name: str | None = None
 
 
 class CustomersPage(BaseModel):

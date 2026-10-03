@@ -118,7 +118,12 @@ class IngredientSummary(BaseModel):
 
 class ShoppingListItemCreate(BaseModel):
     inventory_item_id: str
+    quantity: Decimal | None = Field(None, ge=0)
     note: str | None = Field(None, max_length=255)
+
+
+class ShoppingListItemUpdate(BaseModel):
+    quantity: Decimal | None = Field(None, ge=0)
 
 
 class ShoppingListItemRead(_Cfg):
@@ -126,6 +131,8 @@ class ShoppingListItemRead(_Cfg):
     inventory_item_id: str
     inventory_item_name: str
     unit: str
+    quantity: Decimal | None
+    suggested_qty: Decimal
     note: str | None
     added_by_id: str
     created_at: datetime

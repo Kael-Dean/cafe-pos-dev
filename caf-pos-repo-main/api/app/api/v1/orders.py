@@ -10,6 +10,7 @@ from app.schemas.orders import (
     OrdersPage,
     PayOrderRequest,
     PromptPayQRResponse,
+    SetOrderDateRequest,
     UpdateStatusRequest,
     VoidOrderRequest,
 )
@@ -118,7 +119,7 @@ async def update_status(
     response_model=OrderRead,
     summary="Void order — reverses stock deductions and writes void log",
     operation_id="orders_void",
-    dependencies=[Depends(_MANAGER_PLUS)],
+    dependencies=[Depends(_BARISTA_PLUS)],
 )
 async def void_order(
     order_id: str,
@@ -130,6 +131,23 @@ async def void_order(
     order = await svc.void_order(
         db, pusher, store_id=user.store_id, order_id=order_id, user_id=user.id, req=payload
     )
+    return await svc.get_order(db, store_id=user.store_id, order_id=order.id)
+
+
+@router.patch(
+    "/{order_id}/date",
+    response_model=OrderRead,
+    summary="Backdate an order — recomputes daily no., receipt no. + shifts created_at",
+    operation_id="orders_set_date",
+    dependencies=[Depends(_BARISTA_PLUS)],
+)
+async def set_order_date(
+    order_id: str,
+    payload: SetOrderDateRequest,
+    user: StoreUser,
+    db: DbSession,
+) -> OrderRead:
+    order = await svc.set_order_date(db, store_id=user.store_id, order_id=order_id, req=payload)
     return await svc.get_order(db, store_id=user.store_id, order_id=order.id)
 
 

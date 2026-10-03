@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import Boolean, ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -30,5 +30,6 @@ class Store(Base, TimestampMixin):
     vat_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     vat_rate: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False, default=Decimal("0.0700"))
     promptpay_id: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    payment_groups: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     tenant: Mapped[Tenant] = relationship(back_populates="stores")

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import Conflict, NotFound
 from app.models import Customer
 from app.models.orders import Order
+from app.models.sales import Salesperson
 from app.schemas.customers import (
     CreateCustomerRequest,
     CustomerRead,
@@ -64,7 +65,18 @@ async def get_customer(db: AsyncSession, *, store_id: str, customer_id: str) -> 
     recent_rows = list((await db.execute(orders_stmt)).scalars())
     recent_orders = [OrderSummary.model_validate(o) for o in recent_rows]
 
-    return CustomerRead.model_validate({**customer.__dict__, "recent_orders": recent_orders})
+    sales_name: str | None = None
+    if customer.sales_id:
+        sp_row = (
+            (await db.execute(select(Salesperson).where(Salesperson.id == customer.sales_id)))
+            .scalars()
+            .first()
+        )
+        sales_name = sp_row.name if sp_row else None
+
+    return CustomerRead.model_validate(
+        {**customer.__dict__, "recent_orders": recent_orders, "sales_name": sales_name}
+    )
 
 
 async def create_customer(
@@ -119,6 +131,29 @@ async def delete_customer(db: AsyncSession, *, store_id: str, customer_id: str) 
     async with db.begin():
         customer = await _load_customer(db, store_id=store_id, customer_id=customer_id)
         customer.is_active = False
+
+
+async def assign_sales(
+    db: AsyncSession,
+    *,
+    store_id: str,
+    customer_id: str,
+    sales_id: str | None,
+) -> CustomerRead:
+    from app.services.salespeople import get_salesperson
+
+    sales_name: str | None = None
+    async with db.begin():
+        customer = await _load_customer(db, store_id=store_id, customer_id=customer_id)
+        if sales_id is not None:
+            sp = await get_salesperson(db, store_id=store_id, sales_id=sales_id)
+            customer.sales_id = sp.id
+            sales_name = sp.name
+        else:
+            customer.sales_id = None
+
+    await db.refresh(customer)
+    return CustomerRead.model_validate({**customer.__dict__, "recent_orders": [], "sales_name": sales_name})
 
 
 async def _load_customer(db: AsyncSession, *, store_id: str, customer_id: str) -> Customer:

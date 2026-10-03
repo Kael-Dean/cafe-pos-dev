@@ -2,6 +2,7 @@ import decimal
 from datetime import date, datetime, time
 
 from sqlalchemy import (
+    JSON,
     Date,
     DateTime,
     ForeignKey,
@@ -124,3 +125,25 @@ class StaffTask(Base, TimestampMixin):
         default=TaskStatus.TODO,
     )
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
+class SessionPaymentEntry(Base, TimestampMixin):
+    __tablename__ = "session_payment_entries"
+    __table_args__ = (
+        Index("ix_spe_session_id", "session_id"),
+        Index("ix_spe_store_id", "store_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(24), primary_key=True, default=new_cuid)
+    session_id: Mapped[str] = mapped_column(
+        String(24), ForeignKey("cash_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    store_id: Mapped[str] = mapped_column(
+        String(24), ForeignKey("stores.id", ondelete="CASCADE"), nullable=False
+    )
+    group_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    methods: Mapped[list] = mapped_column(JSON, nullable=False)
+    system_total: Mapped[decimal.Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    actual_amount: Mapped[decimal.Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    variance: Mapped[decimal.Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)

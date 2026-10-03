@@ -1,6 +1,6 @@
 import logging
 import math
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -96,12 +96,22 @@ async def list_pre_orders(
     *,
     store_id: str,
     status: PreOrderStatus | None = None,
+    due_date_from: date | None = None,
+    due_date_to: date | None = None,
     page: int = 1,
     limit: int = _DEFAULT_PAGE,
 ) -> PreOrdersPage:
     if limit <= 0 or limit > _MAX_PAGE:
         limit = _DEFAULT_PAGE
     offset = (max(page, 1) - 1) * limit
+
+    filters = [PreOrder.store_id == store_id]
+    if status:
+        filters.append(PreOrder.status == status)
+    if due_date_from:
+        filters.append(PreOrder.due_date >= due_date_from)
+    if due_date_to:
+        filters.append(PreOrder.due_date <= due_date_to)
 
     item_count_subq = (
         select(PreOrderItem.pre_order_id, func.count(PreOrderItem.id).label("cnt"))
@@ -111,19 +121,12 @@ async def list_pre_orders(
     stmt = (
         select(PreOrder, func.coalesce(item_count_subq.c.cnt, 0).label("item_count"))
         .outerjoin(item_count_subq, item_count_subq.c.pre_order_id == PreOrder.id)
-        .where(PreOrder.store_id == store_id)
+        .where(*filters)
         .order_by(PreOrder.due_date.asc())
     )
-    if status:
-        stmt = stmt.where(PreOrder.status == status)
-
     total_stmt = select(func.count()).select_from(
-        select(PreOrder).where(PreOrder.store_id == store_id).subquery()
+        select(PreOrder).where(*filters).subquery()
     )
-    if status:
-        total_stmt = select(func.count()).select_from(
-            select(PreOrder).where(PreOrder.store_id == store_id, PreOrder.status == status).subquery()
-        )
 
     total = (await db.execute(total_stmt)).scalar_one()
     rows = list((await db.execute(stmt.offset(offset).limit(limit))).all())
@@ -503,12 +506,12 @@ def _require_pending(pre_order: PreOrder) -> None:
         raise Unprocessable("PRE_ORDER_NOT_PENDING")
 
 
-async def _aggregate_ingredients(
-    db: AsyncSession, *, pre_order_id: str
-) -> dict[str, Decimal]:
+# Columns selected by the ingredient-aggregation queries below, in order. Both the
+# per-pre-order and store-wide variants share the same shape so they can feed
+# _process_ingredient_rows.
+def _ingredient_select():
     FinishedGoodsItem = aliased(InventoryItem)
-
-    rows = list((await db.execute(
+    stmt = (
         select(
             PreOrderItem.quantity.label("poi_qty"),
             PreOrderItem.fulfillment_mode,
@@ -521,9 +524,11 @@ async def _aggregate_ingredients(
         .join(RecipeItem, RecipeItem.product_id == PreOrderItem.product_id)
         .join(Product, Product.id == PreOrderItem.product_id)
         .outerjoin(FinishedGoodsItem, FinishedGoodsItem.id == Product.finished_goods_item_id)
-        .where(PreOrderItem.pre_order_id == pre_order_id)
-    )).all())
+    )
+    return stmt
 
+
+def _process_ingredient_rows(rows) -> dict[str, Decimal]:
     aggregated: dict[str, Decimal] = {}
     for poi_qty, fulfillment_mode, inv_item_id, ri_qty, product_type, servings_per_batch, fg_stock in rows:
         if product_type == ProductType.PRODUCED and servings_per_batch > 0:
@@ -540,6 +545,31 @@ async def _aggregate_ingredients(
             ingredient_qty = ri_qty * Decimal(poi_qty)
         aggregated[inv_item_id] = aggregated.get(inv_item_id, Decimal("0")) + ingredient_qty
     return aggregated
+
+
+async def _aggregate_ingredients(
+    db: AsyncSession, *, pre_order_id: str
+) -> dict[str, Decimal]:
+    rows = list((await db.execute(
+        _ingredient_select().where(PreOrderItem.pre_order_id == pre_order_id)
+    )).all())
+    return _process_ingredient_rows(rows)
+
+
+async def aggregate_pending_demand(
+    db: AsyncSession, *, store_id: str
+) -> dict[str, Decimal]:
+    """Total quantity of each inventory item needed to fulfil all PENDING pre-orders
+    for a store, keyed by inventory_item_id. Gross of current stock on hand."""
+    rows = list((await db.execute(
+        _ingredient_select()
+        .join(PreOrder, PreOrder.id == PreOrderItem.pre_order_id)
+        .where(
+            PreOrder.store_id == store_id,
+            PreOrder.status == PreOrderStatus.PENDING,
+        )
+    )).all())
+    return _process_ingredient_rows(rows)
 
 
 async def _pre_order_to_read(db: AsyncSession, pre_order: PreOrder) -> PreOrderRead:

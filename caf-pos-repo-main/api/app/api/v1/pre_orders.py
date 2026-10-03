@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Query
 
 from app.deps import DbSession, StoreUser
@@ -30,10 +32,20 @@ async def list_pre_orders(
     user: StoreUser,
     db: DbSession,
     status: PreOrderStatus | None = Query(None),
+    due_date_from: date | None = Query(None, description="Filter: due date on or after this date (YYYY-MM-DD)"),
+    due_date_to: date | None = Query(None, description="Filter: due date on or before this date (YYYY-MM-DD)"),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
 ) -> PreOrdersPage:
-    return await svc.list_pre_orders(db, store_id=user.store_id, status=status, page=page, limit=limit)
+    return await svc.list_pre_orders(
+        db,
+        store_id=user.store_id,
+        status=status,
+        due_date_from=due_date_from,
+        due_date_to=due_date_to,
+        page=page,
+        limit=limit,
+    )
 
 
 @router.get("/{pre_order_id}", response_model=PreOrderRead,

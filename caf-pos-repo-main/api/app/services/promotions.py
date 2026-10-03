@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import HTTPException
@@ -27,7 +27,7 @@ async def get_promotion_baseline(
     product_id: str,
     days: int = 30,
 ) -> PromotionBaselineResponse:
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
 
     product_check = await db.execute(
         select(Product).where(Product.id == product_id, Product.store_id == store_id)
@@ -62,7 +62,7 @@ async def evaluate_promotions(
     store_id: str,
     items: list[EvaluateItemIn],
 ) -> EvaluateResponse:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     today = now.date()
     current_time = now.time()
     current_weekday = now.weekday()  # 0 = Monday
@@ -257,7 +257,7 @@ async def apply_promotions(
         if pid not in promos:
             raise HTTPException(status_code=422, detail=f"Promotion {pid} not found or not available")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     today = now.date()
     current_time = now.time()
     current_weekday = now.weekday()

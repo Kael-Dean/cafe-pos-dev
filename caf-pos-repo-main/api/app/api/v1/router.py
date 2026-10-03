@@ -11,11 +11,12 @@ from app.api.v1 import (
     orders,
     pre_orders,
     production,
-    promotions,
     products,
+    promotions,
     realtime,
     receipts,
     reports,
+    salespeople,
     shopping_list,
     stock_takes,
 )
@@ -38,3 +39,4 @@ api_router.include_router(production.router)
 api_router.include_router(promotions.router)
 api_router.include_router(stock_takes.router)
 api_router.include_router(membership.router)
+api_router.include_router(salespeople.router)

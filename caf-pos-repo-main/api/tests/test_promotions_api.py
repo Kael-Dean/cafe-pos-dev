@@ -1,11 +1,14 @@
 import secrets
+from datetime import UTC
 from decimal import Decimal
 
 import pytest
 
 from tests.factories import make_order_direct, make_order_item, make_product
 
-uid = lambda: secrets.token_hex(4)
+
+def uid() -> str:
+    return secrets.token_hex(4)
 
 
 @pytest.mark.asyncio
@@ -172,8 +175,8 @@ async def test_list_promotions_active_filter(db, store_a):
 
 @pytest.mark.asyncio
 async def test_delete_promotion(db, store_a):
-    from app.enums import PromotionScope, PromotionType
     from app.core.errors import NotFound
+    from app.enums import PromotionScope, PromotionType
     from app.schemas.promotions import PromotionCreate
     from app.services import promotions as svc
 
@@ -251,7 +254,7 @@ async def test_http_delete_promotion_returns_204(client, db, store_a, manager_a)
 @pytest.mark.asyncio
 async def test_evaluate_percent_off_order_scope(db, store_a):
     from app.enums import PromotionScope, PromotionType
-    from app.schemas.promotions import EvaluateItemIn, EvaluateRequest, PromotionCreate
+    from app.schemas.promotions import EvaluateItemIn, PromotionCreate
     from app.services import promotions as svc
 
     product = await make_product(db, store_id=store_a.id, name=f"eval-{uid()}", price=Decimal("100.00"))
@@ -272,6 +275,7 @@ async def test_evaluate_percent_off_order_scope(db, store_a):
 @pytest.mark.asyncio
 async def test_evaluate_happy_hour_in_window(db, store_a):
     from datetime import time
+
     from app.enums import PromotionScope, PromotionType
     from app.schemas.promotions import EvaluateItemIn, PromotionCreate
     from app.services import promotions as svc
@@ -297,6 +301,7 @@ async def test_evaluate_happy_hour_in_window(db, store_a):
 @pytest.mark.asyncio
 async def test_evaluate_happy_hour_expired(db, store_a):
     from datetime import date, time
+
     from app.enums import PromotionScope, PromotionType
     from app.schemas.promotions import EvaluateItemIn, PromotionCreate
     from app.services import promotions as svc
@@ -452,14 +457,14 @@ async def test_evaluate_percent_off_product_scope(db, store_a):
 @pytest.mark.asyncio
 async def test_evaluate_happy_hour_wrong_day(db, store_a):
     """HAPPY_HOUR is skipped when today's weekday is not in days_of_week_json."""
-    from datetime import time, timezone
+    from datetime import datetime, time
+
     from app.enums import PromotionScope, PromotionType
     from app.schemas.promotions import EvaluateItemIn, PromotionCreate
     from app.services import promotions as svc
-    from datetime import datetime
 
     product = await make_product(db, store_id=store_a.id, name=f"hh-day-{uid()}", price=Decimal("80.00"))
-    today_weekday = datetime.now(timezone.utc).weekday()
+    today_weekday = datetime.now(UTC).weekday()
     # Use only weekdays that are NOT today (always 6 out of 7, so never empty)
     excluded_days = [d for d in range(7) if d != today_weekday]
 
@@ -485,11 +490,12 @@ async def test_evaluate_happy_hour_wrong_day(db, store_a):
 
 @pytest.mark.asyncio
 async def test_order_with_promotion_applies_discount(client, db, store_a, manager_a, user_a):
+    from sqlalchemy import select
+
     from app.enums import PromotionScope, PromotionType
     from app.models.promotions import PromotionRedemption
     from app.schemas.promotions import PromotionCreate
     from app.services import promotions as svc
-    from sqlalchemy import select
 
     token = await _login(client, store_a.slug, "1111")  # barista
     product = await make_product(db, store_id=store_a.id, name=f"promo-order-{uid()}", price=Decimal("100.00"))
@@ -575,8 +581,7 @@ async def test_order_no_promotions_zero_discount(client, db, store_a, user_a):
 async def test_order_promotion_and_membership_stack(client, db, store_a, user_a, manager_a):
     """Promotion + membership rewards stack additively but never exceed subtotal."""
     from app.enums import EarnMode, PromotionScope, PromotionType, RewardScope, RewardType
-    from app.models.membership import MembershipAccount, MembershipProgram, PointTransaction
-    from app.enums import PointTxType
+    from app.models.membership import MembershipAccount, MembershipProgram
     from app.schemas.promotions import PromotionCreate
     from app.services import promotions as svc
     from tests.factories import make_customer

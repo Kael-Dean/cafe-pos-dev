@@ -135,7 +135,7 @@ async def delete_one(item_id: str, user: StoreUser, db: DbSession) -> None:
 @router.patch(
     "/{item_id}",
     response_model=InventoryItemRead,
-    summary="Update par_level and/or cost_per_unit (no movement created)",
+    summary="Edit ingredient fields — name, unit, unit_size, unit_price, par_level, cost_per_unit (no movement created)",
     operation_id="inventory_update",
     dependencies=[Depends(_MANAGER_PLUS)],
 )

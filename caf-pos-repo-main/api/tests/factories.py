@@ -4,14 +4,16 @@ Re-exports the make_* helpers from conftest and adds make_customer and
 make_order_direct for modules that need those entities without going through
 the full service layer (e.g. report tests that just need seeded rows).
 """
+
 import secrets
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.enums import Channel, OrderStatus, ProductType
+from app.enums import Channel, OrderStatus, PaymentMethod, ProductType
 from app.models import Customer, Product
-from app.models.catalog import RecipeItem
+from app.models.catalog import Modifier, ModifierRecipeItem, RecipeItem
 from app.models.orders import Order, OrderItem
 from app.models.production import ProductionOrder
 
@@ -57,23 +59,36 @@ async def make_order_direct(
     subtotal: Decimal | None = None,
     status: OrderStatus = OrderStatus.PAID,
     channel: Channel = Channel.DINE_IN,
+    payment_method: PaymentMethod | None = None,
     customer_id: str | None = None,
     idempotency_key: str | None = None,
+    business_date: date | None = None,
 ) -> Order:
     """Insert an Order row directly, bypassing the service layer.
 
     Useful for seeding report tests where BOM logic and Pusher events are
     not relevant to what's being tested.
     """
+    from app.services.orders import make_receipt_no
+
+    bdate = business_date or date.today()
+    # Use a large random daily_number to avoid collisions with service-created orders (1..N)
+    daily_number = int(secrets.token_hex(3), 16) + 10000
+    receipt_no = make_receipt_no(bdate, daily_number)
+
     order = Order(
         store_id=store_id,
         created_by_id=created_by_id,
         status=status,
         channel=channel,
+        payment_method=payment_method,
         customer_id=customer_id,
         idempotency_key=idempotency_key or secrets.token_hex(8),
         subtotal=subtotal if subtotal is not None else total,
         total=total,
+        business_date=bdate,
+        daily_number=daily_number,
+        receipt_no=receipt_no,
     )
     db.add(order)
     await db.commit()
@@ -158,6 +173,38 @@ async def make_production_order(
         batches_count=batches_count,
         notes=notes,
     )
-    return await svc.create_production_order(
-        db, store_id=store_id, user_id=produced_by, payload=payload
+    return await svc.create_production_order(db, store_id=store_id, user_id=produced_by, payload=payload)
+
+
+async def make_modifier(
+    db: AsyncSession,
+    *,
+    group_id: str,
+    name: str = "Option",
+    price_delta: Decimal = Decimal("0"),
+) -> Modifier:
+    modifier = Modifier(group_id=group_id, name=name, price_delta=price_delta)
+    db.add(modifier)
+    await db.commit()
+    await db.refresh(modifier)
+    return modifier
+
+
+async def make_modifier_recipe_item(
+    db: AsyncSession,
+    *,
+    modifier_id: str,
+    inventory_item_id: str,
+    quantity: Decimal = Decimal("5.000"),
+    mode: str = "override",
+) -> ModifierRecipeItem:
+    mri = ModifierRecipeItem(
+        modifier_id=modifier_id,
+        inventory_item_id=inventory_item_id,
+        quantity=quantity,
+        mode=mode,
     )
+    db.add(mri)
+    await db.commit()
+    await db.refresh(mri)
+    return mri

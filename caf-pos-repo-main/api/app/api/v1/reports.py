@@ -10,6 +10,7 @@ from app.schemas.reports import (
     CogsReportRead,
     DashboardTodayRead,
     LowStockReportRead,
+    SalespersonKpiReportRead,
     SalesReportRead,
     WastageReportRead,
 )
@@ -42,7 +43,9 @@ async def get_sales_report(
     to: datetime = Query(),
     granularity: Literal["day", "hour", "product", "category", "payment_method"] = Query(default="day"),
 ) -> SalesReportRead:
-    return await svc.get_sales_report(db=db, store_id=user.store_id, from_=from_, to=to, granularity=granularity)
+    return await svc.get_sales_report(
+        db=db, store_id=user.store_id, from_=from_, to=to, granularity=granularity
+    )
 
 
 @router.get(
@@ -99,3 +102,18 @@ async def get_cashier_shifts_report(
     to: datetime = Query(),
 ) -> CashierShiftsReportRead:
     return await svc.get_cashier_shifts_report(db=db, store_id=user.store_id, from_=from_, to=to)
+
+
+@router.get(
+    "/reports/salesperson-kpi",
+    response_model=SalespersonKpiReportRead,
+    operation_id="reports_salesperson_kpi",
+    dependencies=[Depends(_MANAGER_PLUS)],
+)
+async def get_salesperson_kpi_report(
+    user: StoreUser,
+    db: DbSession,
+    from_: datetime = Query(alias="from"),
+    to: datetime = Query(),
+) -> SalespersonKpiReportRead:
+    return await svc.get_salesperson_kpi_report(db=db, store_id=user.store_id, from_=from_, to=to)

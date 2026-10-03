@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
+from app.core.errors import Conflict
 from app.enums import MovementType, WastageReason
 from app.models import StockMovement
 from app.schemas.inventory import (
@@ -142,6 +143,51 @@ async def test_update_item_changes_par_and_cost(db, store_a, manager_a):
     )
     assert updated.par_level == Decimal("200.000")
     assert updated.cost_per_unit == Decimal("0.7500")
+
+
+async def test_update_item_edits_identity_fields(db, store_a, manager_a):
+    item = await make_item(
+        db, store_id=store_a.id, name="Old Beans", unit="g", unit_size=Decimal("1")
+    )
+    updated = await inv.update_item(
+        db,
+        store_id=store_a.id,
+        item_id=item.id,
+        payload=InventoryItemUpdate(
+            name="New Beans",
+            unit="kg",
+            unit_size=Decimal("1000"),
+            unit_price=Decimal("450.00"),
+        ),
+    )
+    assert updated.name == "New Beans"
+    assert updated.unit == "kg"
+    assert updated.unit_size == Decimal("1000.000")
+    assert updated.unit_price == Decimal("450.00")
+
+
+async def test_update_item_rename_to_existing_name_conflicts(db, store_a, manager_a):
+    await make_item(db, store_id=store_a.id, name="Milk")
+    item = await make_item(db, store_id=store_a.id, name="Sugar")
+    with pytest.raises(Conflict):
+        await inv.update_item(
+            db,
+            store_id=store_a.id,
+            item_id=item.id,
+            payload=InventoryItemUpdate(name="Milk"),
+        )
+
+
+async def test_update_item_rename_to_same_name_is_noop(db, store_a, manager_a):
+    item = await make_item(db, store_id=store_a.id, name="Cocoa")
+    updated = await inv.update_item(
+        db,
+        store_id=store_a.id,
+        item_id=item.id,
+        payload=InventoryItemUpdate(name="Cocoa", par_level=Decimal("5")),
+    )
+    assert updated.name == "Cocoa"
+    assert updated.par_level == Decimal("5.000")
 
 
 async def test_movements_pagination(db, store_a, manager_a):

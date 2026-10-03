@@ -20,8 +20,8 @@ class MovementType(enum.StrEnum):
     ADJUST = "ADJUST"
     TRANSFER_IN = "TRANSFER_IN"
     TRANSFER_OUT = "TRANSFER_OUT"
-    PRODUCTION_USE = "PRODUCTION_USE"   # raw ingredients consumed in a production run
-    PRODUCTION = "PRODUCTION"           # finished goods added by a production run
+    PRODUCTION_USE = "PRODUCTION_USE"  # raw ingredients consumed in a production run
+    PRODUCTION = "PRODUCTION"  # finished goods added by a production run
 
 
 class WastageReason(enum.StrEnum):
@@ -29,6 +29,7 @@ class WastageReason(enum.StrEnum):
     SPILLED = "SPILLED"
     TRIAL = "TRIAL"
     DAMAGED = "DAMAGED"
+    CANCELED = "CANCELED"  # system-set on order-cancel write-offs (not user-selectable)
     OTHER = "OTHER"
 
 
@@ -100,45 +101,45 @@ class StaffPosition(enum.StrEnum):
 
 
 class EarnMode(enum.StrEnum):
-    PER_RECEIPT = "PER_RECEIPT"   # 1 point per paid order
-    PER_BAHT    = "PER_BAHT"      # 1 point per N baht (N = baht_per_point)
-    PER_ITEM    = "PER_ITEM"      # 1 point per item quantity across all lines
+    PER_RECEIPT = "PER_RECEIPT"  # 1 point per paid order
+    PER_BAHT = "PER_BAHT"  # 1 point per N baht (N = baht_per_point)
+    PER_ITEM = "PER_ITEM"  # 1 point per item quantity across all lines
 
 
 class RewardType(enum.StrEnum):
-    DISCOUNT_FIXED   = "DISCOUNT_FIXED"    # N baht off total
+    DISCOUNT_FIXED = "DISCOUNT_FIXED"  # N baht off total
     DISCOUNT_PERCENT = "DISCOUNT_PERCENT"  # N% off total
-    FREE_ITEM        = "FREE_ITEM"         # one eligible item at 0 baht
+    FREE_ITEM = "FREE_ITEM"  # one eligible item at 0 baht
 
 
 class RewardScope(enum.StrEnum):
-    ALL               = "ALL"
-    CATEGORY          = "CATEGORY"
+    ALL = "ALL"
+    CATEGORY = "CATEGORY"
     SPECIFIC_PRODUCTS = "SPECIFIC_PRODUCTS"
 
 
 class PointTxType(enum.StrEnum):
-    EARN   = "EARN"
+    EARN = "EARN"
     REDEEM = "REDEEM"
     ADJUST = "ADJUST"
     EXPIRE = "EXPIRE"
 
 
 class MembershipTier(enum.StrEnum):
-    NONE   = "NONE"
+    NONE = "NONE"
     BRONZE = "BRONZE"
     SILVER = "SILVER"
-    GOLD   = "GOLD"
+    GOLD = "GOLD"
 
 
 class PromotionType(enum.StrEnum):
-    PERCENT_OFF    = "PERCENT_OFF"
-    COMBO_BUNDLE   = "COMBO_BUNDLE"
+    PERCENT_OFF = "PERCENT_OFF"
+    COMBO_BUNDLE = "COMBO_BUNDLE"
     COMBO_QUANTITY = "COMBO_QUANTITY"
-    HAPPY_HOUR     = "HAPPY_HOUR"
+    HAPPY_HOUR = "HAPPY_HOUR"
 
 
 class PromotionScope(enum.StrEnum):
-    ORDER    = "ORDER"
+    ORDER = "ORDER"
     CATEGORY = "CATEGORY"
-    PRODUCT  = "PRODUCT"
+    PRODUCT = "PRODUCT"

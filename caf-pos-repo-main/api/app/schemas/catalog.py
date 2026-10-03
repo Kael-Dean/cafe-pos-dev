@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -116,6 +117,23 @@ class RecipeBulkReplace(BaseModel):
     items: list[RecipeItemInput]
 
 
+class ModifierRecipeItemRead(_ORM):
+    id: str
+    inventory_item_id: str
+    quantity: Decimal
+    mode: str
+
+
+class ModifierRecipeItemInput(BaseModel):
+    inventory_item_id: str
+    quantity: Decimal = Field(ge=Decimal("-999999.999"), le=Decimal("999999.999"))
+    mode: Literal["override", "delta"] = "override"
+
+
+class ModifierRecipeItemsBulkReplace(BaseModel):
+    items: list[ModifierRecipeItemInput]
+
+
 class ProductModifierGroupsReplace(BaseModel):
     # Ordered list — index becomes sort_order.
     modifier_group_ids: list[str]
@@ -127,6 +145,7 @@ class ProductRead(_ORM):
     category_id: str | None
     name: str
     description: str | None
+    image_url: str | None
     price: Decimal
     is_active: bool
     product_type: ProductType
@@ -159,6 +178,26 @@ class ProductUpdate(BaseModel):
     is_active: bool | None = None
     product_type: ProductType | None = None
     servings_per_batch: int | None = Field(None, ge=1)
+
+
+# ---------------------------------------------------------------------------
+# Product images (Cloudflare R2 presigned upload)
+# ---------------------------------------------------------------------------
+
+
+class ImageUploadRequest(BaseModel):
+    content_type: str = Field(description="MIME type, e.g. image/jpeg | image/png | image/webp")
+
+
+class ImageUploadResponse(BaseModel):
+    upload_url: str = Field(description="PUT raw bytes here; send the same Content-Type header")
+    key: str = Field(description="Object key — pass back to the confirm endpoint")
+    public_url: str = Field(description="Final served URL, set as image_url once upload succeeds")
+    expires_in: int = Field(description="Seconds the upload_url stays valid")
+
+
+class ImageConfirm(BaseModel):
+    key: str = Field(description="The key returned by the upload-url endpoint")
 
 
 # ---------------------------------------------------------------------------

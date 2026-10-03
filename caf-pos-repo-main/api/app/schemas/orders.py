@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -35,6 +35,13 @@ class UpdateStatusRequest(BaseModel):
 
 class VoidOrderRequest(BaseModel):
     reason: str | None = None
+    restock: bool = True  # False = order already prepared → write ingredients off as waste
+
+
+class SetOrderDateRequest(BaseModel):
+    """Backdate an order to a past calendar day (for keying in past sales)."""
+
+    business_date: date
 
 
 class OrderItemRead(BaseModel):
@@ -55,6 +62,9 @@ class OrderRead(BaseModel):
 
     id: str
     order_number: int
+    daily_number: int
+    business_date: date
+    receipt_no: str
     store_id: str
     customer_id: str | None
     status: OrderStatus
@@ -82,6 +92,9 @@ class OrdersPage(BaseModel):
 class PromptPayQRResponse(BaseModel):
     order_id: str
     order_number: int
+    daily_number: int
+    business_date: date
+    receipt_no: str
     amount: Decimal
     payload: str
     qr_image_base64: str

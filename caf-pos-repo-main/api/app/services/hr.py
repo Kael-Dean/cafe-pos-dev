@@ -1,22 +1,30 @@
 import logging
 from datetime import UTC, datetime
 from datetime import date as date_type
+from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import Conflict, Forbidden, NotFound
+from app.core.errors import Conflict, Forbidden, NotFound, Unprocessable
 from app.core.security import hash_pin
-from app.enums import LeaveStatus, TaskStatus
-from app.models.hr import CashSession, Leave, ShiftAssignment, StaffTask
+from app.enums import LeaveStatus, OrderStatus, PaymentMethod, TaskStatus
+from app.models.hr import CashSession, Leave, SessionPaymentEntry, ShiftAssignment, StaffTask
 from app.models.identity import User
+from app.models.orders import Order
+from app.models.tenancy import Store
 from app.schemas.hr import (
-    CashSessionClose,
+    CashSessionClosePayload,
     CashSessionCreate,
+    CashSessionDetailRead,
     CashSessionRead,
     LeaveCreate,
     LeaveRead,
     LeaveReview,
+    PaymentGroupConfig,
+    SessionGroupSummary,
+    SessionPaymentEntryRead,
+    SessionSummaryRead,
     ShiftCreate,
     ShiftRead,
     StaffCreate,
@@ -27,6 +35,11 @@ from app.schemas.hr import (
 )
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_PAYMENT_GROUPS: list[dict] = [
+    {"name": "Cash", "methods": ["CASH"]},
+    {"name": "Online", "methods": ["CARD", "QR_PROMPTPAY", "LINE_PAY", "TRUEMONEY", "OTHER"]},
+]
 
 
 # ---------------------------------------------------------------------------
@@ -213,6 +226,86 @@ async def create_shift(
 
 
 # ---------------------------------------------------------------------------
+# Payment group config
+# ---------------------------------------------------------------------------
+
+
+async def get_payment_groups(db: AsyncSession, *, store_id: str) -> list[dict]:
+    result = await db.execute(select(Store).where(Store.id == store_id))
+    store = result.scalar_one_or_none()
+    if store is None or store.payment_groups is None:
+        return [{"name": g["name"], "methods": list(g["methods"])} for g in _DEFAULT_PAYMENT_GROUPS]
+    return store.payment_groups
+
+
+async def set_payment_groups(
+    db: AsyncSession, *, store_id: str, groups: list[PaymentGroupConfig]
+) -> list[dict]:
+    all_methods = {m.value for m in PaymentMethod}
+    seen: set[str] = set()
+    for g in groups:
+        for m in g.methods:
+            method_val = m.value
+            if method_val in seen:
+                raise Unprocessable(f"Payment method '{method_val}' appears in more than one group")
+            seen.add(method_val)
+    missing = all_methods - seen
+    if missing:
+        raise Unprocessable(f"Payment methods not assigned to any group: {sorted(missing)}")
+
+    groups_data = [{"name": g.name, "methods": [m.value for m in g.methods]} for g in groups]
+
+    async with db.begin():
+        result = await db.execute(select(Store).where(Store.id == store_id))
+        store = result.scalar_one()
+        store.payment_groups = groups_data
+
+    return groups_data
+
+
+async def get_session_summary(
+    db: AsyncSession, *, store_id: str, session_id: str
+) -> SessionSummaryRead:
+    async with db.begin():
+        session = await _load_cash_session(db, store_id=store_id, session_id=session_id)
+        end_time = session.closed_at or datetime.now(UTC)
+
+        stmt = (
+            select(Order.payment_method, func.sum(Order.total).label("total"))
+            .where(
+                Order.store_id == store_id,
+                Order.status == OrderStatus.PAID,
+                Order.created_at >= session.opened_at,
+                Order.created_at <= end_time,
+            )
+            .group_by(Order.payment_method)
+        )
+        rows = (await db.execute(stmt)).all()
+        method_totals: dict[str, Decimal] = {
+            row.payment_method.value: Decimal(str(row.total))
+            for row in rows
+            if row.payment_method is not None
+        }
+
+        groups = await get_payment_groups(db, store_id=store_id)
+        group_summaries = [
+            SessionGroupSummary(
+                name=g["name"],
+                methods=g["methods"],
+                system_total=sum(method_totals.get(m, Decimal("0")) for m in g["methods"]),
+            )
+            for g in groups
+        ]
+
+        return SessionSummaryRead(
+            session_id=session_id,
+            period_from=session.opened_at,
+            period_to=end_time,
+            groups=group_summaries,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Cash sessions
 # ---------------------------------------------------------------------------
 
@@ -255,10 +348,16 @@ async def open_cash_session(
     opened_by_id: str,
     payload: CashSessionCreate,
 ) -> CashSessionRead:
-    existing = await get_open_cash_session(db, store_id=store_id)
-    if existing:
-        raise Conflict("A cash session is already open for this store")
     async with db.begin():
+        result = await db.execute(
+            select(CashSession).where(
+                CashSession.store_id == store_id,
+                CashSession.closed_at.is_(None),
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            raise Conflict("A cash session is already open for this store")
         session = CashSession(
             store_id=store_id,
             opened_by_id=opened_by_id,
@@ -276,18 +375,103 @@ async def close_cash_session(
     store_id: str,
     session_id: str,
     closed_by_id: str,
-    payload: CashSessionClose,
-) -> CashSessionRead:
+    payload: CashSessionClosePayload,
+) -> CashSessionDetailRead:
     async with db.begin():
         session = await _load_cash_session(db, store_id=store_id, session_id=session_id)
         if session.closed_at is not None:
             raise Conflict("Cash session is already closed")
-        session.cash_close = payload.cash_close
+
+        end_time = datetime.now(UTC)
+
+        stmt = (
+            select(Order.payment_method, func.sum(Order.total).label("total"))
+            .where(
+                Order.store_id == store_id,
+                Order.status == OrderStatus.PAID,
+                Order.created_at >= session.opened_at,
+                Order.created_at <= end_time,
+            )
+            .group_by(Order.payment_method)
+        )
+        rows = (await db.execute(stmt)).all()
+        method_totals: dict[str, Decimal] = {
+            row.payment_method.value: Decimal(str(row.total))
+            for row in rows
+            if row.payment_method is not None
+        }
+
+        groups = await get_payment_groups(db, store_id=store_id)
+        configured_names = {g["name"] for g in groups}
+        submitted_names = {e.group_name for e in payload.entries}
+
+        missing = configured_names - submitted_names
+        if missing:
+            raise Unprocessable(f"Missing reconciliation entries for groups: {sorted(missing)}")
+        unknown = submitted_names - configured_names
+        if unknown:
+            raise Unprocessable(f"Unknown group names submitted: {sorted(unknown)}")
+
+        group_method_map = {g["name"]: g["methods"] for g in groups}
+        spe_objects: list[SessionPaymentEntry] = []
+
+        for entry in payload.entries:
+            methods = group_method_map[entry.group_name]
+            system_total = sum(method_totals.get(m, Decimal("0")) for m in methods)
+            variance = entry.actual_amount - system_total
+            spe = SessionPaymentEntry(
+                session_id=session.id,
+                store_id=store_id,
+                group_name=entry.group_name,
+                methods=methods,
+                system_total=system_total,
+                actual_amount=entry.actual_amount,
+                variance=variance,
+                notes=entry.notes,
+            )
+            db.add(spe)
+            spe_objects.append(spe)
+
         session.closed_by_id = closed_by_id
-        session.closed_at = datetime.now(UTC)
-        if payload.notes:
-            session.notes = payload.notes
-    return _cash_session_to_read(session)
+        session.closed_at = end_time
+
+        # Flush so DB-side defaults (id, timestamps) are populated before we read them,
+        # then refresh to pull updated_at and other DB-generated fields back into ORM objects.
+        await db.flush()
+        await db.refresh(session)
+
+        entry_reads: list[SessionPaymentEntryRead] = [
+            SessionPaymentEntryRead(
+                id=spe.id,
+                session_id=spe.session_id,
+                group_name=spe.group_name,
+                methods=spe.methods,
+                system_total=spe.system_total,
+                actual_amount=spe.actual_amount,
+                variance=spe.variance,
+                notes=spe.notes,
+            )
+            for spe in spe_objects
+        ]
+
+        # Snapshot scalar fields while still inside the async transaction context
+        # to avoid lazy-load outside greenlet after commit expires ORM attributes.
+        detail = CashSessionDetailRead(
+            id=session.id,
+            store_id=session.store_id,
+            opened_by_id=session.opened_by_id,
+            closed_by_id=session.closed_by_id,
+            cash_open=session.cash_open,
+            cash_close=session.cash_close,
+            opened_at=session.opened_at,
+            closed_at=session.closed_at,
+            notes=session.notes,
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+            entries=entry_reads,
+        )
+
+    return detail
 
 
 # ---------------------------------------------------------------------------

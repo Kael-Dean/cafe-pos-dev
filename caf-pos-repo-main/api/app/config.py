@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     PUSHER_SECRET: str | None = None
     PUSHER_CLUSTER: str = "ap1"
 
+    # Cloudflare R2 (S3-compatible) — product images. Leave blank to disable uploads.
+    R2_ACCOUNT_ID: str | None = None
+    R2_ACCESS_KEY_ID: str | None = None
+    R2_SECRET_ACCESS_KEY: str | None = None
+    R2_BUCKET: str | None = None
+    # Public base for serving objects, e.g. https://pub-xxxx.r2.dev or https://img.yourcafe.com
+    R2_PUBLIC_BASE_URL: str | None = None
+
     CORS_ORIGINS: str = "http://localhost:3000"
 
     LOG_LEVEL: str = "INFO"
