@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import Icon from '../icons';
-import { useToast, Tag, ModalShell } from '../app-common';
+import { Tag, ModalShell } from '../app-common';
+import { useToast } from '../ui/toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useI18n } from '@/lib/i18n';
 import { useKDSOrders, useUpdateOrderStatus, useVoidOrder, type KDSTicket } from '@/hooks/use-orders';

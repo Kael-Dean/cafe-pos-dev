@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import Icon from '../icons';
-import { useToast, Tag, Select, ModalShell } from '../app-common';
+import { Tag, Select, ModalShell } from '../app-common';
+import { useToast } from '../ui/toast';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { useCountUp } from '@/lib/motion';
 import { SkeletonTable } from '@/components/ui/skeleton';

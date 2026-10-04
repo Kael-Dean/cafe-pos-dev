@@ -2,7 +2,8 @@
 
 import { useState, useMemo } from 'react';
 import Icon from '../icons';
-import { useToast, Tag, Select } from '../app-common';
+import { Tag, Select } from '../app-common';
+import { useToast } from '../ui/toast';
 import { useFadeRise } from '@/lib/motion';
 import { Skeleton, SkeletonCard } from '@/components/ui/skeleton';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';

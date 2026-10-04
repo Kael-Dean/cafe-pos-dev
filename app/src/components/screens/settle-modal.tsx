@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from '../icons';
-import { Select, useToast } from '../app-common';
+import { Select } from '../app-common';
+import { useToast } from '../ui/toast';
 import { usePayOrder } from '@/hooks/use-orders';
 import {
   useCloseTableSession, type PaymentMethod, type SessionCloseResult, type TableSession,

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../icons';
-import { Select, useToast, NumberInput } from '../app-common';
+import { Select, NumberInput } from '../app-common';
+import { useToast } from '../ui/toast';
 import { useModalA11y } from '@/hooks/use-modal-a11y';
 import { useLookupMember } from '@/hooks/use-membership';
 import { useRatePlans, type RatePlan } from '@/hooks/use-rate-plans';

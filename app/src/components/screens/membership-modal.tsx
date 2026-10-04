@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import Icon from '../icons';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useToast, Tag } from '../app-common';
+import { Tag } from '../app-common';
+import { useToast } from '../ui/toast';
 import {
   useLookupMember,
   useRegisterMember,

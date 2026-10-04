@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, createContext, useContext, useRef, useEffect, Fragment } from 'react';
+import { useState, useCallback, useRef, useEffect, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from './icons';
 import { useCurrentUser } from '@/hooks/use-current-user';
@@ -14,45 +14,10 @@ import { useI18n } from '@/lib/i18n';
 import { useCountUp } from '@/lib/motion/use-count-up';
 
 // ---------- Toast ----------
-type ToastKind = 'success' | 'warning' | 'danger' | 'info';
-interface Toast { id: string; kind?: ToastKind; title: string; msg?: string; duration?: number; }
-type PushToast = (t: Omit<Toast, 'id'>) => void;
-
-const ToastCtx = createContext<PushToast | null>(null);
-export const useToast = () => useContext(ToastCtx) as PushToast;
-
-export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const push = useCallback((t: Omit<Toast, 'id'>) => {
-    const id = Math.random().toString(36).slice(2);
-    setToasts((cur) => [...cur, { id, ...t }]);
-    setTimeout(() => setToasts((cur) => cur.filter((x) => x.id !== id)), t.duration || 3200);
-  }, []);
-  return (
-    <ToastCtx.Provider value={push}>
-      {children}
-      {/* Persistent live region: it exists before any toast mounts, so screen
-          readers announce children added to it. Polite for the common case;
-          danger toasts opt into role="alert" (assertive) for errors. */}
-      <div className="toast-stack" role="region" aria-label="การแจ้งเตือน" aria-live="polite" aria-relevant="additions">
-        {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.kind || ''}`} role={t.kind === 'danger' ? 'alert' : 'status'}>
-            <Icon name={t.kind === 'success' ? 'success' : t.kind === 'warning' ? 'warning' : t.kind === 'danger' ? 'warning' : 'info'} size={20} className="t-icon" color={
-              t.kind === 'success' ? 'var(--color-success)' :
-              t.kind === 'warning' ? 'var(--color-warning)' :
-              t.kind === 'danger'  ? 'var(--color-danger)'  :
-              'var(--color-info)'
-            } />
-            <div style={{flex: 1}}>
-              <div className="t-title">{t.title}</div>
-              {t.msg && <div className="t-msg">{t.msg}</div>}
-            </div>
-          </div>
-        ))}
-      </div>
-    </ToastCtx.Provider>
-  );
-};
+// Moved to the design system: import { useToast, ToastProvider } from '@/components/ui/toast'.
+// Re-exported here (same API) only so an import that was missed keeps working.
+/** @deprecated import from '@/components/ui/toast' */
+export { useToast, ToastProvider } from './ui/toast';
 
 // ---------- Sidebar ----------
 // Labels are resolved at render time from the active language (`t.nav[id]`); the array
@@ -253,12 +218,16 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
     // + menu sheet) is the nav, so the sidebar is hidden to avoid a duplicate nav
     // landmark and to free the full width for content on phones.
     <div className="hidden md:block" style={{ position: 'relative', flexShrink: 0 }}>
+    {/* Collapse/expand is an INSTANT layout change (64 ↔ 240px): animating width /
+        padding re-laid-out the whole POS grid every frame (impeccable
+        layout-transition, UI-SPEC §8). The labels still fade in (.sb-fade, opacity
+        only) and the toggle chevron rotates (transform), so the change reads as
+        deliberate without moving layout per frame. */}
     <aside className="sidebar-surface" style={{
       width: collapsed ? 64 : 240,
       height: 'var(--app-h, 100dvh)',
       display: 'flex', flexDirection: 'column',
       borderRight: '1px solid var(--sb-border)',
-      transition: 'width var(--dur-slow) var(--ease-out)',
       overflow: 'hidden',
     }}>
       <div style={{
@@ -268,7 +237,6 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
         flexDirection: collapsed ? 'column' : 'row',
         alignItems: 'center',
         gap: collapsed ? 8 : 12,
-        transition: 'padding var(--dur-slow) var(--ease-out)',
       }}>
         <div style={{
           width: 36, height: 36, borderRadius: 10, flexShrink: 0,
@@ -302,7 +270,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
         )}
       </div>
 
-      <nav aria-label={t.sidebar.navLabel} style={{padding: collapsed ? '8px 8px' : '4px 8px 8px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', overflowX: 'hidden', transition: 'padding var(--dur-slow) var(--ease-out)'}}>
+      <nav aria-label={t.sidebar.navLabel} style={{padding: collapsed ? '8px 8px' : '4px 8px 8px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', overflowX: 'hidden'}}>
         {collapsed
           ? // Icon-only rail: no room for group headings, so show every item and
             // separate the groups with a hairline divider (none before the first).
@@ -351,7 +319,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
             })}
       </nav>
 
-      <div style={{ padding: collapsed ? '8px 8px' : '8px 12px', marginBottom: 4, transition: 'padding var(--dur-slow) var(--ease-out)' }}>
+      <div style={{ padding: collapsed ? '8px 8px' : '8px 12px', marginBottom: 4 }}>
         <div style={{
           padding: collapsed ? '8px 0' : 12,
           background: 'var(--sb-card-bg)',
@@ -359,7 +327,6 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
           display: 'flex', alignItems: 'center', gap: 10,
           justifyContent: collapsed ? 'center' : 'flex-start',
           marginBottom: 8,
-          transition: 'padding var(--dur-slow) var(--ease-out)',
         }}>
           <div style={{
             width: 32, height: 32, borderRadius: 999,

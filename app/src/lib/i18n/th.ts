@@ -37,6 +37,25 @@ export const th = {
     error: 'เกิดข้อผิดพลาด',
   },
 
+  // ── Design-system primitives (src/components/ui) — a11y names + shared verbs ──
+  ui: {
+    notifications: 'การแจ้งเตือน',
+    dismiss: 'ปิดการแจ้งเตือน',
+    undo: 'เลิกทำ',
+    clearSearch: 'ล้างคำค้น',
+    decrease: 'ลด',
+    increase: 'เพิ่ม',
+    remove: 'นำออก',
+    loading: 'กำลังดำเนินการ',
+    dragToClose: 'ลากลงเพื่อปิด',
+    keyBackspace: 'ลบตัวเลข',
+    keyClear: 'ล้าง',
+    keyEnter: 'ตกลง',
+    keyDecimal: 'จุดทศนิยม',
+    keyDoubleZero: 'ศูนย์สองตัว',
+    elapsedMinutes: (m: number) => `${m} นาที`,
+  },
+
   // ── Navigation (sidebar) — keyed by screen id ─────────────────────────────
   nav: {
     pos: 'หน้าขาย (POS)',

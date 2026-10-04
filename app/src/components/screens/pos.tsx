@@ -3,7 +3,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import Image from 'next/image';
 import Icon from '../icons';
-import { useToast, baht, Select, ModalShell } from '../app-common';
+import { baht, Select, ModalShell } from '../app-common';
+import { useToast } from '../ui/toast';
 import { useI18n } from '@/lib/i18n';
 import { useAllProducts, useCategories, type MenuItem } from '@/hooks/use-products';
 import { useBestSellerNames } from '@/hooks/use-best-sellers';

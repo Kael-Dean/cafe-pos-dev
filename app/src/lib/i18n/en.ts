@@ -33,6 +33,24 @@ export const en: Messages = {
     error: 'Something went wrong',
   },
 
+  ui: {
+    notifications: 'Notifications',
+    dismiss: 'Dismiss notification',
+    undo: 'Undo',
+    clearSearch: 'Clear search',
+    decrease: 'Decrease',
+    increase: 'Increase',
+    remove: 'Remove',
+    loading: 'Working',
+    dragToClose: 'Drag down to close',
+    keyBackspace: 'Delete digit',
+    keyClear: 'Clear',
+    keyEnter: 'Enter',
+    keyDecimal: 'Decimal point',
+    keyDoubleZero: 'Double zero',
+    elapsedMinutes: (m: number) => `${m} min`,
+  },
+
   nav: {
     pos: 'POS Terminal',
     kds: 'Kitchen (KDS)',

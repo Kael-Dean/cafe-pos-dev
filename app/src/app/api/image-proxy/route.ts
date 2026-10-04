@@ -43,7 +43,9 @@ export async function GET(req: NextRequest) {
 
   let upstream: Response;
   try {
-    upstream = await fetch(target.toString(), { redirect: 'follow' });
+    // Never follow redirects: a 3xx could point outside the R2 allowlist (SSRF).
+    // With 'manual' a redirect is not `ok`, so it is rejected just below.
+    upstream = await fetch(target.toString(), { redirect: 'manual' });
   } catch {
     return NextResponse.json({ error: 'fetch failed' }, { status: 502 });
   }

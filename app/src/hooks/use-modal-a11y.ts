@@ -12,12 +12,19 @@ import { useEffect, useRef, type RefObject } from 'react';
  * Shared canonical version of the hook that used to be copy-pasted per modal
  * file; import from '@/hooks/use-modal-a11y' instead of redeclaring it.
  */
+// Open dialogs, oldest first. Only the topmost one reacts to Escape / Tab, so a
+// confirm opened over a sheet closes alone instead of taking the sheet with it.
+const openStack: symbol[] = [];
+
 export function useModalA11y(onClose: () => void): RefObject<HTMLDivElement | null> {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
     const node = ref.current;
+    const token = Symbol('modal');
+    openStack.push(token);
+    const isTop = () => openStack[openStack.length - 1] === token;
 
     // Move focus into the dialog on open (first focusable, else the shell).
     const focusables = () =>
@@ -32,6 +39,7 @@ export function useModalA11y(onClose: () => void): RefObject<HTMLDivElement | nu
     focusables()[0]?.focus({ preventScroll: true });
 
     const onKey = (e: KeyboardEvent) => {
+      if (!isTop()) return;
       if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
       if (e.key !== 'Tab') return;
       const items = focusables();
@@ -44,6 +52,8 @@ export function useModalA11y(onClose: () => void): RefObject<HTMLDivElement | nu
 
     document.addEventListener('keydown', onKey);
     return () => {
+      const at = openStack.indexOf(token);
+      if (at >= 0) openStack.splice(at, 1);
       document.removeEventListener('keydown', onKey);
       opener?.focus?.({ preventScroll: true });
     };

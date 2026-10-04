@@ -9,9 +9,11 @@ const RAILWAY_API =
 // `*.r2.cloudflarestorage.com` endpoints, plus the configured public base
 // (R2_PUBLIC_URL) when a custom domain is used. Whitelisting these lets
 // next/image fetch + optimize the originals (resize to display size, serve
-// AVIF/WebP) instead of the browser pulling the full-resolution file.
+// WebP) instead of the browser pulling the full-resolution file.
+// Security (audit B1): `*.r2.dev` matches one label only (public buckets are
+// always `pub-<id>.r2.dev`). TODO: replace with the exact bucket host once known.
 const remotePatterns: NonNullable<NonNullable<NextConfig["images"]>["remotePatterns"]> = [
-  { protocol: "https", hostname: "**.r2.dev" },
+  { protocol: "https", hostname: "*.r2.dev" },
   { protocol: "https", hostname: "**.r2.cloudflarestorage.com" },
 ];
 const r2Base = process.env.R2_PUBLIC_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
@@ -26,8 +28,9 @@ if (r2Base) {
 const nextConfig: NextConfig = {
   images: {
     remotePatterns,
-    // AVIF first (≈20% smaller than WebP), WebP fallback for browsers without AVIF.
-    formats: ["image/avif", "image/webp"],
+    // WebP only. AVIF is disabled (audit B1): the Image Optimizer RCE advisory
+    // needs the AVIF path, and the remote host allowlist is still a wildcard.
+    formats: ["image/webp"],
   },
   async headers() {
     return [

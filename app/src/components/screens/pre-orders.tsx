@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Icon from '../icons';
-import { useToast, NumberInput, MasterDetail, ModalShell } from '../app-common';
+import { NumberInput, MasterDetail, ModalShell } from '../app-common';
+import { useToast } from '../ui/toast';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { useLookupMember, type AccountRead } from '@/hooks/use-membership';
 import {

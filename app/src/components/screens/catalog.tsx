@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useToast, Select, NumberInput, MasterDetail, ModalShell } from '../app-common';
+import { Select, NumberInput, MasterDetail, ModalShell } from '../app-common';
+import { useToast } from '../ui/toast';
 import { useFadeRise } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Icon from '../icons';
-import { useToast } from '../app-common';
+import { useToast } from '../ui/toast';
 import { useI18n } from '@/lib/i18n';
 import { useStagger } from '@/lib/motion';
 import { SkeletonTable } from '@/components/ui/skeleton';
