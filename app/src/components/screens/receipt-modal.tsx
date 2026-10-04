@@ -166,7 +166,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
           .receipt-print-root .receipt-paper { box-shadow: none !important; border: none !important; margin: 0 !important; border-radius: 0 !important; max-height: none !important; overflow: visible !important; }
           .receipt-print-root .receipt-edit-input { border: none !important; padding: 0 !important; background: transparent !important; }
         }
-        /* Phones (< 768px): tighter gutters, 44px controls, and a two-row footer —
+        /* Phones (< 768px): tighter gutters and a two-row footer —
            secondary actions on top, "close" + the primary print button at the thumb. */
         @media (max-width: 767px) {
           .receipt-print-root { padding: 12px !important; padding-top: calc(var(--top-inset) + 12px) !important; }
@@ -174,8 +174,7 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
           .receipt-bar { padding: 10px 12px 10px 16px !important; }
           .receipt-backdate { padding: 10px 16px !important; gap: 8px !important; }
           .receipt-backdate-label { flex: 1 0 100% !important; }
-          .receipt-date { flex: 1 1 0; min-width: 0; min-height: 44px !important; font-size: 16px !important; }
-          .receipt-date-save { min-height: 44px !important; }
+          .receipt-date { flex: 1 1 0; min-width: 0; }
           .receipt-scroll { padding: 12px !important; }
           .receipt-foot { padding: 10px 12px !important; }
           .receipt-foot > button { flex: 1 1 0; min-width: 0; justify-content: center; padding-left: 8px !important; padding-right: 8px !important; white-space: nowrap; }
@@ -229,16 +228,16 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
               <Icon name="printer" size={17} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>ใบเสร็จรับเงิน</div>
-              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
+              <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, lineHeight: 'var(--lh-tight)' }}>ใบเสร็จรับเงิน</div>
+              <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>
                 ออเดอร์ #{data.orderNumber} · {formatDate(shownDate)} {formatTime(shownDate)}
               </div>
             </div>
-            <button onClick={onClose} aria-label="ปิด" className="icon-btn hit-44" style={{
-              width: 30, height: 30, borderRadius: 6, display: 'grid', placeItems: 'center',
-              color: 'var(--color-text-secondary)',
+            {/* 48×48 visible hit (TOUCH-SPEC §3.6); negative margin keeps the bar height. */}
+            <button onClick={onClose} aria-label="ปิด" className="icon-btn tap-std tap-sq" style={{
+              margin: '-8px -8px -8px 0', borderRadius: 'var(--radius-md)', color: 'var(--color-text-secondary)',
             }}>
-              <Icon name="x" size={15} />
+              <Icon name="x" size={20} />
             </button>
           </div>
 
@@ -250,8 +249,8 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
               display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap',
             }}>
               <div className="receipt-backdate-label" style={{ flex: 1, minWidth: 120 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text)' }}>วันที่ใบเสร็จ</div>
-                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>แก้เพื่อคีย์ขายย้อนหลัง</div>
+                <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--color-text)' }}>วันที่ใบเสร็จ</div>
+                <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>แก้เพื่อคีย์ขายย้อนหลัง</div>
               </div>
               <input
                 type="date"
@@ -261,17 +260,17 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
                 onChange={e => setPickedDate(e.target.value)}
                 className="input-std receipt-date"
                 style={{
-                  padding: '8px var(--space-3)', minHeight: 40, borderRadius: 'var(--radius-md)', fontSize: 14,
-                  border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)',
+                  padding: '8px var(--space-3)', minHeight: 'var(--tap-std)', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-lg)',
+                  border: 'var(--hairline)', background: 'var(--color-surface)', color: 'var(--color-text)',
                 }}
               />
               <button
                 onClick={handleSaveDate}
                 disabled={!dateChanged || savingDate}
                 aria-busy={savingDate || undefined}
-                className="pressable receipt-date-save"
+                className="tap receipt-date-save"
                 style={{
-                  padding: '9px var(--space-4)', minHeight: 40, borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 700,
+                  padding: '0 var(--space-4)', minHeight: 'var(--tap-std)', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-body)', fontWeight: 700,
                   display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
                   background: (!dateChanged || savingDate) ? 'var(--color-border)' : 'var(--color-primary)',
                   color: (!dateChanged || savingDate) ? 'var(--color-text-muted)' : 'var(--color-text-inverse)',
@@ -279,8 +278,8 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
                 }}
               >
                 {savingDate
-                  ? <span className="spinner" aria-hidden style={{ width: 14, height: 14 }} />
-                  : <Icon name="check" size={14} />}
+                  ? <span className="spinner" aria-hidden style={{ width: 16, height: 16 }} />
+                  : <Icon name="check" size={16} />}
                 บันทึกวันที่
               </button>
             </div>
@@ -303,33 +302,33 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
             display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap', rowGap: 'var(--space-2)',
           }}>
             {onCancel && (
-              <button onClick={onCancel} disabled={isPrinting} className="icon-btn pressable" style={{
-                padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 13, minHeight: 44,
+              <button onClick={onCancel} disabled={isPrinting} className="icon-btn tap" style={{
+                padding: '0 var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-body)', fontWeight: 600, minHeight: 'var(--tap-std)',
                 border: '1px solid var(--color-danger)',
                 display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
-                color: 'var(--color-danger)', background: 'var(--color-danger-50)',
+                color: 'var(--color-danger-fg)', background: 'var(--color-danger-50)',
                 opacity: isPrinting ? 0.5 : 1,
               }}>
-                <Icon name="trash" size={14} /> ยกเลิกใบเสร็จ
+                <Icon name="trash" size={18} /> ยกเลิกใบเสร็จ
               </button>
             )}
-            <button onClick={handleBrowserPrint} disabled={isPrinting} className="icon-btn pressable" style={{
-              padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 13, minHeight: 44,
-              border: '1px solid var(--color-border)',
+            <button onClick={handleBrowserPrint} disabled={isPrinting} className="icon-btn tap" style={{
+              padding: '0 var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-body)', minHeight: 'var(--tap-std)',
+              border: 'var(--hairline)',
               display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
               color: 'var(--color-text-secondary)',
               opacity: isPrinting ? 0.5 : 1,
             }}>
-              <Icon name="print" size={14} /> บันทึก PDF
+              <Icon name="print" size={18} /> บันทึก PDF
             </button>
             {/* spacer on tablet / desktop; a full-width line break on phones */}
             <div className="receipt-foot-break" style={{ flex: 1 }} />
-            <button onClick={onClose} className="icon-btn receipt-foot-close" style={{
-              padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 13, minHeight: 44,
+            <button onClick={onClose} className="icon-btn tap receipt-foot-close" style={{
+              padding: '0 var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-body)', minHeight: 'var(--tap-std)',
               color: 'var(--color-text-secondary)',
             }}>ปิด</button>
-            <button onClick={handlePrint} disabled={isPrinting} aria-busy={isPrinting || undefined} className="pressable receipt-foot-print" style={{
-              padding: '9px 22px', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 700, minHeight: 44,
+            <button onClick={handlePrint} disabled={isPrinting} aria-busy={isPrinting || undefined} className="tap receipt-foot-print" style={{
+              padding: '0 22px', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-lg)', fontWeight: 700, minHeight: 'var(--tap-lg)',
               background: isPrinting ? 'var(--color-surface-2)' : 'var(--color-primary)',
               color: isPrinting ? 'var(--color-text-secondary)' : 'var(--color-text-inverse)',
               display: 'flex', alignItems: 'center', gap: 'var(--space-2)',

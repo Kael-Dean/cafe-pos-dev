@@ -82,6 +82,16 @@ function mapDetail(p: ProductDetailRead): ProductDetail {
 }
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
+/** Query key + fetcher for one product's detail — shared by useProductDetail and
+ *  the POS, which prefetches / reads it imperatively (queryClient) for instant adds. */
+export const productDetailQuery = (productId: string) => ({
+  queryKey: ['product-detail', productId] as const,
+  queryFn: async (): Promise<ProductDetail> => {
+    const data = await api.get<ProductDetailRead>(`/api/v1/products/${productId}`);
+    return mapDetail(data);
+  },
+});
+
 export function useProductDetail(productId: string | null) {
   return useQuery<ProductDetail>({
     queryKey: ['product-detail', productId],

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import Icon from '../icons';
-import { useToast, Tag, ModalShell } from '../app-common';
+import { useToast, ModalShell } from '../app-common';
+import { haptic } from '@/lib/haptics';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useI18n } from '@/lib/i18n';
 import { useKDSOrders, useUpdateOrderStatus, useVoidOrder, type KDSTicket } from '@/hooks/use-orders';
@@ -10,6 +11,7 @@ import { ApiError } from '@/lib/api-client';
 import { useAllProducts } from '@/hooks/use-products';
 import { useModifierGroups } from '@/hooks/use-modifier-groups';
 import { useCookingSteps } from '@/hooks/use-cooking-steps';
+import { UndoBar, useUndo, type UndoEntry } from '@/components/ui/undo-bar';
 import CancelOrderModal from './cancel-order-modal';
 
 const STATUS_RANK: Record<KDSTicket['status'], number> = { new: 0, progress: 1, ready: 2 };
@@ -43,6 +45,13 @@ export default function KDS() {
   // Recent local actions: stale poll results must not revert a status we already
   // advanced (or resurrect a ticket we already delivered) while the PATCH is in flight
   const recentActions = useRef(new Map<string, { status: 'progress' | 'ready' | 'done'; at: number }>());
+  // Bump with undo (TOUCH-SPEC §3.5). The API has no reverse transition
+  // (PAID → IN_PROGRESS is one-way), so the IN_PROGRESS request is HELD while the
+  // undo bar shows and sent when the bar goes away (timeout, X, replaced by the
+  // next bump, the ticket's next action, or leaving the screen). Undo then never
+  // touches the server: it just drops the held request and restores the card.
+  const undo = useUndo();
+  const pendingBump = useRef<{ ticket: KDSTicket; entry: UndoEntry | null } | null>(null);
   const [leaving, setLeaving] = useState<Set<string>>(new Set());
   const leaveTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => () => { leaveTimers.current.forEach(clearTimeout); }, []);
@@ -52,7 +61,8 @@ export default function KDS() {
   const mergeServer = (tickets: KDSTicket[]) => {
     const now = Date.now();
     const recent = recentActions.current;
-    for (const [id, a] of recent) if (now - a.at > 30000) recent.delete(id);
+    // (a held bump keeps its entry however long the bar is held open)
+    for (const [id, a] of recent) if (now - a.at > 30000 && id !== pendingBump.current?.ticket.orderId) recent.delete(id);
     return tickets
       .filter(t => recent.get(t.orderId)?.status !== 'done')
       .map(t => {
@@ -73,12 +83,15 @@ export default function KDS() {
     setLocalTickets(mergeServer(serverTickets));
   }
 
-  // Entrance policy: only tickets that appear AFTER the first render slide in. On
-  // open, the screen's own fade already covers the cards; replaying a per-card
-  // .rise-in once the screen-switch fade releases its suppression read as a blink.
-  // Now initial cards just fade with the screen, and only new orders animate.
+  // Entrance policy: only orders that arrive AFTER the board first showed real data
+  // slide in. The baseline is taken from the first server list, not the first
+  // render: on a cold open the first render has no data yet, and seeding the
+  // baseline then (empty) made every ticket of the first list "new", so the whole
+  // board rose in whenever that list landed after the ~400ms screen-switch
+  // suppression. Until the first list arrives knownIds stays null (= nothing is new).
   const knownIds = useRef<Set<string> | null>(null);
   useEffect(() => {
+    if (!serverTickets) return;
     knownIds.current = new Set(localTickets.map(t => t.orderId));
   });
   const isNew = (orderId: string) => knownIds.current !== null && !knownIds.current.has(orderId);
@@ -99,28 +112,72 @@ export default function KDS() {
     return !!a && Date.now() - a.at < ACTION_COOLDOWN_MS;
   };
 
+  // Send the held bump now (resolves false if the request failed).
+  const commitBump = (): Promise<boolean> => {
+    const p = pendingBump.current;
+    if (!p) return Promise.resolve(true);
+    pendingBump.current = null;
+    const { orderId } = p.ticket;
+    recentActions.current.set(orderId, { status: 'progress', at: Date.now() });
+    return updateStatus.mutateAsync({ orderId, status: 'IN_PROGRESS' })
+      .then(() => true, () => {
+        recentActions.current.delete(orderId);
+        toast({ kind: 'danger', title: t.kds.statusUpdateFailed });
+        return false;
+      });
+  };
+  // A ticket is about to take its next action: send its held bump first (in order)
+  // and clear the bar, since undoing would now contradict that action.
+  const settleBumpFor = (orderId: string): Promise<boolean> => {
+    if (pendingBump.current?.ticket.orderId !== orderId) return Promise.resolve(true);
+    undo.dismiss();
+    return commitBump();
+  };
+
+  // The bar went away without "เลิกทำ" (timeout / X) → send the held bump.
+  useEffect(() => {
+    const p = pendingBump.current;
+    if (!p) return;
+    if (p.entry === null) { p.entry = undo.entry; return; }
+    if (undo.entry !== p.entry) void commitBump();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undo.entry]);
+  // Leaving the screen with a bump still held → send it (never lose a bump).
+  const commitOnLeave = useRef(commitBump);
+  useEffect(() => { commitOnLeave.current = commitBump; });
+  useEffect(() => () => { void commitOnLeave.current(); }, []);
+
   const onBump = (ticket: KDSTicket) => {
     if (tooSoon(ticket.orderId)) return;
+    haptic();
+    // One bar at a time: a newer bump sends the previous held one.
+    void commitBump();
     recentActions.current.set(ticket.orderId, { status: 'progress', at: Date.now() });
     setLocalTickets(cur => cur.map(t => t.orderId === ticket.orderId ? { ...t, status: 'progress' as const } : t));
-    updateStatus.mutateAsync({ orderId: ticket.orderId, status: 'IN_PROGRESS' })
-      .catch(() => {
-        recentActions.current.delete(ticket.orderId);
-        toast({ kind: 'danger', title: t.kds.statusUpdateFailed });
-      });
-    toast({ kind: 'info', title: t.kds.orderStarted(ticket.id), duration: 1600 });
+    pendingBump.current = { ticket, entry: null };
+    undo.push(t.kds.orderStarted(ticket.id), () => {
+      if (pendingBump.current?.ticket.orderId !== ticket.orderId) return;
+      pendingBump.current = null;
+      recentActions.current.delete(ticket.orderId);
+      setLocalTickets(cur => cur.map(x => x.orderId === ticket.orderId && x.status === 'progress' ? { ...x, status: 'new' as const } : x));
+    });
   };
 
   const onDone = (ticket: KDSTicket) => {
     if (tooSoon(ticket.orderId)) return;
+    haptic();
     if (ticket.status === 'progress') {
+      const bumped = settleBumpFor(ticket.orderId);
       recentActions.current.set(ticket.orderId, { status: 'ready', at: Date.now() });
       setLocalTickets(cur => cur.map(t => t.orderId === ticket.orderId ? { ...t, status: 'ready' as const } : t));
-      updateStatus.mutateAsync({ orderId: ticket.orderId, status: 'READY' })
-        .catch(() => {
-          recentActions.current.delete(ticket.orderId);
-          toast({ kind: 'danger', title: t.kds.statusUpdateFailed });
-        });
+      bumped.then(ok => {
+        if (!ok) return; // bump failed (already toasted); the next poll restores the card
+        return updateStatus.mutateAsync({ orderId: ticket.orderId, status: 'READY' })
+          .catch(() => {
+            recentActions.current.delete(ticket.orderId);
+            toast({ kind: 'danger', title: t.kds.statusUpdateFailed });
+          });
+      });
     } else {
       recentActions.current.set(ticket.orderId, { status: 'done', at: Date.now() });
       // Card holds its grid slot (faded, unclickable) briefly before removal so a
@@ -148,6 +205,12 @@ export default function KDS() {
     const ticket = cancelTarget;
     if (!ticket) return;
     const { orderId } = ticket;
+    // A held bump for this ticket is simply dropped: the order is still PAID on the
+    // server, which VOID accepts, and sending IN_PROGRESS after the void would 409.
+    if (pendingBump.current?.ticket.orderId === orderId) {
+      pendingBump.current = null;
+      undo.dismiss();
+    }
     recentActions.current.set(orderId, { status: 'done', at: Date.now() });
     setLeaving(cur => new Set(cur).add(orderId));
     leaveTimers.current.push(setTimeout(() => {
@@ -185,18 +248,19 @@ export default function KDS() {
   return (
     <>
     <div className="surface-inverse" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <style>{KDS_PHONE_CSS}</style>
+      <style>{KDS_CSS}</style>
       <div className="kds-head" style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 24, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="kds-head-title">
-          <div className="kds-title" style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em' }}>{t.kds.title}</div>
-          <div className="kds-sub" style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>Sukhumvit 49 • {t.kds.station}</div>
+          <div className="kds-title" style={{ fontSize: 'var(--fs-h2)', fontWeight: 700, letterSpacing: '-0.01em' }}>{t.kds.title}</div>
+          {/* 0.78 white on espresso ≥ 7:1 (TOUCH-SPEC §3.7; was 0.55). */}
+          <div className="kds-sub" style={{ fontSize: 'var(--fs-sm)', color: KDS_SUB_INK }}>Sukhumvit 49 • {t.kds.station}</div>
         </div>
         <div className="kds-head-stats" style={{ flex: 1, display: 'flex', gap: 12 }}>
           <KDSStatChip label={t.kds.statNew} count={counts.new} color="var(--color-warning)" />
           <KDSStatChip label={t.kds.statProgress} count={counts.progress} color="var(--color-accent)" />
           <KDSStatChip label={t.kds.statReady} count={counts.ready} color="var(--color-success)" />
         </div>
-        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }} className="num">
+        <div style={{ fontSize: 'var(--fs-title)', fontWeight: 600, color: KDS_SUB_INK }} className="num">
           <Clock />
         </div>
       </div>
@@ -207,12 +271,12 @@ export default function KDS() {
              orders arrive). Built with white-on-dark fills because the KDS root is
              .surface-inverse — pinned dark in BOTH themes, so the global light
              skeleton sweep would be invisible here. */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-busy="true">
+          <div className={KDS_GRID} aria-busy="true">
             <span className="sr-only">{t.kds.loadingOrders}</span>
             {Array.from({ length: 6 }).map((_, i) => <TicketSkeleton key={i} />)}
           </div>
         ) : sorted.length === 0 ? (
-          <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 300, color: 'rgba(255,255,255,0.55)', textAlign: 'center' }}>
+          <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 300, color: KDS_SUB_INK, fontSize: 'var(--fs-body)', textAlign: 'center' }}>
             <div style={{
               width: 80, height: 80, borderRadius: 'var(--radius-pill)',
               background: 'rgba(92,138,90,0.18)', color: 'var(--color-success)',
@@ -224,7 +288,7 @@ export default function KDS() {
             <div>{t.kds.allClearHint}</div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className={KDS_GRID}>
             {sorted.map(t => (
               <OrderTicket
                 key={t.orderId}
@@ -243,6 +307,14 @@ export default function KDS() {
           </div>
         )}
       </div>
+      {/* Undo bar in its own footer row under the board (in flow, not overlaid), so
+          it never sits on top of a ticket's bump/cancel buttons; the tickets above
+          keep their positions, only the scroll viewport gets shorter. */}
+      {undo.entry && (
+        <div className="kds-undo" style={{ padding: '0 24px 16px', display: 'flex', justifyContent: 'center' }}>
+          <UndoBar undo={undo} duration={5000} inline style={{ width: '100%', maxWidth: 560 }} />
+        </div>
+      )}
     </div>
     {stepsModal && (
       <CookingStepsModal
@@ -274,11 +346,16 @@ const Clock = () => {
   return <span>{pad(now.getHours())}:{pad(now.getMinutes())}:{pad(now.getSeconds())}</span>;
 };
 
+/** Secondary text on the espresso KDS surface: ≥ 7:1, readable from the pass. */
+const KDS_SUB_INK = 'rgba(255,255,255,0.78)';
+/** 1 col phone · 2 tablet · 3 at ≥1280 · 4 at ≥1700 (TOUCH-SPEC §3.7). */
+const KDS_GRID = 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 min-[1700px]:grid-cols-4 gap-4';
+
 const KDSStatChip = ({ label, count, color }: { label: string; count: number; color: string }) => (
   <div className="kds-stat" style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-    <span style={{ width: 8, height: 8, borderRadius: 999, background: color }} />
-    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{label}</span>
-    <span className="num" style={{ fontSize: 16, fontWeight: 700, color }}>{count}</span>
+    <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: color }} />
+    <span style={{ fontSize: 'var(--fs-sm)', color: KDS_SUB_INK }}>{label}</span>
+    <span className="num" style={{ fontSize: 'var(--fs-h2)', lineHeight: 'var(--lh-tight)', fontWeight: 700, color }}>{count}</span>
   </div>
 );
 
@@ -296,27 +373,36 @@ const DarkBar = ({ w, h = 12, r = 'var(--radius-sm)' }: { w: number | string; h?
 const TicketSkeleton = () => (
   <div aria-hidden style={{
     minHeight: 120, borderRadius: 'var(--radius-lg)',
-    borderTop: '4px solid rgba(255,255,255,0.12)',
     background: 'rgba(255,255,255,0.04)',
     display: 'flex', flexDirection: 'column', overflow: 'hidden',
   }}>
-    <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-      <DarkBar w={40} h={26} r="var(--radius-md)" />
+    <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(255,255,255,0.04)' }}>
+      <DarkBar w={56} h={36} r="var(--radius-md)" />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <DarkBar w="55%" h={11} />
-        <DarkBar w={64} h={18} r="var(--radius-pill)" />
+        <DarkBar w="45%" h={14} />
+        <DarkBar w={72} h={18} />
       </div>
-      <DarkBar w={48} h={20} r="var(--radius-pill)" />
+      <DarkBar w={64} h={28} r="var(--radius-pill)" />
     </div>
-    <div style={{ padding: '12px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <DarkBar w="80%" h={15} />
-      <DarkBar w="60%" h={13} />
+    <div style={{ padding: '14px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <DarkBar w="80%" h={20} />
+      <DarkBar w="60%" h={16} />
     </div>
-    <div style={{ padding: 12, background: 'rgba(255,255,255,0.03)' }}>
-      <DarkBar w="100%" h={36} r="var(--radius-md)" />
+    <div style={{ padding: 12, display: 'flex', gap: 16, background: 'rgba(255,255,255,0.03)' }}>
+      <DarkBar w={120} h={48} r="var(--radius-md)" />
+      <div style={{ flex: 1 }}><DarkBar w="100%" h={64} r="var(--radius-md)" /></div>
     </div>
   </div>
 );
+
+/* Urgency lives in a tinted header band (TOUCH-SPEC §3.7), never a thick stripe.
+   The timer carries the tone in its ink, and red adds a warning glyph so the
+   state does not rest on colour alone. */
+const URGENCY_BAND = {
+  normal: { bg: 'var(--color-surface-2)', ink: 'var(--color-text-secondary)', icon: 'clock' },
+  yellow: { bg: 'var(--color-warning-50)', ink: 'var(--color-warning-fg)', icon: 'clock' },
+  red:    { bg: 'var(--color-danger-50)', ink: 'var(--color-danger-fg)', icon: 'warning' },
+} as const;
 
 const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, modGroup, onBump, onDone, onCancel, onStepsClick }: {
   ticket: KDSTicket;
@@ -332,7 +418,7 @@ const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, modGroup, onB
 }) => {
   const { t } = useI18n();
   const urgency = mins >= 10 ? 'red' : mins >= 5 ? 'yellow' : 'normal';
-  const accent = urgency === 'red' ? 'var(--color-danger)' : urgency === 'yellow' ? 'var(--color-warning)' : 'var(--color-accent)';
+  const band = URGENCY_BAND[urgency];
   const typeIconMap: Record<string, string> = { 'Dine-in': 'cake', 'Takeaway': 'cart', 'Delivery': 'park' };
   const statusStyle = {
     new:      { bg: 'var(--color-warning)', color: 'var(--color-on-accent)' },
@@ -345,40 +431,41 @@ const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, modGroup, onB
   return (
     /* .rise-in only for tickets that arrive after open (initial cards fade with the
        screen — no replay blink); .card-out holds the slot (faded) while delivering */
-    <div className={`surface-paper min-h-[120px]${animateIn ? ' rise-in' : ''}${leaving ? ' card-out' : ''}`} style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--color-border)' }}>
-        <div className="num" style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.01em' }}>#{ticket.queue}</div>
-        <div style={{ flex: 1 }}>
-          <div className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--color-text-secondary)' }}>
-            <Icon name={typeIconMap[ticket.type] || 'cart'} size={12} /> {typeLabel}
+    <div className={`surface-paper kds-ticket min-h-[120px]${animateIn ? ' rise-in' : ''}${leaving ? ' card-out' : ''}`} data-urgency={urgency} style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div className="kds-ticket-head" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, background: band.bg }}>
+        <div className="num" style={{ fontSize: 36, lineHeight: 1.1, fontWeight: 700, letterSpacing: '-0.01em' }}>#{ticket.queue}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Secondary grey nudged toward the ink: plain grey drops under AA on the tinted bands. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)', color: 'color-mix(in srgb, var(--color-text-secondary) 70%, var(--color-text))' }}>
+            <Icon name={typeIconMap[ticket.type] || 'cart'} size={16} /> {typeLabel}
           </div>
-          <Tag tone={urgency === 'red' ? 'danger' : urgency === 'yellow' ? 'warning' : 'accent'}>
-            <Icon name="clock" size={10} /> {t.kds.minutes(mins)}
-          </Tag>
+          <div className="num" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 18, fontWeight: 700, lineHeight: 1.3, color: band.ink }}>
+            <Icon name={band.icon} size={18} /> {t.kds.minutes(mins)}
+          </div>
         </div>
-        <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 999, background: statusStyle.bg, color: statusStyle.color }}>{statusLabel}</span>
+        <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, minHeight: 28, padding: '0 12px', display: 'inline-flex', alignItems: 'center', borderRadius: 999, background: statusStyle.bg, color: statusStyle.color, flexShrink: 0 }}>{statusLabel}</span>
       </div>
 
-      <div style={{ padding: '12px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ padding: '14px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {ticket.items.map((it, i) => (
           <div key={i}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div className="text-base" style={{ fontWeight: 600, lineHeight: 1.3 }}>{it.name}</div>
-                {nameToId.has(it.name) && (
-                  <button
-                    onClick={() => onStepsClick(nameToId.get(it.name)!, it.name)}
-                    title={t.kds.howTo}
-                    aria-label={t.kds.howToAria(it.name)}
-                    className="help-badge hit-44"
-                    style={{ width: 22, height: 22, minHeight: 22, borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}
-                  >?</button>
-                )}
-              </div>
-              <div className="num" style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-primary)' }}>×{it.qty}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0, fontSize: 20, fontWeight: 600, lineHeight: 1.3 }}>{it.name}</div>
+              {nameToId.has(it.name) && (
+                <button
+                  type="button"
+                  onClick={() => onStepsClick(nameToId.get(it.name)!, it.name)}
+                  aria-label={t.kds.howToAria(it.name)}
+                  className="help-badge kds-help tap"
+                >
+                  <Icon name="list" size={20} />
+                  <span className="kds-help-label" aria-hidden>{t.kds.howTo}</span>
+                </button>
+              )}
+              <div className="num" style={{ fontSize: 22, fontWeight: 700, minWidth: 40, textAlign: 'right', color: 'var(--color-primary)' }}>×{it.qty}</div>
             </div>
             {it.mods.length > 0 && (
-              <div className="text-sm" style={{ color: 'var(--color-text-secondary)', marginTop: 2, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 16, color: 'var(--color-text-secondary)', marginTop: 2, lineHeight: 1.5 }}>
                 {it.mods.map((m, k) => {
                   const isSpecial = m.name.startsWith('+') || m.name.includes('นมโอ๊ต') || m.name.includes('นมอัลมอนด์');
                   const group = modGroup.get(m.id);
@@ -395,33 +482,35 @@ const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, modGroup, onB
         ))}
       </div>
 
-      <div style={{ padding: 12, background: 'var(--color-surface-2)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* Action bar: cancel (48px ghost) on the LEFT, bump (64px) on the RIGHT, 16px
+          apart — a mis-tap aimed at the bump can't land on cancel, and cancel only
+          opens a confirm dialog (no direct void). TOUCH-SPEC §3.7 / §4. */}
+      <div className="kds-actions" style={{ padding: 12, background: 'var(--color-surface-2)', display: 'flex', alignItems: 'center', gap: 16 }}>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="btn btn-ghost tap-std kds-cancel"
+          style={{ flexShrink: 0, fontSize: 'var(--fs-body)', color: 'var(--color-danger-fg)' }}
+        >
+          <Icon name="trash" size={18} /> {t.kds.cancel}
+        </button>
         {ticket.status === 'new' && (
-          <button onClick={onBump} className="btn btn-primary min-h-[52px]" style={{ width: '100%', fontSize: 15 }}>
-            <Icon name="coffee" size={16} /> {t.kds.start}
+          <button type="button" onClick={onBump} className="btn btn-primary btn-xl kds-bump" style={BUMP}>
+            <Icon name="coffee" size={22} /> {t.kds.start}
           </button>
         )}
         {ticket.status === 'progress' && (
-          <button onClick={onDone} className="btn btn-accent min-h-[52px]" style={{ width: '100%', fontSize: 15 }}>
-            <Icon name="check" size={16} /> {t.kds.done}
+          <button type="button" onClick={onDone} className="btn btn-accent btn-xl kds-bump" style={BUMP}>
+            <Icon name="check" size={22} /> {t.kds.done}
           </button>
         )}
         {ticket.status === 'ready' && (
-          <button onClick={onDone} className="btn btn-primary min-h-[52px]" style={{ width: '100%', fontSize: 15, background: 'var(--color-success)', borderColor: 'var(--color-success)' }}>
-            <Icon name="check" size={16} /> {t.kds.deliver}
+          // Espresso ink on the sage fill (as the "พร้อมเสิร์ฟ" status tag): white
+          // would be ~4.1:1 at 17px, under AA for non-large text.
+          <button type="button" onClick={onDone} className="btn btn-xl kds-bump" style={{ ...BUMP, background: 'var(--color-success)', color: 'var(--color-on-accent)' }}>
+            <Icon name="check" size={22} /> {t.kds.deliver}
           </button>
         )}
-        {/* "ยกเลิก" — own row, compact + right-aligned so a mis-tap on the primary
-            action above is much harder. Click opens a confirm dialog (no direct void). */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            onClick={onCancel}
-            className="btn btn-ghost kds-cancel"
-            style={{ padding: '4px 10px', fontSize: 12, color: 'var(--color-danger-fg)' }}
-          >
-            <Icon name="trash" size={12} /> {t.kds.cancel}
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -459,8 +548,8 @@ const CookingStepsModal = ({ productId, productName, onClose }: {
           <div style={{ textAlign: 'center', padding: 32, color: 'var(--color-text-secondary)', fontSize: 14 }}>{t.kds.noSteps}</div>
         ) : steps.map((step, idx) => (
           <div key={step.id} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-            <div className="num" style={{ width: 28, height: 28, borderRadius: 999, background: 'var(--color-accent)', color: 'var(--color-on-accent)', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>{idx + 1}</div>
-            <div style={{ fontSize: 15, lineHeight: 1.6, paddingTop: 4 }}>{step.instruction}</div>
+            <div className="num" style={{ width: 28, height: 28, borderRadius: 999, background: 'var(--color-accent)', color: 'var(--color-on-accent)', display: 'grid', placeItems: 'center', fontSize: 'var(--fs-cap)', fontWeight: 800, flexShrink: 0 }}>{idx + 1}</div>
+            <div style={{ fontSize: 'var(--fs-lg)', lineHeight: 1.6, paddingTop: 2 }}>{step.instruction}</div>
           </div>
         ))}
       </div>
@@ -468,14 +557,40 @@ const CookingStepsModal = ({ productId, productName, onClose }: {
   );
 };
 
+/** Bump / done / deliver: 64px money-weight action, 17px/700 (TOUCH-SPEC §3.7). */
+const BUMP: React.CSSProperties = { flex: 1, minWidth: 0, fontSize: 17, fontWeight: 700 };
+
 /**
+ * KDS styles that need selectors (container query, hover gating, phone layout).
+ *
+ * Help button ("วิธีทำ"): a 44×44 icon button; the visible label shows on tickets
+ * at least 320px wide (container query on .kds-ticket), so a narrow phone ticket
+ * keeps the icon only. Its ink is lifted to --color-text (the shared .help-badge
+ * secondary grey sits just under AA on its tinted fill); hover keeps the shared
+ * espresso fill with white ink.
+ *
  * Phone layout (< 768px): the header wraps to title + clock over a row of three
  * equal stat chips (it was one ~540px row that pushed the page sideways).
- * .kds-cancel keeps its compact 32px on tablet / desktop as a class instead of an
- * inline minHeight, so the 44px phone tap-target rule in globals.css can apply.
  */
-const KDS_PHONE_CSS = `
-.kds-cancel { min-height: 32px; }
+const KDS_CSS = `
+.kds-ticket { container-type: inline-size; }
+.kds-help {
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: var(--tap-min); min-height: var(--tap-min); padding: 0 10px;
+  border-radius: var(--radius-md); cursor: pointer;
+  font-size: var(--fs-cap); font-weight: 600; color: var(--color-text);
+}
+@container (max-width: 319px) {
+  .kds-help { padding: 0; }
+  .kds-help-label { display: none; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .kds-help:hover { color: #fff; }
+}
+/* The undo bar is an espresso fill with --color-text-inverse ink. The KDS board is
+   dark in both themes but .surface-inverse doesn't pin that token, so in dark mode it
+   would flip to near-black on espresso; pin it to its light-theme white here. */
+.kds-undo { --color-text-inverse: #FFFFFF; }
 @media (max-width: 767px) {
   .kds-head { flex-wrap: wrap; padding: 10px 12px !important; gap: 8px 12px !important; }
   .kds-head-title { flex: 1; min-width: 0; }
@@ -485,6 +600,7 @@ const KDS_PHONE_CSS = `
   .kds-stat { flex: 1 1 0; min-width: 0; justify-content: center; padding: 6px 8px !important; gap: 6px !important; }
   .kds-stat > span:first-child { flex-shrink: 0; }
   .kds-stat > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .kds-cancel { min-height: 44px; padding: 4px 12px !important; font-size: 13px !important; }
+  .kds-cancel { padding-left: 12px; padding-right: 12px; }
+  .kds-undo { padding: 0 12px 12px !important; }
 }
 `;

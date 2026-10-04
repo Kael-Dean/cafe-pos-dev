@@ -2,6 +2,8 @@
 // Each primitive imports its own styles (./tokens.css + ./ui.css); app/globals.css
 // does not import them, so they cannot affect the legacy screens.
 //
+// ./numpad-field.tsx is a legacy-look component (globals.css tokens); import it by
+// path ('@/components/ui/numpad-field') so it does not pull in tokens.css/ui.css.
 // ./skeleton.tsx is a legacy (pre-redesign) helper that the old screens import by
 // path ('@/components/ui/skeleton'); it is intentionally not part of this barrel.
 

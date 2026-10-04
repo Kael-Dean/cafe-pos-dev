@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useRef, type Dispatch, type SetStateAction } from 'react';
 import { useCountUp } from '@/lib/motion';
+import { haptic } from '@/lib/haptics';
+import { useI18n } from '@/lib/i18n';
 
 /**
  * Cash tender entry for the payment dialog: an on-screen keypad (so a phone or
@@ -80,6 +82,7 @@ interface CashViewProps {
 }
 
 export function CashView({ total, cashGiven, setCashGiven, canConfirm, onConfirm }: CashViewProps) {
+  const { t } = useI18n();
   const uid = useId();
   const labelId = `${uid}-label`;
   const hintId = `${uid}-hint`;
@@ -146,7 +149,7 @@ export function CashView({ total, cashGiven, setCashGiven, canConfirm, onConfirm
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       pointerHandled.current = { key, seq: ++seq.current };
       press(key);
-      try { navigator.vibrate?.(8); } catch { /* unsupported / blocked — haptics are optional */ }
+      haptic();
     },
     onPointerUp: () => {
       // If no click follows (finger slid off), drop the marker so a later
@@ -173,13 +176,13 @@ export function CashView({ total, cashGiven, setCashGiven, canConfirm, onConfirm
     <div className="cashpad" onTouchStart={noop /* lets iOS Safari apply :active on tap */}>
       <div className="cashpad-summary">
         <div className="cashpad-total">
-          <span className="cashpad-total-label">ยอดที่ต้องรับ</span>
+          <span className="cashpad-total-label">{t.touchPay.amountDue}</span>
           <span className="num cashpad-total-value">{baht(total)}</span>
         </div>
 
         <div className="cashpad-entry-row">
           <div className="cashpad-field">
-            <span id={labelId} className="cashpad-field-label">เงินที่รับมา</span>
+            <span id={labelId} className="cashpad-field-label">{t.touchPay.cashReceived}</span>
             {/* Not an <input>: nothing here is text-editable, so no touch device can
                 raise its soft keyboard. It is still a focusable, labelled field for
                 keyboard and screen-reader users. */}
@@ -197,13 +200,13 @@ export function CashView({ total, cashGiven, setCashGiven, canConfirm, onConfirm
             </div>
           </div>
           <button type="button" className="cashpad-clear pressable" onClick={clear} onMouseDown={keepFocus} disabled={!entered}>
-            ล้าง
+            {t.ui.keyClear}
           </button>
         </div>
-        <span id={hintId} className="sr-only">ใช้แป้นตัวเลขบนจอหรือคีย์บอร์ดเพื่อกรอกจำนวนเงิน กด Enter เพื่อยืนยัน</span>
+        <span id={hintId} className="sr-only">{t.touchPay.cashEntryHint}</span>
 
         <div className="cashpad-result" data-tone={short ? 'short' : 'ok'}>
-          <span className="cashpad-result-label">{short ? 'ขาดอีก' : 'เงินทอน'}</span>
+          <span className="cashpad-result-label">{short ? t.touchPay.cashShort : t.touchPay.cashChange}</span>
           {short ? (
             <span key="short" className="num cashpad-result-value">{baht(shortfall)}</span>
           ) : (
@@ -211,7 +214,7 @@ export function CashView({ total, cashGiven, setCashGiven, canConfirm, onConfirm
           )}
         </div>
 
-        <div className="cashpad-presets" role="group" aria-label="จำนวนเงินด่วน">
+        <div className="cashpad-presets" role="group" aria-label={t.touchPay.quickAmounts}>
           {PRESETS.map((p) => (
             <button key={p} type="button" className="num pressable cashpad-preset" onClick={() => setCashGiven(String(p))} onMouseDown={keepFocus}>
               ฿{fmt(p)}
@@ -220,22 +223,22 @@ export function CashView({ total, cashGiven, setCashGiven, canConfirm, onConfirm
           <button
             type="button"
             className="pressable cashpad-preset cashpad-preset-exact"
-            aria-label={`พอดี ${baht(total)}`}
+            aria-label={t.touchPay.exactAria(baht(total))}
             onClick={() => setCashGiven(exactString(total))}
             onMouseDown={keepFocus}
           >
-            พอดี<span className="num cashpad-exact-amount"> {baht(total)}</span>
+            {t.touchPay.exact}<span className="num cashpad-exact-amount"> {baht(total)}</span>
           </button>
         </div>
       </div>
 
-      <div className="cashpad-keys" role="group" aria-label="แป้นตัวเลข">
+      <div className="cashpad-keys" role="group" aria-label={t.touchPay.keypad}>
         {keys.map((key) => key === 'back' ? (
-          <button key={key} type="button" className="cashpad-key cashpad-key-fn" aria-label="ลบ" {...keyProps(key)}>
+          <button key={key} type="button" className="cashpad-key cashpad-key-fn" aria-label={t.ui.keyBackspace} {...keyProps(key)}>
             <BackspaceGlyph />
           </button>
         ) : (
-          <button key={key} type="button" className="num cashpad-key" aria-label={key === '.' ? 'จุดทศนิยม' : undefined} {...keyProps(key)}>
+          <button key={key} type="button" className="num cashpad-key" aria-label={key === '.' ? t.ui.keyDecimal : undefined} {...keyProps(key)}>
             {key}
           </button>
         ))}
@@ -244,7 +247,7 @@ export function CashView({ total, cashGiven, setCashGiven, canConfirm, onConfirm
       {/* The one live region: a single polite sentence per change, instead of the
           amount and the change box each announcing themselves. */}
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-        {entered ? `รับมา ${fmt(parseFloat(cashGiven) || 0)} บาท ${short ? `ขาดอีก ${fmt(shortfall)} บาท` : `เงินทอน ${fmt(change)} บาท`}` : ''}
+        {entered ? t.touchPay.cashLive(fmt(parseFloat(cashGiven) || 0), short, fmt(short ? shortfall : change)) : ''}
       </div>
     </div>
   );
@@ -293,18 +296,18 @@ const CASH_CSS = `
 }
 
 .cashpad {
-  --cashpad-key-h: clamp(48px, calc((var(--app-h, 100dvh) - 420px) / 4), 64px);
+  --cashpad-key-h: clamp(var(--tap-std), calc((var(--app-h, 100dvh) - 420px) / 4), var(--tap-xl));
   display: grid; gap: var(--space-3);
 }
 .cashpad-summary { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 
 .cashpad-total { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); padding: 0 var(--space-1); }
-.cashpad-total-label { font-size: 13px; color: var(--color-text-secondary); }
-.cashpad-total-value { font-size: 24px; line-height: 1.2; font-weight: 700; color: var(--color-primary); }
+.cashpad-total-label { font-size: var(--fs-cap); color: var(--color-text-secondary); }
+.cashpad-total-value { font-size: var(--fs-h1); line-height: 1.2; font-weight: 700; color: var(--color-primary); }
 
-.cashpad-entry-row { display: flex; gap: var(--space-2); }
+.cashpad-entry-row { display: flex; gap: var(--tap-gap); }
 .cashpad-field {
-  flex: 1; min-width: 0; min-height: 52px;
+  flex: 1; min-width: 0; min-height: var(--tap-lg);
   display: flex; align-items: center; gap: var(--space-2);
   padding: 0 var(--space-3);
   background: var(--color-surface-2);
@@ -312,14 +315,13 @@ const CASH_CSS = `
   border-radius: var(--radius-md);
   transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
-/* Same focus treatment as .input-std, drawn on the whole field box. */
-.cashpad-field:focus-within {
-  border-color: var(--color-focus-ring);
-  box-shadow: var(--shadow-focus);
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 1px;
-}
-.cashpad-field-label { flex: none; font-size: 13px; font-weight: 600; }
+/* Active (the field holds focus whenever the dialog is open): a 1px caramel hairline
+   and an accent-50 tint, no ring (owner: no thick lines). The focus ring is drawn
+   only for keyboard focus, on the whole field box. */
+.cashpad-field:focus-within { border-color: var(--color-accent); background: var(--color-accent-50); }
+.cashpad-field:has(.cashpad-value:focus-visible) { outline: 2px solid var(--color-focus-ring); outline-offset: 1px; }
+.cashpad-value:focus-visible { outline: none; box-shadow: none; }
+.cashpad-field-label { flex: none; font-size: var(--fs-sm); font-weight: 600; }
 .cashpad-value {
   flex: 1; min-width: 0;
   font-size: 26px; line-height: 1.2; font-weight: 700; text-align: right;
@@ -328,30 +330,30 @@ const CASH_CSS = `
 }
 .cashpad-value.is-empty { color: var(--color-text-muted); }
 .cashpad-clear {
-  flex: none; min-width: 52px; min-height: 44px; padding: 0 var(--space-3);
-  border: 1px solid var(--color-border); border-radius: var(--radius-md);
-  font-size: 13px; font-weight: 600; color: var(--color-text);
+  flex: none; min-width: var(--tap-lg); min-height: var(--tap-std); padding: 0 var(--space-3);
+  border: var(--hairline); border-radius: var(--radius-md);
+  font-size: var(--fs-sm); font-weight: 600; color: var(--color-text);
 }
 .cashpad-clear:disabled { opacity: 0.4; cursor: default; }
 
 .cashpad-result {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
-  min-height: 44px; padding: 0 var(--space-3);
+  min-height: var(--tap-std); padding: 0 var(--space-3);
   border-radius: var(--radius-md);
   background: var(--color-success-50);
   /* Plain --color-success is ~3.6:1 on its own tint; nudge toward the text colour for AA. */
   color: color-mix(in srgb, var(--color-success) 68%, var(--color-text));
 }
 .cashpad-result[data-tone='short'] { background: var(--color-warning-50); color: var(--color-warning-fg); }
-.cashpad-result-label { font-size: 13px; font-weight: 600; }
+.cashpad-result-label { font-size: var(--fs-sm); font-weight: 600; }
 .cashpad-result-value { font-size: 22px; line-height: 1.2; font-weight: 700; }
 
-.cashpad-presets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); }
+.cashpad-presets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--tap-gap); }
 .cashpad-preset {
-  min-height: 44px; padding: 0 var(--space-1);
+  min-height: var(--tap-std); padding: 0 var(--space-1);
   border-radius: var(--radius-sm);
-  font-size: 13px; font-weight: 600; white-space: nowrap;
-  background: var(--color-surface-2); border: 1px solid var(--color-border);
+  font-size: var(--fs-sm); font-weight: 600; white-space: nowrap;
+  background: var(--color-surface-2); border: var(--hairline);
 }
 .cashpad-preset-exact { background: var(--color-accent-50); border-color: var(--color-accent); color: var(--color-primary-700); }
 .cashpad-exact-amount { display: none; }
@@ -359,7 +361,7 @@ const CASH_CSS = `
 .cashpad-keys {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-auto-rows: minmax(var(--cashpad-key-h), 1fr);
-  gap: var(--space-2);
+  gap: var(--tap-gap);
   user-select: none; -webkit-user-select: none;
 }
 .cashpad-key {
@@ -367,28 +369,28 @@ const CASH_CSS = `
   font-size: 24px; line-height: 1; font-weight: 600;
   color: var(--color-text);
   background: var(--color-surface-2);
-  border: 1px solid var(--color-border);
-  border-bottom: 2px solid var(--color-border-strong);
+  /* Hairline only (TOUCH-SPEC §1); the surface-2 fill carries the key shape. */
+  border: var(--hairline);
   border-radius: var(--radius-md);
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   /* Release eases back; the press itself is instant (see :active). */
   transition: background 100ms var(--ease-out), transform 100ms var(--ease-out);
 }
-.cashpad-key-fn { background: var(--color-accent-50); border-color: var(--color-accent); color: var(--color-primary-700); }
-@media (hover: hover) {
+.cashpad-key-fn { background: var(--color-accent-50); color: var(--color-primary-700); } /* tint only; same hairline as the digit keys */
+@media (hover: hover) and (pointer: fine) {
   .cashpad-key:hover { border-color: var(--color-border-strong); }
-  .cashpad-key-fn:hover { border-color: var(--color-accent-600); }
+  .cashpad-key-fn:hover { border-color: var(--color-border-strong); }
   .cashpad-preset:hover, .cashpad-clear:not(:disabled):hover { border-color: var(--color-border-strong); }
   .cashpad-preset-exact:hover { border-color: var(--color-accent-600); }
 }
-.cashpad-key:active { transform: translateY(1px); background: var(--color-border); transition-duration: 0s; }
+.cashpad-key:active { transform: scale(var(--press-scale)); background: var(--color-border); transition-duration: 0s; }
 .cashpad-key-fn:active { background: var(--color-accent); color: var(--color-on-accent); }
 
 @media (min-width: 640px) {
   .cashpay { width: min(720px, 92vw); }
   .cashpad {
-    --cashpad-key-h: clamp(48px, calc((var(--app-h, 100dvh) - 176px) / 4), 72px);
+    --cashpad-key-h: clamp(var(--tap-std), calc((var(--app-h, 100dvh) - 176px) / 4), var(--tap-key));
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
     gap: var(--space-5);
   }
@@ -400,12 +402,12 @@ const CASH_CSS = `
   .cashpay-foot { padding: var(--space-4) var(--space-6); }
   .cashpad-summary { gap: var(--space-3); }
   .cashpad-total { flex-direction: column; align-items: center; gap: var(--space-1); }
-  .cashpad-total-label { font-size: 12px; }
-  .cashpad-total-value { font-size: 36px; }
-  .cashpad-field { min-height: 60px; padding: 0 var(--space-4); }
-  .cashpad-value { font-size: 28px; }
-  .cashpad-clear { min-width: 60px; }
-  .cashpad-result { min-height: 52px; padding: 0 var(--space-4); }
+  .cashpad-total-label { font-size: var(--fs-sm); }
+  .cashpad-total-value { font-size: var(--fs-num-xl); }
+  .cashpad-field { min-height: var(--tap-xl); padding: 0 var(--space-4); }
+  .cashpad-value { font-size: var(--fs-num-lg); }
+  .cashpad-clear { min-width: var(--tap-xl); }
+  .cashpad-result { min-height: var(--tap-lg); padding: 0 var(--space-4); }
   .cashpad-presets { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .cashpad-preset-exact { grid-column: span 4; }
   .cashpad-exact-amount { display: inline; }

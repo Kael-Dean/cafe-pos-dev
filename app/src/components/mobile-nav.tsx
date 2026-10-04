@@ -102,7 +102,9 @@ export function MobileNav({ current, onNavigate, onLogout }: MobileNavProps) {
   // has and keep the other slots empty, so no tab changes under a thumb mid-tap.
   const tabs = primaryTabs(sections, isAdmin).slice(0, role ? PRIMARY_TAB_COUNT : 2);
   const placeholders = PRIMARY_TAB_COUNT - tabs.length;
-  const tabLabel = (id: string) => (t.tabs as Record<string, string>)[id] ?? navLabel(id);
+  // A gap-filled tab (role without a preferred screen) uses the rail's short name,
+  // never the long sidebar label, so it still fits under the icon.
+  const tabLabel = (id: string) => (t.tabs as Record<string, string>)[id] ?? t.touchPos.navShort[id] ?? navLabel(id);
   const currentHasTab = tabs.some((n) => n.id === current);
 
   return (

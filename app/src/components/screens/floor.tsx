@@ -80,8 +80,8 @@ export default function Floor({ onOrderForSession, onNavigate }: Props) {
       <div className="screen-pad-lg" style={{ padding: 'var(--space-8)' }} aria-busy="true">
         <span className="sr-only">กำลังโหลดผังโต๊ะ…</span>
         <Skeleton height={28} width={220} radius="var(--radius-md)" style={{ marginBottom: 'var(--space-6)' }} />
-        <div className="cols-2-phone floor-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} height={132} radius="var(--radius-lg)" />)}
+        <div className="cols-2-phone floor-grid" style={GRID}>
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} height={TILE_MIN_H} radius="var(--radius-lg)" />)}
         </div>
       </div>
     );
@@ -100,7 +100,8 @@ export default function Floor({ onOrderForSession, onNavigate }: Props) {
   const loading = tablesQ.isLoading || sessionsQ.isLoading;
 
   return (
-    <div ref={contentRef} className="screen-pad-lg" style={{ padding: 'var(--space-8)', maxWidth: 1200, margin: '0 auto' }}>
+    // maxWidth 1600 (was 1200) so a 1920 counter fits 5–6 tiles a row (TOUCH-SPEC §3.8).
+    <div ref={contentRef} className="screen-pad-lg" style={{ padding: 'var(--space-8)', maxWidth: 1600, margin: '0 auto' }}>
       <style>{FLOOR_PHONE_CSS}</style>
       <div className="floor-head" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flexWrap: 'wrap', marginBottom: 'var(--space-6)' }}>
         <h1 className="text-balance floor-title" style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>
@@ -113,17 +114,17 @@ export default function Floor({ onOrderForSession, onNavigate }: Props) {
         </div>
         <button
           onClick={() => { void tablesQ.refetch(); void sessionsQ.refetch(); }}
-          className="btn btn-ghost"
-          style={{ marginLeft: 'auto' }}
+          className="btn btn-ghost tap-std"
+          style={{ marginLeft: 'auto', fontSize: 'var(--fs-body)' }}
         >
-          <Icon name="refresh" size={16} /> รีเฟรช
+          <Icon name="refresh" size={18} /> รีเฟรช
         </button>
       </div>
 
       {loading && (
-        <div aria-busy="true" className="cols-2-phone floor-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+        <div aria-busy="true" className="cols-2-phone floor-grid" style={GRID}>
           <span className="sr-only">กำลังโหลดผังโต๊ะ…</span>
-          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} height={132} radius="var(--radius-lg)" />)}
+          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} height={TILE_MIN_H} radius="var(--radius-lg)" />)}
         </div>
       )}
 
@@ -138,13 +139,14 @@ export default function Floor({ onOrderForSession, onNavigate }: Props) {
 
       {!loading && zones.map(([zone, list]) => (
         <section key={zone} className="floor-zone" style={{ marginBottom: 'var(--space-8)' }}>
+          {/* Sentence case, no tracked uppercase: Thai has no case (TOUCH-SPEC §3.8). */}
           <h2 style={{
-            fontSize: 13, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase',
+            fontSize: 'var(--fs-body)', fontWeight: 700,
             color: 'var(--color-text-secondary)', margin: '0 0 var(--space-3)',
           }}>
             {zone}
           </h2>
-          <div className="cols-2-phone floor-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+          <div className="cols-2-phone floor-grid" style={GRID}>
             {list.map((table) => (
               <TableCard
                 key={table.id}
@@ -217,47 +219,49 @@ function TableCard({ table, session, now, onClick }: {
   return (
     <button
       onClick={onClick}
-      className="pressable floor-card"
+      className="tap floor-card"
       aria-label={busy
         ? `โต๊ะ ${table.name} กำลังใช้ ${session.partySize} คน ${formatMinutes(elapsed)}`
         : `โต๊ะ ${table.name} ว่าง`}
       style={{
-        textAlign: 'left', width: '100%', minHeight: 132,
+        textAlign: 'left', width: '100%', minHeight: TILE_MIN_H,
         display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
         padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)',
+        // Busy vs free reads from the surface tone; both keep a 1px hairline.
         background: busy ? 'var(--color-primary-50, var(--color-surface-2))' : 'var(--color-surface)',
         border: `1px solid ${busy ? 'var(--color-primary)' : 'var(--color-border)'}`,
         color: 'var(--color-text)',
       }}
     >
       <div className="floor-card-head" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-        <span className="floor-card-name" style={{ fontSize: 18, fontWeight: 700 }}>{table.name}</span>
-        <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{table.capacity} ที่</span>
+        <span className="floor-card-name" style={{ fontSize: 22, fontWeight: 700, lineHeight: 'var(--lh-tight)' }}>{table.name}</span>
+        <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)' }}>{table.capacity} ที่</span>
         <span style={{
-          marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+          marginLeft: 'auto', fontSize: 'var(--fs-cap)', fontWeight: 700, padding: '2px 10px', minHeight: 24,
+          display: 'inline-flex', alignItems: 'center', borderRadius: 999, flexShrink: 0,
           background: busy ? 'var(--color-primary)' : 'var(--color-success-50, var(--color-surface-2))',
-          color: busy ? 'var(--color-text-inverse)' : 'var(--color-success)',
+          color: busy ? 'var(--color-text-inverse)' : SUCCESS_INK,
         }}>
           {busy ? 'กำลังใช้' : 'ว่าง'}
         </span>
       </div>
 
       {!session && (
-        <div style={{ marginTop: 'auto', fontSize: 13, color: 'var(--color-text-secondary)' }}>
+        <div style={{ marginTop: 'auto', fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)' }}>
           แตะเพื่อเปิดโต๊ะ
         </div>
       )}
 
       {session && (
         <>
-          <div className="floor-card-meta" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', fontSize: 13, color: 'var(--color-text-secondary)' }}>
-            <span><Icon name="user" size={13} style={{ marginRight: 4 }} />{session.partySize} คน</span>
-            <span className="num"><Icon name="clock" size={13} style={{ marginRight: 4 }} />{formatMinutes(elapsed)}</span>
+          <div className="floor-card-meta" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)' }}>
+            <span style={META_ITEM}><Icon name="user" size={16} />{session.partySize} คน</span>
+            <span className="num" style={META_ITEM}><Icon name="clock" size={16} />{formatMinutes(elapsed)}</span>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>เปิด {clockTime(session.openedAt)}</div>
+          <div className="num" style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>เปิด {clockTime(session.openedAt)}</div>
 
           <div className="floor-card-foot" style={{ marginTop: 'auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
-            <span className="num" style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+            <span className="num" style={{ fontSize: 'var(--fs-h1)', fontWeight: 700, lineHeight: 'var(--lh-tight)', fontVariantNumeric: 'tabular-nums' }}>
               {preview.isLoading || !preview.data ? '—' : bahtStr(preview.data.amount)}
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
@@ -287,7 +291,8 @@ const FLOOR_PHONE_CSS = `
   .floor-card-meta > span { display: inline-flex; align-items: center; white-space: nowrap; }
   .floor-zone { margin-bottom: 20px !important; }
   .floor-grid { gap: 10px !important; }
-  .floor-card { padding: 12px !important; min-height: 120px !important; min-width: 0; }
+  .floor-card { padding: 12px !important; min-height: 132px !important; min-width: 0; }
+  .floor-card-name { font-size: 20px !important; }
   .floor-card-head { flex-wrap: wrap; row-gap: 2px; }
   .floor-card-name { min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
   .floor-card-foot { flex-wrap: wrap; }
@@ -295,11 +300,19 @@ const FLOOR_PHONE_CSS = `
 `;
 
 // ── Small shared bits ─────────────────────────────────────────────────────────
+/** Tile grid: 220px min tiles (3 at 1024 with the rail, 5–6 at 1920); phones 2 cols via .cols-2-phone. */
+const GRID: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 'var(--space-4)' };
+const TILE_MIN_H = 148;
+/** Icon + label on one line (the icon svg is display:block). */
+const META_ITEM: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' };
+/** Plain --color-success is ~3.6:1 on its tint; nudged toward the text colour for AA. */
+const SUCCESS_INK = 'color-mix(in srgb, var(--color-success) 68%, var(--color-text))';
+
 function MiniBadge({ children, tone }: { children: React.ReactNode; tone: 'info' | 'success' | 'warning' }) {
-  const color = tone === 'warning' ? 'var(--color-warning)' : tone === 'success' ? 'var(--color-success)' : 'var(--color-info)';
+  const color = tone === 'warning' ? 'var(--color-warning-fg)' : tone === 'success' ? SUCCESS_INK : 'var(--color-info)';
   return (
     <span style={{
-      fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 999,
+      fontSize: 'var(--fs-cap)', fontWeight: 700, padding: '2px 8px', borderRadius: 999,
       border: `1px solid ${color}`, color,
     }}>
       {children}
@@ -311,10 +324,10 @@ function SummaryChip({ label, value, tone }: { label: string; value: number; ton
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999,
-      background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', fontSize: 13,
+      background: 'var(--color-surface-2)', border: 'var(--hairline)', fontSize: 'var(--fs-sm)',
     }}>
       <span style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
-      <strong className="num" style={{ color: tone === 'success' ? 'var(--color-success)' : 'var(--color-primary)' }}>{value}</strong>
+      <strong className="num" style={{ color: tone === 'success' ? SUCCESS_INK : 'var(--color-primary)' }}>{value}</strong>
     </span>
   );
 }
@@ -339,7 +352,7 @@ export function EmptyState({ icon, title, body, action }: {
       <div style={{ fontSize: 17, fontWeight: 700 }}>{title}</div>
       <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: 'var(--color-text-secondary)' }}>{body}</p>
       {action && (
-        <button onClick={action.onClick} className="btn btn-primary btn-lg" style={{ minHeight: 44, marginTop: 'var(--space-2)' }}>
+        <button onClick={action.onClick} className="btn btn-primary btn-lg tap-lg" style={{ marginTop: 'var(--space-2)' }}>
           {action.label}
         </button>
       )}

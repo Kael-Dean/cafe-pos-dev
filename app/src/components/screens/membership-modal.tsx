@@ -15,6 +15,8 @@ import {
   type MembershipTier,
 } from '@/hooks/use-membership';
 import { useModalA11y } from '@/hooks/use-modal-a11y';
+import { NumpadField } from '@/components/ui/numpad-field';
+import { useI18n } from '@/lib/i18n';
 
 /** What the POS keeps once a member is attached to the bill. */
 export interface MemberInfo {
@@ -46,13 +48,45 @@ const TIER_TONE: Record<MembershipTier, 'neutral' | 'success' | 'info' | 'accent
 };
 
 const IS: React.CSSProperties = {
-  width: '100%', padding: '10px var(--space-3)', minHeight: 44, borderRadius: 'var(--radius-md)', boxSizing: 'border-box',
-  border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+  width: '100%', padding: '10px var(--space-3)', minHeight: 'var(--tap-std)', borderRadius: 'var(--radius-md)', boxSizing: 'border-box',
+  border: 'var(--hairline)', background: 'var(--color-surface)',
   color: 'var(--color-text)', outline: 'none',
 };
-/** Font size for `IS` inputs — a class, not an inline style, so the phone rule in
+/** Font size for `IS` inputs — a class, not an inline style, so the touch rule in
  *  globals.css (inputs render at 16px: no iOS zoom on focus) can override it. */
-const IS_CLASS = 'text-[14px]';
+const IS_CLASS = 'text-body';
+const LABEL: React.CSSProperties = { fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 };
+/** Primary "ค้นหา" beside the name field: 48px tall (TOUCH-SPEC §2 --tap-std). */
+const SEARCH_BTN: React.CSSProperties = {
+  padding: '0 var(--space-5)', minHeight: 'var(--tap-std)', borderRadius: 'var(--radius-md)', background: 'var(--color-primary)',
+  color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 'var(--fs-body)', whiteSpace: 'nowrap', cursor: 'pointer',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
+};
+/** Footer actions: 56px (TOUCH-SPEC §3.6 modal primary / ghost cancel). */
+const FOOT_BTN: React.CSSProperties = {
+  padding: '0 var(--space-5)', minHeight: 'var(--tap-lg)', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-lg)', cursor: 'pointer',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
+};
+const FOOT_GHOST: React.CSSProperties = { ...FOOT_BTN, border: 'var(--hairline)', background: 'var(--color-surface)', color: 'var(--color-text)' };
+
+/**
+ * Phone keypad fit. `.numpad` is a grid with an implicit `auto` column, so the display
+ * row's min-content (label + "081-234-5678" at 28px) widened the pad past a 327px phone
+ * body. Pin the column to minmax(0, 1fr), and on phones step the number down to 22px so
+ * a full 10-digit number stays readable instead of clipped.
+ * (Shared fix belongs in globals.css `.numpad`; scoped here until it lands.)
+ */
+const MEMBER_PAD_CSS = `
+.member-pad { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 767px) {
+  .member-pad .numpad-display { gap: var(--space-2); padding: 0 var(--space-3); }
+  .member-pad .numpad-value { font-size: 22px; }
+}
+`;
+
+/** "0812345678" → "081-234-5678" (display only; the value stays raw digits). */
+const formatPhone = (v: string) =>
+  v.replace(/^(\d{3})(\d{0,3})(\d{0,4}).*/, (_, a: string, b: string, c: string) => [a, b, c].filter(Boolean).join('-'));
 
 interface Props {
   onClose: () => void;
@@ -63,6 +97,7 @@ interface Props {
 
 export default function MembershipModal({ onClose, onSelectMember, initialPhase = 'lookup' }: Props) {
   const toast = useToast();
+  const { t } = useI18n();
   const lookup = useLookupMember();
   const register = useRegisterMember();
   const dialogRef = useModalA11y(onClose);
@@ -223,23 +258,28 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
             <Icon name="user" size={22} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 17, fontWeight: 700 }}>{phase === 'register' ? 'สมัครสมาชิกใหม่' : 'สมาชิก / สะสมแต้ม'}</div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{phase === 'register' ? 'กรอกข้อมูลเพื่อสมัครสมาชิก' : searchMode === 'name' ? 'ค้นหาด้วยชื่อสมาชิก' : 'ค้นหาด้วยเบอร์โทรศัพท์'}</div>
+            <div style={{ fontSize: 'var(--fs-title)', fontWeight: 700, lineHeight: 'var(--lh-tight)' }}>{phase === 'register' ? 'สมัครสมาชิกใหม่' : 'สมาชิก / สะสมแต้ม'}</div>
+            <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>{phase === 'register' ? 'กรอกข้อมูลเพื่อสมัครสมาชิก' : searchMode === 'name' ? 'ค้นหาด้วยชื่อสมาชิก' : 'ค้นหาด้วยเบอร์โทรศัพท์'}</div>
           </div>
-          <button onClick={onClose} aria-label="ปิด" className="icon-btn hit-44" style={{ width: 32, height: 32, borderRadius: 'var(--radius-md)', display: 'grid', placeItems: 'center', color: 'var(--color-text-secondary)' }}>
-            <Icon name="x" size={18} />
+          <button onClick={onClose} aria-label="ปิด" className="icon-btn tap-std tap-sq" style={{ margin: '-8px -8px -8px 0', borderRadius: 'var(--radius-md)', color: 'var(--color-text-secondary)' }}>
+            <Icon name="x" size={20} />
           </button>
         </div>
 
         {/* Body */}
         <div className="scroll pad-phone" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '20px 24px' }}>
-          {/* Search-mode toggle (lookup only) */}
+          {/* Search-mode toggle (lookup only): a 48px segmented control that switches
+              on pointerdown (TOUCH-SPEC §4); keyboard clicks (detail 0) still work. */}
           {phase === 'lookup' && (
-            <div style={{ display: 'flex', gap: 6, background: 'var(--color-surface-2)', padding: 4, borderRadius: 10, marginBottom: 14, width: 'fit-content' }}>
+            <div role="group" aria-label={t.touchModals.memberSearchBy} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, background: 'var(--color-surface-2)', padding: 4, borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-4)' }}>
               {([['phone', 'เบอร์โทร'], ['name', 'ชื่อ']] as const).map(([m, label]) => (
-                <button key={m} onClick={() => switchMode(m)}
+                <button key={m} type="button"
+                  aria-pressed={searchMode === m}
+                  onPointerDown={(e) => { if (e.pointerType === 'mouse' && e.button !== 0) return; switchMode(m); }}
+                  onClick={(e) => { if (e.detail === 0) switchMode(m); }}
+                  className="tap tap-std"
                   style={{
-                    padding: '6px 18px', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none',
+                    padding: '0 var(--space-5)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--fs-body)', fontWeight: 600, cursor: 'pointer', border: 'none',
                     background: searchMode === m ? 'var(--color-surface)' : 'transparent',
                     color: searchMode === m ? 'var(--color-text)' : 'var(--color-text-secondary)',
                     boxShadow: searchMode === m ? 'var(--shadow-xs)' : 'none',
@@ -250,38 +290,53 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
             </div>
           )}
 
-          {/* Phone field — phone mode, or always while registering */}
-          {(searchMode === 'phone' || phase === 'register') && (
+          {/* Phone lookup: on-screen keypad (no soft keyboard on tablets). A full
+              10-digit number looks itself up; "ค้นหา" covers shorter numbers. */}
+          {searchMode === 'phone' && phase === 'lookup' && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--space-3)' }}>
+              <style>{MEMBER_PAD_CSS}</style>
+              <NumpadField
+                className="member-pad"
+                label={t.touchModals.memberPhone}
+                mode="digits"
+                size="md"
+                value={phone}
+                onChange={(v) => { setPhone(v); if (result) setResult(null); }}
+                format={formatPhone}
+                placeholder="08X-XXX-XXXX"
+                onEnter={doLookup}
+              />
+              <button onClick={doLookup} disabled={lookup.isPending || !phone} className="tap"
+                style={{ ...SEARCH_BTN, minHeight: 'var(--tap-lg)', fontSize: 'var(--fs-lg)', opacity: !phone ? 0.5 : 1 }}>
+                {lookup.isPending ? <span className="spinner" aria-hidden style={{ width: 16, height: 16 }} /> : <Icon name="search" size={18} />}
+                ค้นหา
+              </button>
+            </div>
+          )}
+
+          {/* Phone while registering: a plain field (the name input needs the OS keyboard anyway). */}
+          {phase === 'register' && (
             <>
-              <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>เบอร์โทรศัพท์</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  value={phone}
-                  onChange={(e) => { setPhone(e.target.value.replace(/[^\d]/g, '')); if (result) setResult(null); }}
-                  inputMode="numeric"
-                  placeholder="08XXXXXXXX"
-                  aria-label="เบอร์โทรศัพท์"
-                  className={IS_CLASS}
-                  style={IS}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && phase === 'lookup') doLookup(); }}
-                />
-                {phase === 'lookup' && (
-                  <button onClick={doLookup} disabled={lookup.isPending} className="pressable"
-                    style={{ padding: '10px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    {lookup.isPending ? <span className="spinner" aria-hidden style={{ width: 14, height: 14 }} /> : <Icon name="search" size={15} />}
-                    ค้นหา
-                  </button>
-                )}
-              </div>
+              <label htmlFor="reg-phone" style={LABEL}>เบอร์โทรศัพท์</label>
+              <input
+                id="reg-phone"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/[^\d]/g, ''))}
+                inputMode="numeric"
+                placeholder="08XXXXXXXX"
+                className={`num ${IS_CLASS}`}
+                style={IS}
+              />
             </>
           )}
 
           {/* Name field + results — name mode (lookup) */}
           {searchMode === 'name' && phase === 'lookup' && (
             <>
-              <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ชื่อสมาชิก</label>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <label htmlFor="member-name-search" style={LABEL}>ชื่อสมาชิก</label>
+              <div style={{ display: 'flex', gap: 'var(--tap-gap)' }}>
                 <input
+                  id="member-name-search"
                   value={nameInput}
                   onChange={(e) => { setNameInput(e.target.value); if (result) setResult(null); }}
                   placeholder="ชื่อ หรือบางส่วนของชื่อ"
@@ -291,9 +346,8 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
                   onKeyDown={(e) => { if (e.key === 'Enter') doNameSearch(); }}
                   autoFocus
                 />
-                <button onClick={doNameSearch} disabled={membersQuery.isFetching} className="pressable"
-                  style={{ padding: '10px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                  {membersQuery.isFetching ? <span className="spinner" aria-hidden style={{ width: 14, height: 14 }} /> : <Icon name="search" size={15} />}
+                <button onClick={doNameSearch} disabled={membersQuery.isFetching} className="tap" style={SEARCH_BTN}>
+                  {membersQuery.isFetching ? <span className="spinner" aria-hidden style={{ width: 16, height: 16 }} /> : <Icon name="search" size={18} />}
                   ค้นหา
                 </button>
               </div>
@@ -330,24 +384,25 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
                       </div>
                     ))
                   ) : (membersQuery.data?.items.length ?? 0) === 0 ? (
-                    <div style={{ fontSize: 13, color: 'var(--color-text-muted)', textAlign: 'center', padding: 'var(--space-2)' }}>ไม่พบสมาชิกชื่อนี้ ลองค้นหาด้วยเบอร์โทร</div>
+                    <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)', textAlign: 'center', padding: 'var(--space-2)' }}>ไม่พบสมาชิกชื่อนี้ ลองค้นหาด้วยเบอร์โทร</div>
                   ) : (
                     (membersQuery.data?.items ?? []).map((acc) => (
                       <button key={acc.id} onClick={() => selectFromNameResult(acc)} disabled={lookup.isPending}
-                        className="pressable"
+                        className="tap tap-pay"
                         style={{
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)',
-                          padding: '10px var(--space-3)', minHeight: 44, borderRadius: 'var(--radius-md)', textAlign: 'left', cursor: 'pointer',
-                          border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+                          padding: '8px var(--space-3)', borderRadius: 'var(--radius-md)', textAlign: 'left', cursor: 'pointer',
+                          border: 'var(--hairline)', background: 'var(--color-surface)',
                         }}>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{acc.customer_name}</div>
-                          <div className="num" style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{acc.phone ?? '—'}</div>
+                          <div style={{ fontSize: 'var(--fs-body)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{acc.customer_name}</div>
+                          <div className="num" style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>{acc.phone ? formatPhone(acc.phone) : '—'}</div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                           <div style={{ textAlign: 'right' }}>
-                            <div className="num" style={{ fontSize: 15, fontWeight: 800, color: 'var(--color-accent-600)' }}>{acc.points_balance.toLocaleString()}</div>
-                            <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>แต้ม</div>
+                            {/* 20px/800: large text, so caramel-600 clears the 3:1 large-text floor. */}
+                            <div className="num" style={{ fontSize: 'var(--fs-h2)', lineHeight: 'var(--lh-tight)', fontWeight: 800, color: 'var(--color-accent-600)' }}>{acc.points_balance.toLocaleString()}</div>
+                            <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>แต้ม</div>
                           </div>
                           <Tag tone={TIER_TONE[acc.tier]}>{TIER_LABEL[acc.tier]}</Tag>
                         </div>
@@ -363,18 +418,18 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
           {phase === 'register' && (
             <div style={{ marginTop: 18, display: 'grid', gap: 14 }}>
               {fromMiss && (
-                <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', background: 'var(--color-info-50)', padding: '10px 12px', borderRadius: 8 }}>
+                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)', background: 'var(--color-info-50)', padding: '10px 12px', borderRadius: 8 }}>
                   ไม่พบสมาชิกสำหรับเบอร์นี้ — สมัครใหม่ได้เลย
                 </div>
               )}
               <div>
-                <label htmlFor="reg-name" style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>ชื่อ *</label>
+                <label htmlFor="reg-name" style={LABEL}>ชื่อ *</label>
                 <input id="reg-name" value={regName} onChange={(e) => setRegName(e.target.value)} required aria-required="true" className={IS_CLASS} style={IS} placeholder="ชื่อ-นามสกุล" />
               </div>
               <div>
-                <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>วันเกิด (ไม่บังคับ)</label>
-                <input value={regDob} onChange={(e) => setRegDob(e.target.value)} type="date" aria-label="วันเกิด" className={IS_CLASS} style={IS} />
-                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>ใช้สำหรับโบนัสวันเกิด</div>
+                <label htmlFor="reg-dob" style={LABEL}>วันเกิด (ไม่บังคับ)</label>
+                <input id="reg-dob" value={regDob} onChange={(e) => setRegDob(e.target.value)} type="date" className={IS_CLASS} style={IS} />
+                <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-muted)', marginTop: 4 }}>ใช้สำหรับโบนัสวันเกิด</div>
               </div>
             </div>
           )}
@@ -384,17 +439,17 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
             <div style={{ marginTop: 18 }}>
               <div style={{ background: 'var(--color-surface-2)', borderRadius: 12, padding: 16, marginBottom: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700 }}>{result.account.customer_name}</div>
+                  <div style={{ fontSize: 'var(--fs-title)', fontWeight: 700 }}>{result.account.customer_name}</div>
                   <Tag tone={TIER_TONE[result.account.tier]}>{TIER_LABEL[result.account.tier]}</Tag>
                 </div>
                 <div style={{ display: 'flex', gap: 20 }}>
                   <div>
-                    <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>แต้มสะสม</div>
+                    <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>แต้มสะสม</div>
                     <div className="num" style={{ fontSize: 24, fontWeight: 800, color: 'var(--color-accent-600)' }}>{result.account.points_balance.toLocaleString()}</div>
                   </div>
                   {result.points_to_next_reward != null && result.points_to_next_reward > 0 && (
                     <div>
-                      <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>อีก..แต้มถึงรางวัล</div>
+                      <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>อีก..แต้มถึงรางวัล</div>
                       <div className="num" style={{ fontSize: 24, fontWeight: 800, color: 'var(--color-text-secondary)' }}>{result.points_to_next_reward.toLocaleString()}</div>
                     </div>
                   )}
@@ -428,18 +483,18 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
         <div style={{ padding: 'var(--space-4) var(--space-6)', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 'var(--space-3)', background: 'var(--color-surface-2)' }}>
           {phase === 'register' ? (
             <>
-              <button onClick={() => { setPhase('lookup'); setFromMiss(false); }} className="pressable" style={{ padding: '11px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: 14, cursor: 'pointer' }}>ย้อนกลับ</button>
-              <button onClick={doRegister} disabled={register.isPending || checkingName} className="pressable" style={{ flex: 1, padding: '11px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 700, fontSize: 14, cursor: 'pointer', opacity: (register.isPending || checkingName) ? 0.7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)' }}>
-                {(checkingName || register.isPending) && <span className="spinner" aria-hidden style={{ width: 14, height: 14 }} />}
+              <button onClick={() => { setPhase('lookup'); setFromMiss(false); }} className="tap" style={FOOT_GHOST}>ย้อนกลับ</button>
+              <button onClick={doRegister} disabled={register.isPending || checkingName} className="tap" style={{ ...FOOT_BTN, flex: 1, background: 'var(--color-accent)', color: 'var(--color-on-accent)', fontWeight: 700, opacity: (register.isPending || checkingName) ? 0.7 : 1 }}>
+                {(checkingName || register.isPending) && <span className="spinner" aria-hidden style={{ width: 16, height: 16 }} />}
                 {checkingName ? 'กำลังตรวจสอบ...' : register.isPending ? 'กำลังสมัคร...' : 'สมัครและแนบกับบิล'}
               </button>
             </>
           ) : result?.found && result.account ? (
-            <button onClick={confirmAttach} className="pressable" style={{ flex: 1, padding: '11px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+            <button onClick={confirmAttach} className="tap" style={{ ...FOOT_BTN, flex: 1, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 700 }}>
               แนบสมาชิกกับบิล
             </button>
           ) : (
-            <button onClick={onClose} className="pressable" style={{ flex: 1, padding: '11px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: 14, cursor: 'pointer' }}>ปิด</button>
+            <button onClick={onClose} className="tap" style={{ ...FOOT_GHOST, flex: 1 }}>ปิด</button>
           )}
         </div>
       </div>

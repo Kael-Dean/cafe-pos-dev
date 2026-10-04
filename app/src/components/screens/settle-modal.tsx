@@ -95,23 +95,23 @@ export default function SettleModal({ session, tableName, onClose }: {
       busy={loading || !!payingId}
       footer={
         settled ? (
-          <button onClick={onClose} className="btn btn-primary btn-lg" style={{ flex: 1, minHeight: 44 }}>
-            <Icon name="check" size={16} /> เสร็จสิ้น
+          <button onClick={onClose} className="btn btn-primary btn-lg tap-lg" style={{ flex: 1 }}>
+            <Icon name="check" size={20} /> เสร็จสิ้น
           </button>
         ) : (
           <>
-            <button onClick={onClose} className="btn btn-ghost btn-lg" style={{ flex: 1, minHeight: 44 }}>
+            <button onClick={onClose} className="btn btn-ghost btn-lg tap-lg" style={{ flex: 1 }}>
               ไว้ก่อน
             </button>
             <button
               onClick={() => { void runClose(); }}
               disabled={closeSession.isPending || !!payingId}
-              className="btn btn-primary btn-lg"
-              style={{ flex: 1.4, minHeight: 44 }}
+              className="btn btn-primary btn-lg tap-lg"
+              style={{ flex: 1.4 }}
             >
               {closeSession.isPending
-                ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden />
-                : <><Icon name="refresh" size={16} /> เช็คสถานะอีกครั้ง</>}
+                ? <span className="spinner" style={{ width: 18, height: 18 }} aria-hidden />
+                : <><Icon name="refresh" size={20} /> เช็คสถานะอีกครั้ง</>}
             </button>
           </>
         )
@@ -129,18 +129,18 @@ export default function SettleModal({ session, tableName, onClose }: {
           padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'var(--color-surface-2)',
           marginBottom: 'var(--space-5)',
         }}>
-          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>ค่าเวลา</div>
+          <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>ค่าเวลา</div>
           <div className="num" style={{ fontSize: 30, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
             {bahtStr(charge.amount)}
           </div>
-          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>
+          <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)', marginTop: 4 }}>
             เล่นจริง {formatMinutes(charge.rawMinutes)} → คิด {formatMinutes(charge.billableMinutes)} · {session.partySize} คน
           </div>
           <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 'var(--space-3)' }}>
             {charge.withinGrace && <Pill tone="info">อยู่ในช่วงผ่อนผัน — ไม่คิดค่าเวลา</Pill>}
             {charge.capApplied && <Pill tone="success">คิดตามเพดานต่อวัน</Pill>}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 'var(--space-3)', lineHeight: 1.5 }}>
+          <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)', marginTop: 'var(--space-3)', lineHeight: 1.5 }}>
             {planSummary(session.rateSnapshot)}
           </div>
         </div>
@@ -148,7 +148,7 @@ export default function SettleModal({ session, tableName, onClose }: {
 
       {result && !settled && (
         <>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 'var(--space-3)' }}>
+          <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, marginBottom: 'var(--space-3)' }}>
             บิลที่ยังไม่จ่าย ({unpaid.length})
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -161,23 +161,25 @@ export default function SettleModal({ session, tableName, onClose }: {
                   <span className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)', minWidth: 0, overflowWrap: 'anywhere' }}>#{o.receiptNo}</span>
                   <strong className="num" style={{ marginLeft: 'auto', fontSize: 18, fontVariantNumeric: 'tabular-nums' }}>{bahtStr(o.total)}</strong>
                 </div>
-                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                {/* Money action: 64px (TOUCH-SPEC §3.6 settle confirm). */}
+                <div style={{ display: 'flex', gap: 'var(--tap-gap)', alignItems: 'stretch' }}>
                   <Select
                     value={method[o.id] ?? 'CASH'}
                     onChange={(v) => setMethod((prev) => ({ ...prev, [o.id]: v as PaymentMethod }))}
                     ariaLabel={`วิธีจ่ายบิล ${o.receiptNo}`}
                     style={{ flex: 1, minWidth: 0 }}
+                    triggerStyle={{ minHeight: 'var(--tap-xl)', fontSize: 'var(--fs-lg)' }}
                     options={METHODS}
                   />
                   <button
                     onClick={() => { void pay(o.id); }}
                     disabled={!!payingId}
-                    className="btn btn-primary"
-                    style={{ minHeight: 44, opacity: payingId ? 0.6 : 1 }}
+                    className="btn btn-primary btn-xl"
+                    style={{ opacity: payingId ? 0.6 : 1 }}
                   >
                     {payingId === o.id
-                      ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden />
-                      : <><Icon name="check" size={16} /> รับเงิน</>}
+                      ? <span className="spinner" style={{ width: 18, height: 18 }} aria-hidden />
+                      : <><Icon name="check" size={20} /> รับเงิน</>}
                   </button>
                 </div>
               </div>
@@ -185,7 +187,7 @@ export default function SettleModal({ session, tableName, onClose }: {
           </div>
 
           {unpaid.length === 0 && (
-            <div role="status" style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
+            <div role="status" style={{ fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
               ไม่มีบิลค้างในระบบ แต่โต๊ะยังไม่ปิด — กด “เช็คสถานะอีกครั้ง” เพื่อยืนยันกับเซิร์ฟเวอร์
             </div>
           )}
@@ -196,7 +198,7 @@ export default function SettleModal({ session, tableName, onClose }: {
         <div role="status" style={{
           display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-4)',
           borderRadius: 'var(--radius-md)', background: 'var(--color-success-50, var(--color-surface-2))',
-          color: 'var(--color-success)', fontWeight: 700,
+          color: SUCCESS_INK, fontWeight: 700,
         }}>
           <Icon name="success" size={20} />
           <span>ปิดโต๊ะเรียบร้อย — จ่ายครบทุกบิลแล้ว</span>
@@ -206,7 +208,7 @@ export default function SettleModal({ session, tableName, onClose }: {
       {error && (
         <div role="alert" style={{
           marginTop: 'var(--space-4)', padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)',
-          background: 'var(--color-danger-50)', color: 'var(--color-danger)', fontSize: 13, fontWeight: 600,
+          background: 'var(--color-danger-50)', color: 'var(--color-danger-fg)', fontSize: 'var(--fs-sm)', fontWeight: 600,
         }}>
           {error}
         </div>
@@ -215,10 +217,13 @@ export default function SettleModal({ session, tableName, onClose }: {
   );
 }
 
+/** Plain --color-success is ~3.6:1 on its tint; nudged toward the text colour for AA (same as the cash ledger). */
+const SUCCESS_INK = 'color-mix(in srgb, var(--color-success) 68%, var(--color-text))';
+
 function Pill({ children, tone }: { children: React.ReactNode; tone: 'info' | 'success' }) {
-  const color = tone === 'success' ? 'var(--color-success)' : 'var(--color-info)';
+  const color = tone === 'success' ? SUCCESS_INK : 'var(--color-info)';
   return (
-    <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999, border: `1px solid ${color}`, color }}>
+    <span style={{ fontSize: 'var(--fs-cap)', fontWeight: 700, padding: '3px 10px', minHeight: 24, display: 'inline-flex', alignItems: 'center', borderRadius: 999, border: `1px solid ${color}`, color }}>
       {children}
     </span>
   );

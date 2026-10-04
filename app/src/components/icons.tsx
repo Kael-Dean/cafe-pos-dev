@@ -90,6 +90,7 @@ export default function Icon({ name, size = 20, color = 'currentColor', strokeWi
     menu: <path d="M4 7h16M4 12h16M4 17h16"/>,
     logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></>,
     dice: <><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 8h.01M16 8h.01M12 12h.01M8 16h.01M16 16h.01"/></>,
+    table: <><path d="M3 9h18M5 9l-1 11M19 9l1 11M8 9v6h8V9"/><path d="M6 5h12l3 4H3z"/></>,
   };
   return <svg {...props}>{paths[name] || null}</svg>;
 }

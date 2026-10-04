@@ -71,7 +71,6 @@ export default function POS() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [screen, setScreen] = useState<Screen>('pos');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // The board-game tab: while set, POS puts every order it creates on this table's
   // session instead of taking payment at the counter.
   const [tableSession, setTableSession] = useState<ActiveTableSession | null>(null);
@@ -153,7 +152,7 @@ export default function POS() {
           bar / top safe-area inset, side safe-area insets as padding. */}
       <div className="app-shell">
         {/* ≥ 768px. Below that it is display:none and <MobileNav> is the nav. */}
-        <Sidebar current={screen} onNavigate={(s) => { void navigate(s as Screen); }} onLogout={() => { void handleLogout(); }} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
+        <Sidebar current={screen} onNavigate={(s) => { void navigate(s as Screen); }} onLogout={() => { void handleLogout(); }} />
         <main className="app-main" style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'auto' }}>
           {/* key={screen} remounts on navigation so the screen fade (.screen-enter,
               opacity only) plays once per switch. ScreenFrame also tags itself

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import Icon from '../icons';
 import { Select, useToast, NumberInput } from '../app-common';
 import { useModalA11y } from '@/hooks/use-modal-a11y';
+import { useI18n } from '@/lib/i18n';
 import { useLookupMember } from '@/hooks/use-membership';
 import { useRatePlans, type RatePlan } from '@/hooks/use-rate-plans';
 import { useFloorTables, type FloorTable } from '@/hooks/use-floor';
@@ -56,14 +57,14 @@ function ModalShell({ title, subtitle, icon, onClose, children, footer, busy }: 
             <Icon name={icon} size={20} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 700 }}>{title}</div>
-            {subtitle && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{subtitle}</div>}
+            <div style={{ fontSize: 'var(--fs-title)', fontWeight: 700, lineHeight: 'var(--lh-tight)' }}>{title}</div>
+            {subtitle && <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>{subtitle}</div>}
           </div>
-          <button onClick={onClose} aria-label="ปิด" className="icon-btn hit-44" style={{
-            width: 32, height: 32, borderRadius: 'var(--radius-md)', display: 'grid', placeItems: 'center',
-            color: 'var(--color-text-secondary)',
+          {/* 48×48 visible hit (TOUCH-SPEC §3.6); negative margin keeps the header height. */}
+          <button onClick={onClose} aria-label="ปิด" className="icon-btn tap-std tap-sq" style={{
+            margin: '-8px -8px -8px 0', borderRadius: 'var(--radius-md)', color: 'var(--color-text-secondary)',
           }}>
-            <Icon name="x" size={18} />
+            <Icon name="x" size={20} />
           </button>
         </div>
 
@@ -103,18 +104,25 @@ const TSM_PHONE_CSS = `
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 'var(--space-5)' }}>
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 'var(--space-2)' }}>{label}</div>
+      <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>{label}</div>
       {children}
-      {hint && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 'var(--space-2)', lineHeight: 1.5 }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)', marginTop: 'var(--space-2)', lineHeight: 1.5 }}>{hint}</div>}
     </div>
   );
 }
 
 const inputStyle: React.CSSProperties = {
-  width: '100%', minHeight: 44, padding: '10px 12px', borderRadius: 'var(--radius-md)',
-  border: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
-  color: 'var(--color-text)', fontSize: 15, boxSizing: 'border-box',
+  width: '100%', minHeight: 'var(--tap-std)', padding: '10px 12px', borderRadius: 'var(--radius-md)',
+  border: 'var(--hairline)', background: 'var(--color-surface-2)',
+  color: 'var(--color-text)', fontSize: 'var(--fs-lg)', boxSizing: 'border-box',
 };
+/** Select trigger at the touch default height (TOUCH-SPEC §2 --tap-std). */
+const selectTrigger: React.CSSProperties = { minHeight: 'var(--tap-std)', fontSize: 'var(--fs-body)' };
+/** Tinted message text: the *-fg tokens keep AA on their 50 tints and on surface. */
+const alertStyle = (tone: 'danger' | 'warning'): React.CSSProperties => ({
+  padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-sm)', lineHeight: 1.5,
+  background: `var(--color-${tone}-50)`, color: `var(--color-${tone}-fg)`,
+});
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -138,6 +146,7 @@ function CustomerPicker({ customerName, onPick, onClear }: {
   onClear: () => void;
 }) {
   const lookup = useLookupMember();
+  const { t } = useI18n();
   const [phone, setPhone] = useState('');
   const [notFound, setNotFound] = useState(false);
 
@@ -162,15 +171,15 @@ function CustomerPicker({ customerName, onPick, onClear }: {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
         {/* phones: icon + name on one line (the svg is display:block) */}
-        <span className="max-md:flex max-md:items-center" style={{ flex: 1, minWidth: 0, fontSize: 14 }}><Icon name="user" size={14} style={{ marginRight: 6 }} />{customerName}</span>
-        <button onClick={onClear} className="btn btn-ghost">เอาออก</button>
+        <span className="max-md:flex max-md:items-center" style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-body)' }}><Icon name="user" size={16} style={{ marginRight: 6 }} />{customerName}</span>
+        <button onClick={onClear} className="btn btn-ghost tap-std">เอาออก</button>
       </div>
     );
   }
 
   return (
     <>
-      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', gap: 'var(--tap-gap)' }}>
         <input
           value={phone}
           onChange={(e) => { setPhone(e.target.value); setNotFound(false); }}
@@ -178,13 +187,14 @@ function CustomerPicker({ customerName, onPick, onClear }: {
           inputMode="tel"
           placeholder="เบอร์โทรสมาชิก"
           aria-label="เบอร์โทรสมาชิก"
+          className="num"
           style={{ ...inputStyle, flex: 1 }}
         />
-        <button onClick={() => { void search(); }} disabled={lookup.isPending || !phone.trim()} className="btn btn-ghost" style={{ minHeight: 44 }}>
-          {lookup.isPending ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden /> : <Icon name="search" size={16} />}
+        <button onClick={() => { void search(); }} disabled={lookup.isPending || !phone.trim()} aria-label={t.touchModals.searchMember} className="btn btn-ghost tap-std tap-sq">
+          {lookup.isPending ? <span className="spinner" style={{ width: 18, height: 18 }} aria-hidden /> : <Icon name="search" size={20} />}
         </button>
       </div>
-      {notFound && <div role="status" style={{ fontSize: 12, color: 'var(--color-warning)', marginTop: 'var(--space-2)' }}>ไม่พบสมาชิกเบอร์นี้ — เปิดโต๊ะได้โดยไม่ต้องผูกลูกค้า</div>}
+      {notFound && <div role="status" style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-warning-fg)', marginTop: 'var(--space-2)' }}>ไม่พบสมาชิกเบอร์นี้ — เปิดโต๊ะได้โดยไม่ต้องผูกลูกค้า</div>}
     </>
   );
 }
@@ -243,30 +253,29 @@ export default function OpenSessionModal({ table, onClose, onGoSetup }: {
       busy={openSession.isPending}
       footer={
         <>
-          <button onClick={onClose} className="btn btn-ghost btn-lg" style={{ flex: 1, minHeight: 44 }}>ยกเลิก</button>
+          <button onClick={onClose} className="btn btn-ghost btn-lg tap-lg" style={{ flex: 1 }}>ยกเลิก</button>
           <button
             onClick={() => { void submit(); }}
             disabled={openSession.isPending || noPlans || partySize < 1}
-            className="btn btn-primary btn-lg"
-            style={{ flex: 2, minHeight: 44, opacity: openSession.isPending || noPlans ? 0.5 : 1 }}
+            className="btn btn-primary btn-lg tap-lg"
+            style={{ flex: 2, opacity: openSession.isPending || noPlans ? 0.5 : 1 }}
           >
             {openSession.isPending
-              ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden />
-              : <><Icon name="clock" size={16} /> เริ่มจับเวลา</>}
+              ? <span className="spinner" style={{ width: 18, height: 18 }} aria-hidden />
+              : <><Icon name="clock" size={20} /> เริ่มจับเวลา</>}
           </button>
         </>
       }
     >
       {noPlans && (
         <div role="alert" style={{
+          ...alertStyle('warning'),
           display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', marginBottom: 'var(--space-5)',
-          padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)',
-          background: 'var(--color-warning-50, var(--color-surface-2))', color: 'var(--color-warning)', fontSize: 13, lineHeight: 1.5,
         }}>
           <Icon name="warning" size={18} />
           <div style={{ flex: 1 }}>
             ร้านนี้ยังไม่มีแพ็กเกจเวลา — ต้องสร้างก่อนถึงจะเปิดโต๊ะได้
-            {onGoSetup && <div><button onClick={onGoSetup} className="btn btn-ghost" style={{ marginTop: 'var(--space-2)' }}>ไปตั้งค่าโต๊ะ</button></div>}
+            {onGoSetup && <div><button onClick={onGoSetup} className="btn btn-ghost tap-std" style={{ marginTop: 'var(--space-2)' }}>ไปตั้งค่าโต๊ะ</button></div>}
           </div>
         </div>
       )}
@@ -285,6 +294,7 @@ export default function OpenSessionModal({ table, onClose, onGoSetup }: {
           ariaLabel="แพ็กเกจเวลา"
           placeholder={plansQ.isLoading ? 'กำลังโหลด…' : '— เลือก —'}
           disabled={noPlans}
+          triggerStyle={selectTrigger}
           options={plans.map((p) => ({ value: p.id, label: p.isDefault ? `${p.name} (ค่าเริ่มต้น)` : p.name }))}
         />
       </Field>
@@ -309,10 +319,7 @@ export default function OpenSessionModal({ table, onClose, onGoSetup }: {
       </Field>
 
       {error && (
-        <div role="alert" style={{
-          padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)',
-          background: 'var(--color-danger-50)', color: 'var(--color-danger)', fontSize: 13, fontWeight: 600,
-        }}>
+        <div role="alert" style={{ ...alertStyle('danger'), fontWeight: 600 }}>
           {error}
         </div>
       )}
@@ -414,12 +421,12 @@ export function SessionDetailModal({ session, table, tables, canVoid, onClose, o
       footer={
         <>
           {onOrder && (
-            <button onClick={onOrder} className="btn btn-ghost btn-lg" style={{ flex: 1, minHeight: 44 }}>
-              <Icon name="cart" size={16} /> สั่งอาหาร
+            <button onClick={onOrder} className="btn btn-ghost btn-lg tap-lg" style={{ flex: 1 }}>
+              <Icon name="cart" size={20} /> สั่งอาหาร
             </button>
           )}
-          <button onClick={onSettle} className="btn btn-primary btn-lg" style={{ flex: 1.4, minHeight: 44 }}>
-            <Icon name="cash" size={16} /> ปิดโต๊ะ / เช็คบิล
+          <button onClick={onSettle} className="btn btn-primary btn-lg tap-lg" style={{ flex: 1.4 }}>
+            <Icon name="cash" size={20} /> ปิดโต๊ะ / เช็คบิล
           </button>
         </>
       }
@@ -429,11 +436,11 @@ export function SessionDetailModal({ session, table, tables, canVoid, onClose, o
         padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'var(--color-surface-2)',
         marginBottom: 'var(--space-5)',
       }}>
-        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>ค่าเวลาถึงตอนนี้</div>
+        <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>ค่าเวลาถึงตอนนี้</div>
         <div className="num" style={{ fontSize: 30, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
           {preview.isLoading || !preview.data ? '—' : bahtStr(preview.data.amount)}
         </div>
-        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>
+        <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)', marginTop: 4 }}>
           นั่งแล้ว {formatMinutes(elapsed)}
           {preview.data && ` · คิด ${formatMinutes(preview.data.billableMinutes)} (เล่นจริง ${formatMinutes(preview.data.rawMinutes)})`}
         </div>
@@ -442,14 +449,14 @@ export function SessionDetailModal({ session, table, tables, canVoid, onClose, o
           {preview.data?.capApplied && <Badge tone="success">ถึงเพดานต่อวันแล้ว</Badge>}
           {overtime && <Badge tone="warning">เกิน {formatMinutes(session.rateSnapshot.maxOpenMinutes)} ที่ตั้งไว้</Badge>}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 'var(--space-3)', lineHeight: 1.5 }}>
+        <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)', marginTop: 'var(--space-3)', lineHeight: 1.5 }}>
           {planSummary(session.rateSnapshot)}
         </div>
       </div>
 
       <Field
         label="จำนวนคน"
-        hint={shrinking ? '⚠️ ลดจำนวนคนจะมีผลกับเวลาทั้งหมดของโต๊ะนี้ ไม่ใช่เฉพาะช่วงหลังจากนี้' : 'มีผลกับเวลาทั้งหมดของโต๊ะนี้ (ไม่มีการเฉลี่ยตามช่วง)'}
+        hint={shrinking ? 'ระวัง: ลดจำนวนคนจะมีผลกับเวลาทั้งหมดของโต๊ะนี้ ไม่ใช่เฉพาะช่วงหลังจากนี้' : 'มีผลกับเวลาทั้งหมดของโต๊ะนี้ (ไม่มีการเฉลี่ยตามช่วง)'}
       >
         <NumberInput value={partySize} onChange={setPartySize} min={1} max={100} integer style={inputStyle} aria-label="จำนวนคน" />
       </Field>
@@ -465,8 +472,8 @@ export function SessionDetailModal({ session, table, tables, canVoid, onClose, o
       </Field>
 
       {dirty && (
-        <button onClick={() => { void saveEdits(); }} disabled={busy} className="btn btn-primary btn-lg" style={{ width: '100%', minHeight: 44, marginBottom: 'var(--space-5)' }}>
-          {update.isPending ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden /> : <><Icon name="check" size={16} /> บันทึกการแก้ไข</>}
+        <button onClick={() => { void saveEdits(); }} disabled={busy} className="btn btn-primary btn-lg tap-lg" style={{ width: '100%', marginBottom: 'var(--space-5)' }}>
+          {update.isPending ? <span className="spinner" style={{ width: 18, height: 18 }} aria-hidden /> : <><Icon name="check" size={20} /> บันทึกการแก้ไข</>}
         </button>
       )}
 
@@ -487,39 +494,37 @@ export function SessionDetailModal({ session, table, tables, canVoid, onClose, o
             placeholder={freeTables.length ? '— เลือกโต๊ะว่าง —' : 'ไม่มีโต๊ะว่าง'}
             disabled={!freeTables.length}
             style={{ flex: 1 }}
+            triggerStyle={selectTrigger}
             options={freeTables.map((t) => ({ value: t.id, label: `${t.name}${t.zone ? ` · ${t.zone}` : ''}` }))}
           />
-          <button onClick={() => { void doMove(); }} disabled={busy || !moveTo} className="btn btn-ghost" style={{ minHeight: 44 }}>ย้าย</button>
+          <button onClick={() => { void doMove(); }} disabled={busy || !moveTo} className="btn btn-ghost tap-std">ย้าย</button>
         </div>
       </Field>
 
       {canVoid && (
         <Field label="ยกเลิกโต๊ะ" hint="ใช้เมื่อเปิดผิด — ไม่คิดเงิน และทำได้เฉพาะเมื่อยังไม่มีบิลค้างในโต๊ะ">
           {confirmVoid ? (
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <button onClick={() => setConfirmVoid(false)} className="btn btn-ghost" style={{ flex: 1, minHeight: 44 }}>ไม่ยกเลิก</button>
+            <div style={{ display: 'flex', gap: 'var(--tap-gap)' }}>
+              <button onClick={() => setConfirmVoid(false)} className="btn btn-ghost tap-std" style={{ flex: 1 }}>ไม่ยกเลิก</button>
               <button
                 onClick={() => { void doVoid(); }}
                 disabled={busy}
-                className="btn"
-                style={{ flex: 1, minHeight: 44, background: 'var(--color-danger-strong)', borderColor: 'var(--color-danger-strong)', color: 'white' }}
+                className="btn btn-danger tap-std"
+                style={{ flex: 1 }}
               >
-                {voidSession.isPending ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden /> : 'ยืนยันยกเลิก'}
+                {voidSession.isPending ? <span className="spinner" style={{ width: 18, height: 18 }} aria-hidden /> : 'ยืนยันยกเลิก'}
               </button>
             </div>
           ) : (
-            <button onClick={() => setConfirmVoid(true)} className="btn btn-ghost" style={{ width: '100%', minHeight: 44, color: 'var(--color-danger)' }}>
-              <Icon name="void" size={16} /> ยกเลิกโต๊ะนี้ (ไม่คิดเงิน)
+            <button onClick={() => setConfirmVoid(true)} className="btn btn-ghost tap-std" style={{ width: '100%', color: 'var(--color-danger-fg)' }}>
+              <Icon name="void" size={18} /> ยกเลิกโต๊ะนี้ (ไม่คิดเงิน)
             </button>
           )}
         </Field>
       )}
 
       {error && (
-        <div role="alert" style={{
-          padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)',
-          background: 'var(--color-danger-50)', color: 'var(--color-danger)', fontSize: 13, fontWeight: 600,
-        }}>
+        <div role="alert" style={{ ...alertStyle('danger'), fontWeight: 600 }}>
           {error}
         </div>
       )}
@@ -527,10 +532,15 @@ export function SessionDetailModal({ session, table, tables, canVoid, onClose, o
   );
 }
 
+/** Status tag (pill, as status tags already were). 13px; text tones keep AA on surface-2. */
 function Badge({ children, tone }: { children: React.ReactNode; tone: 'info' | 'success' | 'warning' }) {
-  const color = tone === 'warning' ? 'var(--color-warning)' : tone === 'success' ? 'var(--color-success)' : 'var(--color-info)';
+  const color = tone === 'warning'
+    ? 'var(--color-warning-fg)'
+    : tone === 'success'
+      ? 'color-mix(in srgb, var(--color-success) 68%, var(--color-text))'
+      : 'var(--color-info)';
   return (
-    <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999, border: `1px solid ${color}`, color }}>
+    <span style={{ fontSize: 'var(--fs-cap)', fontWeight: 700, padding: '3px 10px', minHeight: 24, display: 'inline-flex', alignItems: 'center', borderRadius: 999, border: `1px solid ${color}`, color }}>
       {children}
     </span>
   );

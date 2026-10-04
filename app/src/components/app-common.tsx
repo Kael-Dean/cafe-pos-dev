@@ -7,6 +7,7 @@ import { useCurrentUser } from '@/hooks/use-current-user';
 import { useFeatures, FEATURE_BOARDGAME } from '@/hooks/use-features';
 import { displayNumber, parseNumberInput, clampNumber } from '@/lib/number-input';
 import { useI18n } from '@/lib/i18n';
+import { useMediaQuery } from '@/hooks/use-media-query';
 // Import the gsap-free count-up directly (not via the @/lib/motion barrel, which
 // re-exports the side-effectful gsap engine). app-common is in the shell on every
 // screen, so this keeps the ~71KB gsap engine attributable to the screen chunks
@@ -14,19 +15,42 @@ import { useI18n } from '@/lib/i18n';
 import { useCountUp } from '@/lib/motion/use-count-up';
 
 // ---------- Toast ----------
+// Top-center stack (globals.css .toast-stack). Every toast has a 44px close button.
+// `danger` toasts stay until dismissed; the rest auto-dismiss after `duration`
+// (default 3s), and the timer pauses while a finger / mouse is down on the toast
+// or keyboard focus is inside it. Optional `action` renders one text button
+// (e.g. retry) that runs and then dismisses the toast.
+//
+//   const toast = useToast();
+//   toast({ kind: 'danger', title: 'เพิ่ม ลาเต้ ไม่สำเร็จ', msg: 'ลองอีกครั้ง',
+//           action: { label: 'ลองอีกครั้ง', onAction: retry } });
+//
+// Routine success (item added to the cart) is not a toast: show it in place.
 type ToastKind = 'success' | 'warning' | 'danger' | 'info';
-interface Toast { id: string; kind?: ToastKind; title: string; msg?: string; duration?: number; }
+interface ToastAction { label: string; onAction: () => void; }
+interface Toast { id: string; kind?: ToastKind; title: string; msg?: string; duration?: number; action?: ToastAction; }
 type PushToast = (t: Omit<Toast, 'id'>) => void;
+
+const TOAST_DEFAULT_MS = 3000;
+const TOAST_MAX = 4; // oldest non-error toasts drop off first
 
 const ToastCtx = createContext<PushToast | null>(null);
 export const useToast = () => useContext(ToastCtx) as PushToast;
 
 export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
+  const { t: tr } = useI18n();
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const dismiss = useCallback((id: string) => setToasts((cur) => cur.filter((x) => x.id !== id)), []);
   const push = useCallback((t: Omit<Toast, 'id'>) => {
     const id = Math.random().toString(36).slice(2);
-    setToasts((cur) => [...cur, { id, ...t }]);
-    setTimeout(() => setToasts((cur) => cur.filter((x) => x.id !== id)), t.duration || 3200);
+    setToasts((cur) => {
+      const next = [...cur, { id, ...t }];
+      while (next.length > TOAST_MAX) {
+        const i = next.findIndex((x) => x.kind !== 'danger');
+        next.splice(i >= 0 ? i : 0, 1);
+      }
+      return next;
+    });
   }, []);
   return (
     <ToastCtx.Provider value={push}>
@@ -34,25 +58,61 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
       {/* Persistent live region: it exists before any toast mounts, so screen
           readers announce children added to it. Polite for the common case;
           danger toasts opt into role="alert" (assertive) for errors. */}
-      <div className="toast-stack" role="region" aria-label="การแจ้งเตือน" aria-live="polite" aria-relevant="additions">
+      <div className="toast-stack" role="region" aria-label={tr.ui.notifications} aria-live="polite" aria-relevant="additions">
         {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.kind || ''}`} role={t.kind === 'danger' ? 'alert' : 'status'}>
-            <Icon name={t.kind === 'success' ? 'success' : t.kind === 'warning' ? 'warning' : t.kind === 'danger' ? 'warning' : 'info'} size={20} className="t-icon" color={
-              t.kind === 'success' ? 'var(--color-success)' :
-              t.kind === 'warning' ? 'var(--color-warning)' :
-              t.kind === 'danger'  ? 'var(--color-danger)'  :
-              'var(--color-info)'
-            } />
-            <div style={{flex: 1}}>
-              <div className="t-title">{t.title}</div>
-              {t.msg && <div className="t-msg">{t.msg}</div>}
-            </div>
-          </div>
+          <ToastItem key={t.id} toast={t} onDismiss={dismiss} dismissLabel={tr.ui.dismiss} />
         ))}
       </div>
     </ToastCtx.Provider>
   );
 };
+
+const TOAST_ICON: Record<ToastKind, string> = { success: 'success', warning: 'warning', danger: 'warning', info: 'info' };
+
+function ToastItem({ toast: t, onDismiss, dismissLabel }: { toast: Toast; onDismiss: (id: string) => void; dismissLabel: string }) {
+  const kind = t.kind ?? 'info';
+  const persistent = kind === 'danger';
+  const [held, setHeld] = useState(false);
+  const remaining = useRef(t.duration || TOAST_DEFAULT_MS);
+
+  // Auto-dismiss: runs only while not held; holding stores the time left.
+  useEffect(() => {
+    if (persistent || held) return;
+    const started = Date.now();
+    const timer = window.setTimeout(() => onDismiss(t.id), remaining.current);
+    return () => {
+      window.clearTimeout(timer);
+      remaining.current = Math.max(800, remaining.current - (Date.now() - started));
+    };
+  }, [persistent, held, onDismiss, t.id]);
+
+  return (
+    <div
+      className={`toast ${kind}`}
+      role={persistent ? 'alert' : 'status'}
+      onPointerDown={() => setHeld(true)}
+      onPointerUp={() => setHeld(false)}
+      onPointerCancel={() => setHeld(false)}
+      onPointerLeave={() => setHeld(false)}
+      onFocus={() => setHeld(true)}
+      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHeld(false); }}
+    >
+      <Icon name={TOAST_ICON[kind]} size={20} className="t-icon" />
+      <div className="t-body">
+        <div className="t-title">{t.title}</div>
+        {t.msg && <div className="t-msg">{t.msg}</div>}
+      </div>
+      {t.action && (
+        <button type="button" className="t-action" onClick={() => { t.action?.onAction(); onDismiss(t.id); }}>
+          {t.action.label}
+        </button>
+      )}
+      <button type="button" className="t-close" aria-label={dismissLabel} onClick={() => onDismiss(t.id)}>
+        <Icon name="x" size={20} />
+      </button>
+    </div>
+  );
+}
 
 // ---------- Sidebar ----------
 // Labels are resolved at render time from the active language (`t.nav[id]`); the array
@@ -83,7 +143,7 @@ export const NAV: NavItem[] = [
   // `vertical.boardgame` entitlement (its endpoints answer 404 there).
   { id: 'sec-boardgame', header: true, icon: 'dice' },
   { id: 'floor',       icon: 'park',     feature: FEATURE_BOARDGAME },
-  { id: 'table-setup', icon: 'settings', feature: FEATURE_BOARDGAME, adminOnly: true },
+  { id: 'table-setup', icon: 'table',    feature: FEATURE_BOARDGAME, adminOnly: true },
 
   // Kitchen & stock — the daily stock jobs first (check, count, buy), then the
   // menu-definition screens that are edited now and then (prep, recipes, catalog).
@@ -187,13 +247,64 @@ const readStoredGroups = (): Record<string, boolean> | null => {
   }
 };
 
-interface SidebarProps { current: string; onNavigate: (id: string) => void; onLogout?: () => void; branchName?: string; collapsed?: boolean; onToggle?: () => void; }
+// Sidebar mode per tier (TOUCH-SPEC §3.1). Tablet (768–1279) defaults to the
+// labelled 80px rail and expands as an overlay over the content, so the POS grid
+// never reflows; that overlay is transient (a tap outside, Escape or a navigation
+// closes it). POS (≥ 1280) defaults to the 240px panel and the user's choice is
+// remembered for that tier.
+type SbTier = 'tablet' | 'pos';
+type SbMode = 'rail' | 'expanded';
+const SB_MODE_KEY: Record<SbTier, string> = { tablet: 'kafe.sb.tablet', pos: 'kafe.sb.pos' };
+const SB_DEFAULT: Record<SbTier, SbMode> = { tablet: 'rail', pos: 'expanded' };
+const SB_POS_QUERY = '(min-width: 1280px)';
+const SB_RAIL_W = 80;
+const SB_PANEL_W = 240;
 
-export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit 49', collapsed = false, onToggle }: SidebarProps) => {
+const readSbMode = (tier: SbTier): SbMode | null => {
+  try {
+    const v = window.localStorage.getItem(SB_MODE_KEY[tier]);
+    return v === 'rail' || v === 'expanded' ? v : null;
+  } catch {
+    return null;
+  }
+};
+
+function useSidebarMode() {
+  const tier: SbTier = useMediaQuery(SB_POS_QUERY) ? 'pos' : 'tablet';
+  const [stored, setStored] = useState<Record<SbTier, SbMode | null>>(() => ({
+    tablet: readSbMode('tablet'),
+    pos: readSbMode('pos'),
+  }));
+  const mode = stored[tier] ?? SB_DEFAULT[tier];
+  const setMode = (next: SbMode) => {
+    setStored((s) => ({ ...s, [tier]: next }));
+    try { window.localStorage.setItem(SB_MODE_KEY[tier], next); } catch { /* session only */ }
+  };
+  return { tier, mode, setMode };
+}
+
+interface SidebarProps { current: string; onNavigate: (id: string) => void; onLogout?: () => void; branchName?: string; }
+
+export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit 49' }: SidebarProps) => {
   const { t } = useI18n();
   // Role / feature filtering is shared with the phone nav — see visibleNavSections.
   const { sections: visibleSections, me, initial, roleLabel, navLabel, sectionLabel } = useVisibleNav();
   const currentGroupId = groupOfScreen(current);
+  const { tier, mode, setMode } = useSidebarMode();
+  const isTablet = tier === 'tablet';
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  // Leaving the tablet tier (rotate / resize) drops a hanging overlay.
+  if (!isTablet && overlayOpen) setOverlayOpen(false);
+  const expanded = isTablet ? overlayOpen : mode === 'expanded';
+  const toggle = () => (isTablet ? setOverlayOpen((o) => !o) : setMode(mode === 'expanded' ? 'rail' : 'expanded'));
+  const go = (id: string) => { if (isTablet) setOverlayOpen(false); onNavigate(id); };
+
+  useEffect(() => {
+    if (!overlayOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOverlayOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [overlayOpen]);
 
   // Each group is a collapsible section. The open set is explicit and remembered
   // per device: first run opens only the group holding the current screen, after
@@ -223,192 +334,227 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
     }
   }, [openGroups]);
 
-  // Item row shared by both layouts (accordion when expanded, flat rail when collapsed).
+  // Expanded panel row: icon + full label.
   const renderItem = (n: NavItem) => {
     const active = current === n.id;
     return (
-      <button key={n.id} type="button" onClick={() => onNavigate(n.id)}
+      <button key={n.id} type="button" onClick={() => go(n.id)}
         data-nav-id={n.id}
-        className={`sb-item${active ? ' active' : ''}`}
-        title={collapsed ? navLabel(n.id) : undefined}
+        className={`sb-item sb-panel-item${active ? ' active' : ''}`}
         aria-current={active ? 'page' : undefined}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: collapsed ? '10px 0' : '10px 10px', borderRadius: 8,
-          justifyContent: collapsed ? 'center' : 'flex-start',
-          fontSize: 14, minHeight: 44,
-          textAlign: 'left', width: '100%',
-          position: 'relative',
-        }}
       >
         {n.icon && <Icon name={n.icon} size={18} style={{flexShrink: 0}} />}
-        {!collapsed && <span className="sb-fade sb-item-label">{navLabel(n.id)}</span>}
-        {!collapsed && n.soft && <span className="sb-fade" style={{fontSize: 10, color: 'currentColor', opacity: 0.55, fontWeight: 500}}>P1</span>}
+        <span className="sb-item-label">{navLabel(n.id)}</span>
+        {n.soft && <span className="sb-soft">P1</span>}
       </button>
     );
   };
+
+  // Rail cell: icon over a short visible label. The full name follows for
+  // assistive tech, so the accessible name still starts with what is on screen.
+  const renderRailItem = (n: NavItem) => {
+    const active = current === n.id;
+    const short = t.touchPos.navShort[n.id] ?? navLabel(n.id);
+    return (
+      <button key={n.id} type="button" onClick={() => go(n.id)}
+        data-nav-id={n.id}
+        className={`sb-item sb-rail-item${active ? ' active' : ''}`}
+        aria-current={active ? 'page' : undefined}
+      >
+        {n.icon && <Icon name={n.icon} size={22} style={{flexShrink: 0}} />}
+        <span className="sb-rail-label">{short}</span>
+        <span className="sr-only"> · {navLabel(n.id)}</span>
+      </button>
+    );
+  };
+
+  const logo = (
+    <div aria-hidden style={{
+      width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+      background: 'var(--color-accent)', color: 'var(--sb-avatar-fg)',
+      display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 18,
+    }}>K</div>
+  );
+  const avatar = (
+    <div aria-hidden style={{
+      width: 32, height: 32, borderRadius: 999,
+      background: 'var(--color-accent)', color: 'var(--sb-avatar-fg)',
+      display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 'var(--fs-cap)',
+      flexShrink: 0,
+    }}>{initial}</div>
+  );
+
+  const panel = (
+    <aside className={`sidebar-surface sb-aside sb-panel${isTablet ? ' sb-overlay' : ''}`} style={{ width: SB_PANEL_W }}>
+      <div style={{ padding: '12px 10px 12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        {logo}
+        <div style={{flex: 1, minWidth: 0}}>
+          <div style={{fontWeight: 700, fontSize: 'var(--fs-body)', letterSpacing: '-0.01em', whiteSpace: 'nowrap', color: 'var(--sb-text-strong)'}}>Kafé OS</div>
+          <div style={{fontSize: 'var(--fs-cap)', color: 'var(--sb-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{me?.store_name ?? branchName}</div>
+        </div>
+        <button type="button" onClick={toggle} className="icon-btn-soft tap sb-toggle"
+          aria-label={t.sidebar.collapse} aria-expanded>
+          <Icon name="chevronLeft" size={20} />
+        </button>
+      </div>
+
+      <nav aria-label={t.sidebar.navLabel} className="sb-panel-nav">
+        {/* Each group is a collapsible section — the whole heading row toggles
+            it, so only the functions you need are on screen at once. */}
+        {visibleSections.map((s) => {
+          const open = !!openGroups[s.id];
+          const isCurrent = s.id === currentGroupId;
+          const btnId = `sb-group-${s.id}`;
+          const panelId = `sb-panel-${s.id}`;
+          return (
+            <div key={s.id} className="sb-group">
+              <button
+                type="button"
+                id={btnId}
+                onClick={() => toggleGroup(s.id)}
+                className={`sb-group-btn${open ? ' open' : ''}${isCurrent ? ' current' : ''}`}
+                aria-expanded={open}
+                aria-controls={panelId}
+              >
+                <span className="sb-group-icon"><Icon name={s.icon ?? 'list'} size={18} strokeWidth={1.75} /></span>
+                <span className="sb-group-text">
+                  <span className="sb-group-label">{sectionLabel(s.id)}</span>
+                  {/* Closed group that holds the current screen: name the screen
+                      under the heading so "where am I" survives collapsing it. */}
+                  {isCurrent && !open && <span className="sb-group-here">{navLabel(current)}</span>}
+                </span>
+                <Icon name="chevronDown" size={18} strokeWidth={2} className="sb-group-chevron" />
+              </button>
+              {/* Always mounted so open/close can animate height; `inert` keeps a
+                  closed group out of the tab order and the accessibility tree. */}
+              <div id={panelId} role="group" aria-labelledby={btnId} inert={!open}
+                className={`sb-group-panel${open ? ' open' : ''}`}>
+                <div className="sb-group-clip">
+                  <div className="sb-group-items">{s.items.map(renderItem)}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </nav>
+
+      <div style={{ padding: '8px 12px 12px' }}>
+        <div style={{
+          padding: 12, background: 'var(--sb-card-bg)', borderRadius: 10,
+          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8,
+        }}>
+          {avatar}
+          <div style={{flex: 1, minWidth: 0}}>
+            <div style={{fontSize: 'var(--fs-sm)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--sb-text-strong)'}}>{me?.name ?? '...'}</div>
+            <div style={{fontSize: 'var(--fs-cap)', color: 'var(--sb-text-muted)'}}>{roleLabel}</div>
+          </div>
+        </div>
+        {onLogout && (
+          <button type="button" onClick={onLogout} className="sb-logout tap" style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+            padding: '0 12px', borderRadius: 8, minHeight: 'var(--tap-std)',
+            fontSize: 'var(--fs-sm)', fontWeight: 500,
+          }}>
+            <Icon name="logout" size={16} />
+            <span>{t.sidebar.logout}</span>
+          </button>
+        )}
+      </div>
+    </aside>
+  );
+
+  const rail = (
+    <aside className="sidebar-surface sb-aside sb-rail" style={{ width: SB_RAIL_W }}>
+      <div style={{ padding: '14px 0 10px', display: 'grid', placeItems: 'center' }}>{logo}</div>
+      {/* Every item, groups separated by space (no rules). Scrolls if it overflows. */}
+      <nav aria-label={t.sidebar.navLabel} className="sb-rail-nav">
+        {visibleSections.map((s, si) => (
+          <Fragment key={s.id}>
+            {si > 0 && <div className="sb-rail-gap" aria-hidden />}
+            {s.items.map(renderRailItem)}
+          </Fragment>
+        ))}
+      </nav>
+      {/* Only the expand toggle lives under the rail; the user card and logout are in
+          the expanded panel (one tap away), so the scrolling list gets the height. */}
+      <div className="sb-rail-foot">
+        <button type="button" onClick={toggle} className="icon-btn-soft tap sb-toggle sb-rail-toggle"
+          aria-label={t.sidebar.expand} aria-expanded={false}>
+          <Icon name="chevronRight" size={20} />
+        </button>
+      </div>
+    </aside>
+  );
 
   return (
     // Desktop/tablet only: below 768px <MobileNav> (mobile-nav.tsx — bottom tab bar
     // + menu sheet) is the nav, so the sidebar is hidden to avoid a duplicate nav
     // landmark and to free the full width for content on phones.
-    <div className="hidden md:block" style={{ position: 'relative', flexShrink: 0 }}>
-    <aside className="sidebar-surface" style={{
-      width: collapsed ? 64 : 240,
-      height: 'var(--app-h, 100dvh)',
-      display: 'flex', flexDirection: 'column',
-      borderRight: '1px solid var(--sb-border)',
-      transition: 'width var(--dur-slow) var(--ease-out)',
-      overflow: 'hidden',
-    }}>
-      <div style={{
-        // Expanded: left edge lines up with the group-heading icon tiles below.
-        padding: collapsed ? '16px 0 12px' : '16px 14px 12px',
-        display: 'flex',
-        flexDirection: collapsed ? 'column' : 'row',
-        alignItems: 'center',
-        gap: collapsed ? 8 : 12,
-        transition: 'padding var(--dur-slow) var(--ease-out)',
-      }}>
-        <div style={{
-          width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-          background: 'var(--color-accent)', color: 'var(--sb-avatar-fg)',
-          display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 18,
-        }}>K</div>
-        {!collapsed && (
-          <div className="sb-fade" style={{flex: 1, minWidth: 0}}>
-            <div style={{fontWeight: 700, fontSize: 15, letterSpacing: '-0.01em', whiteSpace: 'nowrap', color: 'var(--sb-text-strong)'}}>Kafé OS</div>
-            <div style={{fontSize: 11, color: 'var(--sb-text-muted)', whiteSpace: 'nowrap'}}>{me?.store_name ?? branchName}</div>
-          </div>
-        )}
-        {onToggle && (
-          <button
-            onClick={onToggle}
-            className="icon-btn-soft hit-44"
-            title={collapsed ? t.sidebar.expand : t.sidebar.collapse}
-            aria-label={collapsed ? t.sidebar.expand : t.sidebar.collapse}
-            aria-expanded={!collapsed}
-            style={{
-              width: 28, height: 28, borderRadius: 6, flexShrink: 0,
-              border: 'none', cursor: 'pointer',
-              display: 'grid', placeItems: 'center',
-            }}
-          >
-            <Icon name="chevronLeft" size={14} style={{
-              transform: collapsed ? 'rotate(180deg)' : 'none',
-              transition: 'transform var(--dur-slow) var(--ease-out)',
-            }} />
-          </button>
-        )}
-      </div>
-
-      <nav aria-label={t.sidebar.navLabel} style={{padding: collapsed ? '8px 8px' : '4px 8px 8px', flex: 1, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', overflowX: 'hidden', transition: 'padding var(--dur-slow) var(--ease-out)'}}>
-        {collapsed
-          ? // Icon-only rail: no room for group headings, so show every item and
-            // separate the groups with a hairline divider (none before the first).
-            visibleSections.map((s, si) => (
-              <Fragment key={s.id}>
-                {si > 0 && <div className="sb-rail-divider" />}
-                {s.items.map(renderItem)}
-              </Fragment>
-            ))
-          : // Expanded: each group is a collapsible section — the whole heading row
-            // toggles it, so only the functions you need are on screen at once.
-            visibleSections.map((s) => {
-              const open = !!openGroups[s.id];
-              const isCurrent = s.id === currentGroupId;
-              const btnId = `sb-group-${s.id}`;
-              const panelId = `sb-panel-${s.id}`;
-              return (
-                <div key={s.id} className="sb-group">
-                  <button
-                    type="button"
-                    id={btnId}
-                    onClick={() => toggleGroup(s.id)}
-                    className={`sb-group-btn${open ? ' open' : ''}${isCurrent ? ' current' : ''}`}
-                    aria-expanded={open}
-                    aria-controls={panelId}
-                  >
-                    <span className="sb-group-icon"><Icon name={s.icon ?? 'list'} size={18} strokeWidth={1.75} /></span>
-                    <span className="sb-fade sb-group-text">
-                      <span className="sb-group-label">{sectionLabel(s.id)}</span>
-                      {/* Closed group that holds the current screen: name the screen
-                          under the heading so "where am I" survives collapsing it. */}
-                      {isCurrent && !open && <span className="sb-group-here">{navLabel(current)}</span>}
-                    </span>
-                    <Icon name="chevronDown" size={18} strokeWidth={2} className="sb-group-chevron" />
-                  </button>
-                  {/* Always mounted so open/close can animate height; `inert` keeps a
-                      closed group out of the tab order and the accessibility tree. */}
-                  <div id={panelId} role="group" aria-labelledby={btnId} inert={!open}
-                    className={`sb-group-panel${open ? ' open' : ''}`}>
-                    <div className="sb-group-clip">
-                      <div className="sb-group-items">{s.items.map(renderItem)}</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-      </nav>
-
-      <div style={{ padding: collapsed ? '8px 8px' : '8px 12px', marginBottom: 4, transition: 'padding var(--dur-slow) var(--ease-out)' }}>
-        <div style={{
-          padding: collapsed ? '8px 0' : 12,
-          background: 'var(--sb-card-bg)',
-          borderRadius: 10,
-          display: 'flex', alignItems: 'center', gap: 10,
-          justifyContent: collapsed ? 'center' : 'flex-start',
-          marginBottom: 8,
-          transition: 'padding var(--dur-slow) var(--ease-out)',
-        }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: 999,
-            background: 'var(--color-accent)', color: 'var(--sb-avatar-fg)',
-            display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13,
-            flexShrink: 0,
-          }}>{initial}</div>
-          {!collapsed && (
-            <div className="sb-fade" style={{flex: 1, minWidth: 0}}>
-              <div style={{fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--sb-text-strong)'}}>{me?.name ?? '...'}</div>
-              <div style={{fontSize: 11, color: 'var(--sb-text-muted)'}}>{roleLabel}</div>
-            </div>
-          )}
-        </div>
-        {onLogout && !collapsed && (
-          <button
-            onClick={onLogout}
-            className="sb-logout"
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-              padding: '9px 12px', borderRadius: 8, minHeight: 44,
-              fontSize: 13, fontWeight: 500,
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}
-          >
-            <Icon name="x" size={15} />
-            <span className="sb-fade">{t.sidebar.logout}</span>
-          </button>
-        )}
-        {onLogout && collapsed && (
-          <button
-            onClick={onLogout}
-            className="sb-logout"
-            title={t.sidebar.logout}
-            aria-label={t.sidebar.logout}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: '9px 0', borderRadius: 8, minHeight: 44,
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}
-          >
-            <Icon name="x" size={15} />
-          </button>
-        )}
-      </div>
-    </aside>
+    // The host holds the layout footprint: always the rail on tablet (the panel
+    // overlays it), rail or panel on POS. Width changes snap; nothing tweens layout.
+    <div className="hidden md:block" style={{ position: 'relative', flexShrink: 0, width: isTablet || !expanded ? SB_RAIL_W : SB_PANEL_W }}>
+      <style>{SIDEBAR_CSS}</style>
+      {expanded ? panel : rail}
+      {isTablet && overlayOpen && <div className="sb-backdrop" aria-hidden onClick={() => setOverlayOpen(false)} />}
     </div>
   );
 };
+
+const SIDEBAR_CSS = `
+.sb-aside {
+  height: var(--app-h, 100dvh);
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--sb-border);
+  overflow: hidden;
+}
+/* Tablet: the panel floats over the content; it slides in with transform only. */
+.sb-overlay {
+  position: absolute; top: 0; left: 0; z-index: var(--z-modal);
+  box-shadow: var(--shadow-lg);
+  animation: sb-slide-in var(--dur-base) var(--ease-out) both;
+}
+@keyframes sb-slide-in { from { transform: translateX(-24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.sb-backdrop {
+  position: fixed; inset: 0; z-index: calc(var(--z-modal) - 1);
+  background: rgba(26, 16, 8, 0.32);
+  animation: backdrop-in var(--dur-base) var(--ease-out);
+}
+.sb-toggle {
+  width: var(--tap-std); height: var(--tap-std); min-height: var(--tap-std); flex-shrink: 0;
+  display: grid; place-items: center; border-radius: var(--radius-md);
+}
+.sb-panel-nav {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+  padding: 4px 8px 8px; display: flex; flex-direction: column; gap: 2px;
+}
+.sb-panel-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; min-height: var(--tap-std); padding: 0 10px;
+  border-radius: 8px; font-size: var(--fs-sm); text-align: left;
+}
+.sb-soft { font-size: var(--fs-cap); font-weight: 500; color: var(--sb-text-muted); }
+.sb-rail-nav {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding: 4px 6px; display: flex; flex-direction: column; gap: 4px;
+}
+.sb-rail-nav::-webkit-scrollbar { display: none; }
+.sb-rail-item {
+  flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  width: 100%; min-height: 64px; padding: 8px 2px;
+  border-radius: 8px;
+}
+.sb-rail-label {
+  max-width: 100%; font-size: var(--fs-cap); line-height: 1.25;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sb-rail-gap { height: 8px; flex-shrink: 0; }
+/* Hairline where the scrolling list meets the pinned toggle, so a row cut at the
+   scroll edge reads as "more below", not as a clipped control. */
+.sb-rail-foot { flex-shrink: 0; padding: 8px 6px 12px; border-top: 1px solid var(--sb-divider); }
+.sb-rail-toggle { width: 100%; }
+`;
 
 // ---------- Reusable bits ----------
 interface KPICardProps {
@@ -607,19 +753,20 @@ export const Select = ({
                 aria-selected={isSel}
                 disabled={opt.disabled}
                 onClick={() => { if (opt.disabled) return; onChange(opt.value); setOpen(false); }}
+                // Hover tint comes from .select-opt (hover-gated in globals.css), so
+                // the unselected background is left to the class, not set inline.
+                className="select-opt"
                 style={{
                   width: '100%', display: 'block', textAlign: 'left',
                   padding: '9px 10px', borderRadius: 6, border: 'none',
                   fontSize: 14, fontFamily: 'inherit',
                   cursor: opt.disabled ? 'not-allowed' : 'pointer',
-                  background: isSel ? 'var(--color-accent-50)' : 'transparent',
+                  background: isSel ? 'var(--color-accent-50)' : undefined,
                   color: opt.disabled ? 'var(--color-text-muted)' : isSel ? 'var(--color-primary-700)' : 'var(--color-text)',
                   fontWeight: isSel ? 600 : 400,
                   opacity: opt.disabled ? 0.6 : 1,
                   transition: 'background 100ms',
                 }}
-                onMouseEnter={(e) => { if (!isSel && !opt.disabled) e.currentTarget.style.background = 'var(--color-surface-2)'; }}
-                onMouseLeave={(e) => { if (!isSel && !opt.disabled) e.currentTarget.style.background = 'transparent'; }}
               >
                 {opt.label}
               </button>

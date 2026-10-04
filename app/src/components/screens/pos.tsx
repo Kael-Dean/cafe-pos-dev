@@ -1,13 +1,16 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import Image from 'next/image';
+import { useQueryClient } from '@tanstack/react-query';
 import Icon from '../icons';
 import { useToast, baht, Select, ModalShell } from '../app-common';
 import { useI18n } from '@/lib/i18n';
 import { useAllProducts, useCategories, type MenuItem } from '@/hooks/use-products';
 import { useBestSellerNames } from '@/hooks/use-best-sellers';
-import { useProductDetail } from '@/hooks/use-bom';
+import { productDetailQuery, type ProductDetail } from '@/hooks/use-bom';
+import { haptic } from '@/lib/haptics';
+import { UndoBar, useUndo } from '@/components/ui/undo-bar';
 import { useCreateOrder, usePayOrder, useSetOrderDate, displayOrderNo } from '@/hooks/use-orders';
 import { TABLE_TIME_PRODUCT_NAME } from '@/hooks/use-features';
 import { ApiError } from '@/lib/api-client';
@@ -23,6 +26,9 @@ import { useStagger } from '@/lib/motion';
 import { useIsPhone } from '@/hooks/use-media-query';
 
 interface CartLine { menuId: string; name: string; basePrice: number; unitPrice: number; qty: number; mods: string[]; modIds: string[]; modKey: string; }
+
+/** addLine merges on exactly (menuId, modKey), so this pair identifies a line. */
+const lineKey = (l: { menuId: string; modKey: string }) => `${l.menuId}|${l.modKey}`;
 
 /** Cashier-facing ESTIMATE only — the server is authoritative for the final discount. */
 function estimateMemberDiscount(member: MemberInfo | null, program: ProgramRead | null | undefined, subtotal: number): number {
@@ -98,26 +104,20 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
   const evaluate = useEvaluatePromotions();
   const { printReceipt } = usePrinter();
 
-  // Prefetch product detail when hovered so click is instant
-  const [pendingModifierId, setPendingModifierId] = useState<string | null>(null);
-  const { data: pendingDetail } = useProductDetail(pendingModifierId);
-
-  // Once detail loads, decide: show modifier modal or add directly
-  useEffect(() => {
-    if (!pendingModifierId || !pendingDetail) return;
-    const item = products?.find(p => p.id === pendingModifierId);
-    if (!item) return;
-    if (pendingDetail.hasModifiers) {
-      setModifierGroupIds(pendingDetail.modifierGroupIds);
-      setModifierItem(item);
-    } else {
-      addLine({ menuId: item.id, name: item.name, basePrice: item.price, unitPrice: item.price, qty: 1, mods: [], modIds: [], modKey: '' });
-      // Phones: the cart bar under the menu shows the new count + total — a toast
-      // would sit right on top of it.
-      if (!isPhone) toast({ kind: 'success', title: t.pos.addedToCart, msg: item.name, duration: 1600 });
-    }
-    setPendingModifierId(null);
-  }, [pendingDetail, pendingModifierId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ── Add to cart (TOUCH-SPEC §3.3): optimistic ──────────────────────────────
+  // Whether a product needs the modifier modal comes from its detail. The list
+  // endpoint does not carry it yet, so the details of the visible category are
+  // prefetched in the background; a tap on a product whose detail is cached adds
+  // the line synchronously. Unknown detail → the card shows a pending state, the
+  // taps made meanwhile are queued (never dropped) and land when the fetch resolves.
+  const queryClient = useQueryClient();
+  const undo = useUndo();
+  // Product id → taps waiting for its detail.
+  const queuedTaps = useRef(new Map<string, number>());
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(() => new Set());
+  // The cart line that last changed; `n` re-keys the flash so it replays on repeat taps.
+  const [flash, setFlash] = useState<{ key: string; n: number } | null>(null);
+  const flashSeq = useRef(0);
 
   // Auto-select first real category if fav is empty after load
   useEffect(() => {
@@ -258,11 +258,6 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
   const pointsToRedeem = memberInfo?.program?.points_to_redeem ?? 0;
   const pointsBalance = memberInfo?.account.points_balance ?? 0;
 
-  const onMenuClick = (item: MenuItem) => {
-    // Always check product-level modifier groups; cached per-product so repeat taps are instant.
-    setPendingModifierId(item.id);
-  };
-
   const addLine = (line: CartLine) => {
     setCart((cur) => {
       const idx = cur.findIndex((c) => c.menuId === line.menuId && c.modKey === line.modKey);
@@ -273,20 +268,118 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
       }
       return [...cur, line];
     });
+    // The cart is the feedback: flash the touched line + a haptic tick, no toast.
+    flashSeq.current += 1;
+    setFlash({ key: lineKey(line), n: flashSeq.current });
+    haptic();
   };
 
-  const updateQty = (i: number, delta: number) => {
-    setCart((cur) => {
-      const next = [...cur];
-      const q = Math.max(0, next[i].qty + delta);
-      if (q === 0) return next.filter((_, k) => k !== i);
-      next[i] = { ...next[i], qty: q };
-      return next;
+  /** Act on a product whose detail is known: modal for modifiers, else add `qty` now. */
+  const resolveTap = (item: MenuItem, detail: ProductDetail, qty: number) => {
+    if (detail.hasModifiers) {
+      setModifierGroupIds(detail.modifierGroupIds);
+      setModifierItem(item);
+      return;
+    }
+    addLine({ menuId: item.id, name: item.name, basePrice: item.price, unitPrice: item.price, qty, mods: [], modIds: [], modKey: '' });
+  };
+
+  const setPending = (id: string, on: boolean) => setPendingIds((cur) => {
+    if (cur.has(id) === on) return cur;
+    const next = new Set(cur);
+    if (on) next.add(id); else next.delete(id);
+    return next;
+  });
+
+  const onMenuTap = (item: MenuItem) => {
+    const cached = queryClient.getQueryData<ProductDetail>(productDetailQuery(item.id).queryKey);
+    if (cached) { resolveTap(item, cached, 1); return; }
+    const queued = queuedTaps.current.get(item.id) ?? 0;
+    queuedTaps.current.set(item.id, queued + 1);
+    if (queued > 0) return; // a fetch is already in flight; this tap rides on it
+    setPending(item.id, true);
+    queryClient.fetchQuery(productDetailQuery(item.id))
+      .then((detail) => {
+        const n = queuedTaps.current.get(item.id) ?? 1;
+        queuedTaps.current.delete(item.id);
+        setPending(item.id, false);
+        resolveTap(item, detail, n);
+      })
+      .catch(() => {
+        queuedTaps.current.delete(item.id);
+        setPending(item.id, false);
+        toast({
+          kind: 'danger',
+          title: t.touchPos.addFailed(item.name),
+          msg: t.touchPos.addFailedMsg,
+          action: { label: t.touchPos.retry, onAction: () => onMenuTap(item) },
+        });
+      });
+  };
+
+  // Prefetch the details of the products on screen (low priority, staggered) so the
+  // first tap on any of them is already an instant add. Re-runs per category / search.
+  useEffect(() => {
+    const ids = filtered.slice(0, 60).map((m) => m.id)
+      .filter((id) => !queryClient.getQueryData(productDetailQuery(id).queryKey));
+    if (!ids.length) return;
+    let cancelled = false;
+    let timer = 0;
+    const next = (i: number) => {
+      if (cancelled || i >= ids.length) return;
+      void queryClient.prefetchQuery({ ...productDetailQuery(ids[i]), staleTime: 5 * 60_000 });
+      timer = window.setTimeout(() => next(i + 1), 40);
+    };
+    timer = window.setTimeout(() => next(0), 300);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [filtered, queryClient]);
+
+  // Bring the line that just changed into view (a long bill scrolls).
+  useEffect(() => {
+    if (!flash) return;
+    document.querySelector(`[data-line-key="${CSS.escape(flash.key)}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [flash]);
+
+  // How many of each product are on the bill — the badge on the menu card.
+  const qtyByProduct = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of cart) m.set(l.menuId, (m.get(l.menuId) ?? 0) + l.qty);
+    return m;
+  }, [cart]);
+
+  /** Remove a line, with a 5s undo that puts it back where it was. */
+  const removeLineWithUndo = (key: string) => {
+    const index = cart.findIndex((l) => lineKey(l) === key);
+    if (index < 0) return;
+    const line = cart[index];
+    setCart((cur) => cur.filter((l) => lineKey(l) !== key));
+    undo.push(t.touchPos.lineRemoved(line.name), () => {
+      setCart((cur) => {
+        const at = cur.findIndex((l) => lineKey(l) === key);
+        if (at >= 0) {
+          const next = [...cur];
+          next[at] = { ...next[at], qty: next[at].qty + line.qty };
+          return next;
+        }
+        const next = [...cur];
+        next.splice(Math.min(index, next.length), 0, line);
+        return next;
+      });
     });
   };
 
-  const removeLine = (i: number) => setCart((cur) => cur.filter((_, k) => k !== i));
-  const clearCart = () => { setCart([]); setBillNo((b) => b + 1); setMemberInfo(null); setSelectedPromoIds([]); setEligiblePromos([]); setShowPromoPanel(false); };
+  const updateQty = (key: string, delta: number) => {
+    const line = cart.find((l) => lineKey(l) === key);
+    if (!line) return;
+    haptic();
+    // − at qty 1 removes the line, with the same undo as the trash button.
+    if (line.qty + delta <= 0) { removeLineWithUndo(key); return; }
+    // Clamped at 1: a second fast tap computed against a stale render must not
+    // leave a 0-qty line behind (removal only happens through the branch above).
+    setCart((cur) => cur.map((l) => (lineKey(l) === key ? { ...l, qty: Math.max(1, l.qty + delta) } : l)));
+  };
+
+  const clearCart = () => { setCart([]); setBillNo((b) => b + 1); setMemberInfo(null); setSelectedPromoIds([]); setEligiblePromos([]); setShowPromoPanel(false); undo.dismiss(); };
 
   /**
    * Board-game tab: create the order against the open table session and stop
@@ -501,7 +594,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
 
   return (
     <div style={{display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--color-bg)'}}>
-      <PosPhoneStyles />
+      <PosStyles />
       {/* Table-tab banner — the cashier must always be able to see that this sale
           is going on a table's bill instead of being paid now. */}
       {session && (
@@ -512,7 +605,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
           <Icon name="park" size={18} />
           <div className="pos-banner-text" style={{ flex: 1, minWidth: 180 }}>
             <div className="pos-banner-title" style={{ fontWeight: 700, fontSize: 14 }}>{t.pos.tableBanner(session.tableName)}</div>
-            <div className="hide-phone" style={{ fontSize: 12, opacity: 0.85 }}>{t.pos.tableBannerHint}</div>
+            <div className="hide-phone" style={{ fontSize: 'var(--fs-cap)', opacity: 0.85 }}>{t.pos.tableBannerHint}</div>
           </div>
           {onClearSession && (
             <button
@@ -529,8 +622,8 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
       )}
 
       {/* Mobile tab strip — hidden on md+ */}
-      <div role="tablist" aria-label="POS sections" className="flex md:hidden shrink-0" style={{
-        height: 44,
+      <div role="tablist" aria-label={t.touchPay.posSections} className="flex md:hidden shrink-0" style={{
+        height: 48,
         borderBottom: '1px solid var(--color-border)',
         background: 'var(--color-surface)',
       }}>
@@ -566,8 +659,8 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
           {cartCount > 0 && (
             <span aria-label={t.pos.itemsAria(cartCount)} style={{
               background: 'var(--color-primary)', color: 'var(--color-text-inverse)',
-              borderRadius: 999, fontSize: 11, fontWeight: 700,
-              padding: '1px 6px', lineHeight: '16px',
+              borderRadius: 999, fontSize: 'var(--fs-cap)', fontWeight: 700,
+              padding: '1px 7px', lineHeight: '18px',
             }}>{cartCount}</span>
           )}
         </button>
@@ -577,37 +670,44 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
       <div style={{display: 'flex', flex: 1, overflow: 'hidden'}}>
         {/* LEFT: Menu — full-width on mobile, 60% on md+ */}
         <div
-          className={`${activeTab === 'menu' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-[60%] md:max-w-[60%] shrink-0`}
+          className={`${activeTab === 'menu' ? 'flex' : 'hidden'} md:flex flex-col pos-menu`}
           style={{borderRight: '1px solid var(--color-border)'}}
         >
-          <div className="pos-menu-head" style={{padding: '16px 20px 0 20px', display: 'flex', flexDirection: 'column', gap: 12}}>
+          <div className="pos-menu-head" style={{padding: '16px 16px 0', display: 'flex', flexDirection: 'column', gap: 12}}>
             <div style={{display: 'flex', gap: 12, alignItems: 'center'}}>
               {/* Phones: the tab above already says "เมนู" — the search gets the full row. */}
-              <h1 className="hide-phone" style={{margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em'}}>{t.pos.menuTitle}</h1>
+              <h1 className="hide-phone" style={{margin: 0, fontSize: 'var(--fs-h2)', fontWeight: 700, letterSpacing: '-0.01em'}}>{t.pos.menuTitle}</h1>
               <div style={{flex: 1, position: 'relative'}}>
-                <div style={{position: 'absolute', top: 10, left: 12, color: 'var(--color-text-muted)'}}>
-                  <Icon name="search" size={16} />
+                <div style={{position: 'absolute', top: 0, bottom: 0, left: 14, display: 'grid', placeItems: 'center', color: 'var(--color-text-muted)', pointerEvents: 'none'}}>
+                  <Icon name="search" size={18} />
                 </div>
                 <input type="text" placeholder={t.pos.searchPlaceholder}
                   value={search} onChange={(e) => setSearch(e.target.value)}
                   aria-label={t.pos.searchPlaceholder}
                   className="input-std pos-search"
                   style={{
-                    width: '100%', padding: '10px 12px 10px 36px', minHeight: 44,
+                    width: '100%', padding: `0 ${search ? 52 : 14}px 0 42px`, height: 'var(--tap-std)',
                     background: 'var(--color-surface)',
                     border: '1px solid var(--color-border)', borderRadius: 8,
-                    fontSize: 14, outline: 'none',
+                    fontSize: 'var(--fs-lg)', outline: 'none',
                   }}
                 />
+                {search && (
+                  <button type="button" className="tap tap-min tap-sq" aria-label={t.ui.clearSearch}
+                    onClick={() => setSearch('')}
+                    style={{ position: 'absolute', top: 2, right: 2, width: 44, height: 44, minHeight: 44, borderRadius: 6, color: 'var(--color-text-secondary)' }}>
+                    <Icon name="x" size={18} />
+                  </button>
+                )}
               </div>
             </div>
-            <div style={{display: 'flex', gap: 6, overflowX: 'auto', overflowY: 'hidden', flexWrap: 'nowrap'}} className="scroll tab-strip">
+            <div style={{display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', flexWrap: 'nowrap'}} className="scroll tab-strip">
               <CategoryTab label={t.pos.catFav} active={category === 'fav'} onClick={() => { setCategory('fav'); setSearch(''); }} highlight />
               <CategoryTab label={t.pos.catAll} active={category === 'all'} onClick={() => { setCategory('all'); setSearch(''); }} />
               {catsLoading && !categories ? (
-                <div aria-hidden style={{ display: 'flex', gap: 6 }}>
+                <div aria-hidden style={{ display: 'flex', gap: 8 }}>
                   {[72, 96, 80, 88].map((w, i) => (
-                    <div key={i} className="skeleton" style={{ width: w, height: 38, borderRadius: 'var(--radius-pill)', flexShrink: 0 }} />
+                    <div key={i} className="skeleton pos-chip-skel" style={{ width: w, borderRadius: 'var(--radius-pill)', flexShrink: 0 }} />
                   ))}
                 </div>
               ) : (
@@ -618,7 +718,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
             </div>
           </div>
 
-          <div className="scroll pos-menu-scroll" style={{flex: 1, overflow: 'auto', padding: 20}}>
+          <div className="scroll pos-menu-scroll" style={{flex: 1, overflow: 'auto'}}>
             {isError ? (
               <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: 'var(--color-danger)'}}>
                 <div style={{marginBottom: 8}}><Icon name="warning" size={32}/></div>
@@ -626,7 +726,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
               </div>
             ) : prodLoading ? (
               /* Skeleton grid mirrors the real card layout so there is no layout shift */
-              <div aria-hidden className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(160px,1fr))]" style={{gap: 12}}>
+              <div aria-hidden className="pos-grid">
                 <span className="sr-only">{t.pos.loadingMenu}</span>
                 {Array.from({ length: 8 }).map((_, i) => (
                   <div key={i} style={{
@@ -634,9 +734,9 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                     borderRadius: 12, overflow: 'hidden',
                   }}>
                     <div className="skeleton" style={{ aspectRatio: '4 / 3', borderRadius: 0 }} />
-                    <div style={{ padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <div className="skeleton" style={{ height: 13, width: '80%' }} />
-                      <div className="skeleton" style={{ height: 15, width: '45%' }} />
+                    <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div className="skeleton" style={{ height: 15, width: '80%' }} />
+                      <div className="skeleton" style={{ height: 16, width: '45%' }} />
                     </div>
                   </div>
                 ))}
@@ -648,7 +748,10 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                     filters the cards in place with no re-animation — a cashier typing
                     fast wants instant results, not motion on every keystroke. */}
                 <ProductGrid key={category}>
-                  {filtered.map((m) => <MenuCard key={m.id} item={m} onClick={() => onMenuClick(m)} />)}
+                  {filtered.map((m) => (
+                    <MenuCard key={m.id} item={m} inCart={qtyByProduct.get(m.id) ?? 0}
+                      pending={pendingIds.has(m.id)} onTap={() => onMenuTap(m)} />
+                  ))}
                 </ProductGrid>
                 {filtered.length === 0 && (
                   <div className="fade-in" style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-16) var(--space-6)', textAlign: 'center', color: 'var(--color-text-muted)'}}>
@@ -662,7 +765,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                     <div style={{fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)'}}>
                       {search.trim() ? t.pos.noSearchResults : t.pos.emptyCategory}
                     </div>
-                    <div style={{fontSize: 13}}>
+                    <div style={{fontSize: 'var(--fs-sm)'}}>
                       {search.trim() ? t.pos.noSearchHint : t.pos.emptyCategoryHint}
                     </div>
                   </div>
@@ -690,64 +793,74 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
 
         {/* RIGHT: Cart — full-width on mobile, 40% on md+ */}
         <div
-          className={`${activeTab === 'cart' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-[40%] md:max-w-[40%] shrink-0`}
+          className={`${activeTab === 'cart' ? 'flex' : 'hidden'} md:flex flex-col pos-cart`}
           style={{background: 'var(--color-surface)'}}
         >
-          <div className="pos-cart-head" style={{padding: '20px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+          <div className="pos-cart-head" style={{padding: '12px 16px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12}}>
             <div className="pos-bill">
-              <div className="pos-bill-label" style={{fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500}}>{t.pos.currentBill}</div>
-              <div style={{fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em'}} className="num pos-bill-no">{'A' + String(billNo).padStart(3, '0')}</div>
+              <div className="pos-bill-label" style={{fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)', fontWeight: 500}}>{t.pos.currentBill}</div>
+              <div style={{fontSize: 'var(--fs-h1)', fontWeight: 700, letterSpacing: '-0.01em', lineHeight: 1.2}} className="num pos-bill-no">{'A' + String(billNo).padStart(3, '0')}</div>
             </div>
-            <div className="pos-cart-actions" style={{display: 'flex', gap: 6, alignItems: 'center'}}>
+            <div className="pos-cart-actions" style={{display: 'flex', gap: 8, alignItems: 'center', minWidth: 0}}>
               {memberInfo ? (
                 <div className="pos-member-chip" style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px 6px 12px',
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '2px 2px 2px 12px', minWidth: 0,
                   borderRadius: 999, background: 'var(--color-accent-50)', border: '1px solid var(--color-accent)',
                 }}>
-                  <Icon name="user" size={14} color="var(--color-accent-600)" />
-                  <div className="pos-member-text" style={{lineHeight: 1.1}}>
-                    <div style={{fontSize: 12, fontWeight: 700, color: 'var(--color-primary-700)'}}>{memberInfo.account.customer_name}</div>
-                    <div style={{fontSize: 10, color: 'var(--color-accent-600)'}}>
-                      {t.pos.pointsUnit(memberInfo.account.points_balance.toLocaleString())}{memberInfo.redeemReward ? t.pos.redeemSuffix : ''}
+                  <Icon name="user" size={16} color="var(--color-accent-600)" style={{flexShrink: 0}} />
+                  <div className="pos-member-text" style={{lineHeight: 1.25, minWidth: 0}}>
+                    <div style={{fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--color-primary-700)'}}>{memberInfo.account.customer_name}</div>
+                    {/* Points and salesperson share one line, so the chip stays two lines tall. */}
+                    <div style={{fontSize: 'var(--fs-cap)', color: 'var(--color-accent-600)'}}>
+                      <span className="num">{t.pos.pointsUnit(memberInfo.account.points_balance.toLocaleString())}{memberInfo.redeemReward ? t.pos.redeemSuffix : ''}</span>
+                      {memberSalesName && (
+                        <span style={{color: 'var(--color-text-secondary)'}}> · {t.pos.salesLabel}: {memberSalesName}</span>
+                      )}
                     </div>
-                    {memberSalesName && (
-                      <div style={{fontSize: 10, color: 'var(--color-text-secondary)'}}>{t.pos.salesLabel}: {memberSalesName}</div>
-                    )}
                   </div>
-                  <button onClick={() => setMemberInfo(null)} title={t.pos.removeMember} aria-label={t.pos.removeMember}
-                    className="hit-44 pressable"
-                    style={{width: 22, height: 22, borderRadius: 999, display: 'grid', placeItems: 'center', color: 'var(--color-accent-600)'}}>
-                    <Icon name="x" size={13} />
+                  <button type="button" onClick={() => setMemberInfo(null)} aria-label={t.pos.removeMember}
+                    className="tap tap-min tap-sq"
+                    style={{width: 44, height: 44, minHeight: 44, borderRadius: 999, color: 'var(--color-accent-600)'}}>
+                    <Icon name="x" size={18} />
                   </button>
                 </div>
               ) : (
                 <>
-                  <button className="btn btn-ghost pos-head-btn" style={{padding: '8px 12px', fontSize: 12, minHeight: 44}} onClick={() => { setMembershipPhase('lookup'); setShowMembership(true); }}>
-                    <Icon name="user" size={14}/> {t.pos.customer}
+                  <button type="button" className="btn btn-ghost pos-head-btn tap-std" style={{padding: '0 14px', fontSize: 'var(--fs-sm)'}} onClick={() => { setMembershipPhase('lookup'); setShowMembership(true); }}>
+                    <Icon name="user" size={16}/> {t.pos.customer}
                   </button>
-                  <button className="btn btn-ghost pos-head-btn" style={{padding: '8px 12px', fontSize: 12, whiteSpace: 'nowrap', minHeight: 44}} onClick={() => { setMembershipPhase('register'); setShowMembership(true); }}>
-                    <Icon name="plus" size={14}/> {t.pos.register}
+                  <button type="button" className="btn btn-ghost pos-head-btn tap-std" style={{padding: '0 14px', fontSize: 'var(--fs-sm)', whiteSpace: 'nowrap'}} onClick={() => { setMembershipPhase('register'); setShowMembership(true); }}>
+                    <Icon name="plus" size={16}/> {t.pos.register}
                   </button>
                 </>
               )}
-              <button className="btn btn-ghost pos-park" style={{padding: 8, minHeight: 44, minWidth: 44}} title={t.pos.parkBill} aria-label={t.pos.parkBill}>
-                <Icon name="park" size={16}/>
-              </button>
+              {/* Park bill: hidden until the park feature exists (TOUCH-SPEC §3.4, no
+                  dead controls). When it lands it is a 48×48 icon button here. */}
             </div>
           </div>
 
-          <div className="scroll" style={{flex: 1, overflow: 'auto', padding: '8px 0'}}>
-            {cart.length === 0 ? (
-              <div className="pos-empty" style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
-                <div style={{marginBottom: 12, opacity: 0.6}}><Icon name="cart" size={48}/></div>
-                <div style={{fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4}}>{t.pos.emptyCart}</div>
-                <div style={{fontSize: 13}}>{t.pos.emptyCartHint}</div>
-              </div>
-            ) : cart.map((l, i) => (
-              // addLine merges on exactly (menuId, modKey), so the pair is unique
-              // per line — index keys would misattach rows when a middle line is removed.
-              <CartLine key={`${l.menuId}|${l.modKey}`} line={l} onInc={() => updateQty(i, +1)} onDec={() => updateQty(i, -1)} onRemove={() => removeLine(i)} />
-            ))}
+          {/* Positioned so the undo bar pins to the bottom of the line list, above the totals. */}
+          <div style={{flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column'}}>
+            <div className="scroll pos-lines" style={{flex: 1, overflow: 'auto', paddingBottom: undo.entry ? 72 : undefined}}>
+              {cart.length === 0 ? (
+                <div className="pos-empty" style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: 'var(--color-text-muted)'}}>
+                  <div style={{marginBottom: 12, opacity: 0.6}}><Icon name="cart" size={48}/></div>
+                  <div style={{fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4}}>{t.pos.emptyCart}</div>
+                  <div style={{fontSize: 'var(--fs-sm)'}}>{t.pos.emptyCartHint}</div>
+                </div>
+              ) : cart.map((l) => {
+                const key = lineKey(l);
+                return (
+                  // Keyed by (menuId, modKey) — unique per line; index keys would
+                  // misattach rows when a middle line is removed.
+                  <CartLine key={key} lineId={key} line={l}
+                    flashN={flash?.key === key ? flash.n : 0}
+                    onInc={() => updateQty(key, +1)} onDec={() => updateQty(key, -1)}
+                    onRemove={() => removeLineWithUndo(key)} />
+                );
+              })}
+            </div>
+            <UndoBar undo={undo} />
           </div>
 
           {isPhone ? (
@@ -785,65 +898,42 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                     <PayButton compact icon="line" label={t.pos.pay.line} onClick={() => cart.length && setPayment('line')} disabled={!cart.length} pending={paying} />
                   </div>
                 )}
-                <div style={{display: 'flex', gap: 8}}>
-                  <button className="btn btn-ghost" style={{flex: 1, minWidth: 0, fontSize: 13, padding: 8, minHeight: 44, opacity: panelOfferCount ? 1 : 0.5}}
-                    onClick={() => panelOfferCount && setShowPromoPanel(true)} disabled={!panelOfferCount}>
-                    <Icon name="discount" size={14}/> {t.pos.promotions}
-                    {panelOfferCount > 0 && (
-                      <span className="num" style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)', borderRadius: 999, fontSize: 11, fontWeight: 700, padding: '1px 6px' }}>
-                        {panelSelectedCount > 0 ? `${panelSelectedCount}/${panelOfferCount}` : panelOfferCount}
-                      </span>
-                    )}
-                  </button>
-                  <button className="btn btn-ghost" style={{flex: 1, minWidth: 0, fontSize: 13, padding: 8, minHeight: 44}} onClick={() => cart.length && setConfirmVoid(true)}>
-                    <Icon name="void" size={14}/> {t.pos.void}
-                  </button>
-                </div>
+                <SecondaryActions offerCount={panelOfferCount} selectedCount={panelSelectedCount}
+                  onPromos={() => panelOfferCount && setShowPromoPanel(true)}
+                  onVoid={() => cart.length && setConfirmVoid(true)} />
               </div>
             </div>
           ) : (
           <div style={{flexShrink: 0, borderTop: '1px solid var(--color-border)'}}>
-            <div style={{padding: '20px 20px 14px', background: 'var(--color-surface-2)'}}>
+            <div style={{padding: '14px 16px 12px', background: 'var(--color-surface-2)'}}>
               <Row label={t.pos.subtotal} value={baht(subtotal)} />
               {memberDiscount > 0 && <Row label={t.pos.memberDiscount} value={`-${baht(memberDiscount)}`} />}
               {promoDiscount > 0 && <Row label={t.pos.promoDiscount} value={`-${baht(promoDiscount)}`} />}
               {discount === 0 && <Row label={t.pos.discount} value={baht(0)} muted />}
-              <div style={{height: 1, background: 'var(--color-border)', margin: '12px 0'}}/>
-              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'baseline'}}>
-                <div style={{fontSize: 15, fontWeight: 600}}>{t.pos.grandTotal}</div>
-                <div className="num" style={{fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--color-primary)'}}>
+              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 8}}>
+                <div style={{fontSize: 'var(--fs-body)', fontWeight: 600}}>{t.pos.grandTotal}</div>
+                <div className="num text-num-lg" style={{letterSpacing: '-0.02em', color: 'var(--color-primary)'}}>
                   {baht(total)}
                 </div>
               </div>
             </div>
 
-            <div style={{padding: '16px 20px 20px', display: 'grid', gap: 8}}>
+            <div style={{padding: '12px 16px 16px', display: 'grid', gap: 8}}>
               {session ? (
                 // Table mode: one action, and it takes no money. Payment happens
                 // once, at close-out, for the whole tab plus the time charge.
                 <PayButton icon="park" label={t.pos.tableAddToTab} onClick={addToTab} disabled={!cart.length} pending={paying} primary />
               ) : (
-                <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8}}>
+                <div className="pos-pay-grid">
                   <PayButton icon="cash"  label={t.pos.pay.cash} onClick={() => cart.length && setPayment('cash')} disabled={!cart.length} pending={paying} />
                   <PayButton icon="card"  label={t.pos.pay.card} onClick={() => cart.length && setPayment('card')} disabled={!cart.length} pending={paying} />
                   <PayButton icon="qr"    label={t.pos.pay.qr}   onClick={() => cart.length && setPayment('qr')}   disabled={!cart.length} pending={paying} primary />
                   <PayButton icon="line"  label={t.pos.pay.line} onClick={() => cart.length && setPayment('line')} disabled={!cart.length} pending={paying} />
                 </div>
               )}
-              <div style={{display: 'flex', gap: 8, marginTop: 4}}>
-                <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8, minHeight: 44, opacity: panelOfferCount ? 1 : 0.5}}
-                  onClick={() => panelOfferCount && setShowPromoPanel(true)} disabled={!panelOfferCount}>
-                  <Icon name="discount" size={14}/> {t.pos.promotions}
-                  {panelOfferCount > 0 && (
-                    <span style={{ marginLeft: 4, background: 'var(--color-accent)', color: 'var(--color-on-accent)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>
-                      {panelSelectedCount > 0 ? `${panelSelectedCount}/${panelOfferCount}` : panelOfferCount}
-                    </span>
-                  )}
-                </button>
-                <button className="btn btn-ghost" style={{flex: 1, fontSize: 12, padding: 8, minHeight: 44}} onClick={() => cart.length && setConfirmVoid(true)}>
-                  <Icon name="void" size={14}/> {t.pos.void}
-                </button>
-              </div>
+              <SecondaryActions offerCount={panelOfferCount} selectedCount={panelSelectedCount}
+                onPromos={() => panelOfferCount && setShowPromoPanel(true)}
+                onVoid={() => cart.length && setConfirmVoid(true)} />
             </div>
           </div>
           )}
@@ -856,8 +946,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
           groupIds={modifierGroupIds}
           onClose={() => { setModifierItem(null); setModifierGroupIds([]); }}
           onAdd={(line) => {
-            addLine(line);
-            if (!isPhone) toast({ kind: 'success', title: t.pos.addedToCart, msg: `${line.name} • ${baht(line.unitPrice)}`, duration: 1800 });
+            addLine(line); // feedback = line flash + card badge + haptic, never a toast
             setModifierItem(null);
             setModifierGroupIds([]);
           }}
@@ -885,11 +974,11 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
             {redeemAvailable && memberInfo && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 14px', borderRadius: 10, marginBottom: 8, border: `1px solid ${memberInfo.redeemReward ? 'var(--color-accent)' : 'var(--color-border)'}`, background: memberInfo.redeemReward ? 'var(--color-accent-50)' : 'var(--color-surface-2)' }}>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={memberInfo.redeemReward} onChange={e => toggleRedeem(e.target.checked)} style={{ width: 16, height: 16, marginTop: 3, flexShrink: 0, accentColor: 'var(--color-accent)' }} />
+                  <input type="checkbox" checked={memberInfo.redeemReward} onChange={e => toggleRedeem(e.target.checked)} style={{ width: 22, height: 22, marginTop: 0, flexShrink: 0, accentColor: 'var(--color-accent)' }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 700 }}>{t.pos.redeemTitle}</div>
-                    <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{t.pos.redeemDesc(pointsToRedeem.toLocaleString(), rewardDescLabel)}</div>
-                    <div style={{ fontSize: 11, color: 'var(--color-accent-600)', marginTop: 2 }}>
+                    <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>{t.pos.redeemDesc(pointsToRedeem.toLocaleString(), rewardDescLabel)}</div>
+                    <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-accent-600)', marginTop: 2 }}>
                       {t.pos.redeemPointsBalance(pointsBalance.toLocaleString(), Math.max(0, pointsBalance - pointsToRedeem).toLocaleString())}
                     </div>
                   </div>
@@ -901,7 +990,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                 {/* FREE_ITEM: choose which cart item is redeemed. */}
                 {memberInfo.redeemReward && isFreeItemReward && (
                   <div>
-                    <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>{t.pos.redeemPickItem}</div>
+                    <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)', marginBottom: 6 }}>{t.pos.redeemPickItem}</div>
                     <Select
                       value={memberInfo.rewardProduct?.id ?? ''}
                       onChange={pickRewardProduct}
@@ -922,10 +1011,10 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                   const locked = !!exclusiveSelected && exclusiveSelected.promotion_id !== e.promotion_id;
                   return (
                     <label key={e.promotion_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10, border: `1px solid ${checked ? 'var(--color-accent)' : 'var(--color-border)'}`, background: checked ? 'var(--color-accent-50)' : 'var(--color-surface-2)', cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? 0.5 : 1 }}>
-                      <input type="checkbox" checked={checked} disabled={locked} onChange={() => togglePromo(e)} style={{ width: 16, height: 16, flexShrink: 0, accentColor: 'var(--color-accent)' }} />
+                      <input type="checkbox" checked={checked} disabled={locked} onChange={() => togglePromo(e)} style={{ width: 22, height: 22, flexShrink: 0, accentColor: 'var(--color-accent)' }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 14, fontWeight: 600 }}>
-                          {e.name}{e.is_exclusive && <span style={{ fontSize: 11, color: 'var(--color-danger)', fontWeight: 600 }}>{t.pos.exclusiveSuffix}</span>}
+                          {e.name}{e.is_exclusive && <span style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-danger)', fontWeight: 600 }}>{t.pos.exclusiveSuffix}</span>}
                         </div>
                       </div>
                       <div className="num" style={{ fontWeight: 700, color: 'var(--color-accent-600)' }}>-{baht(Number(e.discount_amount))}</div>
@@ -996,9 +1085,9 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                   orderNumber: String(displayOrderNo(updated)),
                   receiptNo: updated.receipt_no,
                 } : prev);
-                toast({ kind: 'success', title: 'บันทึกวันที่ใบเสร็จแล้ว', msg: `เลขที่ ${updated.receipt_no}` });
+                toast({ kind: 'success', title: t.touchPay.receiptDateSaved, msg: updated.receipt_no ? t.touchPay.receiptNo(String(updated.receipt_no)) : undefined });
               } catch (e: unknown) {
-                toast({ kind: 'danger', title: 'บันทึกวันที่ไม่สำเร็จ', msg: String(e instanceof Error ? e.message : e) });
+                toast({ kind: 'danger', title: t.touchPay.receiptDateFailed, msg: e instanceof Error ? e.message : t.pos.tryAgain });
                 throw e;
               }
             },
@@ -1031,41 +1120,62 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
 
 /* Product grid wrapper that staggers its cards in on mount. Remounted (via key)
    on category change so each category switch gets a quick, subtle reveal; the
-   stagger is fast and one-shot, never replaying while the cashier works a bill. */
+   stagger is fast and one-shot, never replaying while the cashier works a bill.
+   Columns come from the menu column's width (container queries in POS_CSS). */
 const ProductGrid = ({ children }: { children: React.ReactNode }) => {
   const gridRef = useStagger({ each: 0.02, y: 6 });
-  return (
-    <div ref={gridRef} className="grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(160px,1fr))]" style={{gap: 12}}>
-      {children}
-    </div>
-  );
+  return <div ref={gridRef} className="pos-grid">{children}</div>;
 };
 
+/**
+ * Instant controls (qty ±): act on pointerdown like a physical key (TOUCH-SPEC §4),
+ * and swallow the click that follows so it does not fire twice. Keyboard and
+ * assistive-tech clicks (detail 0) still act.
+ */
+function usePressAction(fn: () => void) {
+  const handled = useRef(false);
+  return {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      e.preventDefault(); // keep focus where it is
+      handled.current = true;
+      fn();
+    },
+    onClick: (e: React.MouseEvent) => {
+      const swallow = handled.current && e.detail > 0;
+      handled.current = false;
+      if (!swallow) fn();
+    },
+  };
+}
+
 const CategoryTab = ({ label, active, onClick, highlight }: { label: string; active: boolean; onClick: () => void; highlight?: boolean }) => (
-  <button onClick={onClick} className="pressable hit-44" aria-pressed={active} style={{
-    padding: '9px 16px', borderRadius: 999, minHeight: 38,
+  // `click`, not pointerdown: the chip row scrolls sideways on phones, and a swipe
+  // that starts on a chip must not switch the category.
+  <button type="button" onClick={onClick} className="chip tap pos-chip" aria-pressed={active} style={{
     background: active ? 'var(--color-primary)' : (highlight ? 'var(--color-accent-50)' : 'var(--color-surface)'),
     color: active ? 'var(--color-text-inverse)' : (highlight ? 'var(--color-primary-700)' : 'var(--color-text-secondary)'),
     border: `1px solid ${active ? 'var(--color-primary)' : 'var(--color-border)'}`,
-    fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
   }}>{label}</button>
 );
 
-const MenuCard = ({ item, onClick }: { item: MenuItem; onClick: () => void }) => {
+const MenuCard = ({ item, inCart, pending, onTap }: { item: MenuItem; inCart: number; pending: boolean; onTap: () => void }) => {
   const { t } = useI18n();
+  // A finger that starts a scroll on a card and moves >10px must not add it.
+  const down = useRef<{ x: number; y: number } | null>(null);
   return (
-  <button onClick={onClick} className="menu-card" style={{
-    borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column',
-    textAlign: 'left', position: 'relative',
-  }}>
-    <div style={{
-      aspectRatio: '4 / 3',
-      background: item.imageUrl
-        ? 'var(--color-surface-2)'
-        : `linear-gradient(135deg, ${item.color} 0%, ${item.color}cc 100%)`,
-      position: 'relative', display: 'grid', placeItems: 'center', overflow: 'hidden',
-    }}>
-      {item.imageUrl && (
+  <button type="button" className={`menu-card pos-card${pending ? ' pending' : ''}`}
+    aria-busy={pending || undefined}
+    onPointerDown={(e) => { down.current = { x: e.clientX, y: e.clientY }; }}
+    onClick={(e) => {
+      const d = down.current;
+      down.current = null;
+      if (d && e.detail > 0 && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10) return;
+      onTap();
+    }}
+  >
+    <div className="pos-card-media" style={{ background: item.imageUrl ? 'var(--color-surface-2)' : item.color }}>
+      {item.imageUrl ? (
         // next/image optimizes the R2 original (resize to card size, AVIF/WebP) and
         // lazy-loads by default, so off-screen menu cards don't all fetch on open.
         <Image
@@ -1075,84 +1185,88 @@ const MenuCard = ({ item, onClick }: { item: MenuItem; onClick: () => void }) =>
           sizes="(max-width: 768px) 50vw, 200px"
           style={{ objectFit: 'cover' }}
         />
-      )}
-      {!item.imageUrl && (
-        <div style={{
-          position: 'absolute', inset: 0,
-          backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 8px, transparent 8px 16px)',
-        }}/>
-      )}
-      {!item.imageUrl && (
-        <div style={{
-          fontFamily: 'var(--font-num)', color: 'rgba(255,255,255,0.92)',
-          fontSize: 11, letterSpacing: '0.08em', fontWeight: 500,
-        }}>{item.nameEn.toUpperCase()}</div>
+      ) : (
+        <div className="pos-card-ph" aria-hidden>{item.nameEn}</div>
       )}
       {item.hot && (
-        <div style={{
-          position: 'absolute', top: 8, left: 8,
-          background: 'var(--color-accent)', color: 'var(--color-on-accent)',
-          fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 999,
-          display: 'flex', alignItems: 'center', gap: 3,
-        }}>
-          <Icon name="star" size={10} /> {t.pos.bestseller}
+        <div className="pos-card-hot">
+          <Icon name="star" size={13} /> {t.pos.bestseller}
         </div>
       )}
-      <div style={{
-        position: 'absolute', top: 8, right: 8,
-        background: 'rgba(0,0,0,0.4)', color: 'white',
-        fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4,
-        fontFamily: 'var(--font-num)',
-      }}>{item.tag}</div>
+      {inCart > 0 ? (
+        <>
+          <span className="num pos-card-qty" aria-hidden>{inCart}</span>
+          <span className="sr-only">{t.touchPos.inCart(inCart)}</span>
+        </>
+      ) : (
+        <div className="pos-card-tag" aria-hidden>{item.tag}</div>
+      )}
     </div>
-    <div style={{padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: 4}}>
-      <div style={{
-        fontSize: 13, fontWeight: 600, color: 'var(--color-text)', lineHeight: 1.3, minHeight: 34,
-        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-      }}>{item.name}</div>
-      <div className="num" style={{fontSize: 15, fontWeight: 700, color: 'var(--color-primary)'}}>฿{item.price}</div>
+    <div className="pos-card-body">
+      <div className="pos-card-name">{item.name}</div>
+      <div className="num pos-card-price">
+        {pending ? <span className="spinner" aria-hidden /> : `฿${item.price}`}
+      </div>
     </div>
   </button>
   );
 };
 
-const CartLine = ({ line, onInc, onDec, onRemove }: { line: CartLine; onInc: () => void; onDec: () => void; onRemove: () => void }) => {
+const CartLine = ({ line, lineId, flashN, onInc, onDec, onRemove }: {
+  line: CartLine; lineId: string;
+  /** Non-zero while this line is the last one touched; a new value replays the flash. */
+  flashN: number;
+  onInc: () => void; onDec: () => void; onRemove: () => void;
+}) => {
   const { t } = useI18n();
+  const inc = usePressAction(onInc);
+  const dec = usePressAction(onDec);
   return (
-  <div className="pos-line" style={{padding: '12px 20px', display: 'flex', gap: 12, alignItems: 'flex-start', borderBottom: '1px solid var(--color-surface-2)'}}>
-    <div className="pos-line-info" style={{flex: 1, minWidth: 0}}>
-      <div className="pos-line-name" style={{fontSize: 14, fontWeight: 600, marginBottom: 2}}>{line.name}</div>
-      {line.mods.length > 0 && (
-        <div className="pos-line-mods" style={{fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.45}}>
-          {line.mods.join(' • ')}
-        </div>
-      )}
+  <div className="pos-line" data-line-key={lineId}>
+    {flashN > 0 && <span key={flashN} className="pos-line-flash" aria-hidden />}
+    <div className="pos-line-info">
+      <div className="pos-line-name">{line.name}</div>
+      {line.mods.length > 0 && <div className="pos-line-mods">{line.mods.join(' • ')}</div>}
     </div>
-    <div className="pos-line-qty" style={{display: 'flex', alignItems: 'center', gap: 8}}>
-      <button onClick={onDec} className="pressable hit-44 pos-qty-btn" aria-label={t.pos.decQty} style={qtyBtnStyle}><Icon name="minus" size={14}/></button>
-      <div className="num" style={{minWidth: 20, textAlign: 'center', fontWeight: 600}}>{line.qty}</div>
-      <button onClick={onInc} className="pressable hit-44 pos-qty-btn" aria-label={t.pos.incQty} style={qtyBtnStyle}><Icon name="plus" size={14}/></button>
+    <div className="pos-stepper" role="group" aria-label={line.name}>
+      <button type="button" className="tap pos-qty-btn" aria-label={t.pos.decQty} {...dec}><Icon name="minus" size={18}/></button>
+      <div className="num pos-qty">{line.qty}</div>
+      <button type="button" className="tap pos-qty-btn" aria-label={t.pos.incQty} {...inc}><Icon name="plus" size={18}/></button>
     </div>
-    <div className="pos-line-price" style={{minWidth: 64, textAlign: 'right'}}>
-      <div className="num pos-line-amount" style={{fontWeight: 600, fontSize: 14}}>฿{(line.unitPrice * line.qty).toLocaleString()}</div>
-      <button onClick={onRemove} className="hit-44 pos-line-remove" style={{fontSize: 11, color: 'var(--color-danger)', marginTop: 2, position: 'relative'}}>{t.pos.remove}</button>
-    </div>
+    <div className="num pos-line-amount">฿{(line.unitPrice * line.qty).toLocaleString()}</div>
+    <button type="button" className="tap pos-line-remove" aria-label={t.touchPos.removeLine(line.name)} onClick={onRemove}>
+      <Icon name="trash" size={20}/>
+    </button>
   </div>
   );
 };
 
-const qtyBtnStyle: React.CSSProperties = {
-  width: 34, height: 34, borderRadius: 6,
-  background: 'var(--color-surface-2)',
-  display: 'grid', placeItems: 'center',
-};
-
 const Row = ({ label, value, muted }: { label: string; value: string; muted?: boolean }) => (
-  <div style={{display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13, color: muted ? 'var(--color-text-muted)' : 'var(--color-text-secondary)'}}>
+  <div style={{display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: 'var(--fs-sm)', color: muted ? 'var(--color-text-muted)' : 'var(--color-text-secondary)'}}>
     <span>{label}</span>
     <span className="num" style={{fontWeight: 500, color: muted ? 'var(--color-text-muted)' : 'var(--color-text)'}}>{value}</span>
   </div>
 );
+
+/** Promotions + void bill, under the pay methods (all tiers). */
+const SecondaryActions = ({ offerCount, selectedCount, onPromos, onVoid }: {
+  offerCount: number; selectedCount: number; onPromos: () => void; onVoid: () => void;
+}) => {
+  const { t } = useI18n();
+  return (
+    <div className="pos-secondary">
+      <button type="button" className="btn btn-ghost" style={{ opacity: offerCount ? 1 : 0.5 }} onClick={onPromos} disabled={!offerCount}>
+        <Icon name="discount" size={16}/> {t.pos.promotions}
+        {offerCount > 0 && (
+          <span className="num pos-badge">{selectedCount > 0 ? `${selectedCount}/${offerCount}` : offerCount}</span>
+        )}
+      </button>
+      <button type="button" className="btn btn-ghost" onClick={onVoid}>
+        <Icon name="void" size={16}/> {t.pos.void}
+      </button>
+    </div>
+  );
+};
 
 const PayButton = ({ icon, label, ariaLabel, onClick, disabled, primary, pending, compact }: {
   icon: string; label: string; onClick: () => void; disabled: boolean; primary?: boolean; pending?: boolean;
@@ -1163,49 +1277,148 @@ const PayButton = ({ icon, label, ariaLabel, onClick, disabled, primary, pending
 }) => {
   const { t } = useI18n();
   const off = disabled || pending;
-  if (compact) {
-    return (
-      <button onClick={onClick} disabled={off} aria-label={ariaLabel} aria-busy={pending || undefined}
-        className={`pos-pay pressable${off ? ' off' : ''}${primary ? ' primary' : ''}`}>
-        {pending ? <span className="spinner" style={{width: 18, height: 18}} aria-hidden /> : <Icon name={icon} size={20}/>}
-        <span>{pending ? t.common.saving : label}</span>
-      </button>
-    );
-  }
   return (
-    <button onClick={onClick} disabled={off} className="hover-raise" aria-busy={pending || undefined}
-      style={{
-        padding: '14px 12px', borderRadius: 8,
-        background: off ? 'var(--color-surface-2)' : 'var(--color-primary)',
-        color: off ? 'var(--color-text-muted)' : 'var(--color-text-inverse)',
-        border: `1px solid ${off ? 'var(--color-border)' : 'var(--color-primary)'}`,
-        boxShadow: off ? 'none' : 'var(--shadow-sm)',
-        fontWeight: primary ? 700 : 600, fontSize: 14,
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-        minHeight: 64,
-        cursor: off ? 'not-allowed' : 'pointer',
-      }}
-    >
-      {pending ? <span className="spinner" style={{width: 18, height: 18}} aria-hidden /> : <Icon name={icon} size={20}/>}
-      <span style={{fontSize: 12}}>{pending ? t.common.saving : label}</span>
+    <button type="button" onClick={onClick} disabled={off} aria-label={ariaLabel} aria-busy={pending || undefined}
+      className={`tap ${compact ? 'pos-pay' : 'pos-paybtn'}${off ? ' off' : ''}${primary ? ' primary' : ''}`}>
+      {pending ? <span className="spinner" style={{width: 18, height: 18}} aria-hidden /> : <Icon name={icon} size={compact ? 20 : 22}/>}
+      <span>{pending ? t.common.saving : label}</span>
     </button>
   );
 };
 
 /**
- * Phone-only layout for the POS screen (< 768px). Everything sits inside the media
- * query, so tablet / desktop keep their inline styles untouched; `!important` is
- * what lets a class override those inline desktop values on phones.
+ * POS layout + touch sizing (TOUCH-SPEC §3.2–3.4). All tiers live here; the phone
+ * block at the end overrides with `!important` only where an inline style must lose.
  */
-const POS_PHONE_CSS = `
+const POS_CSS = `
+/* ── Columns: cart is clamp(340, 40%, 440); the menu takes the rest ── */
+.pos-menu { flex: 1 1 0; min-width: 0; }
+.pos-cart { width: 100%; flex-shrink: 0; container: poscart / inline-size; }
+@media (min-width: 768px) { .pos-cart { width: clamp(340px, 40%, 440px); } }
+
+/* ── Menu grid: columns follow the menu column's own width ── */
+.pos-menu-scroll { padding: 16px; container: posmenu / inline-size; }
+.pos-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@container posmenu (min-width: 420px) { .pos-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container posmenu (min-width: 500px) { .pos-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; } }
+@container posmenu (min-width: 760px) { .pos-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+@container posmenu (min-width: 980px) { .pos-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
+/* ── Category chips: 48px, 56px on the POS tier ── */
+.pos-chip {
+  min-height: var(--tap-std); padding: 0 18px; flex-shrink: 0; /* .tab-strip > .pos-chip below beats the coarse-pointer 48px rule */
+  border-radius: var(--radius-pill); white-space: nowrap;
+  font-size: var(--fs-body); font-weight: 600;
+}
+.pos-chip-skel { height: var(--tap-std); }
+@media (min-width: 1280px) { .tab-strip > .pos-chip { min-height: var(--tap-lg); } .pos-chip-skel { height: var(--tap-lg); } }
+
+/* ── Menu card: the whole card is the target ── */
+.pos-card {
+  position: relative; display: flex; flex-direction: column;
+  border-radius: 12px; overflow: hidden; text-align: left;
+  container: poscard / inline-size;
+}
+.pos-card.pending { opacity: 0.7; }
+.pos-card-media { aspect-ratio: 4 / 3; position: relative; display: grid; place-items: center; overflow: hidden; }
+.pos-card-ph {
+  padding: 0 10px; text-align: center;
+  color: rgba(255, 255, 255, 0.92); font-size: var(--fs-sm); font-weight: 600; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.pos-card-hot {
+  position: absolute; top: 8px; left: 8px;
+  display: flex; align-items: center; gap: 4px; min-height: 24px; padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent); color: var(--color-on-accent);
+  font-size: var(--fs-cap); font-weight: 700; line-height: 1;
+}
+.pos-card-tag {
+  position: absolute; top: 8px; right: 8px; padding: 2px 6px; border-radius: 4px;
+  background: rgba(0, 0, 0, 0.4); color: #fff; font-size: var(--fs-cap); font-weight: 600; line-height: 1.3;
+}
+@container poscard (max-width: 139px) { .pos-card-tag { display: none; } }
+/* How many of this product are on the bill: state, not a flash. */
+.pos-card-qty {
+  position: absolute; top: 8px; right: 8px;
+  min-width: 24px; height: 24px; padding: 0 7px;
+  display: grid; place-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent); color: var(--color-on-accent);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--fs-cap); font-weight: 700; line-height: 1;
+}
+.pos-card-body { padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+.pos-card-name {
+  font-size: var(--fs-body); font-weight: 600; color: var(--color-text); line-height: 1.3;
+  min-height: 2.6em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.pos-card-price {
+  min-height: 1.4em; display: flex; align-items: center;
+  font-size: var(--fs-lg); font-weight: 700; color: var(--color-primary);
+}
+
+/* ── Cart lines: no rules between them, space does the grouping ── */
+/* One row per line: name + modifiers | − qty + | amount | trash. The amount sits
+   between the stepper and the trash, so the destructive button never touches +. */
+.pos-lines { display: flex; flex-direction: column; padding: 4px 0; }
+.pos-line {
+  position: relative;
+  display: flex; align-items: center; gap: 8px;
+  min-height: 64px; padding: 8px 8px 8px 16px;
+}
+.pos-line > :not(.pos-line-flash) { position: relative; }
+/* The touched line: accent tint that fades out (opacity only). */
+.pos-line-flash {
+  position: absolute; inset: 0; pointer-events: none;
+  background: var(--color-accent-50);
+  animation: pos-flash 600ms var(--ease-out) forwards;
+}
+@keyframes pos-flash { from { opacity: 1; } to { opacity: 0; } }
+.pos-line-info { flex: 1; min-width: 0; }
+.pos-line-name { font-size: var(--fs-body); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.pos-line-mods { margin-top: 2px; font-size: var(--fs-sm); color: var(--color-text-secondary); line-height: 1.35; overflow-wrap: anywhere; }
+.pos-line-amount { min-width: 48px; font-size: var(--fs-lg); font-weight: 600; text-align: right; white-space: nowrap; }
+/* Stepper: one surface-2 group (− qty +), not three boxes. */
+.pos-stepper { display: flex; align-items: center; border-radius: var(--radius-md); background: var(--color-surface-2); }
+.pos-qty-btn, .pos-line-remove {
+  width: var(--tap-std); height: var(--tap-std); min-height: var(--tap-std); flex-shrink: 0;
+  display: grid; place-items: center; border-radius: var(--radius-md);
+}
+.pos-qty-btn { color: var(--color-text); }
+.pos-qty { min-width: 32px; text-align: center; font-size: var(--fs-lg); font-weight: 700; }
+.pos-line-remove { color: var(--color-danger-fg); }
+
+/* ── Checkout ── */
+.pos-pay-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@container poscart (min-width: 400px) { .pos-pay-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.pos-paybtn {
+  min-height: var(--tap-xl); padding: 10px 8px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary); color: var(--color-text-inverse);
+  border: 1px solid var(--color-primary);
+  font-size: var(--fs-body); font-weight: 600; line-height: 1.25; text-align: center; text-wrap: balance;
+}
+.pos-paybtn.primary { font-weight: 700; }
+.pos-paybtn.off { background: var(--color-surface-2); color: var(--color-text-muted); border-color: var(--color-border); cursor: not-allowed; }
+.pos-secondary { display: flex; gap: 8px; }
+.pos-secondary > .btn { flex: 1; min-width: 0; min-height: var(--tap-std); padding: 0 8px; font-size: var(--fs-sm); }
+.pos-member-text > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pos-badge {
+  min-width: 22px; padding: 1px 7px; border-radius: var(--radius-pill);
+  background: var(--color-accent); color: var(--color-on-accent);
+  font-size: var(--fs-cap); font-weight: 700; line-height: 18px;
+}
+
 @media (max-width: 767px) {
   .pos-banner { padding: 6px 12px !important; gap: 8px !important; flex-wrap: nowrap !important; }
   .pos-banner-text { min-width: 0 !important; }
   .pos-banner-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .pos-menu-head { padding: 10px 12px 0 !important; gap: 10px !important; }
-  .pos-search { font-size: 16px !important; }
-  .pos-menu-scroll { padding: 12px !important; }
+  .pos-menu-scroll { padding: 12px; }
 
   /* Cart bar under the menu */
   .pos-cartbar-wrap {
@@ -1217,13 +1430,12 @@ const POS_PHONE_CSS = `
     width: 100%; min-height: 52px; padding: 0 12px 0 14px;
     border-radius: var(--radius-lg);
     background: var(--color-primary); color: var(--color-text-inverse);
-    box-shadow: var(--shadow-sm);
     font-size: 15px; font-weight: 700; text-align: left;
   }
   .pos-cartbar-count {
     padding: 2px 8px; border-radius: var(--radius-pill);
     background: var(--color-accent); color: var(--color-on-accent);
-    font-size: 12px; font-weight: 700; white-space: nowrap;
+    font-size: var(--fs-cap); font-weight: 700; white-space: nowrap;
     animation: pos-bump 180ms var(--ease-out);
   }
   .pos-cartbar-total { margin-left: auto; font-size: 18px; letter-spacing: -0.01em; white-space: nowrap; }
@@ -1231,32 +1443,16 @@ const POS_PHONE_CSS = `
   /* Cart header: one compact row */
   .pos-cart-head { padding: 8px 12px !important; gap: 8px; }
   .pos-bill { flex-shrink: 0; }
-  .pos-bill-label { font-size: 11px !important; line-height: 1.3; }
+  .pos-bill-label { line-height: 1.3; }
   .pos-bill-no { font-size: 18px !important; line-height: 1.2; }
   .pos-cart-actions { flex: 1; min-width: 0; justify-content: flex-end; }
-  .pos-head-btn { padding: 8px 10px !important; }
-  .pos-park { flex-shrink: 0; }
+  .pos-head-btn { padding: 0 10px !important; }
   .pos-member-chip { flex: 0 1 auto; min-width: 0; }
   .pos-member-text { min-width: 0; }
-  .pos-member-text > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   .pos-empty { padding: 40px 20px !important; text-align: center; }
 
-  /* Cart line: name + amount on the first row, modifiers + controls on the second,
-     so a long Thai name gets the full width instead of a 128px column. */
-  .pos-line {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    grid-template-areas: "name name amount" "mods remove qty";
-    column-gap: 8px !important; row-gap: 4px !important;
-    padding: 10px 12px !important;
-  }
-  .pos-line-info, .pos-line-price { display: contents; }
-  .pos-line-name { grid-area: name; margin: 0 !important; overflow-wrap: anywhere; }
-  .pos-line-mods { grid-area: mods; align-self: start; overflow-wrap: anywhere; }
-  .pos-line-amount { grid-area: amount; align-self: start; font-size: 15px !important; text-align: right; white-space: nowrap; }
-  .pos-line-qty { grid-area: qty; gap: 2px !important; }
-  .pos-qty-btn { width: 44px !important; height: 44px !important; border-radius: var(--radius-md) !important; }
-  .pos-line-remove { grid-area: remove; min-width: 44px; margin: 0 !important; padding: 0 6px; font-size: 13px !important; }
+  .pos-line { padding: 8px 4px 8px 12px; gap: 6px; }
 
   /* Checkout */
   .pos-co { flex-shrink: 0; border-top: 1px solid var(--color-border); background: var(--color-surface); }
@@ -1268,7 +1464,7 @@ const POS_PHONE_CSS = `
   }
   .pos-co-total-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .pos-co-total-label { font-size: 14px; font-weight: 600; }
-  .pos-co-total-sub { font-size: 12px; color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pos-co-total-sub { font-size: var(--fs-cap); color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pos-co-amount { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: var(--color-primary); white-space: nowrap; }
   .pos-co-actions { display: grid; gap: 8px; padding: 10px 12px; }
   .pos-co-pay { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
@@ -1277,13 +1473,13 @@ const POS_PHONE_CSS = `
     min-width: 0; min-height: 56px; padding: 6px 2px;
     border-radius: var(--radius-md);
     background: var(--color-primary); color: var(--color-text-inverse);
-    border: 1px solid var(--color-primary); box-shadow: var(--shadow-sm);
-    font-size: 12px; font-weight: 600; line-height: 1.3;
+    border: 1px solid var(--color-primary);
+    font-size: var(--fs-cap); font-weight: 600; line-height: 1.3;
   }
   .pos-pay.primary { font-weight: 700; }
-  .pos-pay.off { background: var(--color-surface-2); color: var(--color-text-muted); border-color: var(--color-border); box-shadow: none; }
+  .pos-pay.off { background: var(--color-surface-2); color: var(--color-text-muted); border-color: var(--color-border); }
   .pos-pay > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @keyframes pos-bump { from { transform: scale(0.9); opacity: 0.6; } to { transform: none; opacity: 1; } }
 `;
-const PosPhoneStyles = () => <style>{POS_PHONE_CSS}</style>;
+const PosStyles = () => <style>{POS_CSS}</style>;

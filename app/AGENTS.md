@@ -1,7 +1,11 @@
 <!-- BEGIN:nextjs-agent-rules -->
+
 # This is NOT the Next.js you know
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
 <!-- END:nextjs-agent-rules -->
 
 # UI conventions
@@ -42,8 +46,12 @@ items and visibility rules to `NAV` there, never in either component.
 **Rules.**
 - Layout that must change on phones goes in a **class**, not an inline `style` (inline styles cannot
   hold media queries). Use the toolkit below before writing new CSS.
-- Tap targets are ≥ 44px: globals.css sets `min-height: 44px` on every `button` / `[role=button]` / `a`
-  on phones, but **an inline `minHeight` below 44 beats that rule** — remove it or raise it.
+- Tap targets: globals.css sets `min-height: var(--tap-std)` (48px) on every `button` / `[role=button]` / `a`
+  on touch devices (`@media (any-pointer: coarse)`, any width) and 44px on phones, but **an inline
+  `minHeight` below that beats the rule**: remove it or raise it. Tap/type tokens, `.tap*` / `.text-*`
+  classes and the tier queries are documented in the "Touch foundation" block of `globals.css`
+  (contract: `docs/specs/TOUCH-SPEC.md`). Every `:hover` rule goes inside
+  `@media (hover: hover) and (pointer: fine)`.
 - Money and quantities: `inputMode="decimal"` / `"numeric"` (or the shared `NumberInput`), not a bare
   `type="number"`. Inputs must render ≥ 16px on phones (an inline `fontSize` below 16 beats the global rule).
 - Never rely on hover — every hover-only affordance needs a visible or tap equivalent.
@@ -55,7 +63,7 @@ items and visibility rules to `NAV` there, never in either component.
 | Variable | Meaning |
 |---|---|
 | `--app-h` | Visible app height: `100dvh` minus the system bar / top safe-area inset. |
-| `--tabbar-h` | Real height of the bottom tab bar (58px + home-indicator inset). `0px` on tablet/desktop and while the keyboard is open. |
+| `--tabbar-h` | Real height of the bottom tab bar (64px + home-indicator inset). `0px` on tablet/desktop and while the keyboard is open. |
 | `--kb-inset` | On-screen keyboard height (`0px` when closed); `html[data-kb-open]` is set while it is open. |
 | `--top-inset` | Space taken at the top: system bar, else the status-bar inset. |
 | `--screen-pad` | Page gutter: 24px desktop, `clamp(12px, 4vw, 20px)` on phones. |

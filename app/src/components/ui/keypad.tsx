@@ -5,8 +5,11 @@ import './tokens.css';
 import './ui.css';
 import Icon from '../icons';
 import { useI18n } from '@/lib/i18n';
+import { haptic } from '@/lib/haptics';
 import { cn } from './cn';
+import { mapKey, type KeypadKey } from './keypad-keys';
 
+export type { KeypadKey } from './keypad-keys';
 
 /** Ref that always holds the latest value (read from listeners without re-subscribing). */
 function useLatest<T>(value: T) {
@@ -14,8 +17,6 @@ function useLatest<T>(value: T) {
   useEffect(() => { ref.current = value; });
   return ref;
 }
-
-export type KeypadKey = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '.' | '00' | 'back' | 'clear' | 'enter';
 
 export interface KeypadProps {
   /** `cash` = 64px keys in a fluid grid · `pin` = round 64/72px keys (≥768px). */
@@ -41,20 +42,6 @@ export interface KeypadProps {
   className?: string;
 }
 
-const THAI_DIGITS = '๐๑๒๓๔๕๖๗๘๙';
-
-/** Physical key → keypad key, or null. */
-function mapKey(e: KeyboardEvent): KeypadKey | null {
-  if (/^Digit[0-9]$/.test(e.code) && !e.shiftKey) return e.code.slice(5) as KeypadKey;
-  if (/^Numpad[0-9]$/.test(e.code)) return e.code.slice(6) as KeypadKey;
-  if (/^[0-9]$/.test(e.key)) return e.key as KeypadKey;
-  if (e.key.length === 1 && THAI_DIGITS.includes(e.key)) return String(THAI_DIGITS.indexOf(e.key)) as KeypadKey;
-  if (e.key === '.' || e.key === ',' || e.code === 'NumpadDecimal') return '.';
-  if (e.key === 'Backspace') return 'back';
-  if (e.key === 'Delete' || e.key === 'Clear') return 'clear';
-  if (e.key === 'Enter' || e.code === 'NumpadEnter') return 'enter';
-  return null;
-}
 
 /**
  * Shared numeric pad for login PIN and cash tender. Keys fire on pointerdown
@@ -137,7 +124,7 @@ export function Keypad({
               if (disabled || (e.pointerType === 'mouse' && e.button !== 0)) return;
               handled.current = { key, seq: ++seq.current };
               onKey(key);
-              try { navigator.vibrate?.(8); } catch { /* haptics are optional */ }
+              haptic();
             }}
             onPointerUp={() => {
               // No click followed (finger slid off): drop the marker so a later

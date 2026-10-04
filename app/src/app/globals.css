@@ -97,11 +97,27 @@
   --font-sans: var(--font-anuphan), "Inter", "Sukhumvit Set", "IBM Plex Sans Thai", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-num: "Inter", "SF Mono", ui-monospace, monospace;
 
-  --fs-12: 12px;
-  --fs-14: 14px;
-  --fs-16: 16px;
-  --fs-20: 20px;
-  --fs-24: 24px;
+  /* Type scale (TOUCH-SPEC §2). Nine steps; nothing below 13px on core screens.
+     Use these in new code: inline `fontSize: 'var(--fs-body)'` or the .text-* classes. */
+  --fs-cap: 13px;     /* captions, meta, badges, tab labels */
+  --fs-sm: 14px;      /* secondary text, modifiers under a cart line */
+  --fs-body: 15px;    /* body, product name, cart line name */
+  --fs-lg: 16px;      /* inputs (no iOS zoom), button labels on touch */
+  --fs-title: 18px;   /* modal titles, floor table name */
+  --fs-h2: 20px;      /* screen titles */
+  --fs-h1: 24px;      /* bill no., change due */
+  --fs-num-lg: 28px;  /* totals in cart + payment */
+  --fs-num-xl: 40px;  /* amount due in payment, KDS queue no. */
+  --lh-tight: 1.25;
+  --lh-body: 1.45;
+
+  /* Legacy names, kept as aliases during migration. --fs-12 now resolves to 13px
+     (the floor); the rest keep their old pixel values. */
+  --fs-12: var(--fs-cap);
+  --fs-14: var(--fs-sm);
+  --fs-16: var(--fs-lg);
+  --fs-20: var(--fs-h2);
+  --fs-24: var(--fs-h1);
   --fs-32: 32px;
   --fs-48: 48px;
 
@@ -141,6 +157,23 @@
   --dur-fast: 120ms;
   --dur-base: 180ms;
   --dur-slow: 280ms;
+
+  /* ---------- Touch foundation (TOUCH-SPEC §2) ----------
+     One tap-size ladder for the whole app. The --ds-tap-* tokens in
+     components/ui/tokens.css hold the same values for the login primitives. */
+  --tap-min: 44px;   /* absolute floor, any pointer: icon buttons, close X, chips */
+  --tap-std: 48px;   /* default control on touch: buttons, inputs, list rows, qty ± */
+  --tap-lg: 56px;    /* modal primary, category chips on POS/KDS, rail items */
+  --tap-xl: 64px;    /* money actions: pay methods, confirm payment, KDS bump */
+  --tap-key: 72px;   /* numeric keypad keys at ≥768px (56px on phones, below) */
+  --tap-gap: 8px;    /* min gap between adjacent tap targets */
+
+  /* Lines and states. Borders are 1px hairlines; only the focus ring is thicker. */
+  --border-w: 1px;
+  --hairline: var(--border-w) solid var(--color-border);
+  --press-bg: rgba(61, 40, 23, 0.08);   /* pressed tint over any fill (see .tap) */
+  --press-scale: 0.97;
+  --selected-bg: var(--color-primary-50);
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -197,6 +230,8 @@
   /* On dark surfaces the caramel accent already reads ≥7:1, so the focus ring
      stays caramel here (a deep amber would vanish on the dark background). */
   --color-focus-ring: #D4A574;
+  /* Pressed tint: a light cream veil reads on dark fills, an espresso one would vanish. */
+  --press-bg: rgba(240, 220, 192, 0.10);
   /* --color-on-accent stays #1C140D: accent fill is the same caramel in both
      themes, so the espresso ink keeps its ≥8:1 contrast. */
 
@@ -261,6 +296,7 @@
      accent (≥7:1 on the espresso bg) rather than the light-mode deep amber
      (~1.9:1 here). Pin it regardless of the active theme. */
   --color-focus-ring: #D4A574;
+  --press-bg: rgba(255, 255, 255, 0.10);
 }
 
 /* A "paper" island that stays light in both themes (e.g. KDS order tickets sit
@@ -274,7 +310,8 @@
   --color-surface-2: #F5F1E9;
   --color-text: #1A1A1A;
   --color-text-secondary: #6B7280;
-  --color-text-muted: #9CA3AF;
+  /* Same AA-safe muted grey as the light :root (#9CA3AF was ~2.5:1 on white). */
+  --color-text-muted: #6C7079;
   --color-text-inverse: #FFFFFF;
   --color-border: #E5E0D5;
   --color-border-strong: #C9C2B2;
@@ -301,6 +338,7 @@
   /* Light island, so revert the focus ring to the light-mode deep amber even
      when the app is in dark mode — caramel would only be ~2.2:1 on white here. */
   --color-focus-ring: #8A5A14;
+  --press-bg: rgba(61, 40, 23, 0.08);
   color: var(--color-text);
 }
 
@@ -319,7 +357,9 @@ body {
 }
 button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; padding: 0; }
 input, textarea, select { font-family: inherit; color: inherit; }
-.num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+/* Every price, qty, total and timer: digits share one width so columns align and
+   a changing figure does not jitter. */
+.num, [data-num] { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 /* Hide the cramped native number spinner where we render our own spaced step buttons */
 .no-spin::-webkit-inner-spin-button,
 .no-spin::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -328,8 +368,12 @@ input, textarea, select { font-family: inherit; color: inherit; }
 /* ---------- Scrollbar ---------- */
 .scroll::-webkit-scrollbar { width: 10px; height: 10px; }
 .scroll::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
-.scroll::-webkit-scrollbar-thumb:hover { background: var(--color-border-strong); background-clip: padding-box; border: 2px solid transparent; }
+@media (hover: hover) and (pointer: fine) {
+  .scroll::-webkit-scrollbar-thumb:hover { background: var(--color-border-strong); background-clip: padding-box; border: 2px solid transparent; }
+}
 .scroll::-webkit-scrollbar-track { background: transparent; }
+/* No rubber-band: a scroll area that hits its end must not drag the whole app. */
+.scroll { overscroll-behavior: contain; }
 
 /* ---------- Utility ---------- */
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
@@ -363,27 +407,56 @@ input, textarea, select { font-family: inherit; color: inherit; }
 /* Above every modal/overlay (receipt modal 300, confirm 320, lightbox 1000,
    Select menu 2000, …) so toasts are never covered or blurred by an open
    popup's backdrop-filter. */
-.toast-stack { position: fixed; right: 24px; bottom: 24px; z-index: var(--z-toast); display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+/* Top-center, 12px under the system bar / notch, so a toast never lands on the
+   pay buttons, the cart total or a keypad (TOUCH-SPEC §3.5). Same placement on
+   every width; phones get the full width minus 8px gutters. The kind is carried
+   by a tinted surface + coloured icon, not by a side stripe. */
+.toast-stack {
+  position: fixed; left: 0; right: 0; top: calc(var(--top-inset) + 12px);
+  z-index: var(--z-toast);
+  width: min(420px, calc(100% - 16px)); margin-inline: auto;
+  display: flex; flex-direction: column; gap: var(--space-2);
+  pointer-events: none;
+}
 .toast {
   pointer-events: auto;
-  min-width: 280px; max-width: 380px;
-  padding: 12px 16px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-left: 3px solid var(--color-accent);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  font-size: var(--fs-14);
   display: flex; gap: 10px; align-items: flex-start;
-  animation: toast-in 240ms var(--ease-out);
+  padding: 10px 6px 10px 14px;
+  background: var(--color-surface);
+  border: var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-size: var(--fs-sm); line-height: var(--lh-body);
+  animation: toast-in 200ms var(--ease-out);
 }
-.toast.success { border-left-color: var(--color-success); }
-.toast.warning { border-left-color: var(--color-warning); }
-.toast.danger  { border-left-color: var(--color-danger); }
-.toast .t-icon { width: 20px; height: 20px; flex-shrink: 0; margin-top: 1px; }
-.toast .t-title { font-weight: 600; }
-.toast .t-msg { color: var(--color-text-secondary); font-size: 13px; margin-top: 2px; }
-@keyframes toast-in { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.toast.success { background: var(--color-success-50); }
+.toast.warning { background: var(--color-warning-50); }
+.toast.danger  { background: var(--color-danger-50); }
+/* info stays on the plain surface: only states that need attention get a tint. */
+.toast .t-icon { width: 20px; height: 20px; flex-shrink: 0; margin-top: 12px; color: var(--color-info); }
+.toast.success .t-icon { color: color-mix(in srgb, var(--color-success) 68%, var(--color-text)); }
+.toast.warning .t-icon { color: var(--color-warning-fg); }
+.toast.danger  .t-icon { color: var(--color-danger-fg); }
+/* Text column centres on the 44px close button's row. */
+.toast .t-body { flex: 1; min-width: 0; padding-block: 10px; }
+.toast .t-title { font-size: var(--fs-body); font-weight: 600; color: var(--color-text); }
+/* Plain text colour, not grey: grey secondary text drops under 4.5:1 on the tints. */
+.toast .t-msg { font-size: var(--fs-sm); color: var(--color-text); margin-top: 2px; }
+.toast .t-action {
+  flex-shrink: 0; align-self: center;
+  min-height: var(--tap-min); padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-sm); font-weight: 700; color: var(--color-text);
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.toast .t-close {
+  flex-shrink: 0;
+  width: var(--tap-min); height: var(--tap-min);
+  display: grid; place-items: center;
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+}
+@keyframes toast-in { from { transform: translateY(-8px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ---------- Modal backdrop ---------- */
 .modal-backdrop {
@@ -393,8 +466,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
   display: flex; align-items: center; justify-content: center;
   animation: backdrop-in 180ms var(--ease-out);
   /* Lifted above the on-screen keyboard by use-keyboard-inset (it sets the
-     inline padding-bottom); transition makes the shift smooth. */
-  transition: padding-bottom 180ms var(--ease-out);
+     inline padding-bottom). Deliberately not animated: tweening a layout
+     property re-lays out the card every frame, and the keyboard's own slide
+     already covers the jump. */
 }
 @keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
 .modal-card {
@@ -423,32 +497,135 @@ html[data-kb-open] .modal-card {
   transition: background var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
   white-space: nowrap;
 }
-.btn:active { transform: translateY(1px); }
+.btn:active:not(:disabled) { transform: scale(var(--press-scale)); box-shadow: inset 0 0 0 100vmax var(--press-bg); transition-duration: 0s; }
 .btn-primary { background: var(--color-primary); color: var(--color-text-inverse); }
-.btn-primary:hover { background: var(--color-primary-700); }
 .btn-accent { background: var(--color-accent); color: var(--color-on-accent); }
-.btn-accent:hover { background: var(--color-accent-600); color: var(--color-on-accent); }
-.btn-ghost { background: transparent; color: var(--color-text); border: 1px solid var(--color-border); }
-.btn-ghost:hover { background: var(--color-surface-2); }
+.btn-ghost { background: transparent; color: var(--color-text); border: var(--hairline); }
 /* danger-strong keeps AA with white text in both themes (plain --color-danger
    turns light in dark mode and fails against white). */
 .btn-danger { background: var(--color-danger-strong); color: #fff; }
-.btn-danger:hover { filter: brightness(0.95); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary:hover { background: var(--color-primary-700); }
+  .btn-accent:hover { background: var(--color-accent-600); color: var(--color-on-accent); }
+  .btn-ghost:hover { background: var(--color-surface-2); }
+  .btn-danger:hover { filter: brightness(0.95); }
+}
 .btn-block { width: 100%; }
 .btn-lg { padding: 14px 18px; font-size: var(--fs-16); }
-.btn-xl { padding: 18px 20px; font-size: var(--fs-16); min-height: 64px; }
+.btn-xl { padding: 18px 20px; font-size: var(--fs-16); min-height: var(--tap-xl); }
 
-/* ---------- Mobile touch targets ---------- */
+/* ════════════════════════════════════════════════════════════════
+   Touch foundation — TOUCH-SPEC §2 (contract: docs/specs/TOUCH-SPEC.md)
+
+   Tokens (:root, above): --tap-min 44 · --tap-std 48 · --tap-lg 56 · --tap-xl 64 ·
+   --tap-key 72 (56 on phones) · --tap-gap 8 · --fs-cap 13 · --fs-sm 14 ·
+   --fs-body 15 · --fs-lg 16 · --fs-title 18 · --fs-h2 20 · --fs-h1 24 ·
+   --fs-num-lg 28 · --fs-num-xl 40 · --lh-tight 1.25 · --lh-body 1.45 ·
+   --border-w 1px · --hairline · --press-bg · --press-scale .97 · --selected-bg.
+
+   Tiers (media queries cannot read custom properties, so copy these strings):
+     Touch  @media (any-pointer: coarse)   — any width. Windows all-in-ones report
+                                             pointer:fine when a mouse is plugged
+                                             in, so never gate touch on width.
+     Hover  @media (hover: hover) and (pointer: fine) — every :hover rule lives
+                                             inside this; never rely on hover.
+     Phone  @media (max-width: 767px)       useIsPhone()
+     Tablet @media (min-width: 768px) and (max-width: 1279px)
+     POS    @media (min-width: 1280px)      same tap sizes as tablet (AIOs are touch)
+
+   Classes (new):
+     .tap         press feedback for any control: --press-bg tint + scale .97,
+                  instant in, 120ms out; none when disabled. Works over any fill.
+     .tap-min     min 44×44   (icon buttons, close X, chips)
+     .tap-std     min-height 48 (default touch control, qty ±, list rows)
+     .tap-lg      min-height 56 (modal primary, POS category chips)
+     .tap-pay     min-height 64 (pay methods, confirm payment, KDS bump)
+     .tap-sq      square: width = height = the tap-* min-height it is paired with
+     .tap-row     flex row with --tap-gap between targets
+     .text-cap/-sm/-body/-lg/-title/-h2/-h1/-num-lg/-num-xl
+                  font-size from the scale (num-* add tabular digits + bold)
+     .num / [data-num]  tabular digits (every price, qty, total, timer)
+     .hairline    1px --color-border border
+     .chip        marker for filter / category chips: 48px tall on touch
+   Global rules: every button / [role=button] / a gets touch-action:manipulation,
+   no tap highlight, no text selection, and a zero-specificity pressed tint (any
+   class that styles its own :active wins). On coarse pointers controls grow to
+   --tap-std and inputs render at --fs-lg.
+
+   Inline-style rule: an inline minHeight / fontSize beats every rule here. In core
+   screens delete inline `minHeight: 44` and `fontSize: 10–12` instead of fighting
+   them with !important.
+   ════════════════════════════════════════════════════════════════ */
+
+button, [role="button"], a, .menu-card {
+  touch-action: manipulation;            /* no double-tap zoom, no 300ms delay; pinch stays */
+  -webkit-tap-highlight-color: transparent;
+  user-select: none; -webkit-user-select: none;
+}
+/* Default pressed tint for every control that has no :active of its own. :where()
+   keeps it at zero specificity, so any class rule overrides it. */
+:where(button:not(:disabled):not([aria-disabled='true']), [role='button']:not([aria-disabled='true'])):active {
+  box-shadow: inset 0 0 0 100vmax var(--press-bg);
+}
+
+.tap { transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out); }
+.tap:active:not(:disabled):not([aria-disabled='true']) {
+  transform: scale(var(--press-scale));
+  box-shadow: inset 0 0 0 100vmax var(--press-bg);
+  transition-duration: 0s;
+}
+.tap-min { min-width: var(--tap-min); min-height: var(--tap-min); }
+.tap-std { min-height: var(--tap-std); }
+.tap-lg  { min-height: var(--tap-lg); }
+.tap-pay { min-height: var(--tap-xl); }
+.tap-std.tap-sq { width: var(--tap-std); min-width: var(--tap-std); height: var(--tap-std); }
+.tap-lg.tap-sq  { width: var(--tap-lg);  min-width: var(--tap-lg);  height: var(--tap-lg); }
+.tap-min.tap-sq { width: var(--tap-min); height: var(--tap-min); }
+.tap-sq { display: inline-grid; place-items: center; padding: 0; flex-shrink: 0; }
+.tap-row { display: flex; align-items: center; gap: var(--tap-gap); }
+.hairline { border: var(--hairline); }
+
+.text-cap   { font-size: var(--fs-cap); }
+.text-sm    { font-size: var(--fs-sm); }
+.text-body  { font-size: var(--fs-body); }
+.text-lg    { font-size: var(--fs-lg); }
+.text-title { font-size: var(--fs-title); line-height: var(--lh-tight); }
+.text-h2    { font-size: var(--fs-h2); line-height: var(--lh-tight); }
+.text-h1    { font-size: var(--fs-h1); line-height: var(--lh-tight); }
+.text-num-lg, .text-num-xl { font-weight: 700; line-height: var(--lh-tight); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.text-num-lg { font-size: var(--fs-num-lg); }
+.text-num-xl { font-size: var(--fs-num-xl); }
+
+/* Phones: the floor holds even if a phone (or a desktop emulating one) reports a
+   fine pointer. Keypad keys step down to 56px so a 3×4 pad fits a 390px screen.
+   Declared BEFORE the touch block so a coarse phone still gets 48px. */
 @media (max-width: 767px) {
-  button, [role="button"], a {
-    min-height: 44px;
+  :root { --tap-key: var(--tap-lg); }
+  button, [role="button"], a { min-height: var(--tap-min); }
+  input, select, textarea { font-size: var(--fs-lg); }
+  /* The bottom tab bar footprint is reserved in the "Phone shell" section below. */
+}
+
+/* Touch, any width. */
+@media (any-pointer: coarse) {
+  button, [role="button"], a { min-height: var(--tap-std); }
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select, textarea {
+    min-height: var(--tap-std);
+    font-size: var(--fs-lg); /* also stops iOS zooming on focus */
   }
-  input, select, textarea {
-    font-size: 16px; /* prevent iOS auto-zoom on focus */
-  }
-  /* NOTE: an inline `minHeight` below 44 on a button beats this rule — on phones
-     keep inline min-heights ≥ 44 or drop them (see AGENTS.md). The bottom tab bar
-     footprint is reserved in the "Phone shell" section below. */
+  .btn { min-height: var(--tap-std); font-size: var(--fs-lg); }
+  .btn-lg { min-height: var(--tap-lg); }
+  .btn-xl { min-height: var(--tap-xl); }
+  .icon-btn, .icon-btn-soft { min-width: var(--tap-std); min-height: var(--tap-std); }
+  .hit-44::after { width: max(var(--tap-std), 100%); height: max(var(--tap-std), 100%); }
+  .tab-strip { gap: var(--tap-gap); }
+  .tab-strip > button, .tab-strip > [role='tab'], .chip { min-height: var(--tap-std); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Keep the tint, drop the movement. */
+  .tap:active, .btn:active, .pressable:active, .numpad-key:active, .numpad-key[data-pressed] { transform: none !important; }
 }
 
 /* ---------- Safe area ---------- */
@@ -499,7 +676,9 @@ body { padding-top: var(--top-inset); }
 .sys-bar-btn { min-height: 44px; padding: 8px 14px; font-size: 13px; }
 .sys-bar-btn:disabled { opacity: 0.8; cursor: progress; }
 .sys-bar-btn-quiet { color: rgba(255, 255, 255, 0.86); border: 1px solid rgba(255, 255, 255, 0.24); }
-.sys-bar-btn-quiet:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+@media (hover: hover) and (pointer: fine) {
+  .sys-bar-btn-quiet:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+}
 
 /* Text-style button: install entry on the login screen, steps toggle. */
 .btn-link {
@@ -514,7 +693,9 @@ body { padding-top: var(--top-inset); }
   font-size: var(--fs-14); font-weight: 600;
   transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
-.btn-link:hover { background: var(--color-surface-2); color: var(--color-text); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-link:hover { background: var(--color-surface-2); color: var(--color-text); }
+}
 .btn-link:disabled { cursor: progress; opacity: 0.7; }
 
 /* ---------- Bottom sheet animation ---------- */
@@ -565,10 +746,10 @@ label:focus-visible {
 
 /* ---------- Press / hover feedback (replaces inline onMouseEnter/Leave) ---------- */
 .pressable { transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out); }
-.pressable:active:not(:disabled) { transform: scale(0.97); }
+.pressable:active:not(:disabled) { transform: scale(var(--press-scale)); }
 
 .hover-raise { transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .hover-raise:not(:disabled):hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 }
 .hover-raise:not(:disabled):active { transform: scale(0.98); box-shadow: none; }
@@ -579,14 +760,14 @@ label:focus-visible {
   border: 1px solid var(--color-border);
   transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
 }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .menu-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--color-accent); }
 }
 .menu-card:active { transform: scale(0.96); box-shadow: var(--shadow-xs); border-color: var(--color-accent); }
 
 /* Light icon button (light surfaces) */
 .icon-btn { transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
-.icon-btn:hover { background: var(--color-surface-2); }
+.icon-btn:active:not(:disabled) { background: var(--color-surface-2); box-shadow: inset 0 0 0 100vmax var(--press-bg); transition-duration: 0s; }
 
 /* Soft icon button (dark surfaces: sidebar, KDS) */
 .icon-btn-soft {
@@ -594,7 +775,7 @@ label:focus-visible {
   color: rgba(255,255,255,0.65);
   transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
-.icon-btn-soft:hover { background: rgba(255,255,255,0.16); color: #fff; }
+.icon-btn-soft:active:not(:disabled) { background: rgba(255,255,255,0.20); color: #fff; transition-duration: 0s; }
 
 /* KDS "วิธีทำ" help badge */
 .help-badge {
@@ -603,7 +784,18 @@ label:focus-visible {
   color: var(--color-text-secondary);
   transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
 }
-.help-badge:hover { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+@media (hover: hover) and (pointer: fine) {
+  .icon-btn:hover { background: var(--color-surface-2); }
+  .icon-btn-soft:hover { background: rgba(255,255,255,0.16); color: #fff; }
+  .help-badge:hover { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+  .sidebar-surface .icon-btn-soft:hover { background: var(--sb-icon-soft-hover-bg); color: var(--sb-icon-soft-hover-fg); }
+  .sb-item:not(.active):hover { background: var(--sb-hover); }
+  .sb-group-btn:hover { background: var(--sb-hover); }
+  .sb-group-btn:hover .sb-group-chevron { color: var(--sb-text-strong); }
+  .sb-logout:hover { background: var(--sb-logout-hover-bg); color: var(--sb-logout-hover-fg); border-color: var(--sb-logout-hover-border); }
+  .select-opt:not([aria-selected='true']):not(:disabled):hover { background: var(--color-surface-2); }
+  .toast .t-close:hover, .toast .t-action:hover { background: var(--press-bg); }
+}
 
 /* ---------- Sidebar ---------- */
 /* Theme-aware surface: light greige in light mode, espresso dark in dark mode.
@@ -613,7 +805,8 @@ label:focus-visible {
 /* Collapse/expand toggle — scoped override so the always-dark KDS
    .icon-btn-soft keeps its light-on-dark styling untouched. */
 .sidebar-surface .icon-btn-soft { background: var(--sb-icon-soft-bg); color: var(--sb-icon-soft-fg); }
-.sidebar-surface .icon-btn-soft:hover { background: var(--sb-icon-soft-hover-bg); color: var(--sb-icon-soft-hover-fg); }
+.sidebar-surface .icon-btn-soft:active:not(:disabled) { background: var(--sb-icon-soft-hover-bg); color: var(--sb-icon-soft-hover-fg); }
+/* Sidebar :hover rules live in the hover-gated block above (.help-badge). */
 
 .sb-item {
   background: transparent;
@@ -622,7 +815,6 @@ label:focus-visible {
   transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 .sb-item.active { background: var(--sb-active-bg); color: var(--sb-active-text); font-weight: 600; box-shadow: var(--sb-active-shadow); }
-.sb-item:not(.active):hover { background: var(--sb-hover); }
 .sb-item:active { background: var(--sb-press); }
 
 .sb-item-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -643,7 +835,6 @@ label:focus-visible {
   font: inherit; text-align: left; cursor: pointer;
   transition: background var(--dur-fast) var(--ease-out);
 }
-.sb-group-btn:hover { background: var(--sb-hover); }
 .sb-group-btn:active { background: var(--sb-press); }
 
 .sb-group-icon {
@@ -656,7 +847,7 @@ label:focus-visible {
 /* Thai group names fit one line; longer English ones wrap to two rather than truncate. */
 .sb-group-label { font-size: 15px; font-weight: 700; line-height: 1.4; text-wrap: balance; }
 .sb-group-here {
-  font-size: 12px; font-weight: 500; line-height: 1.4; color: var(--sb-text);
+  font-size: var(--fs-cap); font-weight: 500; line-height: 1.4; color: var(--sb-text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .sb-group-chevron {
@@ -664,7 +855,6 @@ label:focus-visible {
   transform: rotate(-90deg);
   transition: transform var(--dur-base) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
-.sb-group-btn:hover .sb-group-chevron { color: var(--sb-text-strong); }
 
 /* The three states a heading shows at a glance:
    closed  — quiet tile, chevron points right.
@@ -706,7 +896,7 @@ label:focus-visible {
   color: var(--sb-logout-fg);
   transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
 }
-.sb-logout:hover { background: var(--sb-logout-hover-bg); color: var(--sb-logout-hover-fg); border-color: var(--sb-logout-hover-border); }
+.sb-logout:active { background: var(--sb-logout-hover-bg); color: var(--sb-logout-hover-fg); border-color: var(--sb-logout-hover-border); }
 
 /* Sidebar labels fade in on expand — same beat as the width transition */
 .sb-fade { animation: fade-in var(--dur-slow) var(--ease-out) both; }
@@ -798,13 +988,13 @@ label:focus-visible {
   padding-right: env(safe-area-inset-right, 0px);
 }
 
-/* --tabbar-h = the real footprint of the bottom tab bar: 58px of content plus the
+/* --tabbar-h = the real footprint of the bottom tab bar: 64px of content plus the
    home-indicator inset BELOW it. 0 on tablet/desktop and while the on-screen
    keyboard is open (the bar hides so it cannot float above the keyboard).
    Anything pinned to the bottom of a phone screen offsets itself with this. */
 :root { --tabbar-h: 0px; }
 @media (max-width: 767px) {
-  :root { --tabbar-h: calc(58px + env(safe-area-inset-bottom, 0px)); }
+  :root { --tabbar-h: calc(64px + env(safe-area-inset-bottom, 0px)); }
   /* data-kb-open: VisualViewport keyboards (iOS), set by use-keyboard-inset.
      data-kb-resized: keyboards that resize the layout (Android), set by mobile-nav. */
   html[data-kb-open], html[data-kb-resized] { --tabbar-h: 0px; }
@@ -831,11 +1021,11 @@ label:focus-visible {
   html[data-kb-open] .tabbar, html[data-kb-resized] .tabbar { display: none; }
 }
 .tabbar-tab {
-  flex: 1 1 0; min-width: 0;
+  flex: 1 1 0; min-width: 64px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 2px; padding: 4px 2px;
   color: var(--color-text-secondary);
-  font-size: 11px; font-weight: 500; line-height: 1.35;
+  font-size: var(--fs-cap); font-weight: 500; line-height: 1.35;
   -webkit-tap-highlight-color: transparent;
 }
 /* The active tab: caramel pill behind the icon (same fill as the sidebar's
@@ -910,11 +1100,11 @@ label:focus-visible {
 .navsheet-group-head.current .sb-group-icon { background: var(--color-accent); color: var(--sb-avatar-fg); }
 .navsheet .sb-item {
   display: flex; align-items: center; gap: 12px;
-  width: 100%; min-height: 46px; padding: 10px 12px;
+  width: 100%; min-height: 56px; padding: 10px 12px;
   border-radius: var(--radius-md);
   font-size: 15px; text-align: left;
 }
-.navsheet-soft { font-size: 11px; font-weight: 500; opacity: 0.6; }
+.navsheet-soft { font-size: var(--fs-cap); font-weight: 500; color: var(--sb-text-muted); }
 .navsheet-foot {
   display: flex; align-items: center; gap: 8px; flex-shrink: 0;
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
@@ -945,18 +1135,8 @@ label:focus-visible {
 .navsheet-logout:active { background: var(--sb-logout-hover-bg); color: var(--sb-logout-hover-fg); border-color: var(--sb-logout-hover-border); }
 
 @media (max-width: 767px) {
-  /* ---------- Toasts: full width minus gutters, above the tab bar ---------- */
-  .toast-stack {
-    left: max(12px, env(safe-area-inset-left, 0px));
-    right: max(12px, env(safe-area-inset-right, 0px));
-    /* Above the tab bar; when the keyboard is up the bar is gone (--tabbar-h: 0)
-       and --kb-inset lifts the stack clear of the keyboard instead. */
-    bottom: calc(max(var(--tabbar-h), env(safe-area-inset-bottom, 0px)) + var(--kb-inset, 0px) + 12px);
-  }
-  .toast { min-width: 0; max-width: none; width: 100%; animation-name: toast-in-up; }
-  /* Full-width on a phone, the 3px status stripe reads as a heavy coloured edge;
-     the status icon already carries the kind, so the edge goes back to a hairline. */
-  .toast-stack .toast { border-left: 1px solid var(--color-border); }
+  /* Toasts sit top-center on every width (see .toast-stack), clear of the tab bar
+     and the keyboard, so phones need no override. */
 
   /* ---------- Modals: never wider or taller than the visible screen ----------
      Applies to every .modal-backdrop / .modal-card. Cards that already manage an
@@ -973,9 +1153,6 @@ label:focus-visible {
     overscroll-behavior: contain;
   }
 }
-/* Phones: rise from below rather than slide in from the side (a sideways offset
-   on a full-width toast would poke past the viewport edge). */
-@keyframes toast-in-up { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ── Responsive toolkit ──────────────────────────────────────────────
    Shared building blocks for phone layouts (< 768px). How they work:
@@ -1152,7 +1329,9 @@ label:focus-visible {
 .modal-shell-title { margin: 0; font-size: 16px; font-weight: 700; line-height: 1.4; text-wrap: balance; }
 .modal-shell-sub { margin-top: 2px; font-size: 13px; line-height: 1.5; color: var(--color-text-secondary); }
 .modal-shell-close {
-  width: 36px; height: 36px; margin: -6px -6px -6px 0; border-radius: var(--radius-md); flex-shrink: 0;
+  /* 48×48 visible hit on every width (TOUCH-SPEC §3.6); the negative margin keeps
+     the header height unchanged. */
+  width: var(--tap-std); height: var(--tap-std); margin: -12px -12px -12px 0; border-radius: var(--radius-md); flex-shrink: 0;
   display: grid; place-items: center; color: var(--color-text-secondary);
 }
 .modal-shell-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: var(--space-6); }
@@ -1163,11 +1342,72 @@ label:focus-visible {
 }
 @media (max-width: 767px) {
   .modal-shell-head { padding: 14px 12px 12px 16px; }
-  .modal-shell-close { width: 44px; height: 44px; margin: -8px -4px -8px 0; }
+  .modal-shell-close { margin: -12px -4px -12px 0; }
   .modal-shell-body { padding: var(--space-4); }
   /* Footer actions share the row equally — easier to hit than right-aligned buttons. */
   .modal-shell-foot { padding: var(--space-3) var(--space-4); }
   .modal-shell-foot > * { flex: 1 1 0; }
+}
+
+/* ---------- NumpadField (components/ui/numpad-field.tsx) ----------
+   Money / qty / digit entry with its own keypad: the cash-tender look (surface-2
+   keys, hairline border, no raised bottom edge). Key height follows --tap-key
+   (72px ≥768, 56px on phones); .numpad--md pins it to --tap-lg. Override per
+   use with --numpad-key-h. */
+.numpad { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); min-width: 0; }
+.numpad-display-row { display: flex; gap: var(--tap-gap); }
+.numpad-display {
+  flex: 1; min-width: 0; min-height: var(--tap-lg);
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 0 var(--space-4);
+  background: var(--color-surface-2);
+  border: var(--hairline); border-radius: var(--radius-md);
+  cursor: default;
+}
+.numpad-display[aria-invalid='true'] { border-color: var(--color-danger-fg); }
+.numpad-label { flex: none; font-size: var(--fs-sm); font-weight: 600; color: var(--color-text); }
+.numpad-value {
+  flex: 1; min-width: 0; text-align: right;
+  font-size: var(--fs-num-lg); line-height: var(--lh-tight); font-weight: 700;
+  white-space: nowrap; overflow: hidden;
+}
+.numpad-value.is-empty { color: var(--color-text-muted); }
+.numpad-clear {
+  flex: none; min-width: var(--tap-lg); min-height: var(--tap-lg); padding: 0 var(--space-3);
+  background: var(--color-surface); border: var(--hairline); border-radius: var(--radius-md);
+  font-size: var(--fs-sm); font-weight: 600; color: var(--color-text);
+}
+.numpad-clear:disabled { opacity: 0.4; cursor: default; }
+.numpad-msg { font-size: var(--fs-cap); line-height: var(--lh-body); color: var(--color-text-secondary); padding: 0 var(--space-1); }
+.numpad-msg.is-error { color: var(--color-danger-fg); font-weight: 600; }
+.numpad-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(76px, 1fr)); gap: var(--tap-gap); }
+.numpad-preset {
+  min-height: var(--tap-std); padding: 0 var(--space-2);
+  background: var(--color-surface-2); border: var(--hairline); border-radius: var(--radius-md);
+  font-size: var(--fs-body); font-weight: 600; color: var(--color-text); white-space: nowrap;
+}
+.numpad-preset[aria-pressed='true'] { background: var(--selected-bg); border-color: var(--color-primary); }
+.numpad-keys {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: var(--numpad-key-h, var(--tap-key));
+  gap: var(--tap-gap);
+}
+.numpad--md .numpad-keys { grid-auto-rows: var(--numpad-key-h, var(--tap-lg)); }
+.numpad-key {
+  display: grid; place-items: center;
+  background: var(--color-surface-2); color: var(--color-text);
+  border: var(--hairline); border-radius: var(--radius-md);
+  font-size: var(--fs-h1); line-height: 1; font-weight: 600;
+  /* Release eases back; the press itself is instant (see :active). */
+  transition: background-color 100ms var(--ease-out), transform 100ms var(--ease-out);
+}
+.numpad-key:active:not(:disabled),
+.numpad-key[data-pressed] { background: var(--color-border); transform: scale(var(--press-scale)); transition-duration: 0s; }
+.numpad-key:disabled { opacity: 0.5; cursor: not-allowed; }
+@media (hover: hover) and (pointer: fine) {
+  .numpad-key:not(:disabled):hover,
+  .numpad-preset:not(:disabled):hover,
+  .numpad-clear:not(:disabled):hover { border-color: var(--color-border-strong); }
 }
 
 /* ---------- Reduced motion: kill decorative animation, keep functional spinner ---------- */

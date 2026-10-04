@@ -67,14 +67,14 @@ export default function CancelOrderModal({ orderLabel, onClose, onConfirm }: Pro
             <Icon name="trash" size={20} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 700 }}>{t.kds.cancelTitle}</div>
-            <div className="num" style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>#{orderLabel}</div>
+            <div style={{ fontSize: 'var(--fs-title)', fontWeight: 700, lineHeight: 'var(--lh-tight)' }}>{t.kds.cancelTitle}</div>
+            <div className="num" style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>#{orderLabel}</div>
           </div>
-          <button onClick={onClose} aria-label={t.common.close} className="icon-btn hit-44" style={{
-            width: 32, height: 32, borderRadius: 'var(--radius-md)', display: 'grid', placeItems: 'center',
-            color: 'var(--color-text-secondary)',
+          {/* 48×48 visible hit (TOUCH-SPEC §3.6); negative margin keeps the header height. */}
+          <button onClick={onClose} aria-label={t.common.close} className="icon-btn tap-std tap-sq" style={{
+            margin: '-8px -8px -8px 0', borderRadius: 'var(--radius-md)', color: 'var(--color-text-secondary)',
           }}>
-            <Icon name="x" size={18} />
+            <Icon name="x" size={20} />
           </button>
         </div>
 
@@ -83,13 +83,13 @@ export default function CancelOrderModal({ orderLabel, onClose, onConfirm }: Pro
             display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
             padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-5)',
             borderRadius: 'var(--radius-md)', background: 'var(--color-danger-50)',
-            color: 'var(--color-danger)', fontSize: 14, fontWeight: 700,
+            color: 'var(--color-danger-fg)', fontSize: 'var(--fs-body)', fontWeight: 700,
           }}>
-            <Icon name="warning" size={18} />
+            <Icon name="warning" size={20} />
             <span>{t.kds.cancelWarning(orderLabel)}</span>
           </div>
 
-          <label htmlFor="cancel-reason" style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 'var(--space-2)' }}>
+          <label htmlFor="cancel-reason" style={{ display: 'block', fontSize: 'var(--fs-sm)', fontWeight: 600, marginBottom: 'var(--space-2)' }}>
             {t.kds.cancelReasonLabel}
           </label>
           <textarea
@@ -102,21 +102,30 @@ export default function CancelOrderModal({ orderLabel, onClose, onConfirm }: Pro
           />
 
           <div style={{ marginTop: 'var(--space-5)' }}>
+            {/* Whole 56px row is the target; the drawn 24px box makes it read as a checkbox. */}
             <button
               type="button"
-              aria-pressed={alreadyMade}
+              role="checkbox"
+              aria-checked={alreadyMade}
               onClick={() => setAlreadyMade(v => !v)}
-              className="pressable min-h-[44px]"
+              className="tap tap-lg"
               style={{
-                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)',
-                padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 600,
-                background: alreadyMade ? 'var(--color-primary)' : 'var(--color-surface-2)',
-                color: alreadyMade ? 'var(--color-text-inverse)' : 'var(--color-text)',
+                width: '100%', display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+                padding: '0 var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-body)', fontWeight: 600, textAlign: 'left',
+                background: alreadyMade ? 'var(--color-primary-50)' : 'var(--color-surface-2)',
+                color: 'var(--color-text)',
                 border: `1px solid ${alreadyMade ? 'var(--color-primary)' : 'var(--color-border)'}`,
               }}
             >
-              <span>{t.kds.cancelMadeToggle}</span>
-              {alreadyMade && <Icon name="check" size={16} />}
+              <span aria-hidden style={{
+                width: 24, height: 24, flexShrink: 0, borderRadius: 6, display: 'grid', placeItems: 'center',
+                border: `1px solid ${alreadyMade ? 'var(--color-primary)' : 'var(--color-border-strong)'}`,
+                background: alreadyMade ? 'var(--color-primary)' : 'var(--color-surface)',
+                color: 'var(--color-text-inverse)',
+              }}>
+                {alreadyMade && <Icon name="check" size={16} strokeWidth={2.25} />}
+              </span>
+              <span style={{ flex: 1, minWidth: 0 }}>{t.kds.cancelMadeToggle}</span>
             </button>
             <div className="text-sm" style={{ marginTop: 'var(--space-2)', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
               {t.kds.cancelMadeHint}
@@ -128,22 +137,18 @@ export default function CancelOrderModal({ orderLabel, onClose, onConfirm }: Pro
           borderTop: '1px solid var(--color-border)', padding: 'var(--space-4) var(--space-6)',
           display: 'flex', gap: 'var(--space-2)', flexShrink: 0,
         }}>
-          <button onClick={onClose} className="btn btn-ghost btn-lg" style={{ flex: 1, minHeight: 44 }}>
+          <button onClick={onClose} className="btn btn-ghost btn-lg tap-lg" style={{ flex: 1 }}>
             {t.common.close}
           </button>
           <button
             onClick={onConfirmClick}
             disabled={!canConfirm}
-            className="btn btn-lg"
-            style={{
-              flex: 2, minHeight: 44,
-              background: 'var(--color-danger-strong)', borderColor: 'var(--color-danger-strong)', color: 'white',
-              opacity: canConfirm ? 1 : 0.5,
-            }}
+            className="btn btn-danger btn-lg tap-lg"
+            style={{ flex: 2, opacity: canConfirm ? 1 : 0.5 }}
           >
             {loading
-              ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden />
-              : <><Icon name="trash" size={16} /> {t.kds.cancelConfirm}</>}
+              ? <span className="spinner" style={{ width: 18, height: 18 }} aria-hidden />
+              : <><Icon name="trash" size={20} /> {t.kds.cancelConfirm}</>}
           </button>
         </div>
       </div>

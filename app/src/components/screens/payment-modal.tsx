@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import Icon from '../icons';
 import { useFadeRise } from '@/lib/motion';
 import { useModalA11y } from '@/hooks/use-modal-a11y';
+import { haptic } from '@/lib/haptics';
+import { useI18n } from '@/lib/i18n';
 import { CashView, CashPayStyles, cashMath } from './payment-cash';
 
 interface Props { method: string; total: number; billNo: number; onClose: () => void; onPaid: () => void; }
@@ -18,6 +20,7 @@ const QR_PAPER = '#FBFAF7';
 const QR_INK = '#1C140D';
 
 export default function PaymentModal({ method, total, billNo, onClose, onPaid }: Props) {
+  const { t } = useI18n();
   const [phase, setPhase] = useState<'await' | 'processing' | 'paid'>('await');
   const [cashGiven, setCashGiven] = useState('');
 
@@ -35,7 +38,7 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
     // Brief processing beat so the cashier sees the action was registered, then
     // settle into the success state. Kept short — this fires dozens of times/hr.
     setPhase('processing');
-    timers.current.push(setTimeout(() => setPhase('paid'), 280));
+    timers.current.push(setTimeout(() => { setPhase('paid'); haptic('success'); }, 280));
     timers.current.push(setTimeout(() => onPaid(), 1100));
   };
   // Once payment is confirmed the modal must not be dismissible — closing during
@@ -48,8 +51,8 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
 
   useEffect(() => {
     if (method === 'qr' || method === 'line') {
-      const t = setTimeout(() => { /* user clicks */ }, 12000);
-      return () => clearTimeout(t);
+      const timer = setTimeout(() => { /* user clicks */ }, 12000);
+      return () => clearTimeout(timer);
     }
   }, [method]);
 
@@ -64,7 +67,7 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
 
   const cashEnough = isCash ? cashMath(total, cashGiven).enough : true;
 
-  const titleMap: Record<string, string> = { cash: 'รับเงินสด', card: 'รูดบัตร', qr: 'QR PromptPay', line: 'LINE Pay' };
+  const titleMap = t.touchPay.title;
 
   const busy = phase !== 'await';
 
@@ -95,14 +98,14 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
             <Icon name={method === 'cash' ? 'cash' : method === 'card' ? 'card' : method === 'line' ? 'line' : 'qr'} size={20}/>
           </div>
           <div style={{flex: 1}}>
-            <div style={{fontSize: 16, fontWeight: 700}}>{titleMap[method]}</div>
-            <div style={{fontSize: 12, color: 'var(--color-text-secondary)'}}>บิล {'A' + String(billNo).padStart(3, '0')}</div>
+            <div style={{fontSize: 'var(--fs-title)', fontWeight: 700, lineHeight: 'var(--lh-tight)'}}>{titleMap[method]}</div>
+            <div className="num" style={{fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)'}}>{t.touchPay.billNo('A' + String(billNo).padStart(3, '0'))}</div>
           </div>
-          <button onClick={safeClose} aria-label="ปิด" className="icon-btn hit-44" style={{
-            width: 32, height: 32, borderRadius: 'var(--radius-md)', display: 'grid', placeItems: 'center',
-            color: 'var(--color-text-secondary)',
+          {/* 48×48 visible hit (TOUCH-SPEC §3.6); the negative margin keeps the header height. */}
+          <button onClick={safeClose} aria-label={t.common.close} className="icon-btn tap-std tap-sq" style={{
+            margin: '-8px -8px -8px 0', borderRadius: 'var(--radius-md)', color: 'var(--color-text-secondary)',
           }}>
-            <Icon name="x" size={18}/>
+            <Icon name="x" size={20}/>
           </button>
         </div>
 
@@ -127,9 +130,9 @@ export default function PaymentModal({ method, total, billNo, onClose, onPaid }:
 
         {phase === 'await' && isCash && (
           <div className="cashpay-foot">
-            <button type="button" onClick={safeClose} className="btn btn-ghost btn-lg" style={{flex: 1, minHeight: 44}}>ยกเลิก</button>
-            <button type="button" onClick={onConfirmPay} disabled={!cashEnough} className="btn btn-primary btn-lg" style={{flex: 2, minHeight: 44, opacity: cashEnough ? 1 : 0.5}}>
-              <Icon name="check" size={16}/> ยืนยันรับเงิน
+            <button type="button" onClick={safeClose} className="btn btn-ghost btn-lg tap-lg" style={{flex: 1}}>{t.common.back}</button>
+            <button type="button" onClick={onConfirmPay} disabled={!cashEnough} className="btn btn-primary btn-xl" style={{flex: 2, opacity: cashEnough ? 1 : 0.5}}>
+              <Icon name="check" size={20}/> {t.touchPay.confirmPayment}
             </button>
           </div>
         )}
@@ -155,28 +158,29 @@ const PAYMODAL_PHONE_CSS = `
     margin: 12px -16px 0; padding: 12px 16px 16px;
     background: var(--color-surface);
   }
-  .paymodal-pin > button { margin-top: 0 !important; min-height: 48px !important; }
+  .paymodal-pin > button { margin-top: 0 !important; }
   .paymodal-qr { width: min(240px, 100%) !important; height: auto !important; aspect-ratio: 1; }
 }
 `;
 const PayModalPhoneStyles = () => <style>{PAYMODAL_PHONE_CSS}</style>;
 
 const QRView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () => void }) => {
+  const { t } = useI18n();
   // QR "generation": brief skeleton in the code slot so the matrix doesn't pop
   // in cold. PromptPay codes resolve fast, so this is a short, honest beat.
   const [generating, setGenerating] = useState(true);
   useEffect(() => {
-    const t = setTimeout(() => setGenerating(false), 420);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setGenerating(false), 420);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
     <div style={{textAlign: 'center'}}>
-      <div style={{fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)'}}>ยอดที่ต้องชำระ</div>
-      <div className="num" style={{fontSize: 36, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--color-primary)', marginBottom: 'var(--space-1)'}}>
+      <div style={{fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)'}}>{t.touchPay.amountDue}</div>
+      <div className="text-num-xl" style={{letterSpacing: '-0.02em', color: 'var(--color-primary)', marginBottom: 'var(--space-1)'}}>
         ฿{total.toLocaleString()}
       </div>
-      <div style={{fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)'}}>คาเฟ่ Kafé OS • PromptPay</div>
+      <div style={{fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)'}}>{t.touchPay.qrMerchant}</div>
       <div aria-busy={generating || undefined} className="paymodal-qr" style={{
         width: 240, height: 240, margin: '0 auto', padding: 'var(--space-4)',
         background: QR_PAPER, borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)',
@@ -188,18 +192,15 @@ const QRView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () => 
         )}
       </div>
       <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)', marginTop: 'var(--space-4)', fontSize: 13, color: 'var(--color-text-secondary)'}}>
-        <span style={{
-          width: 8, height: 8, borderRadius: 999, background: 'var(--color-warning)',
-          animation: 'pulse 1.5s ease-in-out infinite',
-        }}/>
-        <span>{generating ? 'กำลังสร้าง QR...' : 'กำลังรอการชำระเงิน...'}</span>
+        {/* Static status dot: the text carries "waiting"; no endless pulse (TOUCH-SPEC §1). */}
+        <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: 'var(--color-warning)' }}/>
+        <span>{generating ? t.touchPay.generatingQr : t.touchPay.waitingQr}</span>
       </div>
       <div className="paymodal-pin">
-        <button onClick={onSimulatePay} disabled={generating} className="btn btn-primary btn-block btn-lg" style={{marginTop: 'var(--space-5)', minHeight: 44, opacity: generating ? 0.5 : 1}}>
-          <Icon name="check" size={16}/> จำลอง: ลูกค้าชำระแล้ว
+        <button onClick={onSimulatePay} disabled={generating} className="btn btn-primary btn-block btn-xl" style={{marginTop: 'var(--space-5)', opacity: generating ? 0.5 : 1}}>
+          <Icon name="check" size={20}/> {t.touchPay.simulatePaid}
         </button>
       </div>
-      <style>{`@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }`}</style>
     </div>
   );
 };
@@ -233,45 +234,47 @@ const FakeQR = ({ seed }: { seed: number }) => {
   );
 };
 
-const CardView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () => void }) => (
+const CardView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () => void }) => {
+  const { t } = useI18n();
+  return (
   <div style={{textAlign: 'center'}}>
-    <div style={{fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)'}}>ยอดที่ต้องชำระ</div>
-    <div className="num" style={{fontSize: 36, fontWeight: 700, color: 'var(--color-primary)', marginBottom: 'var(--space-6)'}}>฿{total.toLocaleString()}</div>
+    <div style={{fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)'}}>{t.touchPay.amountDue}</div>
+    <div className="text-num-xl" style={{color: 'var(--color-primary)', marginBottom: 'var(--space-6)'}}>฿{total.toLocaleString()}</div>
+    {/* Surface-2 band groups the EDC prompt; no thick dashed frame, no endless wiggle. */}
     <div style={{
       padding: 'var(--space-8)', background: 'var(--color-surface-2)', borderRadius: 'var(--radius-lg)',
-      border: '2px dashed var(--color-border-strong)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-3)',
     }}>
       <div style={{
         width: 60, height: 60, borderRadius: 999,
         background: 'var(--color-info-50)', color: 'var(--color-info)',
         display: 'grid', placeItems: 'center',
-        animation: 'wiggle 1.4s ease-in-out infinite',
       }}>
         <Icon name="card" size={28}/>
       </div>
-      <div style={{fontSize: 14, fontWeight: 600}}>กรุณาเสียบ / แตะบัตรที่เครื่อง EDC</div>
-      <div style={{fontSize: 12, color: 'var(--color-text-secondary)'}}>เครื่อง EDC: SCB-A1 • พร้อมใช้งาน</div>
+      <div style={{fontSize: 'var(--fs-body)', fontWeight: 600}}>{t.touchPay.cardPrompt}</div>
+      <div style={{fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)'}}>{t.touchPay.edcStatus}</div>
     </div>
     <div className="paymodal-pin">
-      <button onClick={onSimulatePay} className="btn btn-primary btn-block btn-lg" style={{marginTop: 'var(--space-4)', minHeight: 44}}>
-        <Icon name="check" size={16}/> จำลอง: รูดสำเร็จ
+      <button onClick={onSimulatePay} className="btn btn-primary btn-block btn-xl" style={{marginTop: 'var(--space-4)'}}>
+        <Icon name="check" size={20}/> {t.touchPay.simulatePaid}
       </button>
     </div>
-    <style>{`@keyframes wiggle { 0%,100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }`}</style>
   </div>
-);
+  );
+};
 
 const LineView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () => void }) => {
+  const { t } = useI18n();
   const [generating, setGenerating] = useState(true);
   useEffect(() => {
-    const t = setTimeout(() => setGenerating(false), 420);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setGenerating(false), 420);
+    return () => clearTimeout(timer);
   }, []);
   return (
     <div style={{textAlign: 'center'}}>
-      <div style={{fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)'}}>ยอดที่ต้องชำระ</div>
-      <div className="num" style={{fontSize: 36, fontWeight: 700, color: 'var(--color-primary)', marginBottom: 'var(--space-6)'}}>฿{total.toLocaleString()}</div>
+      <div style={{fontSize: 'var(--fs-sm)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)'}}>{t.touchPay.amountDue}</div>
+      <div className="text-num-xl" style={{color: 'var(--color-primary)', marginBottom: 'var(--space-6)'}}>฿{total.toLocaleString()}</div>
       <div aria-busy={generating || undefined} style={{
         width: 200, height: 200, margin: '0 auto', padding: 'var(--space-3)',
         background: QR_PAPER, borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)',
@@ -283,11 +286,11 @@ const LineView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () =
         )}
       </div>
       <div style={{fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 'var(--space-3)'}}>
-        {generating ? 'กำลังสร้าง QR...' : 'สแกนเพื่อชำระผ่าน LINE Pay'}
+        {generating ? t.touchPay.generatingQr : t.touchPay.lineScan}
       </div>
       <div className="paymodal-pin">
-        <button onClick={onSimulatePay} disabled={generating} className="btn btn-primary btn-block btn-lg" style={{marginTop: 'var(--space-4)', minHeight: 44, opacity: generating ? 0.5 : 1}}>
-          <Icon name="check" size={16}/> จำลอง: ชำระสำเร็จ
+        <button onClick={onSimulatePay} disabled={generating} className="btn btn-primary btn-block btn-xl" style={{marginTop: 'var(--space-4)', opacity: generating ? 0.5 : 1}}>
+          <Icon name="check" size={20}/> {t.touchPay.simulatePaid}
         </button>
       </div>
     </div>
@@ -299,7 +302,9 @@ const LineView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () =
  * announced via aria-busy on the dialog. No bouncy motion — the cashier is
  * mid-flow and just needs confirmation the tap registered.
  */
-const ProcessingView = ({ total }: { total: number }) => (
+const ProcessingView = ({ total }: { total: number }) => {
+  const { t } = useI18n();
+  return (
   <div style={{textAlign: 'center', padding: 'var(--space-5) 0'}}>
     <div style={{
       width: 72, height: 72, margin: '0 auto var(--space-4)', borderRadius: 999,
@@ -308,14 +313,16 @@ const ProcessingView = ({ total }: { total: number }) => (
     }}>
       <span className="spinner" style={{width: 26, height: 26, borderWidth: 3}} aria-hidden />
     </div>
-    <div style={{fontSize: 18, fontWeight: 700, marginBottom: 'var(--space-1)'}}>กำลังดำเนินการ...</div>
+    <div style={{fontSize: 18, fontWeight: 700, marginBottom: 'var(--space-1)'}}>{t.touchPay.processing}</div>
     <div className="num" style={{fontSize: 32, fontWeight: 700, color: 'var(--color-primary)'}}>฿{total.toLocaleString()}</div>
   </div>
-);
+  );
+};
 
 const SuccessView = ({ total }: { total: number }) => {
   // Rare, satisfying moment → a gentle fade-rise on the whole panel + an
   // ease-out scale on the checkmark. No infinite/bouncy loops.
+  const { t } = useI18n();
   const ref = useFadeRise({ y: 10, duration: 0.22 });
   return (
     <div ref={ref} role="status" style={{textAlign: 'center', padding: 'var(--space-5) 0'}}>
@@ -327,11 +334,11 @@ const SuccessView = ({ total }: { total: number }) => {
       }}>
         <Icon name="check" size={40} strokeWidth={2}/>
       </div>
-      <div style={{fontSize: 20, fontWeight: 700, marginBottom: 'var(--space-1)'}}>ชำระเงินสำเร็จ</div>
+      <div style={{fontSize: 20, fontWeight: 700, marginBottom: 'var(--space-1)'}}>{t.pos.paid}</div>
       <div className="num" style={{fontSize: 32, fontWeight: 700, color: 'var(--color-primary)', marginBottom: 'var(--space-2)'}}>฿{total.toLocaleString()}</div>
       <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)', fontSize: 13, color: 'var(--color-text-secondary)'}}>
         <span className="spinner" style={{width: 14, height: 14}} aria-hidden />
-        กำลังพิมพ์ใบเสร็จ และส่งไปยังครัว...
+        {t.pos.preparingReceiptSub}
       </div>
       <style>{`@keyframes pay-pop { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }`}</style>
     </div>
