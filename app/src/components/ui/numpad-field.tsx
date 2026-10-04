@@ -235,7 +235,7 @@ export function NumpadField({
   const message = error || hint;
 
   return (
-    <div className={cn('numpad', size === 'md' && 'numpad--md', className)} data-disabled={disabled || undefined}>
+    <div className={cn('numpad', `numpad--${mode}`, size === 'md' && 'numpad--md', className)} data-disabled={disabled || undefined}>
       <div className="numpad-display-row">
         {/* Not an <input>: nothing is text-editable, so no soft keyboard. Still a
             focusable, labelled field for keyboard and screen-reader users. */}

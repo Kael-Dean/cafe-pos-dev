@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback, memo } from 'react';
 import Image from 'next/image';
 import { useQueryClient } from '@tanstack/react-query';
 import Icon from '../icons';
@@ -14,7 +14,7 @@ import { UndoBar, useUndo } from '@/components/ui/undo-bar';
 import { useCreateOrder, usePayOrder, useSetOrderDate, displayOrderNo } from '@/hooks/use-orders';
 import { TABLE_TIME_PRODUCT_NAME } from '@/hooks/use-features';
 import { ApiError } from '@/lib/api-client';
-import { useEvaluatePromotions, type EligiblePromotion } from '@/hooks/use-promotions';
+import { evaluatePromotions, type EligiblePromotion } from '@/hooks/use-promotions';
 import ModifierModal from './modifier-modal';
 import PaymentModal from './payment-modal';
 import ReceiptModal, { type ReceiptData } from './receipt-modal';
@@ -22,13 +22,16 @@ import MembershipModal, { type MemberInfo } from './membership-modal';
 import { useMembershipProgram, type ProgramRead } from '@/hooks/use-membership';
 import { useCustomerDetail } from '@/hooks/use-customers';
 import { usePrinter } from '@/hooks/use-printer';
-import { useStagger } from '@/lib/motion';
 import { useIsPhone } from '@/hooks/use-media-query';
 
 interface CartLine { menuId: string; name: string; basePrice: number; unitPrice: number; qty: number; mods: string[]; modIds: string[]; modKey: string; }
 
 /** addLine merges on exactly (menuId, modKey), so this pair identifies a line. */
 const lineKey = (l: { menuId: string; modKey: string }) => `${l.menuId}|${l.modKey}`;
+
+/** Product details (has-modifiers) prefetched for instant add: refreshed after 5 min, kept 12 h. */
+const DETAIL_STALE_MS = 5 * 60_000;
+const DETAIL_GC_MS = 12 * 60 * 60_000;
 
 /** Cashier-facing ESTIMATE only — the server is authoritative for the final discount. */
 function estimateMemberDiscount(member: MemberInfo | null, program: ProgramRead | null | undefined, subtotal: number): number {
@@ -101,7 +104,6 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
   const createOrder = useCreateOrder();
   const payOrder = usePayOrder();
   const setOrderDate = useSetOrderDate();
-  const evaluate = useEvaluatePromotions();
   const { printReceipt } = usePrinter();
 
   // ── Add to cart (TOUCH-SPEC §3.3): optimistic ──────────────────────────────
@@ -152,20 +154,25 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
 
   useEffect(() => {
     let cancelled = false;
+    // Empty → empty keeps the old array, so a no-op answer does not re-render the terminal.
+    const setEligible = (next: EligiblePromotion[]) => setEligiblePromos(prev => (prev.length === 0 && next.length === 0 ? prev : next));
     const t = setTimeout(() => {
       if (cancelled) return;
-      if (cartForEval.length === 0) { setEligiblePromos([]); setSelectedPromoIds([]); return; }
-      evaluate.mutateAsync(cartForEval)
+      if (cartForEval.length === 0) { setEligible([]); setSelectedPromoIds(prev => (prev.length ? [] : prev)); return; }
+      evaluatePromotions(cartForEval)
         .then(res => {
           if (cancelled) return;
-          setEligiblePromos(res.eligible);
+          setEligible(res.eligible);
           // keep only selections that are still eligible after the refresh
-          setSelectedPromoIds(prev => prev.filter(id => res.eligible.some(e => e.promotion_id === id)));
+          setSelectedPromoIds(prev => {
+            const kept = prev.filter(id => res.eligible.some(e => e.promotion_id === id));
+            return kept.length === prev.length ? prev : kept;
+          });
         })
-        .catch(() => { if (!cancelled) setEligiblePromos([]); });
+        .catch(() => { if (!cancelled) setEligible([]); });
     }, cartForEval.length === 0 ? 0 : 300);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [cartForEval]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cartForEval]);
 
   const exclusiveSelected = eligiblePromos.find(e => selectedPromoIds.includes(e.promotion_id) && e.is_exclusive) ?? null;
   const promoDiscount = eligiblePromos
@@ -298,7 +305,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
     queuedTaps.current.set(item.id, queued + 1);
     if (queued > 0) return; // a fetch is already in flight; this tap rides on it
     setPending(item.id, true);
-    queryClient.fetchQuery(productDetailQuery(item.id))
+    queryClient.fetchQuery({ ...productDetailQuery(item.id), gcTime: DETAIL_GC_MS })
       .then((detail) => {
         const n = queuedTaps.current.get(item.id) ?? 1;
         queuedTaps.current.delete(item.id);
@@ -318,16 +325,23 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
   };
 
   // Prefetch the details of the products on screen (low priority, staggered) so the
-  // first tap on any of them is already an instant add. Re-runs per category / search.
+  // first tap on any of them is already an instant add. Re-runs per category / search
+  // and refreshes entries older than DETAIL_STALE_MS (an edited product picks up its
+  // new modifiers). Details are never observed by a component, so with the default
+  // 5-min gcTime they would be dropped 5 min after the prefetch and an all-day
+  // tablet would quietly fall back to the slow pending-tap path: keep them for the day.
   useEffect(() => {
-    const ids = filtered.slice(0, 60).map((m) => m.id)
-      .filter((id) => !queryClient.getQueryData(productDetailQuery(id).queryKey));
+    const now = Date.now();
+    const ids = filtered.slice(0, 60).map((m) => m.id).filter((id) => {
+      const state = queryClient.getQueryState(productDetailQuery(id).queryKey);
+      return !state?.data || state.isInvalidated || now - state.dataUpdatedAt > DETAIL_STALE_MS;
+    });
     if (!ids.length) return;
     let cancelled = false;
     let timer = 0;
     const next = (i: number) => {
       if (cancelled || i >= ids.length) return;
-      void queryClient.prefetchQuery({ ...productDetailQuery(ids[i]), staleTime: 5 * 60_000 });
+      void queryClient.prefetchQuery({ ...productDetailQuery(ids[i]), staleTime: DETAIL_STALE_MS, gcTime: DETAIL_GC_MS });
       timer = window.setTimeout(() => next(i + 1), 40);
     };
     timer = window.setTimeout(() => next(0), 300);
@@ -352,8 +366,29 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
     const index = cart.findIndex((l) => lineKey(l) === key);
     if (index < 0) return;
     const line = cart[index];
+    // Keyboard / switch users: the focused trash (or "−" at qty 1) unmounts with
+    // its line. Move focus to the line that takes its place, else the undo
+    // button, instead of dropping it on <body> (WCAG 2.4.3).
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusedLine = active?.closest<HTMLElement>('.pos-line') ?? null;
+    const list = focusedLine?.closest<HTMLElement>('.pos-lines') ?? null;
+    const focusedAt = focusedLine && list ? Array.from(list.querySelectorAll('.pos-line')).indexOf(focusedLine) : -1;
+    const lineRemoveButton = (k: string) => Array.from(list?.querySelectorAll<HTMLElement>('.pos-line') ?? [])
+      .find((el) => el.dataset.lineKey === k)?.querySelector<HTMLElement>('.pos-line-remove') ?? null;
     setCart((cur) => cur.filter((l) => lineKey(l) !== key));
+    if (list && focusedAt >= 0) {
+      requestAnimationFrame(() => {
+        const rest = Array.from(list.querySelectorAll<HTMLElement>('.pos-line'));
+        const next = rest[Math.min(focusedAt, rest.length - 1)]?.querySelector<HTMLElement>('.pos-line-remove')
+          ?? list.parentElement?.querySelector<HTMLElement>('.undo-bar button');
+        next?.focus();
+      });
+    }
     undo.push(t.touchPos.lineRemoved(line.name), () => {
+      // Undo pressed from the keyboard: the bar unmounts, so land on the restored line.
+      if (list && document.activeElement instanceof HTMLElement && document.activeElement.closest('.undo-bar')) {
+        requestAnimationFrame(() => lineRemoveButton(key)?.focus());
+      }
       setCart((cur) => {
         const at = cur.findIndex((l) => lineKey(l) === key);
         if (at >= 0) {
@@ -378,6 +413,15 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
     // leave a 0-qty line behind (removal only happens through the branch above).
     setCart((cur) => cur.map((l) => (lineKey(l) === key ? { ...l, qty: Math.max(1, l.qty + delta) } : l)));
   };
+
+  // Stable handler identities for the memoized MenuCard / CartLine rows: they call the
+  // latest render's closures through a ref, so a cart change re-renders only the card
+  // and line it touched instead of the whole menu grid (60+ cards) and every line.
+  const handlers = useRef({ onMenuTap, updateQty, removeLineWithUndo });
+  useLayoutEffect(() => { handlers.current = { onMenuTap, updateQty, removeLineWithUndo }; });
+  const tapCard = useCallback((item: MenuItem) => handlers.current.onMenuTap(item), []);
+  const stepLine = useCallback((key: string, delta: number) => handlers.current.updateQty(key, delta), []);
+  const removeLine = useCallback((key: string) => handlers.current.removeLineWithUndo(key), []);
 
   const clearCart = () => { setCart([]); setBillNo((b) => b + 1); setMemberInfo(null); setSelectedPromoIds([]); setEligiblePromos([]); setShowPromoPanel(false); undo.dismiss(); };
 
@@ -525,11 +569,8 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
         const rewardLabel = didRedeem
           ? (memberSnapshot?.rewardProduct?.name ?? undefined)
           : undefined;
-        toast({
-          kind: 'success', title: t.pos.paid,
-          msg: t.pos.paidMsg(String(displayOrderNo(order)), baht(finalTotal), earned > 0 ? t.pos.pointsPart(earned) : ''),
-          duration: 3500,
-        });
+        // No "paid" toast: the receipt dialog opening right now is the confirmation, and a
+        // top-center toast would sit on the receipt's close button.
         setReceiptIssuedAt(new Date(order.created_at));
         setReceiptOrderId(order.id);
         setReceiptData({
@@ -636,7 +677,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
             flex: 1, fontWeight: 600, fontSize: 14,
             color: activeTab === 'menu' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
             borderBottom: activeTab === 'menu' ? '2px solid var(--color-accent)' : '2px solid transparent',
-            background: 'none', transition: 'all 150ms',
+            background: 'none', transition: 'color 150ms, border-color 150ms',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
@@ -651,7 +692,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
             flex: 1, fontWeight: 600, fontSize: 14,
             color: activeTab === 'cart' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
             borderBottom: activeTab === 'cart' ? '2px solid var(--color-accent)' : '2px solid transparent',
-            background: 'none', transition: 'all 150ms',
+            background: 'none', transition: 'color 150ms, border-color 150ms',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}
         >
@@ -750,7 +791,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                 <ProductGrid key={category}>
                   {filtered.map((m) => (
                     <MenuCard key={m.id} item={m} inCart={qtyByProduct.get(m.id) ?? 0}
-                      pending={pendingIds.has(m.id)} onTap={() => onMenuTap(m)} />
+                      pending={pendingIds.has(m.id)} onTap={tapCard} />
                   ))}
                 </ProductGrid>
                 {filtered.length === 0 && (
@@ -855,8 +896,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
                   // misattach rows when a middle line is removed.
                   <CartLine key={key} lineId={key} line={l}
                     flashN={flash?.key === key ? flash.n : 0}
-                    onInc={() => updateQty(key, +1)} onDec={() => updateQty(key, -1)}
-                    onRemove={() => removeLineWithUndo(key)} />
+                    onStep={stepLine} onRemove={removeLine} />
                 );
               })}
             </div>
@@ -1121,10 +1161,26 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
 /* Product grid wrapper that staggers its cards in on mount. Remounted (via key)
    on category change so each category switch gets a quick, subtle reveal; the
    stagger is fast and one-shot, never replaying while the cashier works a bill.
-   Columns come from the menu column's width (container queries in POS_CSS). */
+   Columns come from the menu column's width (container queries in POS_CSS).
+   The entrance is a CSS animation (.pos-grid.entering in POS_CSS: opacity +
+   translateY 6px, 180ms ease-out, 20ms per card), not a GSAP tween: GSAP set
+   its from-state inside the tap's commit and ticked inline styles on every card
+   each frame, which forced style + layout on the main thread (category switch
+   INP up to 1s at 4x CPU). The CSS version runs on the compositor; the layout
+   effect only writes each card's index (no reads), and the class is dropped
+   once the stagger is over, so cards that appear later (search) do not animate. */
+const STAGGER_MS = 20;
+const ENTER_MS = 180;
 const ProductGrid = ({ children }: { children: React.ReactNode }) => {
-  const gridRef = useStagger({ each: 0.02, y: 6 });
-  return <div ref={gridRef} className="pos-grid">{children}</div>;
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [entering, setEntering] = useState(true);
+  useLayoutEffect(() => {
+    const items = Array.from(gridRef.current?.children ?? []) as HTMLElement[];
+    items.forEach((el, i) => el.style.setProperty('--i', String(i)));
+    const timer = window.setTimeout(() => setEntering(false), ENTER_MS + items.length * STAGGER_MS + 50);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return <div ref={gridRef} className={`pos-grid${entering ? ' entering' : ''}`}>{children}</div>;
 };
 
 /**
@@ -1159,7 +1215,9 @@ const CategoryTab = ({ label, active, onClick, highlight }: { label: string; act
   }}>{label}</button>
 );
 
-const MenuCard = ({ item, inCart, pending, onTap }: { item: MenuItem; inCart: number; pending: boolean; onTap: () => void }) => {
+// Memoized: `item` comes from the memoized catalogue and `onTap` is stable, so a tap
+// re-renders only the card whose `inCart` / `pending` changed.
+const MenuCard = memo(function MenuCard({ item, inCart, pending, onTap }: { item: MenuItem; inCart: number; pending: boolean; onTap: (item: MenuItem) => void }) {
   const { t } = useI18n();
   // A finger that starts a scroll on a card and moves >10px must not add it.
   const down = useRef<{ x: number; y: number } | null>(null);
@@ -1171,7 +1229,7 @@ const MenuCard = ({ item, inCart, pending, onTap }: { item: MenuItem; inCart: nu
       const d = down.current;
       down.current = null;
       if (d && e.detail > 0 && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10) return;
-      onTap();
+      onTap(item);
     }}
   >
     <div className="pos-card-media" style={{ background: item.imageUrl ? 'var(--color-surface-2)' : item.color }}>
@@ -1210,17 +1268,19 @@ const MenuCard = ({ item, inCart, pending, onTap }: { item: MenuItem; inCart: nu
     </div>
   </button>
   );
-};
+});
 
-const CartLine = ({ line, lineId, flashN, onInc, onDec, onRemove }: {
+// Memoized: setCart keeps untouched line objects and the handlers are stable (keyed
+// by `lineId`), so a qty change re-renders only that line (+ the previously flashed one).
+const CartLine = memo(function CartLine({ line, lineId, flashN, onStep, onRemove }: {
   line: CartLine; lineId: string;
   /** Non-zero while this line is the last one touched; a new value replays the flash. */
   flashN: number;
-  onInc: () => void; onDec: () => void; onRemove: () => void;
-}) => {
+  onStep: (lineId: string, delta: number) => void; onRemove: (lineId: string) => void;
+}) {
   const { t } = useI18n();
-  const inc = usePressAction(onInc);
-  const dec = usePressAction(onDec);
+  const inc = usePressAction(() => onStep(lineId, +1));
+  const dec = usePressAction(() => onStep(lineId, -1));
   return (
   <div className="pos-line" data-line-key={lineId}>
     {flashN > 0 && <span key={flashN} className="pos-line-flash" aria-hidden />}
@@ -1234,12 +1294,12 @@ const CartLine = ({ line, lineId, flashN, onInc, onDec, onRemove }: {
       <button type="button" className="tap pos-qty-btn" aria-label={t.pos.incQty} {...inc}><Icon name="plus" size={18}/></button>
     </div>
     <div className="num pos-line-amount">฿{(line.unitPrice * line.qty).toLocaleString()}</div>
-    <button type="button" className="tap pos-line-remove" aria-label={t.touchPos.removeLine(line.name)} onClick={onRemove}>
+    <button type="button" className="tap pos-line-remove" aria-label={t.touchPos.removeLine(line.name)} onClick={() => onRemove(lineId)}>
       <Icon name="trash" size={20}/>
     </button>
   </div>
   );
-};
+});
 
 const Row = ({ label, value, muted }: { label: string; value: string; muted?: boolean }) => (
   <div style={{display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: 'var(--fs-sm)', color: muted ? 'var(--color-text-muted)' : 'var(--color-text-secondary)'}}>
@@ -1280,7 +1340,13 @@ const PayButton = ({ icon, label, ariaLabel, onClick, disabled, primary, pending
   return (
     <button type="button" onClick={onClick} disabled={off} aria-label={ariaLabel} aria-busy={pending || undefined}
       className={`tap ${compact ? 'pos-pay' : 'pos-paybtn'}${off ? ' off' : ''}${primary ? ' primary' : ''}`}>
-      {pending ? <span className="spinner" style={{width: 18, height: 18}} aria-hidden /> : <Icon name={icon} size={compact ? 20 : 22}/>}
+      {/* The spinner sits in the icon's own box: swapping a 22px icon for an 18px
+          spinner shrank every pay row by 4px and shifted the cart footer (CLS). */}
+      {pending ? (
+        <span aria-hidden style={{ width: compact ? 20 : 22, height: compact ? 20 : 22, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+          <span className="spinner" style={{width: 18, height: 18}} />
+        </span>
+      ) : <Icon name={icon} size={compact ? 20 : 22}/>}
       <span>{pending ? t.common.saving : label}</span>
     </button>
   );
@@ -1303,6 +1369,16 @@ const POS_CSS = `
 @container posmenu (min-width: 500px) { .pos-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; } }
 @container posmenu (min-width: 760px) { .pos-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 @container posmenu (min-width: 980px) { .pos-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+/* Category entrance (see ProductGrid): compositor-only, the old GSAP stagger's values
+   (power2.out ≈ this bezier). backwards fill = hidden during its delay, and no inline
+   transform left behind, so .menu-card :active / :hover keep working afterwards. */
+@media (prefers-reduced-motion: no-preference) {
+  .pos-grid.entering > * {
+    animation: pos-card-in 180ms cubic-bezier(0.25, 0.46, 0.45, 0.94) backwards;
+    animation-delay: calc(var(--i, 0) * 20ms);
+  }
+}
+@keyframes pos-card-in { from { opacity: 0; transform: translateY(6px); } }
 
 /* ── Category chips: 48px, 56px on the POS tier ── */
 .pos-chip {
@@ -1467,7 +1543,7 @@ const POS_CSS = `
   .pos-co-total-sub { font-size: var(--fs-cap); color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pos-co-amount { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: var(--color-primary); white-space: nowrap; }
   .pos-co-actions { display: grid; gap: 8px; padding: 10px 12px; }
-  .pos-co-pay { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .pos-co-pay { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; } /* ≥8px between money targets */
   .pos-pay {
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
     min-width: 0; min-height: 56px; padding: 6px 2px;

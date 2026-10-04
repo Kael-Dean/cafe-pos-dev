@@ -131,12 +131,17 @@ export function useDeletePromotion() {
   });
 }
 
-/** Evaluate the current cart for eligible promotions (any authenticated user). */
+/**
+ * Evaluate the current cart for eligible promotions (any authenticated user).
+ * Plain call, no mutation observer: the POS runs it after every cart change, and a
+ * useMutation would re-render the whole terminal twice more per tap (pending, then
+ * success) — right when the cashier's next tap lands.
+ */
+export const evaluatePromotions = (items: EvaluateItem[]) =>
+  api.post<EvaluateResponse>('/api/v1/promotions/evaluate', { items });
+
 export function useEvaluatePromotions() {
-  return useMutation({
-    mutationFn: (items: EvaluateItem[]) =>
-      api.post<EvaluateResponse>('/api/v1/promotions/evaluate', { items }),
-  });
+  return useMutation({ mutationFn: evaluatePromotions });
 }
 
 /** Sales baseline for the break-even calculator (MANAGER / OWNER). */

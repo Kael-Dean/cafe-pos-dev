@@ -47,6 +47,9 @@ test.describe('login with the PIN pad', () => {
       await pos.getByRole('button', { name: /เมนู/ }).last().click();
       await pos.locator('[data-action="logout"]').click();
     } else {
+      // Tablet tier (768–1279) opens on the labelled rail; logout lives in the expanded
+      // panel, one tap away (TOUCH-SPEC §3.1). The POS tier opens expanded.
+      if ((pos.viewportSize()?.width ?? 0) < 1280) await pos.getByRole('button', { name: 'ขยายเมนู' }).click();
       await pos.getByRole('button', { name: /ออกจากระบบ/ }).first().click();
     }
     await expect(pos.getByRole('group', { name: 'แป้น PIN' }).or(pos.locator('[aria-label="แป้น PIN"]'))).toBeVisible();

@@ -296,12 +296,45 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
   // Leaving the tablet tier (rotate / resize) drops a hanging overlay.
   if (!isTablet && overlayOpen) setOverlayOpen(false);
   const expanded = isTablet ? overlayOpen : mode === 'expanded';
-  const toggle = () => (isTablet ? setOverlayOpen((o) => !o) : setMode(mode === 'expanded' ? 'rail' : 'expanded'));
+  // Rail and panel are separate trees, so the toggle a keyboard user just pressed
+  // unmounts with them. Hand focus to the counterpart toggle after the swap
+  // (WCAG 2.4.3) instead of dropping it on <body>.
+  const panelRef = useRef<HTMLElement>(null);
+  const panelToggleRef = useRef<HTMLButtonElement>(null);
+  const railToggleRef = useRef<HTMLButtonElement>(null);
+  const refocusToggle = useRef(false);
+  const toggle = () => {
+    refocusToggle.current = true;
+    if (isTablet) setOverlayOpen((o) => !o);
+    else setMode(mode === 'expanded' ? 'rail' : 'expanded');
+  };
+  const closeOverlay = () => { refocusToggle.current = true; setOverlayOpen(false); };
   const go = (id: string) => { if (isTablet) setOverlayOpen(false); onNavigate(id); };
 
   useEffect(() => {
+    if (!refocusToggle.current) return;
+    refocusToggle.current = false;
+    (expanded ? panelToggleRef : railToggleRef).current?.focus({ preventScroll: true });
+  }, [expanded]);
+
+  // Tablet overlay behaves as a modal panel: Escape closes it (focus back on the
+  // rail toggle) and Tab cycles inside it rather than walking into the dimmed
+  // screen behind the backdrop.
+  useEffect(() => {
     if (!overlayOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOverlayOpen(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { closeOverlay(); return; }
+      if (e.key !== 'Tab' || !panelRef.current) return;
+      const items = Array.from(panelRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'))
+        .filter((el) => !el.closest('[inert]') && el.offsetParent !== null);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const inside = panelRef.current.contains(document.activeElement);
+      if (!inside) { e.preventDefault(); first.focus(); }
+      else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [overlayOpen]);
@@ -385,14 +418,14 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
   );
 
   const panel = (
-    <aside className={`sidebar-surface sb-aside sb-panel${isTablet ? ' sb-overlay' : ''}`} style={{ width: SB_PANEL_W }}>
+    <aside ref={panelRef} className={`sidebar-surface sb-aside sb-panel${isTablet ? ' sb-overlay' : ''}`} style={{ width: SB_PANEL_W }}>
       <div style={{ padding: '12px 10px 12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
         {logo}
         <div style={{flex: 1, minWidth: 0}}>
           <div style={{fontWeight: 700, fontSize: 'var(--fs-body)', letterSpacing: '-0.01em', whiteSpace: 'nowrap', color: 'var(--sb-text-strong)'}}>Kafé OS</div>
           <div style={{fontSize: 'var(--fs-cap)', color: 'var(--sb-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{me?.store_name ?? branchName}</div>
         </div>
-        <button type="button" onClick={toggle} className="icon-btn-soft tap sb-toggle"
+        <button ref={panelToggleRef} type="button" onClick={toggle} className="icon-btn-soft tap sb-toggle"
           aria-label={t.sidebar.collapse} aria-expanded>
           <Icon name="chevronLeft" size={20} />
         </button>
@@ -446,7 +479,9 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
           {avatar}
           <div style={{flex: 1, minWidth: 0}}>
             <div style={{fontSize: 'var(--fs-sm)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--sb-text-strong)'}}>{me?.name ?? '...'}</div>
-            <div style={{fontSize: 'var(--fs-cap)', color: 'var(--sb-text-muted)'}}>{roleLabel}</div>
+            {/* On the tinted user card (--sb-card-bg) --sb-text-muted is 4.4:1; the
+                existing soft-icon ink reads 4.8:1 there (WCAG 1.4.3). */}
+            <div style={{fontSize: 'var(--fs-cap)', color: 'var(--sb-icon-soft-fg)'}}>{roleLabel}</div>
           </div>
         </div>
         {onLogout && (
@@ -478,7 +513,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
       {/* Only the expand toggle lives under the rail; the user card and logout are in
           the expanded panel (one tap away), so the scrolling list gets the height. */}
       <div className="sb-rail-foot">
-        <button type="button" onClick={toggle} className="icon-btn-soft tap sb-toggle sb-rail-toggle"
+        <button ref={railToggleRef} type="button" onClick={toggle} className="icon-btn-soft tap sb-toggle sb-rail-toggle"
           aria-label={t.sidebar.expand} aria-expanded={false}>
           <Icon name="chevronRight" size={20} />
         </button>
@@ -494,13 +529,32 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
     // overlays it), rail or panel on POS. Width changes snap; nothing tweens layout.
     <div className="hidden md:block" style={{ position: 'relative', flexShrink: 0, width: isTablet || !expanded ? SB_RAIL_W : SB_PANEL_W }}>
       <style>{SIDEBAR_CSS}</style>
+      {/* Skip link (WCAG 2.4.1): the rail puts ~25 nav stops before the screen.
+          Visually hidden until it takes keyboard focus. */}
+      <a href="#app-main" className="skip-link" onClick={(e) => {
+        const main = document.querySelector<HTMLElement>('main.app-main');
+        if (!main) return;
+        e.preventDefault();
+        if (!main.hasAttribute('tabindex')) main.setAttribute('tabindex', '-1');
+        main.focus({ preventScroll: true });
+      }}>{t.sidebar.skipToContent}</a>
       {expanded ? panel : rail}
-      {isTablet && overlayOpen && <div className="sb-backdrop" aria-hidden onClick={() => setOverlayOpen(false)} />}
+      {isTablet && overlayOpen && <div className="sb-backdrop" aria-hidden onClick={closeOverlay} />}
     </div>
   );
 };
 
 const SIDEBAR_CSS = `
+.skip-link {
+  position: absolute; top: 8px; left: 8px; z-index: var(--z-popover);
+  display: inline-flex; align-items: center; min-height: var(--tap-std); padding: 0 16px;
+  border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text);
+  font-size: var(--fs-body); font-weight: 600; box-shadow: var(--shadow-md);
+  transform: translateY(-200%);
+}
+.skip-link:focus, .skip-link:focus-visible { transform: none; }
+/* Skip-link target: focused programmatically, so no ring around the whole screen. */
+main.app-main:focus { outline: none; }
 .sb-aside {
   height: var(--app-h, 100dvh);
   display: flex; flex-direction: column;
@@ -614,7 +668,8 @@ export const Tag = ({ children, tone = 'neutral' }: TagProps) => {
     neutral: { bg: 'var(--color-surface-2)', fg: 'var(--color-text-secondary)' },
     success: { bg: 'var(--color-success-50)', fg: 'var(--color-success)' },
     warning: { bg: 'var(--color-warning-50)', fg: 'var(--color-warning-fg)' },
-    danger:  { bg: 'var(--color-danger-50)',  fg: 'var(--color-danger)' },
+    // --color-danger is ~4:1 on its own 50 tint; the -fg berry is the AA text ink.
+    danger:  { bg: 'var(--color-danger-50)',  fg: 'var(--color-danger-fg)' },
     info:    { bg: 'var(--color-info-50)',    fg: 'var(--color-info)' },
     accent:  { bg: 'var(--color-accent-50)',  fg: 'var(--color-primary-700)' },
   };
@@ -623,7 +678,7 @@ export const Tag = ({ children, tone = 'neutral' }: TagProps) => {
     display: 'inline-flex', alignItems: 'center', gap: 4,
     padding: '2px 8px', borderRadius: 999,
     background: t.bg, color: t.fg,
-    fontSize: 11, fontWeight: 600,
+    fontSize: 'var(--fs-cap)', fontWeight: 600, // TOUCH-SPEC §2: nothing below 13px
   }}>{children}</span>;
 };
 

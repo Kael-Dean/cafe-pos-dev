@@ -19,10 +19,10 @@
   --color-surface-2: #F5F1E9;
 
   --color-text: #1A1A1A;
-  --color-text-secondary: #6B7280;
-  /* Muted darkened from #9CA3AF (2.5:1, AA fail) to clear 4.5:1 body text on
-     surface/cream while staying lighter than --color-text-secondary. */
-  --color-text-muted: #6C7079;
+  /* Both nudged darker (was #6B7280 / #6C7079, 4.2–4.5:1 on cream) to clear AA 4.5:1
+     on every surface they sit on; muted stays the lighter of the two. */
+  --color-text-secondary: #666C7A;
+  --color-text-muted: #686C74;
   --color-text-inverse: #FFFFFF;
 
   --color-success: #5C8A5A;       /* Matcha */
@@ -204,7 +204,7 @@
 
   --color-text: #F5EFE7;
   --color-text-secondary: #B8AC9C;
-  --color-text-muted: #968A78;
+  --color-text-muted: #988C7B;
   --color-text-inverse: #1A140E;
 
   --color-success: #7FB07D;
@@ -309,9 +309,9 @@
   --color-surface: #FFFFFF;
   --color-surface-2: #F5F1E9;
   --color-text: #1A1A1A;
-  --color-text-secondary: #6B7280;
+  --color-text-secondary: #666C7A;
   /* Same AA-safe muted grey as the light :root (#9CA3AF was ~2.5:1 on white). */
-  --color-text-muted: #6C7079;
+  --color-text-muted: #686C74;
   --color-text-inverse: #FFFFFF;
   --color-border: #E5E0D5;
   --color-border-strong: #C9C2B2;
@@ -1372,6 +1372,11 @@ label:focus-visible {
   white-space: nowrap; overflow: hidden;
 }
 .numpad-value.is-empty { color: var(--color-text-muted); }
+/* A formatted 10-digit phone ("081-234-5678") is ~160px at --fs-num-lg and was
+   cut off at 390px; one step down keeps every digit visible on phones. */
+@media (max-width: 767px) {
+  .numpad--digits .numpad-value { font-size: var(--fs-h1); }
+}
 .numpad-clear {
   flex: none; min-width: var(--tap-lg); min-height: var(--tap-lg); padding: 0 var(--space-3);
   background: var(--color-surface); border: var(--hairline); border-radius: var(--radius-md);

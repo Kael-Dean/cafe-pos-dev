@@ -309,6 +309,7 @@ export default function OpenSessionModal({ table, onClose, onGoSetup }: {
 
       <Field label="โน้ต (ไม่บังคับ)">
         <textarea
+          aria-label="โน้ต"
           className="input-std"
           value={note}
           maxLength={500}
@@ -463,6 +464,7 @@ export function SessionDetailModal({ session, table, tables, canVoid, onClose, o
 
       <Field label="โน้ต">
         <textarea
+          aria-label="โน้ต"
           className="input-std"
           value={note}
           maxLength={500}

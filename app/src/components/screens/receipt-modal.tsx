@@ -286,7 +286,8 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
           )}
 
           {/* ── Receipt preview (tinted paper tray; stays light in both themes) ── */}
-          <div className="receipt-scroll" style={{ padding: 'var(--space-5)', overflowY: 'auto', flex: 1, minHeight: 0, background: PAPER_TRAY }}>
+          {/* Focusable region so keyboard users can scroll a long receipt (WCAG 2.1.1). */}
+          <div className="receipt-scroll" tabIndex={0} role="region" aria-label="ตัวอย่างใบเสร็จ" style={{ padding: 'var(--space-5)', overflowY: 'auto', flex: 1, minHeight: 0, background: PAPER_TRAY }}>
             <ReceiptPaper
               data={data}
               invoiceNo={invoiceNo} now={shownDate} copy={copy}

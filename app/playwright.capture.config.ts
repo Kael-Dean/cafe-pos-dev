@@ -17,7 +17,7 @@ import base from './playwright.config';
  *       npm run capture:screens -- --project=phone-390x844 -g kds
  *
  * Determinism: reduced motion + CSS animations disabled at capture time, light theme,
- * th-TH / Asia/Bangkok, page clock pinned (capture-data.ts FIXED_NOW), deviceScaleFactor 1,
+ * th-TH / Asia/Bangkok, page clock pinned (e2e/support/seed.ts FIXED_NOW), deviceScaleFactor 1,
  * toasts hidden in the PNG (they are transient and timing-dependent).
  */
 

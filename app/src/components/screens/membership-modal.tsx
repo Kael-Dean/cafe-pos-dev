@@ -445,7 +445,9 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
                 <div style={{ display: 'flex', gap: 20 }}>
                   <div>
                     <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>แต้มสะสม</div>
-                    <div className="num" style={{ fontSize: 24, fontWeight: 800, color: 'var(--color-accent-600)' }}>{result.account.points_balance.toLocaleString()}</div>
+                    {/* caramel-600 is 2.8:1 on surface-2 (fails even the 3:1 large-text floor);
+                        the warm amber -fg ink keeps the hue at 6.4:1. */}
+                    <div className="num" style={{ fontSize: 24, fontWeight: 800, color: 'var(--color-warning-fg)' }}>{result.account.points_balance.toLocaleString()}</div>
                   </div>
                   {result.points_to_next_reward != null && result.points_to_next_reward > 0 && (
                     <div>
@@ -464,7 +466,7 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
 
               {/* Redeem is now offered in the POS "โปรโมชั่นที่ใช้ได้" panel, not here. */}
               {result.program && result.reward_redeemable && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--color-accent-600)', background: 'var(--color-accent-50)', borderRadius: 12, padding: '12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--color-warning-fg)', background: 'var(--color-accent-50)', borderRadius: 12, padding: '12px 14px' }}>
                   <Icon name="discount" size={18} />
                   <span>แต้มถึงเกณฑ์แลกรางวัลแล้ว — เลือกแลกได้ที่ปุ่ม “โปรโมชั่น” ในบิล</span>
                 </div>

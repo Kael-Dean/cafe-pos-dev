@@ -251,7 +251,7 @@ export default function KDS() {
       <style>{KDS_CSS}</style>
       <div className="kds-head" style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 24, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="kds-head-title">
-          <div className="kds-title" style={{ fontSize: 'var(--fs-h2)', fontWeight: 700, letterSpacing: '-0.01em' }}>{t.kds.title}</div>
+          <h1 className="kds-title" style={{ margin: 0, fontSize: 'var(--fs-h2)', fontWeight: 700, letterSpacing: '-0.01em' }}>{t.kds.title}</h1>
           {/* 0.78 white on espresso ≥ 7:1 (TOUCH-SPEC §3.7; was 0.55). */}
           <div className="kds-sub" style={{ fontSize: 'var(--fs-sm)', color: KDS_SUB_INK }}>Sukhumvit 49 • {t.kds.station}</div>
         </div>
@@ -310,11 +310,11 @@ export default function KDS() {
       {/* Undo bar in its own footer row under the board (in flow, not overlaid), so
           it never sits on top of a ticket's bump/cancel buttons; the tickets above
           keep their positions, only the scroll viewport gets shorter. */}
-      {undo.entry && (
-        <div className="kds-undo" style={{ padding: '0 24px 16px', display: 'flex', justifyContent: 'center' }}>
-          <UndoBar undo={undo} duration={5000} inline style={{ width: '100%', maxWidth: 560 }} />
-        </div>
-      )}
+      {/* Host stays mounted (padding only while a bar shows) so UndoBar's live
+          region exists before the first bump and the announcement is not dropped. */}
+      <div className="kds-undo" style={{ padding: undo.entry ? '0 24px 16px' : 0, display: 'flex', justifyContent: 'center' }}>
+        <UndoBar undo={undo} duration={5000} inline style={{ width: '100%', maxWidth: 560 }} />
+      </div>
     </div>
     {stepsModal && (
       <CookingStepsModal
@@ -601,6 +601,6 @@ const KDS_CSS = `
   .kds-stat > span:first-child { flex-shrink: 0; }
   .kds-stat > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .kds-cancel { padding-left: 12px; padding-right: 12px; }
-  .kds-undo { padding: 0 12px 12px !important; }
+  .kds-undo:has(.undo-bar) { padding: 0 12px 12px !important; }
 }
 `;

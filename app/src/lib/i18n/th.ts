@@ -104,6 +104,7 @@ export const th = {
     collapse: 'ย่อเมนู',
     logout: 'ออกจากระบบ',
     navLabel: 'เมนูหลัก',
+    skipToContent: 'ข้ามไปเนื้อหาหลัก',
   },
 
   // ── Settings screen ───────────────────────────────────────────────────────

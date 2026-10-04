@@ -67,9 +67,19 @@ interface UndoBarProps {
 
 export function UndoBar({ undo, duration = 5000, inline = false, className, style }: UndoBarProps) {
   const { entry, dismiss } = undo;
-  if (!entry) return null;
-  // Keyed by entry id: a new push remounts the bar, which restarts its timer.
-  return <UndoBarItem key={entry.id} entry={entry} onDismiss={dismiss} duration={duration} inline={inline} className={className} style={style} />;
+  return (
+    <>
+      {/* Persistent polite live region: it exists before any bar mounts, so screen
+          readers reliably announce the message (a role="status" node inserted
+          together with its text is often skipped). The visible message is
+          aria-hidden to avoid reading it twice. */}
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {entry ? entry.message : ''}
+      </div>
+      {/* Keyed by entry id: a new push remounts the bar, which restarts its timer. */}
+      {entry && <UndoBarItem key={entry.id} entry={entry} onDismiss={dismiss} duration={duration} inline={inline} className={className} style={style} />}
+    </>
+  );
 }
 
 function UndoBarItem({ entry, onDismiss, duration, inline, className, style }: {
@@ -92,13 +102,14 @@ function UndoBarItem({ entry, onDismiss, duration, inline, className, style }: {
 
   return (
     <div
-      role="status"
       className={`undo-bar${className ? ` ${className}` : ''}`}
       onPointerDown={() => setHeld(true)}
       onPointerUp={() => setHeld(false)}
       onPointerCancel={() => setHeld(false)}
       onPointerLeave={() => setHeld(false)}
-      onFocus={() => setHeld(true)}
+      // Hold only for keyboard focus: after a tap the cart moves focus here programmatically
+      // (no :focus-visible), and holding then would keep the bar up forever.
+      onFocus={(e) => { if ((e.target as HTMLElement).matches(':focus-visible')) setHeld(true); }}
       onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHeld(false); }}
       style={{
         ...(inline ? {} : { position: 'absolute', left: 8, right: 8, bottom: 8, zIndex: 5 }),
@@ -111,7 +122,7 @@ function UndoBarItem({ entry, onDismiss, duration, inline, className, style }: {
         ...style,
       }}
     >
-      <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-body)', fontWeight: 500, lineHeight: 'var(--lh-tight)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span aria-hidden="true" style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-body)', fontWeight: 500, lineHeight: 'var(--lh-tight)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {entry.message}
       </span>
       <button
