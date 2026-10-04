@@ -29,12 +29,48 @@ export type BridgeConfig = {
 
 const BRIDGE_UNREACHABLE = 'bridge ไม่ตอบ — ตรวจสอบว่าเปิด bridge บน PC ที่ต่อปริ้นเตอร์';
 
-async function bridgeFetch(path: string, init?: RequestInit): Promise<Response> {
+// The bridge only answers allow-listed origins that send its shop-wide token
+// (security audit M3). The token is handed out by the BFF to logged-in users
+// only, and cached in memory for the page's lifetime (never persisted).
+let bridgeTokenPromise: Promise<string | null> | null = null;
+
+function loadBridgeToken(): Promise<string | null> {
+  if (!bridgeTokenPromise) {
+    bridgeTokenPromise = fetch('/api/auth/bridge-token', { credentials: 'same-origin', cache: 'no-store' })
+      .then(async (r) => {
+        if (!r.ok) {
+          bridgeTokenPromise = null; // not logged in yet / transient: retry next call
+          return null;
+        }
+        const data = (await r.json().catch(() => ({}))) as { token?: unknown };
+        return typeof data.token === 'string' && data.token ? data.token : null;
+      })
+      .catch(() => {
+        bridgeTokenPromise = null;
+        return null;
+      });
+  }
+  return bridgeTokenPromise;
+}
+
+async function rawBridgeFetch(path: string, init: RequestInit | undefined, token: string | null): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  if (token) headers.set('x-bridge-token', token);
   try {
-    return await fetch(bridgeUrl(path), init);
+    return await fetch(bridgeUrl(path), { ...init, headers });
   } catch {
     throw new Error(BRIDGE_UNREACHABLE);
   }
+}
+
+async function bridgeFetch(path: string, init?: RequestInit): Promise<Response> {
+  const res = await rawBridgeFetch(path, init, await loadBridgeToken());
+  if (res.status === 401) {
+    // Token rotated on the server since we cached it: fetch it again, retry once.
+    bridgeTokenPromise = null;
+    return rawBridgeFetch(path, init, await loadBridgeToken());
+  }
+  return res;
 }
 
 export async function fetchStatus(signal?: AbortSignal): Promise<BridgeStatus> {

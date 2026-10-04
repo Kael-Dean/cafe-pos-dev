@@ -1,0 +1,311 @@
+/* Floor board + table-session dialogs (UI-SPEC §2.3, §3, §5). Mode: Operate.
+   Tokens only (semantic / component); no primitives, no raw colours. */
+
+.root {
+  padding: var(--space-8);
+  max-width: 1440px;
+  margin-inline: auto;
+}
+
+/* ── Header: title · status summary · sync ─────────────────────────────── */
+.head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-5);
+}
+.title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 22px;
+  font-weight: var(--fw-bold);
+  line-height: 1.25;
+  color: var(--color-text);
+  text-wrap: balance;
+}
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  font-size: var(--fs-14);
+  color: var(--color-text-secondary);
+}
+.count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.count strong {
+  font-size: var(--fs-16);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+.countOver strong { color: var(--color-danger-fg); }
+.sync {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-13);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-50);
+  color: var(--color-accent-fg);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-semibold);
+}
+
+.banner {
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-md);
+}
+
+/* ── Zones ─────────────────────────────────────────────────────────────── */
+.zone { margin-bottom: var(--space-6); }
+.zoneHead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) 0;
+  background: var(--color-bg);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-bold);
+  color: var(--color-text);
+}
+.zoneMeta {
+  font-weight: var(--fw-medium, 500);
+  font-size: var(--fs-13);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 176px tracks give 3 columns at 768 (rail), 4 at 1024 (rail), 6 at 1440 (sidebar);
+   phones are forced to 2 by .cols-2-phone. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+  gap: var(--space-3);
+}
+
+/* ── Table card ────────────────────────────────────────────────────────── */
+.card {
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+}
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+}
+/* free ↔ busy: the content cross-fades (opacity only) when the state flips. */
+.swap { animation: floor-swap var(--dur-base) var(--ease-out); }
+@keyframes floor-swap { from { opacity: 0; } to { opacity: 1; } }
+
+.busy {
+  background: var(--color-primary-50);
+  border-color: var(--color-primary);
+}
+/* Over time: a heavier frame + the danger badge — readable without colour. */
+.over {
+  border-color: var(--color-danger);
+  box-shadow: inset 0 0 0 1px var(--color-danger);
+}
+
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+/* Long Thai names clamp to two lines (line-height ≥1.35 keeps tone marks clear). */
+.name {
+  flex: 1;
+  min-width: 0;
+  font-size: 18px;
+  font-weight: var(--fw-bold);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.seats {
+  margin-left: 4px;
+  color: var(--color-text-muted);
+}
+.status { margin-left: auto; flex-shrink: 0; }
+.status svg { margin-right: 2px; }
+
+.hint {
+  margin-top: auto;
+  font-size: var(--fs-13);
+  color: var(--color-text-secondary);
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--space-3);
+  font-size: var(--fs-13);
+  color: var(--color-text-secondary);
+}
+.meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.foot {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.amount {
+  font-size: 20px;
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+/* ── Dialogs (open / detail) ───────────────────────────────────────────── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+.grow { flex: 1; min-width: 0; }
+.rowHint { margin-top: 6px; }
+/* Same chrome as the Input primitive (there is no Textarea primitive yet). */
+.textarea {
+  width: 100%;
+  min-height: 72px;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--input-border, var(--color-border-input));
+  border-radius: var(--radius-md);
+  background: var(--input-bg, var(--color-surface));
+  color: var(--input-fg, var(--color-text));
+  font: inherit;
+  font-size: var(--fs-15);
+  line-height: 1.5;
+}
+.textarea::placeholder { color: var(--input-placeholder, var(--color-text-muted)); }
+.textarea:focus-visible {
+  border-color: var(--color-focus-ring);
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+@media (max-width: 767px) { .textarea { font-size: 16px; } }
+.picked {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-min);
+  font-size: var(--fs-14);
+}
+.picked > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.notFound {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-13);
+  color: var(--color-warning-fg);
+}
+
+.charge {
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-2);
+}
+.chargeLabel {
+  font-size: var(--fs-13);
+  color: var(--color-text-secondary);
+}
+.chargeValue {
+  font-size: 30px;
+  font-weight: var(--fw-bold);
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+.chargeMeta {
+  margin-top: 4px;
+  font-size: var(--fs-13);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.chargeBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.plan {
+  margin-top: var(--space-3);
+  font-size: var(--fs-13);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+.danger { color: var(--color-danger-fg); }
+.divider {
+  height: 1px;
+  margin: 0;
+  border: 0;
+  background: var(--color-border);
+}
+
+/* ── Phones (< 768px) ──────────────────────────────────────────────────── */
+@media (max-width: 767px) {
+  .root { padding: var(--screen-pad); }
+  .head { gap: 10px 12px; margin-bottom: var(--space-4); }
+  .title { flex: 1; min-width: 0; font-size: 20px; }
+  .summary { order: 3; flex: 1 0 100%; }
+  .sync { margin-left: 0; }
+  .grid { gap: 10px; }
+  .zone { margin-bottom: var(--space-5); }
+  .row { flex-wrap: wrap; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swap { animation-duration: 1ms; }
+}

@@ -19,6 +19,17 @@ $nssm    = Join-Path $dst 'nssm.exe'
 if (-not (Test-Path $src)) { Write-Host "[X] source missing: $src"; exit 1 }
 if (-not (Test-Path $dst)) { Write-Host "[X] service dir missing: $dst (run installer first)"; exit 1 }
 
+# Since the 2026-10 security update the bridge refuses every request without the
+# shop token. Never install that version on a PC that has no token yet, or this
+# auto-update would silently stop printing. Exit 0 so the scheduled task stays quiet.
+$tokenFile = Join-Path $dst 'bridge-token.txt'
+$needsToken = (Select-String -Path $src -Pattern 'bridge-token.txt' -SimpleMatch -Quiet)
+$hasToken = (Test-Path $tokenFile) -and ((Get-Content $tokenFile -Raw).Trim().Length -ge 24)
+if ($needsToken -and -not $hasToken) {
+  Write-Host "[!] update held: $tokenFile missing (must equal BRIDGE_TOKEN on Vercel). See bridge\README.md"
+  exit 0
+}
+
 # Skip the restart when nothing changed (keeps the 15-min task cheap + silent).
 $same = $false
 if (Test-Path $dstFile) {
@@ -40,7 +51,9 @@ Write-Host "[2] restarted service $svc"
 
 Start-Sleep -Seconds 3
 try {
-  $r = Invoke-RestMethod -Uri 'http://127.0.0.1:8080/status' -TimeoutSec 5
+  $hdr = @{}
+  if ($hasToken) { $hdr['x-bridge-token'] = (Get-Content $tokenFile -Raw).Trim() }
+  $r = Invoke-RestMethod -Uri 'http://127.0.0.1:8080/status' -Headers $hdr -TimeoutSec 5
   Write-Host "[3] status: printer=$($r.printer) ip=$($r.ip)"
 } catch {
   Write-Host "[3] status check skipped: $($_.Exception.Message)"

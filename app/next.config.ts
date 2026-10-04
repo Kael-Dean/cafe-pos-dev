@@ -1,9 +1,5 @@
 import type { NextConfig } from "next";
 
-const RAILWAY_API =
-  process.env.RAILWAY_API_URL ??
-  "https://caf-pos-repo-production.up.railway.app";
-
 // Menu photos live on Cloudflare R2. Mirror the SSRF allowlist in
 // src/app/api/image-proxy/route.ts: the managed `*.r2.dev` / S3
 // `*.r2.cloudflarestorage.com` endpoints, plus the configured public base
@@ -35,20 +31,31 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // Baseline hardening for every response. A site-wide CSP / frame policy is
-        // deliberately NOT set here — the inline theme script and the Epson ePOS
-        // SDK need a dedicated security review first.
+        // Baseline hardening for every response (security audit 2026-10, plan §3.3).
+        // The nonce CSP (Report-Only for now) is per request, so it lives in
+        // src/proxy.ts, not here. X-Frame-Options is the legacy fallback for its
+        // frame-ancestors 'none' and is enforced already (clickjacking on
+        // void/pay buttons, M2).
         source: "/(.*)",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-Frame-Options", value: "DENY" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=()",
+          },
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          // Vercel already sends HSTS; set it explicitly so a custom domain or a
+          // non-Vercel host keeps it.
+          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
         ],
       },
       {
         // /api/image-proxy relays bytes from any *.r2.dev bucket with the upstream
         // Content-Type (image/svg+xml included). Sandbox the response so a file
-        // opened directly as a document can never run script on this origin — the
-        // auth tokens live in localStorage. fetch() / <img> use is unaffected.
+        // opened directly as a document can never run script on this origin (it
+        // could still drive the cookie session). fetch() / <img> use is unaffected.
         source: "/api/image-proxy",
         headers: [
           { key: "Content-Security-Policy", value: "default-src 'none'; sandbox" },
@@ -72,17 +79,8 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  async rewrites() {
-    // Proxy /api/v1/* through Next.js server-side in ALL environments.
-    // Browser calls same-origin Vercel URL → no CORS.
-    // Set NEXT_PUBLIC_API_BASE_URL="" and RAILWAY_API_URL=<railway_url> in env.
-    return [
-      {
-        source: "/api/v1/:path*",
-        destination: `${RAILWAY_API}/api/v1/:path*`,
-      },
-    ];
-  },
+  // No /api/v1 rewrite anymore: src/app/api/v1/[...path]/route.ts is the cookie
+  // BFF proxy to RAILWAY_API_URL and attaches the bearer server-side (audit M1).
 };
 
 export default nextConfig;

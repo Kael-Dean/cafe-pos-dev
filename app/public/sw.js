@@ -12,7 +12,7 @@
  * available" prompt and only then sends SKIP_WAITING (a cashier may be mid-order).
  */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const PREFIX = 'kafe-os';
 const CACHE_SHELL = `${PREFIX}-shell-${VERSION}`;   // "/" document + offline page + icons
 const CACHE_STATIC = `${PREFIX}-static-${VERSION}`; // /_next/static/* (content-hashed)
@@ -42,6 +42,16 @@ function isCacheable(response) {
   if (!response || !response.ok || response.status !== 200 || response.type !== 'basic') return false;
   if (response.redirected) return false;
   return !/no-store|private/i.test(response.headers.get('cache-control') || '');
+}
+
+/** The "/" shell document. It is rendered per request (CSP nonce), so Next marks
+ *  it `private, no-store`, but its HTML carries no user data: the session lives in
+ *  HttpOnly cookies and every API call goes to the network. So the shell alone may
+ *  be kept for the offline banner. Never used for /api/* (bypassed above). */
+function isShellCacheable(response) {
+  if (!response || !response.ok || response.status !== 200 || response.type !== 'basic') return false;
+  if (response.redirected) return false;
+  return /^text\/html/i.test(response.headers.get('content-type') || '');
 }
 
 /** Cache.keys() is insertion-ordered, so deleting from the front drops the oldest. */
@@ -74,7 +84,6 @@ function isRevalidatedAsset(request, pathname) {
     pathname.startsWith('/icons/') ||
     pathname === '/logo.svg' ||
     pathname === '/favicon.ico' ||
-    pathname === '/epos-2.27.0.js' ||
     request.destination === 'font' ||
     /\.(?:woff2?|ttf|otf)$/.test(pathname)
   );
@@ -88,8 +97,8 @@ async function handleNavigation(event) {
   try {
     const response = await fetch(request);
     // The POS is a single client-rendered route. Its HTML is identical whether the
-    // user is logged in or not (auth lives in localStorage), so it is safe to keep.
-    if (isCacheable(response) && new URL(request.url).pathname === SHELL_URL) {
+    // user is logged in or not (auth lives in HttpOnly cookies), so it is safe to keep.
+    if (isShellCacheable(response) && new URL(request.url).pathname === SHELL_URL) {
       event.waitUntil(putInCache(CACHE_SHELL, SHELL_URL, response.clone()));
     }
     return response;
@@ -210,7 +219,7 @@ self.addEventListener('message', (event) => {
             const cache = await caches.open(cacheName);
             if (await cache.match(key, { ignoreVary: true })) continue;
             const response = await fetch(key, { credentials: 'same-origin' });
-            if (isCacheable(response)) await cache.put(key, response);
+            if (isShell ? isShellCacheable(response) : isCacheable(response)) await cache.put(key, response);
           } catch {
             // Offline or blocked mid-warm — stop quietly; normal fetches will fill the cache later.
           }

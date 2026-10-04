@@ -1,38 +1,40 @@
-import { clearToken, getRefreshToken, setTokens } from './token-store';
+import { clearToken, getToken } from './token-store';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
 const LOGOUT_REASON_KEY = 'cafe_pos_logout_reason';
 
-interface TokenPair {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-}
+/** Cookie-session BFF endpoints (same origin). Tokens never reach JS. */
+export const AUTH_LOGIN_PATH = '/api/auth/login';
+export const AUTH_REFRESH_PATH = '/api/auth/refresh';
+export const AUTH_LOGOUT_PATH = '/api/auth/logout';
+
+/**
+ * Pre-BFF paths. `/api/v1/auth/login` is still served by the BFF (sets the
+ * cookies, returns an opaque marker) so older screens keep working;
+ * `/api/v1/auth/refresh` always answers 401.
+ */
+export const LEGACY_AUTH_PATHS = ['/api/v1/auth/login', '/api/v1/auth/refresh'] as const;
 
 // De-duplicate concurrent refresh attempts.
 let inflightRefresh: Promise<string | null> | null = null;
 
 async function doRefresh(): Promise<string | null> {
-  const refresh = getRefreshToken();
-  if (!refresh) return null;
   try {
-    const res = await fetch(`${BASE_URL}/api/v1/auth/refresh`, {
+    const res = await fetch(AUTH_REFRESH_PATH, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refresh }),
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
     });
     if (!res.ok) return null;
-    const data: TokenPair = await res.json();
-    if (!data?.access_token) return null;
-    setTokens({ access: data.access_token, refresh: data.refresh_token });
-    return data.access_token;
+    // Server rotated the HttpOnly access cookie and re-set the session flag.
+    return getToken();
   } catch {
     return null;
   }
 }
 
 /**
- * Returns a fresh access token, or null on failure / no refresh token.
+ * Asks the BFF to refresh the HttpOnly access cookie. Resolves to an opaque
+ * session marker on success (NOT a token), or null on failure / no session.
  * Concurrent calls share the same in-flight request.
  */
 export function refreshAccessToken(): Promise<string | null> {
@@ -42,7 +44,8 @@ export function refreshAccessToken(): Promise<string | null> {
 }
 
 /**
- * Clear tokens and (for 'expired') leave a marker the login screen reads.
+ * Clear the session (server cookies + local flag) and, for 'expired', leave a
+ * marker the login screen reads.
  */
 export function forceLogout(reason: 'expired' | 'manual'): void {
   if (reason === 'expired' && typeof window !== 'undefined') {
@@ -61,6 +64,3 @@ export function readAndClearLogoutReason(): string | null {
     return null;
   }
 }
-
-export const AUTH_LOGIN_PATH = '/api/v1/auth/login';
-export const AUTH_REFRESH_PATH = '/api/v1/auth/refresh';

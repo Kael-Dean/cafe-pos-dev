@@ -1,339 +1,344 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Banner, Button, Input, Modal, SegmentedControl, Sheet, type SegmentOption } from '@/components/ui';
+import { useI18n } from '@/lib/i18n';
+import { useIsPhone } from '@/hooks/use-media-query';
+import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
+import { useOnlineStatus } from '../pwa/offline-indicator';
 import Icon from '../icons';
-import { useFadeRise } from '@/lib/motion';
-import { useModalA11y } from '@/hooks/use-modal-a11y';
-import { CashView, CashPayStyles, cashMath } from './payment-cash';
+import { CashView, baht, cashMath, exactString } from './payment-cash';
+import { QrPanel } from './payment/qr-panel';
+import { readPromptPayId } from './payment/promptpay';
+import s from './payment/payment.module.css';
 
-interface Props { method: string; total: number; billNo: number; onClose: () => void; onPaid: () => void; }
+export type PayMethod = 'cash' | 'qr' | 'card' | 'line';
+const METHODS: PayMethod[] = ['cash', 'qr', 'card', 'line'];
 
-/**
- * A QR code must stay light-with-dark-ink in BOTH themes so a phone camera can
- * read it, so these two are intentionally NOT theme tokens. They are tinted
- * (toward the espresso brand hue) rather than pure #fff / #000 per the design
- * system's no-pure-black/white rule.
- */
-const QR_PAPER = '#FBFAF7';
-const QR_INK = '#1C140D';
+/** What the cashier actually confirmed. Callers that ignore it keep today's behaviour. */
+export interface PaymentDetails {
+  method: PayMethod;
+  /** The amount this sheet was opened for. */
+  amount: number;
+  /** Cash only: tendered amount and change due. */
+  cashGiven?: number;
+  change?: number;
+  /** Card slip approval code / LINE Pay transaction no. (D4). Maps to `payment_ref`. */
+  paymentRef?: string;
+  /** QR / LINE manual confirm: who verified the money arrived (D5 `paymentVerifiedBy`). */
+  verifiedBy?: { id: string; name: string };
+}
 
-export default function PaymentModal({ method, total, billNo, onClose, onPaid }: Props) {
-  const [phase, setPhase] = useState<'await' | 'processing' | 'paid'>('await');
-  const [cashGiven, setCashGiven] = useState('');
-
-  // Re-entrancy guard: a fast double-tap can fire this twice in the same frame
-  // (before React re-renders and hides the button), which would create two
-  // orders. The ref blocks every call after the first.
-  const confirmed = useRef(false);
-  // The success-beat timers must die with the modal: if the dialog unmounts
-  // while they're pending, a stray onPaid() would create the order anyway.
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
-  const onConfirmPay = () => {
-    if (confirmed.current) return;
-    confirmed.current = true;
-    // Brief processing beat so the cashier sees the action was registered, then
-    // settle into the success state. Kept short — this fires dozens of times/hr.
-    setPhase('processing');
-    timers.current.push(setTimeout(() => setPhase('paid'), 280));
-    timers.current.push(setTimeout(() => onPaid(), 1100));
-  };
-  // Once payment is confirmed the modal must not be dismissible — closing during
-  // the processing/paid beat would look like a cancel while the order still goes
-  // through. Reads confirmed.current at call time, so the mount-once a11y hook
-  // stays correct.
-  const safeClose = () => { if (confirmed.current) return; onClose(); };
-
-  const dialogRef = useModalA11y(safeClose);
-
-  useEffect(() => {
-    if (method === 'qr' || method === 'line') {
-      const t = setTimeout(() => { /* user clicks */ }, 12000);
-      return () => clearTimeout(t);
-    }
-  }, [method]);
-
-  const isCash = method === 'cash';
-  // The cash amount field is a keypad-driven display, not an <input>. Park focus
-  // on it (after useModalA11y's own first-focusable pass, which lands on "ปิด")
-  // so a hardware-keyboard cashier can type and press Enter straight away.
-  useEffect(() => {
-    if (!isCash) return;
-    dialogRef.current?.querySelector<HTMLElement>('[data-cash-entry]')?.focus({ preventScroll: true });
-  }, [isCash, dialogRef]);
-
-  const cashEnough = isCash ? cashMath(total, cashGiven).enough : true;
-
-  const titleMap: Record<string, string> = { cash: 'รับเงินสด', card: 'รูดบัตร', qr: 'QR PromptPay', line: 'LINE Pay' };
-
-  const busy = phase !== 'await';
-
-  return (
-    <div className="modal-backdrop" onClick={safeClose}>
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label={titleMap[method]}
-        aria-busy={busy || undefined}
-        className={isCash ? 'modal-card cashpay' : 'modal-card'}
-        onClick={(e) => e.stopPropagation()}
-        // Cash sizes itself from the .cashpay rules (wider two-column card on
-        // tablets/desktop, capped to the viewport height); other methods keep
-        // the original fixed width.
-        style={{ width: isCash ? undefined : 'min(440px, 92vw)', display: 'flex', flexDirection: 'column' }}
-      >
-        {isCash ? <CashPayStyles /> : <PayModalPhoneStyles />}
-        <div className={isCash ? 'cashpay-head' : 'paymodal-head'} style={{
-          padding: isCash ? undefined : 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-border)',
-          display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flex: 'none',
-        }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: 'var(--radius-md)', background: 'var(--color-accent-50)',
-            color: 'var(--color-primary)', display: 'grid', placeItems: 'center',
-          }}>
-            <Icon name={method === 'cash' ? 'cash' : method === 'card' ? 'card' : method === 'line' ? 'line' : 'qr'} size={20}/>
-          </div>
-          <div style={{flex: 1}}>
-            <div style={{fontSize: 16, fontWeight: 700}}>{titleMap[method]}</div>
-            <div style={{fontSize: 12, color: 'var(--color-text-secondary)'}}>บิล {'A' + String(billNo).padStart(3, '0')}</div>
-          </div>
-          <button onClick={safeClose} aria-label="ปิด" className="icon-btn hit-44" style={{
-            width: 32, height: 32, borderRadius: 'var(--radius-md)', display: 'grid', placeItems: 'center',
-            color: 'var(--color-text-secondary)',
-          }}>
-            <Icon name="x" size={18}/>
-          </button>
-        </div>
-
-        <div
-          className={isCash && phase === 'await' ? 'cashpay-body scroll' : isCash ? undefined : 'paymodal-body scroll'}
-          style={isCash && phase === 'await' ? undefined : {padding: 'var(--space-6)'}}
-        >
-          {phase === 'paid' ? (
-            <SuccessView total={total} />
-          ) : phase === 'processing' ? (
-            <ProcessingView total={total} />
-          ) : method === 'qr' ? (
-            <QRView total={total} onSimulatePay={onConfirmPay} />
-          ) : method === 'line' ? (
-            <LineView total={total} onSimulatePay={onConfirmPay} />
-          ) : method === 'card' ? (
-            <CardView total={total} onSimulatePay={onConfirmPay} />
-          ) : (
-            <CashView total={total} cashGiven={cashGiven} setCashGiven={setCashGiven} canConfirm={cashEnough} onConfirm={onConfirmPay} />
-          )}
-        </div>
-
-        {phase === 'await' && isCash && (
-          <div className="cashpay-foot">
-            <button type="button" onClick={safeClose} className="btn btn-ghost btn-lg" style={{flex: 1, minHeight: 44}}>ยกเลิก</button>
-            <button type="button" onClick={onConfirmPay} disabled={!cashEnough} className="btn btn-primary btn-lg" style={{flex: 2, minHeight: 44, opacity: cashEnough ? 1 : 0.5}}>
-              <Icon name="check" size={16}/> ยืนยันรับเงิน
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+interface Props {
+  method: string;
+  total: number;
+  /** Legacy local counter. No longer shown: the sheet never displays a fabricated bill number. */
+  billNo?: number;
+  /** Server bill label ("#47") when one exists; shown under the title. */
+  billLabel?: string;
+  onClose: () => void;
+  /**
+   * Called once per confirm. Return a promise to keep the sheet open while the
+   * server records the order: resolve → success tick, reject → inline error +
+   * retry with the cart untouched. Returning nothing hands control to the caller
+   * at once (it usually unmounts the sheet).
+   */
+  onPaid: (details: PaymentDetails) => void | Promise<unknown>;
+  /**
+   * Enables the method tabs (Alt+1–4). The caller must use `details.method` (or
+   * this callback) when recording the payment, so tabs only appear when wired.
+   */
+  onMethodChange?: (method: PayMethod) => void;
 }
 
 /**
- * Card / QR / LINE on phones (< 768px): the body scrolls inside the height-capped
- * card and the confirm button stays pinned to its bottom edge, so it is reachable
- * on short screens (360×640, landscape). Nothing here applies ≥ 768px — there
- * `.paymodal-pin` is a plain wrapper and the dialog renders exactly as before.
- * (Cash has its own layout: `.cashpay` in payment-cash.tsx.)
+ * Reject `onPaid` with this when nothing went wrong but the cashier must look
+ * again (e.g. the table total moved). Shown as a warning, not a failure.
  */
-const PAYMODAL_PHONE_CSS = `
-@media (max-width: 767px) {
-  .paymodal-head { padding: 12px 16px !important; }
-  /* Bottom padding lives on .paymodal-pin so the pinned button keeps its gutter. */
-  .paymodal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 16px 0 !important; }
-  .paymodal-pin {
-    position: sticky; bottom: 0;
-    margin: 12px -16px 0; padding: 12px 16px 16px;
-    background: var(--color-surface);
+export class PaymentNotice extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PaymentNotice';
   }
-  .paymodal-pin > button { margin-top: 0 !important; min-height: 48px !important; }
-  .paymodal-qr { width: min(240px, 100%) !important; height: auto !important; aspect-ratio: 1; }
 }
-`;
-const PayModalPhoneStyles = () => <style>{PAYMODAL_PHONE_CSS}</style>;
 
-const QRView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () => void }) => {
-  // QR "generation": brief skeleton in the code slot so the matrix doesn't pop
-  // in cold. PromptPay codes resolve fast, so this is a short, honest beat.
-  const [generating, setGenerating] = useState(true);
-  useEffect(() => {
-    const t = setTimeout(() => setGenerating(false), 420);
-    return () => clearTimeout(t);
-  }, []);
+type Phase = 'await' | 'processing' | 'paid' | 'error';
 
-  return (
-    <div style={{textAlign: 'center'}}>
-      <div style={{fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)'}}>ยอดที่ต้องชำระ</div>
-      <div className="num" style={{fontSize: 36, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--color-primary)', marginBottom: 'var(--space-1)'}}>
-        ฿{total.toLocaleString()}
-      </div>
-      <div style={{fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)'}}>คาเฟ่ Kafé OS • PromptPay</div>
-      <div aria-busy={generating || undefined} className="paymodal-qr" style={{
-        width: 240, height: 240, margin: '0 auto', padding: 'var(--space-4)',
-        background: QR_PAPER, borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)',
-      }}>
-        {generating ? (
-          <div className="skeleton" aria-hidden style={{ width: '100%', height: '100%', borderRadius: 'var(--radius-md)' }} />
-        ) : (
-          <FakeQR seed={total} />
-        )}
-      </div>
-      <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)', marginTop: 'var(--space-4)', fontSize: 13, color: 'var(--color-text-secondary)'}}>
-        <span style={{
-          width: 8, height: 8, borderRadius: 999, background: 'var(--color-warning)',
-          animation: 'pulse 1.5s ease-in-out infinite',
-        }}/>
-        <span>{generating ? 'กำลังสร้าง QR...' : 'กำลังรอการชำระเงิน...'}</span>
-      </div>
-      <div className="paymodal-pin">
-        <button onClick={onSimulatePay} disabled={generating} className="btn btn-primary btn-block btn-lg" style={{marginTop: 'var(--space-5)', minHeight: 44, opacity: generating ? 0.5 : 1}}>
-          <Icon name="check" size={16}/> จำลอง: ลูกค้าชำระแล้ว
-        </button>
-      </div>
-      <style>{`@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.4); } }`}</style>
-    </div>
-  );
-};
+const asMethod = (m: string): PayMethod => (METHODS.includes(m as PayMethod) ? (m as PayMethod) : 'cash');
 
-const FakeQR = ({ seed }: { seed: number }) => {
-  const N = 25;
-  const cells = useMemo(() => {
-    const arr: boolean[] = [];
-    let s = (seed * 9301 + 49297) % 233280;
-    for (let i = 0; i < N * N; i++) {
-      s = (s * 9301 + 49297) % 233280;
-      arr.push((s / 233280) > 0.52);
+export default function PaymentModal({ method: methodProp, total, billLabel, onClose, onPaid, onMethodChange }: Props) {
+  const { t } = useI18n();
+  const isPhone = useIsPhone();
+  const online = useOnlineStatus();
+  const { data: me } = useCurrentUser();
+
+  // Follows the prop when the caller changes it (derived during render, no effect).
+  const [method, setMethod] = useState<PayMethod>(() => asMethod(methodProp));
+  const [seenProp, setSeenProp] = useState(methodProp);
+  if (seenProp !== methodProp) {
+    setSeenProp(methodProp);
+    setMethod(asMethod(methodProp));
+  }
+
+  const [phase, setPhase] = useState<Phase>('await');
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState(false);
+  const [cashGiven, setCashGiven] = useState('');
+  const [ref, setRef] = useState('');
+
+  // Re-entrancy guard: a fast double-tap can fire twice in one frame, before React
+  // re-renders the button as busy. The ref blocks every call after the first.
+  const inFlight = useRef(false);
+  const alive = useRef(true);
+  // Re-armed on mount: StrictMode runs mount → cleanup → mount in development.
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+
+  const busy = phase === 'processing' || phase === 'paid';
+  const isCash = method === 'cash';
+  const cash = cashMath(total, cashGiven);
+  const [ppId, setPpId] = useState(readPromptPayId);
+  const qrReady = method !== 'qr' || ppId !== '';
+  const canConfirm = online && !busy && (isCash ? cash.enough : qrReady);
+
+  const switchMethod = useCallback((m: PayMethod) => {
+    if (busy || !onMethodChange) return;
+    setMethod(m);
+    setError(null);
+    setPhase('await');
+    setRef('');
+    onMethodChange(m);
+  }, [busy, onMethodChange]);
+
+  const confirm = useCallback(() => {
+    if (inFlight.current || !canConfirm) return;
+    inFlight.current = true;
+    setError(null);
+    setPhase('processing');
+    const details: PaymentDetails = {
+      method,
+      amount: total,
+      ...(isCash ? { cashGiven: parseFloat(cashGiven) || 0, change: cash.change } : {}),
+      ...(!isCash && ref.trim() ? { paymentRef: ref.trim() } : {}),
+      ...((method === 'qr' || method === 'line') && me ? { verifiedBy: { id: me.id, name: me.name } } : {}),
+    };
+    let result: void | Promise<unknown>;
+    try {
+      result = onPaid(details);
+    } catch (e) {
+      result = Promise.reject(e);
     }
-    const setRect = (cx: number, cy: number) => {
-      for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) {
-        const inside = x >= 1 && x <= 5 && y >= 1 && y <= 5;
-        const inner = x >= 2 && x <= 4 && y >= 2 && y <= 4;
-        arr[(cy + y) * N + (cx + x)] = !inside || inner;
+    if (!result || typeof (result as Promise<unknown>).then !== 'function') return; // caller took over
+    (result as Promise<unknown>).then(
+      () => { if (alive.current) setPhase('paid'); },
+      (e: unknown) => {
+        inFlight.current = false;
+        if (!alive.current) return;
+        setPhase('error');
+        setNotice(e instanceof PaymentNotice);
+        setError(e instanceof Error && e.message ? e.message : t.payment.failedBody);
+      },
+    );
+  }, [canConfirm, method, total, isCash, cashGiven, cash.change, ref, me, onPaid, t]);
+
+  // Sheet-scoped keys (spec §4.1 "payment"): Alt+1–4 method · = exact · Enter confirm (non-cash;
+  // the cash Keypad owns Enter). Matched on e.code so the Thai layout works.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing) return;
+      const target = e.target instanceof Element ? e.target : null;
+      const typing = !!target?.closest('input, textarea, select, [contenteditable="true"]');
+      if (e.altKey && /^(Digit|Numpad)[1-4]$/.test(e.code)) {
+        e.preventDefault();
+        switchMethod(METHODS[Number(e.code.slice(-1)) - 1]);
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isCash && !typing && !busy && (e.code === 'Equal' || e.code === 'NumpadEqual' || e.key === '=')) {
+        e.preventDefault();
+        setCashGiven(exactString(total));
+        return;
+      }
+      if (!isCash && e.key === 'Enter' && !e.repeat && !target?.closest('button, a, [role="button"], textarea')) {
+        e.preventDefault();
+        confirm();
       }
     };
-    setRect(0, 0); setRect(N - 7, 0); setRect(0, N - 7);
-    return arr;
-  }, [seed]);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isCash, busy, total, switchMethod, confirm]);
 
-  return (
-    <svg viewBox={`0 0 ${N} ${N}`} width="100%" height="100%">
-      {cells.map((on, i) => on && (
-        <rect key={i} x={i % N} y={Math.floor(i / N)} width="1" height="1" fill={QR_INK}/>
-      ))}
-    </svg>
-  );
-};
-
-const CardView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () => void }) => (
-  <div style={{textAlign: 'center'}}>
-    <div style={{fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)'}}>ยอดที่ต้องชำระ</div>
-    <div className="num" style={{fontSize: 36, fontWeight: 700, color: 'var(--color-primary)', marginBottom: 'var(--space-6)'}}>฿{total.toLocaleString()}</div>
-    <div style={{
-      padding: 'var(--space-8)', background: 'var(--color-surface-2)', borderRadius: 'var(--radius-lg)',
-      border: '2px dashed var(--color-border-strong)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-3)',
-    }}>
-      <div style={{
-        width: 60, height: 60, borderRadius: 999,
-        background: 'var(--color-info-50)', color: 'var(--color-info)',
-        display: 'grid', placeItems: 'center',
-        animation: 'wiggle 1.4s ease-in-out infinite',
-      }}>
-        <Icon name="card" size={28}/>
-      </div>
-      <div style={{fontSize: 14, fontWeight: 600}}>กรุณาเสียบ / แตะบัตรที่เครื่อง EDC</div>
-      <div style={{fontSize: 12, color: 'var(--color-text-secondary)'}}>เครื่อง EDC: SCB-A1 • พร้อมใช้งาน</div>
-    </div>
-    <div className="paymodal-pin">
-      <button onClick={onSimulatePay} className="btn btn-primary btn-block btn-lg" style={{marginTop: 'var(--space-4)', minHeight: 44}}>
-        <Icon name="check" size={16}/> จำลอง: รูดสำเร็จ
-      </button>
-    </div>
-    <style>{`@keyframes wiggle { 0%,100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }`}</style>
-  </div>
-);
-
-const LineView = ({ total, onSimulatePay }: { total: number; onSimulatePay: () => void }) => {
-  const [generating, setGenerating] = useState(true);
+  // Initial focus: the Modal focuses its first control (×), where a hardware
+  // Enter would close the sheet. Park it on the cash amount (Keypad owns Enter)
+  // or on the confirm button (Enter = confirm). Runs after the Modal's own pass.
   useEffect(() => {
-    const t = setTimeout(() => setGenerating(false), 420);
-    return () => clearTimeout(t);
-  }, []);
-  return (
-    <div style={{textAlign: 'center'}}>
-      <div style={{fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)'}}>ยอดที่ต้องชำระ</div>
-      <div className="num" style={{fontSize: 36, fontWeight: 700, color: 'var(--color-primary)', marginBottom: 'var(--space-6)'}}>฿{total.toLocaleString()}</div>
-      <div aria-busy={generating || undefined} style={{
-        width: 200, height: 200, margin: '0 auto', padding: 'var(--space-3)',
-        background: QR_PAPER, borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)',
-      }}>
-        {generating ? (
-          <div className="skeleton" aria-hidden style={{ width: '100%', height: '100%', borderRadius: 'var(--radius-md)' }} />
-        ) : (
-          <FakeQR seed={total + 7} />
-        )}
-      </div>
-      <div style={{fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 'var(--space-3)'}}>
-        {generating ? 'กำลังสร้าง QR...' : 'สแกนเพื่อชำระผ่าน LINE Pay'}
-      </div>
-      <div className="paymodal-pin">
-        <button onClick={onSimulatePay} disabled={generating} className="btn btn-primary btn-block btn-lg" style={{marginTop: 'var(--space-4)', minHeight: 44, opacity: generating ? 0.5 : 1}}>
-          <Icon name="check" size={16}/> จำลอง: ชำระสำเร็จ
-        </button>
-      </div>
+    document.querySelector<HTMLElement>('[data-pay-autofocus]')?.focus({ preventScroll: true });
+  }, [method]);
+
+  const amountText = baht(total);
+  const confirmLabel = phase === 'error' ? t.payment.retry
+    : isCash ? t.payment.confirmCash
+    : method === 'card' ? t.payment.cardDone
+    : method === 'qr' ? t.payment.qrReceived
+    : t.payment.lineDone;
+  const disabledReason = !online ? t.payment.offline
+    : isCash && cash.entered && !cash.enough ? t.payment.needMore(baht(cash.shortfall))
+    : undefined;
+
+  const methodOptions: SegmentOption<PayMethod>[] = METHODS.map((m, i) => ({
+    value: m,
+    // Phones: four segments in ~330px, so no icons and the short brand term "QR".
+    label: isPhone && m === 'qr' ? 'QR' : t.payment.method[m],
+    icon: isPhone ? undefined : <Icon name={m} size={18} />,
+    keyShortcuts: `Alt+${i + 1}`,
+    disabled: busy,
+  }));
+
+  const body = phase === 'paid' ? (
+    <SuccessView amountText={amountText} change={isCash && cash.change > 0 ? baht(cash.change) : null} />
+  ) : (
+    <>
+      {onMethodChange && (
+        <SegmentedControl
+          value={method}
+          onChange={switchMethod}
+          options={methodOptions}
+          ariaLabel={t.payment.methodGroup}
+          size="lg"
+          fullWidth
+        />
+      )}
+      {!online && <Banner tone="danger" title={t.payment.offline} detail={t.payment.offlineBody} />}
+      {phase === 'error' && error && (notice ? (
+        <Banner tone="warning" icon="info" live="alert" title={error} />
+      ) : (
+        <Banner tone="danger" icon="warning" live="alert" title={t.payment.failedTitle} detail={error} />
+      ))}
+      {isCash ? (
+        <CashView
+          total={total}
+          cashGiven={cashGiven}
+          setCashGiven={setCashGiven}
+          canConfirm={canConfirm}
+          onConfirm={confirm}
+          disabled={busy}
+        />
+      ) : method === 'qr' ? (
+        <>
+          <QrPanel id={ppId} onIdChange={setPpId} total={total} amountText={amountText} canConfigure={isAdmin(me?.role)} />
+          {me && qrReady && <p className={s.verifier}>{t.payment.verifiedBy(me.name)}</p>}
+        </>
+      ) : (
+        <ManualView
+          method={method}
+          amountText={amountText}
+          refValue={ref}
+          onRef={setRef}
+          onSubmit={confirm}
+          disabled={busy}
+          verifier={method === 'line' && me ? t.payment.verifiedBy(me.name) : null}
+        />
+      )}
+    </>
+  );
+
+  const footer = phase === 'paid' ? undefined : (
+    <div className={s.payFoot}>
+      <Button variant="secondary" size="xl" onClick={onClose} disabled={busy} className={s.payCancel}>
+        {t.payment.cancel}
+      </Button>
+      <Button
+        variant="primary"
+        size="xl"
+        onClick={confirm}
+        loading={phase === 'processing'}
+        disabled={!canConfirm}
+        disabledReason={!canConfirm && !busy ? disabledReason : undefined}
+        kbd="Enter"
+        data-pay-autofocus={isCash ? undefined : ''}
+        icon={<Icon name={phase === 'error' ? 'refresh' : 'check'} size={20} />}
+        className={s.payConfirm}
+      >
+        {phase === 'processing' ? t.payment.processing : confirmLabel}
+      </Button>
     </div>
   );
-};
 
-/**
- * Processing beat between "confirm" and the success state. Short, calm, and
- * announced via aria-busy on the dialog. No bouncy motion — the cashier is
- * mid-flow and just needs confirmation the tap registered.
- */
-const ProcessingView = ({ total }: { total: number }) => (
-  <div style={{textAlign: 'center', padding: 'var(--space-5) 0'}}>
-    <div style={{
-      width: 72, height: 72, margin: '0 auto var(--space-4)', borderRadius: 999,
-      background: 'var(--color-surface-2)', color: 'var(--color-primary)',
-      display: 'grid', placeItems: 'center',
-    }}>
-      <span className="spinner" style={{width: 26, height: 26, borderWidth: 3}} aria-hidden />
-    </div>
-    <div style={{fontSize: 18, fontWeight: 700, marginBottom: 'var(--space-1)'}}>กำลังดำเนินการ...</div>
-    <div className="num" style={{fontSize: 32, fontWeight: 700, color: 'var(--color-primary)'}}>฿{total.toLocaleString()}</div>
-  </div>
-);
+  const shared = {
+    open: true,
+    onClose,
+    title: t.payment.title[method],
+    description: billLabel,
+    dismissible: !busy,
+    closeOnBackdrop: false,
+    footer,
+    className: s.payDialog,
+  };
 
-const SuccessView = ({ total }: { total: number }) => {
-  // Rare, satisfying moment → a gentle fade-rise on the whole panel + an
-  // ease-out scale on the checkmark. No infinite/bouncy loops.
-  const ref = useFadeRise({ y: 10, duration: 0.22 });
+  return isPhone ? (
+    <Sheet {...shared} size="full">{body}</Sheet>
+  ) : (
+    <Modal {...shared} size="lg" hideClose={busy}>{body}</Modal>
+  );
+}
+
+/** Card (EDC) and LINE Pay: manual confirm with an optional reference (D4). */
+function ManualView({ method, amountText, refValue, onRef, onSubmit, disabled, verifier }: {
+  method: 'card' | 'line';
+  amountText: string;
+  refValue: string;
+  onRef: (v: string) => void;
+  onSubmit: () => void;
+  disabled: boolean;
+  verifier: string | null;
+}) {
+  const { t } = useI18n();
+  const isCard = method === 'card';
   return (
-    <div ref={ref} role="status" style={{textAlign: 'center', padding: 'var(--space-5) 0'}}>
-      <div style={{
-        width: 72, height: 72, margin: '0 auto var(--space-4)', borderRadius: 999,
-        background: 'var(--color-success-50)', color: 'var(--color-success)',
-        display: 'grid', placeItems: 'center',
-        animation: 'pay-pop 320ms var(--ease-out)',
-      }}>
-        <Icon name="check" size={40} strokeWidth={2}/>
+    <div className={s.manual}>
+      <div className={s.manualAmount}>
+        <span className={s.dueLabel}>{t.payment.amountDue}</span>
+        <span className={`num ${s.bigAmount}`}>{amountText}</span>
       </div>
-      <div style={{fontSize: 20, fontWeight: 700, marginBottom: 'var(--space-1)'}}>ชำระเงินสำเร็จ</div>
-      <div className="num" style={{fontSize: 32, fontWeight: 700, color: 'var(--color-primary)', marginBottom: 'var(--space-2)'}}>฿{total.toLocaleString()}</div>
-      <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)', fontSize: 13, color: 'var(--color-text-secondary)'}}>
-        <span className="spinner" style={{width: 14, height: 14}} aria-hidden />
-        กำลังพิมพ์ใบเสร็จ และส่งไปยังครัว...
+      <div className={s.manualStep}>
+        <Icon name={isCard ? 'card' : 'line'} size={28} />
+        <div>
+          <p className={s.manualTitle}>{isCard ? t.payment.cardInstruction(amountText) : t.payment.lineInstruction}</p>
+          {isCard && <p className={s.manualSub}>{t.payment.cardSub}</p>}
+        </div>
       </div>
-      <style>{`@keyframes pay-pop { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }`}</style>
+      <Input
+        label={isCard ? t.payment.cardRefLabel : t.payment.lineRefLabel}
+        hint={isCard ? t.payment.cardRefHint : undefined}
+        value={refValue}
+        maxLength={120}
+        autoComplete="off"
+        inputMode={isCard ? 'numeric' : 'text'}
+        size="lg"
+        disabled={disabled}
+        onChange={(e) => onRef(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.repeat) { e.preventDefault(); onSubmit(); } }}
+      />
+      {verifier && <p className={s.verifier}>{verifier}</p>}
     </div>
   );
-};
+}
+
+/** 240ms stroke-draw tick (spec §8). The receipt replaces this as soon as the caller is ready. */
+function SuccessView({ amountText, change }: { amountText: string; change: string | null }) {
+  const { t } = useI18n();
+  return (
+    <div className={s.success} role="status">
+      <svg className={s.tick} viewBox="0 0 52 52" aria-hidden="true">
+        <circle className={s.tickRing} cx="26" cy="26" r="24" />
+        <path className={s.tickMark} d="M15 27l7 7 15-16" />
+      </svg>
+      <p className={s.successTitle}>{t.payment.success}</p>
+      <p className={`num ${s.bigAmount}`}>{amountText}</p>
+      {change && (
+        <p className={s.successChange}>
+          {t.payment.change} <span className="num">{change}</span>
+        </p>
+      )}
+    </div>
+  );
+}

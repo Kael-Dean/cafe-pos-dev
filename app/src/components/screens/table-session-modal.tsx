@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../icons';
-import { Select, NumberInput } from '../app-common';
 import { useToast } from '../ui/toast';
 import { useModalA11y } from '@/hooks/use-modal-a11y';
 import { useLookupMember } from '@/hooks/use-membership';
@@ -13,9 +12,18 @@ import {
   useBillingPreview, useMoveTableSession, useOpenTableSession, useTableSessions,
   useUpdateTableSession, useVoidTableSession, type RateSnapshot, type TableSession,
 } from '@/hooks/use-table-sessions';
+import { useOnlineStatus } from '@/components/pwa/offline-indicator';
 import { bahtStr, clockTime, formatMinutes, minutesSince } from '@/lib/money';
+import { useI18n } from '@/lib/i18n';
+import {
+  Badge, Banner, Button, Field as UiField, IconButton, Input, Modal, NumberField, Select, fieldIds,
+} from '@/components/ui';
+import { useOverlayHistory } from '../use-overlay-history';
+import s from './floor.module.css';
 
-// ── Shared modal shell ────────────────────────────────────────────────────────
+// ── Legacy shell (still used by settle-modal.tsx and table-setup.tsx) ─────────
+// The open / detail dialogs below are on the design-system <Modal>. This shell and
+// its helpers stay exported unchanged until those screens move over too.
 /**
  * Portalled to <body> on purpose: the screen root carries a transform from the
  * entrance animation, and a transformed ancestor becomes the containing block for
@@ -87,10 +95,9 @@ function ModalShell({ title, subtitle, icon, onClose, children, footer, busy }: 
 }
 
 /**
- * Phones (< 768px), for every dialog built on this shell (open / detail / settle /
- * table + rate-plan editors): 16px gutters, inputs at 16px so iOS does not zoom on
- * focus, and a footer whose buttons wrap onto their own rows when the labels do
- * not fit side by side (e.g. "ไว้ก่อน" + "เช็คสถานะอีกครั้ง" at 360px).
+ * Phones (< 768px), for every dialog built on this shell (settle + table / rate-plan
+ * editors): 16px gutters, inputs at 16px so iOS does not zoom on focus, and a footer
+ * whose buttons wrap onto their own rows when the labels do not fit side by side.
  */
 const TSM_PHONE_CSS = `
 @media (max-width: 767px) {
@@ -132,12 +139,33 @@ function planSummary(p: Pick<RateSnapshot, 'billingMode' | 'hourlyRate' | 'grace
   return bits.join(' · ');
 }
 
-// ── Customer lookup by phone (shared by both modals) ──────────────────────────
-function CustomerPicker({ customerName, onPick, onClear }: {
+// ── Textarea on the shared field chrome (there is no Textarea primitive yet) ──
+function NoteField({ label, value, onChange, placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string;
+}) {
+  const ids = fieldIds(useId());
+  return (
+    <UiField ids={ids} label={label}>
+      <textarea
+        id={ids.controlId}
+        className={s.textarea}
+        value={value}
+        maxLength={500}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+    </UiField>
+  );
+}
+
+// ── Customer lookup by phone (shared by both dialogs) ─────────────────────────
+function CustomerPicker({ label, customerName, onPick, onClear }: {
+  label: string;
   customerName: string | null;
   onPick: (customerId: string, name: string) => void;
   onClear: () => void;
 }) {
+  const { t } = useI18n();
   const lookup = useLookupMember();
   const [phone, setPhone] = useState('');
   const [notFound, setNotFound] = useState(false);
@@ -161,42 +189,56 @@ function CustomerPicker({ customerName, onPick, onClear }: {
 
   if (customerName) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-        {/* phones: icon + name on one line (the svg is display:block) */}
-        <span className="max-md:flex max-md:items-center" style={{ flex: 1, minWidth: 0, fontSize: 14 }}><Icon name="user" size={14} style={{ marginRight: 6 }} />{customerName}</span>
-        <button onClick={onClear} className="btn btn-ghost">เอาออก</button>
+      <div>
+        <div className="ui-field__label">{label}</div>
+        <div className={s.picked}>
+          <span><Icon name="user" size={16} />{customerName}</span>
+          <Button variant="ghost" onClick={onClear}>{t.floor.removeCustomer}</Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <>
-      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-        <input
+    <div>
+      <div className={s.row}>
+        <Input
+          className={s.grow}
+          label={label}
           value={phone}
           onChange={(e) => { setPhone(e.target.value); setNotFound(false); }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void search(); } }}
           inputMode="tel"
-          placeholder="เบอร์โทรสมาชิก"
-          aria-label="เบอร์โทรสมาชิก"
-          style={{ ...inputStyle, flex: 1 }}
+          autoComplete="off"
+          placeholder={t.floor.memberPhone}
         />
-        <button onClick={() => { void search(); }} disabled={lookup.isPending || !phone.trim()} className="btn btn-ghost" style={{ minHeight: 44 }}>
-          {lookup.isPending ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden /> : <Icon name="search" size={16} />}
-        </button>
+        <IconButton
+          variant="outline"
+          icon={<Icon name="search" size={18} />}
+          label={t.floor.findMember}
+          loading={lookup.isPending}
+          disabled={!phone.trim()}
+          onClick={() => { void search(); }}
+        />
       </div>
-      {notFound && <div role="status" style={{ fontSize: 12, color: 'var(--color-warning)', marginTop: 'var(--space-2)' }}>ไม่พบสมาชิกเบอร์นี้ — เปิดโต๊ะได้โดยไม่ต้องผูกลูกค้า</div>}
-    </>
+      <p role="status" className={s.notFound}>{notFound ? t.floor.memberNotFound : ''}</p>
+    </div>
   );
 }
 
 // ── Open a session ────────────────────────────────────────────────────────────
-export default function OpenSessionModal({ table, onClose, onGoSetup }: {
+export default function OpenSessionModal({ open, table, onClose, onGoSetup, onOpened, canOrder }: {
+  open: boolean;
   table: FloorTable;
   onClose: () => void;
   onGoSetup?: () => void;
+  /** The session is open. `andOrder` = the cashier chose "open and order". */
+  onOpened: (session: TableSession, andOrder: boolean) => void;
+  /** Whether "open and order" is offered (POS hand-off available). */
+  canOrder: boolean;
 }) {
-  const toast = useToast();
+  const { t } = useI18n();
+  const online = useOnlineStatus();
   const plansQ = useRatePlans();
   const openSession = useOpenTableSession();
 
@@ -205,6 +247,7 @@ export default function OpenSessionModal({ table, onClose, onGoSetup }: {
   const [note, setNote] = useState('');
   const [customer, setCustomer] = useState<{ id: string; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState<'order' | 'only' | null>(null);
 
   const plans = useMemo(() => plansQ.data ?? [], [plansQ.data]);
   const defaultPlan: RatePlan | undefined = plans.find((p) => p.isDefault) ?? plans[0];
@@ -215,114 +258,120 @@ export default function OpenSessionModal({ table, onClose, onGoSetup }: {
   const effectivePlanId = planId || defaultPlan?.id || '';
   const selectedPlan = plans.find((p) => p.id === effectivePlanId) ?? defaultPlan;
   const noPlans = !plansQ.isLoading && plans.length === 0;
+  const blockedReason = !online ? t.floor.offlineDisabled : noPlans ? t.floor.noPlans : undefined;
 
-  const submit = async () => {
-    if (openSession.isPending) return;
+  const submit = async (andOrder: boolean) => {
+    if (openSession.isPending || blockedReason || partySize < 1) return;
     setError(null);
+    setSubmitting(andOrder ? 'order' : 'only');
     try {
-      await openSession.mutateAsync({
+      const session = await openSession.mutateAsync({
         table_id: table.id,
         party_size: partySize,
         rate_plan_id: effectivePlanId || null,
         customer_id: customer?.id ?? null,
         note: note.trim() || null,
       });
-      toast({ kind: 'success', title: `เปิดโต๊ะ ${table.name} แล้ว`, msg: `${partySize} คน` });
-      onClose();
+      // No toast: the card turning busy (or POS table mode) is the feedback.
+      onOpened(session, andOrder);
     } catch (e: unknown) {
       // 409 = table already has an open session, 422 = store has no rate plan.
       setError(errMsg(e));
+    } finally {
+      setSubmitting(null);
     }
   };
 
+  const busy = openSession.isPending;
+  useOverlayHistory(open, onClose, !busy);
+  const primaryIsOrder = canOrder;
+
   return (
-    <ModalShell
-      title={`เปิดโต๊ะ ${table.name}`}
-      subtitle={`${table.zone?.trim() || 'ไม่ระบุโซน'} · ${table.capacity} ที่นั่ง`}
-      icon="park"
+    <Modal
+      open={open}
       onClose={onClose}
-      busy={openSession.isPending}
+      dismissible={!busy}
+      size="md"
+      divided
+      title={t.floor.openTitle(table.name)}
+      description={t.floor.openSubtitle(table.zone?.trim() || t.floor.zoneFallback, table.capacity)}
       footer={
         <>
-          <button onClick={onClose} className="btn btn-ghost btn-lg" style={{ flex: 1, minHeight: 44 }}>ยกเลิก</button>
-          <button
-            onClick={() => { void submit(); }}
-            disabled={openSession.isPending || noPlans || partySize < 1}
-            className="btn btn-primary btn-lg"
-            style={{ flex: 2, minHeight: 44, opacity: openSession.isPending || noPlans ? 0.5 : 1 }}
+          {primaryIsOrder && (
+            <Button
+              variant="secondary"
+              size="lg"
+              loading={submitting === 'only'}
+              disabled={busy || !!blockedReason}
+              disabledReason={blockedReason}
+              onClick={() => { void submit(false); }}
+            >
+              {t.floor.openOnly}
+            </Button>
+          )}
+          <Button
+            size="lg"
+            icon={<Icon name={primaryIsOrder ? 'cart' : 'clock'} size={18} />}
+            loading={submitting === (primaryIsOrder ? 'order' : 'only')}
+            disabled={busy || !!blockedReason}
+            disabledReason={blockedReason}
+            onClick={() => { void submit(primaryIsOrder); }}
           >
-            {openSession.isPending
-              ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden />
-              : <><Icon name="clock" size={16} /> เริ่มจับเวลา</>}
-          </button>
+            {primaryIsOrder ? t.floor.openAndOrder : t.floor.openOnly}
+          </Button>
         </>
       }
     >
-      {noPlans && (
-        <div role="alert" style={{
-          display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', marginBottom: 'var(--space-5)',
-          padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)',
-          background: 'var(--color-warning-50, var(--color-surface-2))', color: 'var(--color-warning)', fontSize: 13, lineHeight: 1.5,
-        }}>
-          <Icon name="warning" size={18} />
-          <div style={{ flex: 1 }}>
-            ร้านนี้ยังไม่มีแพ็กเกจเวลา — ต้องสร้างก่อนถึงจะเปิดโต๊ะได้
-            {onGoSetup && <div><button onClick={onGoSetup} className="btn btn-ghost" style={{ marginTop: 'var(--space-2)' }}>ไปตั้งค่าโต๊ะ</button></div>}
-          </div>
-        </div>
-      )}
+      <div className={s.form}>
+        {noPlans && (
+          <Banner
+            tone="warning"
+            icon="warning"
+            live="alert"
+            title={t.floor.noPlans}
+            action={onGoSetup ? <Button size="sm" variant="secondary" onClick={onGoSetup}>{t.floor.goSetup}</Button> : undefined}
+          />
+        )}
 
-      <Field label="จำนวนคน" hint="ใช้คิดค่าเวลาแบบต่อหัว และมีผลกับทั้งช่วงเวลาที่นั่ง">
-        <NumberInput value={partySize} onChange={setPartySize} min={1} max={100} integer style={inputStyle} aria-label="จำนวนคน" />
-      </Field>
+        <NumberField
+          label={t.floor.partySize}
+          hint={t.floor.partySizeHint}
+          value={partySize}
+          onChange={setPartySize}
+          min={1}
+          max={100}
+          integer
+          size="lg"
+        />
 
-      <Field
-        label="แพ็กเกจเวลา"
-        hint={selectedPlan ? planSummary(selectedPlan) : undefined}
-      >
         <Select
+          label={t.floor.ratePlan}
+          hint={selectedPlan ? planSummary(selectedPlan) : undefined}
           value={effectivePlanId}
           onChange={setPlanId}
-          ariaLabel="แพ็กเกจเวลา"
-          placeholder={plansQ.isLoading ? 'กำลังโหลด…' : '— เลือก —'}
-          disabled={noPlans}
-          options={plans.map((p) => ({ value: p.id, label: p.isDefault ? `${p.name} (ค่าเริ่มต้น)` : p.name }))}
+          placeholder={plansQ.isLoading ? t.floor.planLoading : t.floor.planPlaceholder}
+          disabled={noPlans || plansQ.isLoading}
+          options={plans.map((p) => ({ value: p.id, label: p.isDefault ? t.floor.planDefault(p.name) : p.name }))}
         />
-      </Field>
 
-      <Field label="ลูกค้า (ไม่บังคับ)">
         <CustomerPicker
+          label={t.floor.customerOptional}
           customerName={customer?.name ?? null}
           onPick={(id, name) => setCustomer({ id, name })}
           onClear={() => setCustomer(null)}
         />
-      </Field>
 
-      <Field label="โน้ต (ไม่บังคับ)">
-        <textarea
-          className="input-std"
-          value={note}
-          maxLength={500}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="เช่น กลุ่มวันเกิด"
-          style={{ width: '100%', minHeight: 72, boxSizing: 'border-box', resize: 'vertical' }}
-        />
-      </Field>
+        <NoteField label={t.floor.noteOptional} value={note} onChange={setNote} placeholder={t.floor.notePlaceholder} />
 
-      {error && (
-        <div role="alert" style={{
-          padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)',
-          background: 'var(--color-danger-50)', color: 'var(--color-danger)', fontSize: 13, fontWeight: 600,
-        }}>
-          {error}
-        </div>
-      )}
-    </ModalShell>
+        {error && <Banner tone="danger" icon="warning" live="alert" title={error} />}
+      </div>
+    </Modal>
   );
 }
 
 // ── Session detail ────────────────────────────────────────────────────────────
-export function SessionDetailModal({ session, table, tables, canVoid, onClose, onOrder, onSettle }: {
+export function SessionDetailModal({ open, session, table, tables, canVoid, onClose, onOrder, onSettle }: {
+  open: boolean;
   session: TableSession;
   table: FloorTable | null;
   tables: FloorTable[];
@@ -331,45 +380,56 @@ export function SessionDetailModal({ session, table, tables, canVoid, onClose, o
   onOrder?: () => void;
   onSettle: () => void;
 }) {
+  const { t } = useI18n();
   const toast = useToast();
-  const preview = useBillingPreview(session.id, true);
+  const online = useOnlineStatus();
+  const preview = useBillingPreview(session.id, open);
   const update = useUpdateTableSession();
   const move = useMoveTableSession();
   const voidSession = useVoidTableSession();
-  const openSessions = useTableSessions('OPEN');
-  const tablesQ = useFloorTables(false);
+  const openSessions = useTableSessions('OPEN', open);
+  const tablesQ = useFloorTables(false, open && tables.length === 0);
 
+  // Edits are local until saved; re-seed them whenever another session is shown.
+  const [seededFor, setSeededFor] = useState(session.id);
   const [partySize, setPartySize] = useState(session.partySize);
   const [note, setNote] = useState(session.note ?? '');
   const [moveTo, setMoveTo] = useState('');
   const [confirmVoid, setConfirmVoid] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  if (seededFor !== session.id) {
+    setSeededFor(session.id);
+    setPartySize(session.partySize);
+    setNote(session.note ?? '');
+    setMoveTo('');
+    setConfirmVoid(false);
+    setError(null);
+  }
 
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 30_000);
+    if (!open) return;
+    const id = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(id);
-  }, []);
+  }, [open]);
 
   const allTables = tables.length ? tables : (tablesQ.data ?? []);
-  const occupied = new Set((openSessions.data ?? []).map((s) => s.tableId));
-  const freeTables = allTables.filter((t) => t.id !== session.tableId && !occupied.has(t.id));
+  const occupied = new Set((openSessions.data ?? []).map((x) => x.tableId));
+  const freeTables = allTables.filter((tb) => tb.id !== session.tableId && !occupied.has(tb.id));
 
   const elapsed = minutesSince(session.openedAt, now);
   const overtime = elapsed > session.rateSnapshot.maxOpenMinutes;
   const dirty = partySize !== session.partySize || note.trim() !== (session.note ?? '');
   const shrinking = partySize < session.partySize;
   const busy = update.isPending || move.isPending || voidSession.isPending;
+  useOverlayHistory(open, onClose, !busy);
+  const offlineReason = online ? undefined : t.floor.offlineDisabled;
 
   const saveEdits = async () => {
     if (busy || !dirty) return;
     setError(null);
     try {
-      await update.mutateAsync({
-        id: session.id,
-        data: { party_size: partySize, note: note.trim() || null },
-      });
-      toast({ kind: 'success', title: 'บันทึกแล้ว' });
+      await update.mutateAsync({ id: session.id, data: { party_size: partySize, note: note.trim() || null } });
     } catch (e: unknown) { setError(errMsg(e)); }
   };
 
@@ -378,8 +438,8 @@ export function SessionDetailModal({ session, table, tables, canVoid, onClose, o
     setError(null);
     try {
       const moved = await move.mutateAsync({ id: session.id, tableId: moveTo });
-      const name = allTables.find((t) => t.id === moved.tableId)?.name ?? '';
-      toast({ kind: 'success', title: `ย้ายไปโต๊ะ ${name} แล้ว`, msg: 'นาฬิกาเดินต่อ ไม่รีเซ็ต' });
+      const name = allTables.find((tb) => tb.id === moved.tableId)?.name ?? '';
+      toast({ kind: 'success', title: t.floor.moved(name), msg: t.floor.movedMsg });
       setMoveTo('');
     } catch (e: unknown) { setError(errMsg(e)); }
   };
@@ -389,7 +449,7 @@ export function SessionDetailModal({ session, table, tables, canVoid, onClose, o
     setError(null);
     try {
       await voidSession.mutateAsync(session.id);
-      toast({ kind: 'success', title: 'ยกเลิกโต๊ะแล้ว', msg: 'ไม่มีการคิดเงิน' });
+      toast({ kind: 'success', title: t.floor.voided, msg: t.floor.voidedMsg });
       onClose();
     } catch (e: unknown) {
       // 409 = orders are still attached; they must be paid or voided first.
@@ -406,134 +466,135 @@ export function SessionDetailModal({ session, table, tables, canVoid, onClose, o
   };
 
   return (
-    <ModalShell
-      title={`โต๊ะ ${table?.name ?? ''}`}
-      subtitle={`เปิด ${clockTime(session.openedAt)} · ${session.rateSnapshot.name}`}
-      icon="clock"
+    <Modal
+      open={open}
       onClose={onClose}
-      busy={busy}
+      dismissible={!busy}
+      size="md"
+      divided
+      title={t.floor.detailTitle(table?.name ?? '')}
+      description={t.floor.detailSubtitle(clockTime(session.openedAt), session.rateSnapshot.name)}
       footer={
         <>
+          <Button variant="secondary" size="lg" icon={<Icon name="cash" size={18} />} onClick={onSettle}>
+            {t.floor.settle}
+          </Button>
           {onOrder && (
-            <button onClick={onOrder} className="btn btn-ghost btn-lg" style={{ flex: 1, minHeight: 44 }}>
-              <Icon name="cart" size={16} /> สั่งอาหาร
-            </button>
+            <Button size="lg" icon={<Icon name="cart" size={18} />} onClick={onOrder}>
+              {t.floor.orderMore}
+            </Button>
           )}
-          <button onClick={onSettle} className="btn btn-primary btn-lg" style={{ flex: 1.4, minHeight: 44 }}>
-            <Icon name="cash" size={16} /> ปิดโต๊ะ / เช็คบิล
-          </button>
         </>
       }
     >
-      {/* Running total — server-computed, never recalculated here */}
-      <div style={{
-        padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'var(--color-surface-2)',
-        marginBottom: 'var(--space-5)',
-      }}>
-        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>ค่าเวลาถึงตอนนี้</div>
-        <div className="num" style={{ fontSize: 30, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-          {preview.isLoading || !preview.data ? '—' : bahtStr(preview.data.amount)}
+      <div className={s.form}>
+        {/* Running total — server-computed, never recalculated here */}
+        <div className={s.charge} aria-live="polite">
+          <div className={s.chargeLabel}>{t.floor.chargeSoFar}</div>
+          <div className={s.chargeValue}>
+            {preview.isLoading || !preview.data ? '—' : bahtStr(preview.data.amount)}
+          </div>
+          <div className={s.chargeMeta}>
+            {t.floor.seated(formatMinutes(elapsed))}
+            {preview.data && ` · ${t.floor.billed(formatMinutes(preview.data.billableMinutes), formatMinutes(preview.data.rawMinutes))}`}
+          </div>
+          {(preview.data?.withinGrace || preview.data?.capApplied || overtime) && (
+            <div className={s.chargeBadges}>
+              {preview.data?.withinGrace && <Badge tone="info">{t.floor.graceLong}</Badge>}
+              {preview.data?.capApplied && <Badge tone="neutral">{t.floor.capLong}</Badge>}
+              {overtime && (
+                <Badge tone="danger">
+                  <Icon name="warning" size={12} strokeWidth={2} />
+                  {t.floor.overtimeLong(formatMinutes(session.rateSnapshot.maxOpenMinutes))}
+                </Badge>
+              )}
+            </div>
+          )}
+          <div className={s.plan}>{planSummary(session.rateSnapshot)}</div>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>
-          นั่งแล้ว {formatMinutes(elapsed)}
-          {preview.data && ` · คิด ${formatMinutes(preview.data.billableMinutes)} (เล่นจริง ${formatMinutes(preview.data.rawMinutes)})`}
-        </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 'var(--space-3)' }}>
-          {preview.data?.withinGrace && <Badge tone="info">อยู่ในช่วงผ่อนผัน — ยังไม่คิดเงิน</Badge>}
-          {preview.data?.capApplied && <Badge tone="success">ถึงเพดานต่อวันแล้ว</Badge>}
-          {overtime && <Badge tone="warning">เกิน {formatMinutes(session.rateSnapshot.maxOpenMinutes)} ที่ตั้งไว้</Badge>}
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 'var(--space-3)', lineHeight: 1.5 }}>
-          {planSummary(session.rateSnapshot)}
-        </div>
-      </div>
 
-      <Field
-        label="จำนวนคน"
-        hint={shrinking ? '⚠️ ลดจำนวนคนจะมีผลกับเวลาทั้งหมดของโต๊ะนี้ ไม่ใช่เฉพาะช่วงหลังจากนี้' : 'มีผลกับเวลาทั้งหมดของโต๊ะนี้ (ไม่มีการเฉลี่ยตามช่วง)'}
-      >
-        <NumberInput value={partySize} onChange={setPartySize} min={1} max={100} integer style={inputStyle} aria-label="จำนวนคน" />
-      </Field>
-
-      <Field label="โน้ต">
-        <textarea
-          className="input-std"
-          value={note}
-          maxLength={500}
-          onChange={(e) => setNote(e.target.value)}
-          style={{ width: '100%', minHeight: 64, boxSizing: 'border-box', resize: 'vertical' }}
+        <NumberField
+          label={t.floor.partySize}
+          hint={shrinking ? t.floor.partyHintShrink : t.floor.partyHint}
+          value={partySize}
+          onChange={setPartySize}
+          min={1}
+          max={100}
+          integer
+          size="lg"
         />
-      </Field>
 
-      {dirty && (
-        <button onClick={() => { void saveEdits(); }} disabled={busy} className="btn btn-primary btn-lg" style={{ width: '100%', minHeight: 44, marginBottom: 'var(--space-5)' }}>
-          {update.isPending ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden /> : <><Icon name="check" size={16} /> บันทึกการแก้ไข</>}
-        </button>
-      )}
+        <NoteField label={t.floor.note} value={note} onChange={setNote} />
 
-      <Field label="ลูกค้า">
+        {dirty && (
+          <Button
+            fullWidth
+            icon={<Icon name="check" size={18} />}
+            loading={update.isPending}
+            disabled={busy || !online}
+            disabledReason={offlineReason}
+            onClick={() => { void saveEdits(); }}
+          >
+            {t.floor.saveEdits}
+          </Button>
+        )}
+
         <CustomerPicker
-          customerName={session.customerId ? 'ผูกลูกค้าไว้แล้ว' : null}
+          label={t.floor.customer}
+          customerName={session.customerId ? t.floor.customerLinked : null}
           onPick={(id) => { void attachCustomer(id); }}
           onClear={() => { void attachCustomer(null); }}
         />
-      </Field>
 
-      <Field label="ย้ายโต๊ะ" hint="นาฬิกาเดินต่อ ไม่เริ่มนับใหม่">
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <div>
+        <div className={s.row}>
           <Select
+            className={s.grow}
+            label={t.floor.moveTable}
             value={moveTo}
             onChange={setMoveTo}
-            ariaLabel="ย้ายไปโต๊ะ"
-            placeholder={freeTables.length ? '— เลือกโต๊ะว่าง —' : 'ไม่มีโต๊ะว่าง'}
+            placeholder={freeTables.length ? t.floor.movePlaceholder : t.floor.noFreeTables}
             disabled={!freeTables.length}
-            style={{ flex: 1 }}
-            options={freeTables.map((t) => ({ value: t.id, label: `${t.name}${t.zone ? ` · ${t.zone}` : ''}` }))}
+            options={freeTables.map((tb) => ({ value: tb.id, label: `${tb.name}${tb.zone ? ` · ${tb.zone}` : ''}` }))}
           />
-          <button onClick={() => { void doMove(); }} disabled={busy || !moveTo} className="btn btn-ghost" style={{ minHeight: 44 }}>ย้าย</button>
+          <Button
+            variant="secondary"
+            loading={move.isPending}
+            disabled={busy || !moveTo || !online}
+            disabledReason={offlineReason}
+            onClick={() => { void doMove(); }}
+          >
+            {t.floor.move}
+          </Button>
         </div>
-      </Field>
+        <div className={`ui-field__hint ${s.rowHint}`}>{t.floor.moveHint}</div>
+        </div>
 
-      {canVoid && (
-        <Field label="ยกเลิกโต๊ะ" hint="ใช้เมื่อเปิดผิด — ไม่คิดเงิน และทำได้เฉพาะเมื่อยังไม่มีบิลค้างในโต๊ะ">
-          {confirmVoid ? (
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <button onClick={() => setConfirmVoid(false)} className="btn btn-ghost" style={{ flex: 1, minHeight: 44 }}>ไม่ยกเลิก</button>
-              <button
-                onClick={() => { void doVoid(); }}
-                disabled={busy}
-                className="btn"
-                style={{ flex: 1, minHeight: 44, background: 'var(--color-danger-strong)', borderColor: 'var(--color-danger-strong)', color: 'white' }}
-              >
-                {voidSession.isPending ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden /> : 'ยืนยันยกเลิก'}
-              </button>
+        {canVoid && (
+          <>
+            <hr className={s.divider} />
+            <div>
+              <div className="ui-field__label">{t.floor.voidTitle}</div>
+              {confirmVoid ? (
+                <div className={s.row}>
+                  <Button variant="secondary" className={s.grow} onClick={() => setConfirmVoid(false)}>{t.floor.voidKeep}</Button>
+                  <Button variant="danger" className={s.grow} loading={voidSession.isPending} disabled={busy} onClick={() => { void doVoid(); }}>
+                    {t.floor.voidConfirm}
+                  </Button>
+                </div>
+              ) : (
+                <Button variant="ghost" fullWidth className={s.danger} icon={<Icon name="void" size={18} />} onClick={() => setConfirmVoid(true)}>
+                  {t.floor.voidAction}
+                </Button>
+              )}
+              <div className="ui-field__hint">{t.floor.voidHint}</div>
             </div>
-          ) : (
-            <button onClick={() => setConfirmVoid(true)} className="btn btn-ghost" style={{ width: '100%', minHeight: 44, color: 'var(--color-danger)' }}>
-              <Icon name="void" size={16} /> ยกเลิกโต๊ะนี้ (ไม่คิดเงิน)
-            </button>
-          )}
-        </Field>
-      )}
+          </>
+        )}
 
-      {error && (
-        <div role="alert" style={{
-          padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)',
-          background: 'var(--color-danger-50)', color: 'var(--color-danger)', fontSize: 13, fontWeight: 600,
-        }}>
-          {error}
-        </div>
-      )}
-    </ModalShell>
-  );
-}
-
-function Badge({ children, tone }: { children: React.ReactNode; tone: 'info' | 'success' | 'warning' }) {
-  const color = tone === 'warning' ? 'var(--color-warning)' : tone === 'success' ? 'var(--color-success)' : 'var(--color-info)';
-  return (
-    <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999, border: `1px solid ${color}`, color }}>
-      {children}
-    </span>
+        {error && <Banner tone="danger" icon="warning" live="alert" title={error} />}
+      </div>
+    </Modal>
   );
 }
 

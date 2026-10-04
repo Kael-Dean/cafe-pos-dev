@@ -1,7 +1,9 @@
-import { getToken } from './token-store';
-import { AUTH_LOGIN_PATH, AUTH_REFRESH_PATH, forceLogout, refreshAccessToken } from './auth';
+import { AUTH_LOGIN_PATH, AUTH_LOGOUT_PATH, AUTH_REFRESH_PATH, LEGACY_AUTH_PATHS, forceLogout, refreshAccessToken } from './auth';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+// Always same-origin: /api/v1/* is the cookie BFF proxy that attaches the
+// bearer server-side. NEXT_PUBLIC_API_BASE_URL is intentionally no longer read
+// (audit m4): pointing the browser at Railway would bypass the BFF.
+const BASE_URL = '';
 
 /** Extras carried off the error envelope and the response headers. */
 export interface ApiErrorMeta {
@@ -45,16 +47,19 @@ class SessionExpiredError extends ApiError {
 }
 
 function isAuthPath(path: string): boolean {
-  return path.startsWith(AUTH_LOGIN_PATH) || path.startsWith(AUTH_REFRESH_PATH);
+  return [AUTH_LOGIN_PATH, AUTH_REFRESH_PATH, AUTH_LOGOUT_PATH, ...LEGACY_AUTH_PATHS].some((p) => path.startsWith(p));
 }
 
-async function doFetch(path: string, options?: RequestInit, tokenOverride?: string | null): Promise<Response> {
-  const token = tokenOverride !== undefined ? tokenOverride : getToken();
+// The session rides on HttpOnly cookies (same-origin); no Authorization header
+// is built in the browser. The third parameter is kept for signature
+// compatibility and ignored.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function doFetch(path: string, options?: RequestInit, _tokenOverride?: string | null): Promise<Response> {
   return fetch(`${BASE_URL}${path}`, {
     ...options,
+    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
     },
   });
@@ -65,9 +70,9 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
   // 401 handling — refresh once, retry once, else force logout. Skip for auth endpoints.
   if (res.status === 401 && !isAuthPath(path)) {
-    const newToken = await refreshAccessToken();
-    if (newToken) {
-      res = await doFetch(path, options, newToken);
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      res = await doFetch(path, options);
       if (res.status === 401) {
         forceLogout('expired');
         throw new SessionExpiredError();

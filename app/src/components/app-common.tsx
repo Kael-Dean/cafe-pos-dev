@@ -154,7 +154,7 @@ const readStoredGroups = (): Record<string, boolean> | null => {
 
 interface SidebarProps { current: string; onNavigate: (id: string) => void; onLogout?: () => void; branchName?: string; collapsed?: boolean; onToggle?: () => void; }
 
-export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit 49', collapsed = false, onToggle }: SidebarProps) => {
+export const Sidebar = ({ current, onNavigate, onLogout, branchName, collapsed = false, onToggle }: SidebarProps) => {
   const { t } = useI18n();
   // Role / feature filtering is shared with the phone nav — see visibleNavSections.
   const { sections: visibleSections, me, initial, roleLabel, navLabel, sectionLabel } = useVisibleNav();
@@ -208,7 +208,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
       >
         {n.icon && <Icon name={n.icon} size={18} style={{flexShrink: 0}} />}
         {!collapsed && <span className="sb-fade sb-item-label">{navLabel(n.id)}</span>}
-        {!collapsed && n.soft && <span className="sb-fade" style={{fontSize: 10, color: 'currentColor', opacity: 0.55, fontWeight: 500}}>P1</span>}
+        {!collapsed && n.soft && <span className="sb-fade" style={{fontSize: 12, color: 'currentColor', opacity: 0.7, fontWeight: 500}}>P1</span>}
       </button>
     );
   };
@@ -246,7 +246,10 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
         {!collapsed && (
           <div className="sb-fade" style={{flex: 1, minWidth: 0}}>
             <div style={{fontWeight: 700, fontSize: 15, letterSpacing: '-0.01em', whiteSpace: 'nowrap', color: 'var(--sb-text-strong)'}}>Kafé OS</div>
-            <div style={{fontSize: 11, color: 'var(--sb-text-muted)', whiteSpace: 'nowrap'}}>{me?.store_name ?? branchName}</div>
+            {/* The real store from /me; no hard-coded branch while it loads. */}
+            {(me?.store_name ?? branchName) && (
+              <div className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] text-[color:var(--sb-text-muted)]">{me?.store_name ?? branchName}</div>
+            )}
           </div>
         )}
         {onToggle && (
@@ -337,7 +340,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
           {!collapsed && (
             <div className="sb-fade" style={{flex: 1, minWidth: 0}}>
               <div style={{fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--sb-text-strong)'}}>{me?.name ?? '...'}</div>
-              <div style={{fontSize: 11, color: 'var(--sb-text-muted)'}}>{roleLabel}</div>
+              <div style={{fontSize: 12, color: 'var(--sb-text-muted)'}}>{roleLabel}</div>
             </div>
           )}
         </div>
@@ -352,7 +355,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
               cursor: 'pointer', fontFamily: 'inherit',
             }}
           >
-            <Icon name="x" size={15} />
+            <Icon name="logout" size={16} />
             <span className="sb-fade">{t.sidebar.logout}</span>
           </button>
         )}
@@ -368,7 +371,7 @@ export const Sidebar = ({ current, onNavigate, onLogout, branchName = 'Sukhumvit
               cursor: 'pointer', fontFamily: 'inherit',
             }}
           >
-            <Icon name="x" size={15} />
+            <Icon name="logout" size={16} />
           </button>
         )}
       </div>

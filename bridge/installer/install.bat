@@ -26,6 +26,14 @@ if not exist "%DST%" mkdir "%DST%"
 copy /Y "%SRC%bridge.exe"  "%DST%\bridge.exe"  >nul
 copy /Y "%SRC%server.mjs"  "%DST%\server.mjs"  >nul
 copy /Y "%SRC%nssm.exe"    "%DST%\nssm.exe"    >nul
+REM Shop token (must equal BRIDGE_TOKEN on Vercel). Kept if already installed.
+if exist "%SRC%bridge-token.txt" copy /Y "%SRC%bridge-token.txt" "%DST%\bridge-token.txt" >nul
+if not exist "%DST%\bridge-token.txt" (
+  echo.
+  echo [!] No bridge-token.txt found. The bridge will refuse print jobs until
+  echo     %DST%\bridge-token.txt contains the shop token. Ask your POS admin.
+  echo.
+)
 
 echo [2/4] Removing old service (if any)
 "%DST%\nssm.exe" stop %SVC% >nul 2>&1
@@ -48,7 +56,9 @@ timeout /t 3 /nobreak >nul
 
 echo.
 echo Testing connection...
-curl -s http://127.0.0.1:8080/status
+set "BTOKEN="
+if exist "%DST%\bridge-token.txt" set /p BTOKEN=<"%DST%\bridge-token.txt"
+curl -s -H "x-bridge-token: %BTOKEN%" http://127.0.0.1:8080/status
 echo.
 echo.
 echo ============================================

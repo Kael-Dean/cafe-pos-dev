@@ -1,0 +1,3 @@
+# Shop secret for the print bridge. Never commit it, never ship it in dist/ zips.
+bridge-token.txt
+installer/bridge-token.txt

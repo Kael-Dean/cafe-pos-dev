@@ -1,231 +1,236 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { setTokens } from '@/lib/token-store';
-import { readAndClearLogoutReason } from '@/lib/auth';
+import { AUTH_LOGIN_PATH, readAndClearLogoutReason } from '@/lib/auth';
 import { parseRetryAfter } from '@/lib/api-client';
 import { useFadeRise } from '@/lib/motion';
+import { useI18n } from '@/lib/i18n';
+import { Banner, Button, Input, Keypad, Spinner, type KeypadKey } from '@/components/ui';
+import { useOnlineStatus } from '../pwa/offline-indicator';
 import Icon from '../icons';
 import { InstallEntry } from '../pwa/install-app';
+import s from './login/login.module.css';
 
 interface Props { onLogin: () => void; }
 
-interface TokenPair {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
+/** Non-secret: which store this device belongs to (spec §2.1). */
+const STORE_KEY = 'kafe:store-slug';
+const PIN_MAX = 6;
+const PIN_MIN = 4;
+
+type LoginResult = { ok: true } | { ok: false; status: number; message: string | null; retryAfter: number | null };
+
+/**
+ * The one network call of this screen. Same-origin BFF route: the server sets
+ * HttpOnly session cookies and never returns tokens, so nothing secret is read
+ * or stored here.
+ */
+async function requestLogin(storeSlug: string, pin: string): Promise<LoginResult> {
+  const res = await fetch(AUTH_LOGIN_PATH, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ store_slug: storeSlug, pin }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // Envelope {"error": {"code", "message"}} first, FastAPI's bare "detail" second.
+    const raw = body?.error?.message ?? body?.detail;
+    return {
+      ok: false,
+      status: res.status,
+      message: typeof raw === 'string' && raw ? raw : null,
+      retryAfter: res.status === 429 ? parseRetryAfter(res) ?? 60 : null,
+    };
+  }
+  // Values are ignored since the cookie migration; this only notifies auth subscribers.
+  setTokens({ access: '' });
+  return { ok: true };
 }
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+function readStore(): string {
+  if (typeof window === 'undefined') return '';
+  try { return localStorage.getItem(STORE_KEY) ?? ''; } catch { return ''; }
+}
 
-const labelStyle: React.CSSProperties = {
-  fontSize: 'var(--fs-12)', fontWeight: 600, color: 'var(--color-text-secondary)',
-  display: 'block', marginBottom: 'var(--space-2)', letterSpacing: '0.03em', textTransform: 'uppercase',
-};
-const inputBase: React.CSSProperties = {
-  width: '100%', padding: '12px var(--space-4)', minHeight: 48,
-  background: 'var(--color-surface)',
-  border: '1px solid var(--color-border)',
-  borderRadius: 'var(--radius-md)',
-  outline: 'none', boxSizing: 'border-box',
-  color: 'var(--color-text)',
-};
+/**
+ * readAndClearLogoutReason() consumes the marker, and StrictMode runs state
+ * initialisers twice, so the first answer is cached until the next login.
+ */
+let logoutReason: string | null | undefined;
+function consumeLogoutReason(): string | null {
+  if (logoutReason === undefined) logoutReason = typeof window === 'undefined' ? null : readAndClearLogoutReason();
+  return logoutReason;
+}
 
 export default function LoginScreen({ onLogin }: Props) {
-  const [storeSlug, setStoreSlug] = useState('');
+  const { t } = useI18n();
+  const online = useOnlineStatus();
+  // The screen only renders after mount (page.tsx), so storage is readable here.
+  const [storeSlug, setStoreSlug] = useState(readStore);
+  const [editingStore, setEditingStore] = useState(() => readStore() === '');
+  const [storeDraft, setStoreDraft] = useState('');
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [expiredNotice, setExpiredNotice] = useState(false);
+  const [shakeKey, setShakeKey] = useState(0);
+  const [expiredNotice, setExpiredNotice] = useState(() => consumeLogoutReason() === 'expired');
   const [cooldown, setCooldown] = useState(0);
+  const storeInputRef = useRef<HTMLInputElement>(null);
 
-  // First screen the client sees — a single calm fade-rise on the whole card is
-  // a tasteful entrance here (one-time, not a repeated interaction). Honors
-  // prefers-reduced-motion via the hook's matchMedia routing.
+  // One calm entrance for the first screen of the day (reduced-motion aware).
   const cardRef = useFadeRise({ y: 12, duration: 0.34 });
 
-  useEffect(() => {
-    if (readAndClearLogoutReason() === 'expired') setExpiredNotice(true);
-  }, []);
-
-  // Rate-limit countdown, so a locked-out shift sees how long is left instead of
-  // hammering a button that cannot work yet.
+  // Rate-limit countdown: the pad stays disabled and shows how long is left.
   useEffect(() => {
     if (cooldown <= 0) return;
-    const id = setTimeout(() => setCooldown((s) => s - 1), 1000);
+    const id = setTimeout(() => setCooldown((c) => c - 1), 1000);
     return () => clearTimeout(id);
   }, [cooldown]);
 
-  const canSubmit = storeSlug.trim().length > 0 && pin.length >= 4 && cooldown === 0;
+  const padDisabled = loading || cooldown > 0 || !online || editingStore;
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!canSubmit || loading) return;
+  const submit = useCallback(async (value: string) => {
+    const slug = storeSlug.trim();
+    if (!slug || value.length < PIN_MIN || loading || cooldown > 0 || !online) return;
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${BASE_URL}/api/v1/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_slug: storeSlug.trim(), pin }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        // This screen predates the shared client, so it parses the envelope
-        // itself: {"error": {"code", "message"}} first, FastAPI's bare "detail"
-        // second. Without the first branch every backend message renders as the
-        // generic fallback below.
-        const raw = body?.error?.message ?? body?.detail;
-        const msg = typeof raw === 'string' && raw ? raw : 'รหัส PIN หรือ Store ID ไม่ถูกต้อง';
-        if (res.status === 429) {
-          const secs = parseRetryAfter(res) ?? 60;
-          setCooldown(secs);
-          throw new Error(`พยายามเข้าสู่ระบบถี่เกินไป รออีก ${secs} วินาทีแล้วลองใหม่`);
-        }
-        throw new Error(msg);
+      const r = await requestLogin(slug, value);
+      if (r.ok) {
+        try { localStorage.setItem(STORE_KEY, slug); } catch { /* storage blocked */ }
+        setExpiredNotice(false);
+        logoutReason = undefined; // the next logout may leave a new marker
+        onLogin();
+        return;
       }
-      const data: TokenPair = await res.json();
-      setTokens({ access: data.access_token, refresh: data.refresh_token });
-      setExpiredNotice(false);
-      onLogin();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด กรุณาลองใหม่');
+      setPin('');
+      setShakeKey((k) => k + 1);
+      if (r.retryAfter != null) {
+        setCooldown(r.retryAfter);
+        setError(t.login.cooldown(r.retryAfter));
+      } else {
+        setError(r.message ?? t.login.invalid);
+      }
+    } catch {
+      setPin('');
+      setError(t.login.genericError);
     } finally {
       setLoading(false);
     }
+  }, [storeSlug, loading, cooldown, online, onLogin, t]);
+
+  const onKey = (key: KeypadKey) => {
+    if (padDisabled) return;
+    if (key === 'enter') { void submit(pin); return; }
+    if (key === 'clear') { setPin(''); return; }
+    if (key === 'back') { setPin((p) => p.slice(0, -1)); return; }
+    if (!/^[0-9]$/.test(key)) return;
+    if (error && cooldown === 0) setError('');
+    const next = (pin + key).slice(0, PIN_MAX);
+    setPin(next);
+    if (next.length === PIN_MAX) void submit(next); // 6 digits: no ✓ needed
   };
 
-  return (
-    <main style={{
-      // 100% (not 100vw): vw ignores a classic scrollbar and can force a sideways
-      // scroll. Side / bottom safe-area insets keep the form clear of a notch or the
-      // home indicator in the installed app; the top inset is handled by <body>.
-      height: 'var(--app-h, 100dvh)', width: '100%',
-      padding: '0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px)',
-      background: 'var(--color-bg)',
-      // Centred via the child's auto margins (not place-items) so that when the
-      // install steps open on a short phone the column scrolls from the top
-      // instead of being clipped above the fold.
-      display: 'grid', overflowY: 'auto',
-    }}>
-      <div ref={cardRef} style={{
-        width: '100%', maxWidth: 400, margin: 'auto', padding: 'var(--space-6)',
-      }}>
-        {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 'var(--space-10)' }}>
-          <div style={{
-            width: 72, height: 72, borderRadius: 'var(--radius-xl)', margin: '0 auto var(--space-4)',
-            background: 'var(--color-primary)',
-            display: 'grid', placeItems: 'center',
-            boxShadow: 'var(--shadow-md)',
-          }}>
-            <Icon name="pos" size={36} color="var(--color-text-inverse)" />
-          </div>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--color-text)' }}>Kafé OS</h1>
-          <div style={{ fontSize: 'var(--fs-14)', color: 'var(--color-text-secondary)', marginTop: 'var(--space-1)' }}>
-            กรุณาเข้าสู่ระบบเพื่อดำเนินการต่อ
-          </div>
-        </div>
+  const saveStore = () => {
+    const slug = storeDraft.trim();
+    if (!slug) { storeInputRef.current?.focus(); return; }
+    setStoreSlug(slug);
+    setEditingStore(false);
+    setError('');
+  };
 
-        {/* Session-expired banner */}
-        {expiredNotice && (
-          <div
-            role="status"
-            style={{
-              marginBottom: 'var(--space-4)', padding: '10px var(--space-4)',
-              background: 'var(--color-warning-50)',
-              border: '1px solid var(--color-warning)',
-              borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-14)',
-              // --color-warning-fg, not --color-warning: the honey tone is only
-              // ~1.8:1 on its own 50 tint (see the token note in globals.css).
-              color: 'var(--color-warning-fg)', fontWeight: 500,
-              display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
-            }}
-          >
-            <Icon name="warning" size={16} color="var(--color-warning-fg)" />
-            <span>เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่</span>
+  const changeStore = () => {
+    setStoreDraft(storeSlug);
+    setEditingStore(true);
+    setPin('');
+    setError('');
+    window.setTimeout(() => storeInputRef.current?.focus(), 0);
+  };
+
+  const cooldownText = cooldown > 0 ? t.login.cooldown(cooldown) : '';
+
+  return (
+    <main className={s.screen}>
+      <div ref={cardRef} className={s.column}>
+        <header className={s.brand}>
+          <div className={s.logo} aria-hidden="true">
+            <Icon name="pos" size={32} />
           </div>
+          <h1 className={s.title}>Kafé OS</h1>
+          <p className={s.subtitle}>{t.login.subtitle}</p>
+        </header>
+
+        {!online && <Banner tone="danger" live="alert" title={t.login.offline} detail={t.login.offlineBody} />}
+        {expiredNotice && online && <Banner tone="warning" icon="warning" title={t.login.expired} />}
+
+        {editingStore ? (
+          <form className={s.storeForm} onSubmit={(e) => { e.preventDefault(); saveStore(); }}>
+            <Input
+              ref={storeInputRef}
+              label={t.login.storeLabel}
+              hint={t.login.storeHint}
+              placeholder={t.login.storePlaceholder}
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              size="lg"
+              value={storeDraft}
+              onChange={(e) => setStoreDraft(e.target.value)}
+            />
+            <Button type="submit" variant="primary" size="lg" fullWidth disabled={!storeDraft.trim()}>
+              {t.login.storeContinue}
+            </Button>
+          </form>
+        ) : (
+          <>
+            <div className={s.storeChip}>
+              <Icon name="pos" size={16} />
+              <span className={s.storeName}>{t.login.storeCurrent(storeSlug)}</span>
+              <Button variant="ghost" size="md" onClick={changeStore} disabled={loading}>{t.login.storeChange}</Button>
+            </div>
+
+            <div className={s.pinBlock}>
+              <span id="login-pin-label" className="sr-only">{t.login.pinLabel}</span>
+              <div
+                key={shakeKey}
+                className={`${s.dots} ${shakeKey > 0 ? s.shake : ''}`}
+                role="img"
+                aria-labelledby="login-pin-label"
+                aria-describedby="login-pin-progress"
+              >
+                {Array.from({ length: PIN_MAX }, (_, i) => (
+                  <span key={i} className={s.dot} data-filled={i < pin.length ? '' : undefined} />
+                ))}
+              </div>
+              <span id="login-pin-progress" className="sr-only" aria-live="polite">{t.login.pinProgress(pin.length)}</span>
+
+              <div className={s.feedback}>
+                {loading ? (
+                  <span className={s.loading} role="status"><Spinner /> {t.login.submitting}</span>
+                ) : error || cooldownText ? (
+                  <span className={s.error} role="alert">{cooldownText || error}</span>
+                ) : (
+                  <span className={s.hint}>{t.login.pinHint}</span>
+                )}
+              </div>
+
+              <Keypad
+                variant="pin"
+                onKey={onKey}
+                captureKeyboard={!padDisabled}
+                disabled={padDisabled}
+                showEnter={pin.length >= PIN_MIN && pin.length < PIN_MAX}
+                extraKey="clear"
+                ariaLabel={t.login.pinPad}
+                className={s.pad}
+              />
+            </div>
+          </>
         )}
 
-        {/* Form */}
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label htmlFor="login-store" style={labelStyle}>Store ID</label>
-            <input
-              id="login-store"
-              className="input-std"
-              type="text"
-              autoComplete="username"
-              placeholder="เช่น suk49"
-              value={storeSlug}
-              onChange={e => setStoreSlug(e.target.value)}
-              style={{ ...inputBase, fontSize: 15 }}
-            />
-          </div>
-
-          <div style={{ marginBottom: 'var(--space-2)' }}>
-            <label htmlFor="login-pin" style={labelStyle}>PIN</label>
-            <input
-              id="login-pin"
-              className="input-std num"
-              type="password"
-              autoComplete="current-password"
-              inputMode="numeric"
-              maxLength={6}
-              placeholder="4–6 หลัก"
-              value={pin}
-              onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
-              style={{ ...inputBase, fontSize: 22, letterSpacing: '0.4em' }}
-            />
-          </div>
-
-          {error && (
-            <div
-              role="alert"
-              style={{
-                marginTop: 'var(--space-4)', marginBottom: 'var(--space-2)', padding: '10px var(--space-4)',
-                background: 'var(--color-danger-50)',
-                border: '1px solid var(--color-danger)',
-                borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-14)',
-                // --color-danger-fg: plain --color-danger is ~4.1:1 on danger-50 (below AA).
-                color: 'var(--color-danger-fg)', fontWeight: 500,
-              }}
-            >
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={!canSubmit || loading}
-            aria-busy={loading || undefined}
-            className="pressable"
-            style={{
-              width: '100%', padding: '14px', minHeight: 52,
-              background: canSubmit && !loading ? 'var(--color-primary)' : 'var(--color-surface-2)',
-              color: canSubmit && !loading ? 'var(--color-text-inverse)' : 'var(--color-text-muted)',
-              border: 'none', borderRadius: 'var(--radius-md)',
-              fontSize: 15, fontWeight: 700,
-              cursor: canSubmit && !loading ? 'pointer' : 'not-allowed',
-              transition: 'background var(--dur-base) var(--ease-out)',
-              marginTop: 'var(--space-2)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
-              fontFamily: 'inherit',
-            }}
-            onMouseEnter={e => { if (canSubmit && !loading) e.currentTarget.style.background = 'var(--color-primary-700)'; }}
-            onMouseLeave={e => { if (canSubmit && !loading) e.currentTarget.style.background = 'var(--color-primary)'; }}
-          >
-            {loading ? (
-              <>
-                <span className="spinner" aria-hidden style={{ width: 16, height: 16 }} />
-                กำลังเข้าสู่ระบบ...
-              </>
-            ) : cooldown > 0 ? `รออีก ${cooldown} วินาที` : 'เข้าสู่ระบบ'}
-          </button>
-        </form>
-
-        {/* A new tablet lands here first — offer install before anyone logs in.
-            Hidden once the app is already installed. */}
+        {/* A new tablet lands here first — offer install before anyone logs in. */}
         <InstallEntry />
       </div>
     </main>

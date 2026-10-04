@@ -1,21 +1,33 @@
 #!/usr/bin/env node
-// Print bridge — receives JSON from Vercel, sends ESC/POS to local LAN printer.
-// Run on the PC that has the printer cable. Expose via cloudflared tunnel.
+// Print bridge — receives JSON from the POS web app in the browser on this PC,
+// sends ESC/POS to the local LAN / USB printer. Listens on 127.0.0.1 only.
 //
 //   node bridge/server.mjs
 //
+// Security (audit 2026-10, M3) — every request must pass ALL of:
+//   1. Host header is 127.0.0.1:<port> or localhost:<port> (blocks DNS rebinding)
+//   2. If an Origin header is present it must be on the allowlist; CORS headers
+//      are reflected for that origin only (never "*")
+//   3. x-bridge-token matches the shop token (REQUIRED; the bridge refuses to
+//      serve anything until a token is configured)
+//   4. POST/PUT bodies are Content-Type: application/json (forces a CORS preflight)
+//
 // Env:
-//   BRIDGE_PORT          default 8080
-//   BRIDGE_TOKEN         if set, require header x-bridge-token to match
-//   PRINTER_IP           overrides printer-config.json ip
-//   PRINTER_PORT         overrides printer-config.json port (default 9100)
-//   PRINTER_CONFIG_PATH  default ./app/printer-config.json (relative to repo root)
+//   BRIDGE_PORT             default 8080
+//   BRIDGE_TOKEN            shop token; else read from BRIDGE_TOKEN_FILE
+//   BRIDGE_TOKEN_FILE       default ./bridge-token.txt beside server.mjs
+//   BRIDGE_ALLOWED_ORIGINS  comma-separated extra origins (exact, e.g. a preview URL)
+//   BRIDGE_ALLOW_DEV_ORIGINS=1  also allow http://localhost:3000 / :3108 (dev only)
+//   PRINTER_IP              overrides printer-config.json ip
+//   PRINTER_PORT            overrides printer-config.json port (default 9100)
+//   PRINTER_CONFIG_PATH     default ./printer-config.json beside server.mjs
 
 import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -23,7 +35,41 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
 
 const PORT         = Number(process.env.BRIDGE_PORT ?? 8080);
-const TOKEN        = process.env.BRIDGE_TOKEN ?? null;
+
+const TOKEN_FILE   = process.env.BRIDGE_TOKEN_FILE ?? path.join(__dirname, 'bridge-token.txt');
+const MIN_TOKEN_LEN = 24;
+
+function loadToken() {
+  let t = (process.env.BRIDGE_TOKEN ?? '').trim();
+  if (!t) {
+    try { t = fs.readFileSync(TOKEN_FILE, 'utf8').replace(/^﻿/, '').trim(); } catch { t = ''; }
+  }
+  return t.length >= MIN_TOKEN_LEN ? t : null;
+}
+const TOKEN = loadToken();
+const TOKEN_BUF = TOKEN ? Buffer.from(TOKEN, 'utf8') : null;
+
+function tokenOk(supplied) {
+  if (!TOKEN_BUF || typeof supplied !== 'string') return false;
+  const a = Buffer.from(supplied, 'utf8');
+  // Compare fixed-length digests so neither length nor content leaks via timing.
+  const da = crypto.createHash('sha256').update(a).digest();
+  const db = crypto.createHash('sha256').update(TOKEN_BUF).digest();
+  return crypto.timingSafeEqual(da, db) && a.length === TOKEN_BUF.length;
+}
+
+const DEFAULT_ORIGINS = ['https://cafe-pos-sable.vercel.app'];
+const DEV_ORIGINS = [
+  'http://localhost:3000', 'http://127.0.0.1:3000',
+  'http://localhost:3108', 'http://127.0.0.1:3108',
+];
+const ALLOWED_ORIGINS = new Set([
+  ...DEFAULT_ORIGINS,
+  ...(process.env.BRIDGE_ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean),
+  ...(process.env.BRIDGE_ALLOW_DEV_ORIGINS === '1' ? DEV_ORIGINS : []),
+]);
+
+const ALLOWED_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
 const CONFIG_PATH  = (() => {
   if (process.env.PRINTER_CONFIG_PATH) return process.env.PRINTER_CONFIG_PATH;
   const beside = path.join(__dirname, 'printer-config.json');
@@ -652,20 +698,50 @@ function saveConfig(patch) {
   };
   // LAN mode still requires a valid IP; USB mode is addressed by printerName instead.
   if (updated.mode !== 'usb' && (!updated.ip || typeof updated.ip !== 'string')) throw new Error('IP ไม่ถูกต้อง');
+  // The printer target must be a literal IPv4 address and a real TCP port, so a
+  // config write can never point the bridge at a hostname or a random service.
+  if (updated.ip && !/^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(updated.ip)) throw new Error('IP ไม่ถูกต้อง');
+  if (updated.port !== undefined && !(Number.isInteger(updated.port) && updated.port >= 1 && updated.port <= 65535)) throw new Error('พอร์ตไม่ถูกต้อง');
+  for (const k of ['storeName', 'storeAddress', 'storeTaxId', 'storeBranch', 'storePhone', 'printerName']) {
+    if (typeof updated[k] === 'string' && updated[k].length > 200) throw new Error(`${k} ยาวเกินไป`);
+  }
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2), 'utf8');
   return updated;
 }
 
 /* ── HTTP server ─────────────────────────────────────────────────── */
 
-function json(res, status, obj) {
+// CORS headers only for an allow-listed Origin; any other origin gets none, so
+// the browser blocks the page from reading the response.
+function corsHeaders(req) {
+  const origin = req.headers.origin;
+  if (!origin || !ALLOWED_ORIGINS.has(origin)) return {};
+  const h = {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, x-bridge-token',
+    'Access-Control-Max-Age': '600',
+    Vary: 'Origin',
+  };
+  // Chrome Private/Local Network Access preflight: opt in for allowed origins only.
+  if (req.headers['access-control-request-private-network'] === 'true') {
+    h['Access-Control-Allow-Private-Network'] = 'true';
+  }
+  return h;
+}
+
+function json(res, status, obj, req) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, x-bridge-token',
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    ...(req ? corsHeaders(req) : {}),
   });
-  res.end(JSON.stringify(obj));
+  res.end(status === 204 ? undefined : JSON.stringify(obj));
+}
+
+function isJsonRequest(req) {
+  return /^application\/json(\s*;|$)/i.test(String(req.headers['content-type'] ?? ''));
 }
 
 function readBody(req) {
@@ -679,13 +755,36 @@ function readBody(req) {
 }
 
 const server = http.createServer(async (req, res) => {
-  if (req.method === 'OPTIONS') return json(res, 204, {});
+  // 1. DNS-rebinding guard: a hostile domain resolving to 127.0.0.1 still sends
+  //    its own name in Host.
+  const host = String(req.headers.host ?? '').toLowerCase();
+  if (!ALLOWED_HOSTS.has(host)) return json(res, 421, { ok: false, error: 'bad host' });
 
-  if (TOKEN && req.headers['x-bridge-token'] !== TOKEN) {
-    return json(res, 401, { ok: false, error: 'unauthorized' });
+  // 2. Origin allowlist. Requests without Origin (curl, PowerShell, the update
+  //    script) are not from a web page and still need the token below.
+  const origin = req.headers.origin;
+  if (origin !== undefined && !ALLOWED_ORIGINS.has(origin)) {
+    return json(res, 403, { ok: false, error: 'origin not allowed' });
+  }
+
+  if (req.method === 'OPTIONS') return json(res, 204, {}, req);
+
+  // 3. Token is mandatory.
+  if (!TOKEN) {
+    return json(res, 503, { ok: false, error: 'bridge token not configured (see bridge/README.md)' }, req);
+  }
+  if (!tokenOk(req.headers['x-bridge-token'])) {
+    return json(res, 401, { ok: false, error: 'unauthorized' }, req);
+  }
+
+  // 4. JSON-only bodies: text/plain or form posts would skip the CORS preflight.
+  if ((req.method === 'POST' || req.method === 'PUT') && !isJsonRequest(req)) {
+    return json(res, 415, { ok: false, error: 'Content-Type must be application/json' }, req);
   }
 
   const url = new URL(req.url, `http://localhost:${PORT}`);
+  // Every handler below answers with CORS headers for this (allowed) origin.
+  const reply = (status, obj) => json(res, status, obj, req);
 
   try {
     if (req.method === 'GET' && url.pathname === '/status') {
@@ -700,7 +799,7 @@ const server = http.createServer(async (req, res) => {
         ? await checkWindowsPrinter(usbName)
         : await checkPrinter(cfg.ip, cfg.port);
       // `ip` stays populated (the Hardware page reads it); for USB it carries the printer name.
-      return json(res, 200, {
+      return reply(200, {
         printer: online,
         mode: cfg.mode,
         printerName: usbName,
@@ -710,7 +809,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/printers') {
       const printers = await listWindowsPrinters();
-      return json(res, 200, { printers });
+      return reply(200, { printers });
     }
 
     if (req.method === 'POST' && url.pathname === '/print') {
@@ -741,11 +840,11 @@ const server = http.createServer(async (req, res) => {
         await sendToPrinter(cfg.ip, cfg.port, receipt);
         console.log(`[print] ok (lan)  ip=${cfg.ip}  order=${body.orderNumber}  items=${body.items?.length ?? 0}  src=${lines ? 'lines' : 'legacy'}`);
       }
-      return json(res, 200, { ok: true });
+      return reply(200, { ok: true });
     }
 
     if (req.method === 'GET' && url.pathname === '/config') {
-      return json(res, 200, loadConfig());
+      return reply(200, loadConfig());
     }
 
     if (req.method === 'PUT' && url.pathname === '/config') {
@@ -753,7 +852,7 @@ const server = http.createServer(async (req, res) => {
       const patch = JSON.parse(raw);
       const updated = saveConfig(patch);
       console.log(`[config] saved  ip=${updated.ip}  store=${updated.storeName}`);
-      return json(res, 200, { ok: true, ...updated });
+      return reply(200, { ok: true, ...updated });
     }
 
     if (req.method === 'GET' && url.pathname === '/scan') {
@@ -761,13 +860,13 @@ const server = http.createServer(async (req, res) => {
       const parts = cfg.ip.split('.');
       const subnet = parts.length === 4 ? `${parts[0]}.${parts[1]}.${parts[2]}` : '192.168.192';
       const found = await scanSubnet(subnet, cfg.port);
-      return json(res, 200, { found, subnet });
+      return reply(200, { found, subnet });
     }
 
-    return json(res, 404, { ok: false, error: 'not found' });
+    return reply(404, { ok: false, error: 'not found' });
   } catch (err) {
     console.error('[error]', err.message);
-    return json(res, 500, { ok: false, error: err.message });
+    return reply(500, { ok: false, error: err.message });
   }
 });
 
@@ -827,7 +926,8 @@ server.listen(PORT, '127.0.0.1', async () => {
   console.log(cfg.mode === 'usb'
     ? `Printer: USB "${cfg.printerName ?? '(none selected)'}"`
     : `Printer: LAN ${cfg.ip}:${cfg.port}`);
-  console.log(`Auth:    ${TOKEN ? 'token required' : 'OPEN (no token)'}`);
+  console.log(`Auth:    ${TOKEN ? 'token required' : 'NO TOKEN CONFIGURED - every request is refused (503). Put the shop token in ' + TOKEN_FILE}`);
+  console.log(`Origins: ${[...ALLOWED_ORIGINS].join(', ')}`);
   console.log(`Config:  ${CONFIG_PATH}`);
   await startup();
 });

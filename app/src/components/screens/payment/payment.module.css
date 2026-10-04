@@ -1,0 +1,166 @@
+/* Payment sheet · cash tender · QR · receipt · settle.
+   Semantic / component tokens only (app/globals.css). Motion: transform + opacity,
+   plus one stroke-dashoffset draw for the success tick (spec §8). */
+
+/* ── Dialog frame ───────────────────────────────────────────────────────── */
+.payDialog { --pay-gap: var(--space-4); }
+.payFoot { display: flex; gap: var(--space-3); width: 100%; }
+.payCancel { flex: 1 1 0; min-width: 0; }
+.payConfirm { flex: 2 1 0; min-width: 0; }
+
+.dueLabel { font-size: var(--fs-13); color: var(--color-text-secondary); }
+.bigAmount {
+  font-size: var(--fs-40); line-height: 1.1; font-weight: var(--fw-bold);
+  letter-spacing: -0.02em; color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+.verifier { margin: 0; font-size: var(--fs-13); color: var(--color-text-secondary); text-align: center; }
+
+/* ── Cash ───────────────────────────────────────────────────────────────── */
+.cash { display: grid; gap: var(--space-4); }
+.cashLedger { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.cashKeys { --key-cash: clamp(52px, calc((var(--app-h, 100dvh) - 440px) / 4), 64px); }
+
+.dueRow { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.dueValue {
+  font-size: var(--fs-32); line-height: 1.15; font-weight: var(--fw-bold);
+  color: var(--color-primary); font-variant-numeric: tabular-nums;
+}
+
+.entryRow { display: flex; gap: var(--space-2); }
+.entryField {
+  flex: 1; min-width: 0; min-height: var(--tap-pos);
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: 0 var(--space-4);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-md);
+}
+.entryField:focus-within { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+.entryLabel { flex: none; font-size: var(--fs-13); font-weight: var(--fw-semibold); color: var(--color-text-secondary); }
+.entryValue {
+  flex: 1; min-width: 0; outline: none; cursor: default;
+  font-size: var(--fs-28); line-height: 1.2; font-weight: var(--fw-bold); text-align: right;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.entryEmpty { color: var(--color-text-muted); }
+/* The field box draws the focus ring (:focus-within); no second ring on the value. */
+.entryField .entryValue:focus-visible { outline: none; box-shadow: none; }
+
+.ghostKey {
+  flex: none; min-width: var(--tap-pos); min-height: var(--tap-pos); padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-input); border-radius: var(--radius-md);
+  background: var(--color-surface); color: var(--color-text);
+  font: inherit; font-size: var(--fs-14); font-weight: var(--fw-semibold);
+  cursor: pointer; touch-action: manipulation;
+}
+.ghostKey:disabled { opacity: 0.45; cursor: default; }
+.ghostKey:focus-visible, .preset:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+
+.result {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  min-height: var(--tap-pos); padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-success-50); color: var(--color-success-fg);
+}
+.result[data-tone='short'] { background: var(--color-warning-50); color: var(--color-warning-fg); }
+.resultLabel { font-size: var(--fs-14); font-weight: var(--fw-semibold); }
+.resultValue { font-size: var(--fs-28); line-height: 1.2; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+
+.presets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); }
+.preset {
+  min-height: var(--tap-pos); padding: 0 var(--space-1);
+  border: 1px solid var(--color-border-input); border-radius: var(--radius-md);
+  background: var(--color-surface); color: var(--color-text);
+  font: inherit; font-size: var(--fs-15); font-weight: var(--fw-semibold); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer; touch-action: manipulation;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.preset:active:not(:disabled) { transform: scale(0.97); transition-duration: var(--dur-instant); }
+.preset:disabled { opacity: 0.45; cursor: default; }
+.presetExact { background: var(--color-accent-50); border-color: var(--color-accent-600); color: var(--color-accent-fg); }
+@media (hover: hover) {
+  .preset:hover:not(:disabled), .ghostKey:hover:not(:disabled) { background: var(--color-surface-2); }
+  .presetExact:hover:not(:disabled) { background: var(--color-accent-50); border-color: var(--color-accent-fg); }
+}
+
+/* Short phones: tighter rhythm so the keypad's bottom row stays in view more often. */
+@media (max-width: 639px) {
+  .cash, .cashLedger { gap: var(--space-2); }
+  /* ~624px of sheet chrome + ledger above/below the pad on a phone. */
+  .cashKeys { --key-cash: clamp(48px, calc((var(--app-h, 100dvh) - 624px) / 4), 64px); }
+  .dueValue { font-size: var(--fs-28); }
+}
+
+@media (min-width: 640px) {
+  .cash { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-5); align-items: start; }
+  .presets { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .presetExact { grid-column: span 3; }
+}
+
+/* ── QR PromptPay ───────────────────────────────────────────────────────── */
+.qr { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); text-align: center; }
+.qrAmount { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
+.qrPayee { font-size: var(--fs-13); color: var(--color-text-secondary); }
+/* Paper + ink stay light/dark in BOTH themes so any camera reads the code.
+   Tinted toward the espresso hue, not pure white / black. */
+.qrPaper {
+  width: min(240px, 100%); aspect-ratio: 1;
+  padding: var(--space-3);
+  background: #FBFAF7;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+.qrSvg { display: block; width: 100%; height: 100%; }
+.qrInk { fill: #1C140D; }
+.qrWait {
+  margin: 0; display: flex; align-items: center; justify-content: center; gap: var(--space-2);
+  font-size: var(--fs-14); color: var(--color-text-secondary); text-wrap: balance;
+}
+.waitDot {
+  flex: none; width: 8px; height: 8px; border-radius: var(--radius-pill);
+  background: var(--color-warning);
+  animation: wait-pulse 1.6s ease-in-out infinite;
+}
+@keyframes wait-pulse { 50% { opacity: 0.35; } }
+.qrChange { align-self: center; }
+
+.setup, .setupForm { display: flex; flex-direction: column; gap: var(--space-3); }
+.setup { align-items: center; text-align: center; padding: var(--space-6) var(--space-4); color: var(--color-text-secondary); }
+.setupTitle { margin: 0; font-size: var(--fs-16); font-weight: var(--fw-bold); color: var(--color-text); }
+.setupBody { margin: 0; font-size: var(--fs-14); line-height: 1.5; color: var(--color-text-secondary); }
+.setupActions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+
+/* ── Card / LINE manual confirm ─────────────────────────────────────────── */
+.manual { display: flex; flex-direction: column; gap: var(--space-4); }
+.manualAmount { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
+.manualStep {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-2);
+  color: var(--color-primary);
+}
+.manualTitle { margin: 0; font-size: var(--fs-16); font-weight: var(--fw-bold); color: var(--color-text); }
+.manualSub { margin: var(--space-1) 0 0; font-size: var(--fs-14); line-height: 1.5; color: var(--color-text-secondary); }
+
+/* ── Success tick (240ms draw) ──────────────────────────────────────────── */
+.success { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: var(--space-6) 0; text-align: center; }
+.tick { width: 72px; height: 72px; }
+.tickRing { fill: var(--color-success-50); stroke: var(--color-success-strong); stroke-width: 2; }
+.tickMark {
+  fill: none; stroke: var(--color-success-strong); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 40; stroke-dashoffset: 40;
+  animation: tick-draw var(--dur-slow) var(--ease-out) forwards;
+}
+@keyframes tick-draw { to { stroke-dashoffset: 0; } }
+.successTitle { margin: var(--space-2) 0 0; font-size: var(--fs-20, 20px); font-weight: var(--fw-bold); }
+.successChange { margin: 0; font-size: var(--fs-16); color: var(--color-text-secondary); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tickMark { animation: none; stroke-dashoffset: 0; }
+  .waitDot { animation: none; }
+  .preset { transition: none; }
+}
