@@ -16,6 +16,7 @@
     "test:e2e": "playwright test",
     "test:unit": "vitest run",
     "test:e2e:install": "playwright install chromium",
+    "capture:screens": "playwright test -c playwright.capture.config.ts",
     "test:all": "vitest run && playwright test"
   },
   "pnpm": {

@@ -39,7 +39,7 @@ export interface MockOrder {
   channel: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY';
   total: string;
   created_at: string;
-  items: { product_name: string; quantity: number; modifiers_json: null }[];
+  items: { product_name: string; quantity: number; modifiers_json: Record<string, unknown> | null }[];
   idempotency_key?: string;
   session_id?: string | null;
 }
@@ -67,12 +67,19 @@ export class MockApi {
 
   role: Role = 'OWNER';
   features: string[] = [];
+  /** Catalogue served by GET /categories, /products, /products/:id and priced by POST /orders.
+   *  Defaults to the small shared fixture; a spec may swap in a larger one (e.g. the visual capture). */
+  categories: typeof CATEGORIES = CATEGORIES;
+  products: MockProduct[] = PRODUCTS;
   /** Next N `PATCH /orders/:id/pay` answer 500 (payment failure injection). */
   failPay = 0;
   /** Next N `POST /orders` answer 500 (order-creation failure injection). */
   failCreate = 0;
   /** Extra handlers a spec can add; first one returning true wins. */
   extra: Array<(c: Call, route: Route, self: MockApi) => Promise<boolean> | boolean> = [];
+  /** Clock for server-side timestamps (`created_at` of new orders). Real time by default; a spec
+   *  that pins the page clock (page.clock) should pin this too so receipts show the same time. */
+  now: () => Date = () => new Date();
 
   private seq = 100;
 
@@ -92,7 +99,7 @@ export class MockApi {
       receipt_no: `IV2569-${String(n).padStart(4, '0')}`,
       channel: 'DINE_IN',
       total: '60.00',
-      created_at: new Date().toISOString(),
+      created_at: this.now().toISOString(),
       items: [{ product_name: 'ลาเต้ร้อน', quantity: 1, modifiers_json: null }],
       ...partial,
     };
@@ -160,9 +167,9 @@ export class MockApi {
     if (m === 'GET' && p === '/api/v1/me/features') { await json(route, 200, { features: this.features }); return true; }
 
     // ── catalogue ──
-    if (m === 'GET' && p === '/api/v1/categories') { await json(route, 200, CATEGORIES); return true; }
+    if (m === 'GET' && p === '/api/v1/categories') { await json(route, 200, this.categories); return true; }
     if (m === 'GET' && p === '/api/v1/products') {
-      await json(route, 200, PRODUCTS.map((x) => ({
+      await json(route, 200, this.products.map((x) => ({
         id: x.id, store_id: STORE_ID, category_id: x.category_id, name: x.name, description: null, price: x.price,
         is_active: true, product_type: 'MADE_TO_ORDER', servings_per_batch: 1, finished_goods_item_id: null, image_url: null,
       })));
@@ -170,7 +177,7 @@ export class MockApi {
     }
     const prod = /^\/api\/v1\/products\/([^/]+)$/.exec(p);
     if (m === 'GET' && prod) {
-      const x = PRODUCTS.find((q) => q.id === prod[1]);
+      const x = this.products.find((q) => q.id === prod[1]);
       if (!x) { await json(route, 404, { error: { code: 'NOT_FOUND', message: 'no product' } }); return true; }
       await json(route, 200, { id: x.id, name: x.name, price: x.price, modifier_groups: x.modifier_groups ?? [] });
       return true;
@@ -204,7 +211,7 @@ export class MockApi {
       if (dup) { await json(route, 200, dup); return true; }
       let total = 0;
       const items = b.items.map((it) => {
-        const prodRow = PRODUCTS.find((q) => q.id === it.product_id)!;
+        const prodRow = this.products.find((q) => q.id === it.product_id)!;
         total += Number(prodRow.price) * it.quantity;
         return { product_name: prodRow.name, quantity: it.quantity, modifiers_json: null };
       });
