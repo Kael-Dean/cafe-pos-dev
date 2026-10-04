@@ -2,8 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import Icon from '../icons';
-import { Tag, baht, NumberInput, MasterDetail } from '../app-common';
-import { useToast } from '../ui/toast';
+import { useToast, Tag, baht, NumberInput, MasterDetail } from '../app-common';
 import { useIsPhone } from '@/hooks/use-media-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAllProducts, useUpdateProduct, type MenuItem } from '@/hooks/use-products';

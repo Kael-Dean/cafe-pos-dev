@@ -1,4 +1,4 @@
-import { test as base, expect, type Locator, type Page } from '@playwright/test';
+import { test as base, expect, type Page } from '@playwright/test';
 import { MockApi } from './mock-api';
 
 type Fixtures = {
@@ -24,36 +24,6 @@ export const test = base.extend<Fixtures>({
 });
 
 export { expect };
-
-/** Sidebar entry on tablet/desktop, bottom tab bar on phones. */
-export async function navTo(page: Page, id: 'pos' | 'kds' | 'floor', label: string): Promise<void> {
-  const side: Locator = page.locator(`[data-nav-id="${id}"]`);
-  if (await side.isVisible()) {
-    await side.click();
-    return;
-  }
-  void label; // (kept for readable call sites; phones use the stable tab id)
-  await page.locator(`[data-tab-id="${id}"]`).click();
-}
-
-export const isPhone = (page: Page) => (page.viewportSize()?.width ?? 1024) < 768;
-
-/** Current `?screen=` value ('pos' when absent). */
-export const screenParam = (page: Page) => new URL(page.url()).searchParams.get('screen') ?? 'pos';
-
-export const baht = (n: number) => `฿${n.toLocaleString('en-US')}`;
-
-/**
- * Drives the "/" shortcut. Desktop POS auto-focuses the search box on mount, and the
- * typing guard (by design) lets "/" through as a literal character while a field has
- * focus, so blur first to exercise the shortcut itself.
- */
-export async function focusSearchWithSlash(page: Page): Promise<void> {
-  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  await page.keyboard.press('Slash');
-  await expect(page.getByPlaceholder('ค้นหาเมนู')).toBeFocused();
-  await expect(page.getByPlaceholder('ค้นหาเมนู')).toHaveValue('');
-}
 
 /**
  * Types a PIN on the physical keyboard. Waits for the pad to be mounted first (keys sent

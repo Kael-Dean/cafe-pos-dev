@@ -1,159 +1,65 @@
 @import "tailwindcss";
-/* Component-layer styles for the primitives in src/components/ui (unlayered, like
-   the rest of this file, so they beat the base `button { … }` reset below). */
-@import "../components/ui/ui.css";
 
-/* ════════════════════════════════════════════════════════════════
-   Cafe POS — Design Tokens (three layers)
-
-   1. PRIMITIVE  raw palette: --brown-*, --caramel-*, --cream-*, --ink-*,
-                 --green-*, --honey-*, --berry-*, --blue-*. OKLCH, the sRGB hex
-                 they were measured from in the trailing comment. NEVER read
-                 these from a screen or component — they do not change with the
-                 theme.
-   2. SEMANTIC   theme-aware roles: --color-primary, --color-surface,
-                 --color-text-secondary, --color-*-fg / *-strong … Every name the
-                 37 existing screens use is kept. [data-theme='dark'],
-                 .surface-inverse and .surface-paper only re-point THIS layer.
-   3. COMPONENT  per-primitive knobs that reference the semantic layer:
-                 --btn-*, --input-*, --tap-*, --cart-w, --pay-charge-h …
-
-   Contrast pairs (WCAG 2.2 AA) are noted inline; ratios were computed from the
-   hex sources. Spec: docs/specs/UI-SPEC-core.md §7.
-   ════════════════════════════════════════════════════════════════ */
+/* Cafe POS — Design Tokens
+   Source of truth for colors, type, spacing, radii, shadows.
+   Brand direction: Professional + warm, modern minimal, high contrast. */
 
 :root {
-  /* ---------- 1. Primitives ---------- */
-  /* Espresso browns — warm neutrals for dark surfaces and the brand ink. */
-  --brown-950: oklch(19.66% 0.0151 66.76);  /* #1A140E dark bg */
-  --brown-925: oklch(19.90% 0.0187 62.62);  /* #1C140D ink on caramel */
-  --brown-900: oklch(23.04% 0.0204 63.17);  /* #241B13 dark surface */
-  --brown-850: oklch(23.54% 0.0322 54.99);  /* #2A1A0F espresso deep */
-  --brown-800: oklch(26.87% 0.0232 66.57);  /* #2E241A dark surface-2 */
-  --brown-750: oklch(31.09% 0.0269 66.57);  /* #3A2E22 dark border */
-  --brown-700: oklch(29.80% 0.0421 59.19);  /* #3D2817 espresso (brand) */
-  --brown-650: oklch(37.81% 0.0311 68.60);  /* #4D3F30 dark border-strong */
-  --brown-550: oklch(56.41% 0.0338 73.58);  /* #827360 dark input border */
-  --brown-400: oklch(67.89% 0.0324 78.68);  /* #A39682 dark muted text */
-  --brown-300: oklch(75.01% 0.0263 75.20);  /* #B8AC9C dark secondary text */
-  --brown-200: oklch(82.98% 0.0631 74.70);  /* #E0C29A dark primary */
-  --brown-150: oklch(90.35% 0.0432 76.33);  /* #F0DCC0 */
-  --brown-50:  oklch(95.46% 0.0125 75.37);  /* #F5EFE7 */
-  /* Caramel — the accent. */
-  --caramel-50:  oklch(96.74% 0.0169 76.11); /* #FBF3E8 */
-  --caramel-300: oklch(81.75% 0.0747 71.81); /* #E2BC8E */
-  --caramel-500: oklch(75.41% 0.0853 67.10); /* #D4A574 */
-  --caramel-600: oklch(66.51% 0.0853 65.46); /* #B8895A fills/hover only, 3.1:1 as text */
-  --caramel-700: oklch(51.07% 0.0888 62.82); /* #8A5A2B caramel text */
-  --caramel-800: oklch(50.87% 0.1017 70.44); /* #8A5A14 deep amber (focus) */
-  /* Cream — light warm neutrals. cream-0 is the incumbent white card surface. */
-  --cream-0:   oklch(100% 0 0);              /* #FFFFFF */
-  --cream-50:  oklch(97.71% 0.0074 80.72);   /* #FAF7F2 */
-  --cream-100: oklch(96.53% 0.0102 81.80);   /* #F7F3EC app bg */
-  --cream-150: oklch(95.90% 0.0115 84.58);   /* #F5F1E9 surface-2 */
-  --cream-200: oklch(90.76% 0.0157 86.43);   /* #E5E0D5 divider */
-  --cream-300: oklch(81.53% 0.0233 87.16);   /* #C9C2B2 */
-  --cream-500: oklch(62.07% 0.0276 81.05);   /* #8F8574 input boundary */
-  /* Ink — text on light surfaces. */
-  --ink-900: oklch(21.78% 0 0);              /* #1A1A1A */
-  --ink-600: oklch(47.39% 0.0173 264.40);    /* #575C66 */
-  --ink-550: oklch(50.29% 0.0151 266.59);    /* #60646D */
-  /* Status hues. */
-  --green-50:  oklch(95.36% 0.0129 141.81);  /* #EBF2EA */
-  --green-300: oklch(70.88% 0.0897 143.62);  /* #7FB07D */
-  --green-500: oklch(58.71% 0.0877 143.41);  /* #5C8A5A matcha */
-  --green-600: oklch(51.85% 0.0842 143.25);  /* #4A7548 */
-  --green-700: oklch(48.24% 0.0886 143.15);  /* #3E6B3C */
-  --green-950: oklch(29.01% 0.0364 141.66);  /* #21301F */
-  --honey-50:  oklch(96.12% 0.0261 82.39);   /* #FBF1DF */
-  --honey-400: oklch(80.97% 0.1110 78.31);   /* #E8B86A */
-  --honey-500: oklch(77.80% 0.1277 72.98);   /* #E8A951 honey */
-  --honey-800: oklch(46.32% 0.0934 69.37);   /* #7A4E10 */
-  --honey-950: oklch(28.46% 0.0327 77.75);   /* #332817 */
-  --berry-50:  oklch(93.63% 0.0197 17.51);   /* #F7E5E5 */
-  --berry-300: oklch(69.32% 0.1268 20.85);   /* #E07A7A */
-  --berry-500: oklch(56.39% 0.1605 23.81);   /* #C24545 berry */
-  --berry-700: oklch(49.53% 0.1543 24.76);   /* #A83232 */
-  --berry-950: oklch(27.79% 0.0405 19.96);   /* #3A2020 */
-  --blue-50:  oklch(94.04% 0.0143 254.61);   /* #E5ECF5 */
-  --blue-300: oklch(69.79% 0.0876 256.38);   /* #7AA0D4 */
-  --blue-500: oklch(53.83% 0.0952 257.76);   /* #4A6FA5 */
-  --blue-700: oklch(46.46% 0.0843 257.47);   /* #3A5A88 */
-  --blue-950: oklch(28.16% 0.0340 255.80);   /* #1E2A3A */
+  /* ---------- Colors ---------- */
+  --color-primary: #3D2817;       /* Espresso */
+  --color-primary-700: #2A1A0F;
+  --color-primary-50: #F5EFE7;
 
-  /* ---------- 2. Semantic colours (light) ---------- */
-  --color-primary: var(--brown-700);         /* Espresso — white on it 13.87:1 */
-  --color-primary-700: var(--brown-850);
-  --color-primary-50: var(--brown-50);
+  --color-accent: #D4A574;        /* Caramel */
+  --color-accent-600: #B8895A;
+  --color-accent-50: #FBF3E8;
 
-  --color-accent: var(--caramel-500);        /* Caramel — fills only */
-  --color-accent-600: var(--caramel-600);    /* hover fill. NOT for text (3.1:1) */
-  --color-accent-50: var(--caramel-50);
-  /* Caramel as TEXT: 5.87:1 on surface, 5.33:1 on accent-50. Replaces
-     --color-accent-600-as-text (spec §7.2). */
-  --color-accent-fg: var(--caramel-700);
+  --color-bg: #F7F3EC;            /* Cream (warm) */
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F5F1E9;
 
-  --color-bg: var(--cream-100);              /* Cream (warm) */
-  --color-surface: var(--cream-0);
-  --color-surface-2: var(--cream-150);
+  --color-text: #1A1A1A;
+  --color-text-secondary: #6B7280;
+  /* Muted darkened from #9CA3AF (2.5:1, AA fail) to clear 4.5:1 body text on
+     surface/cream while staying lighter than --color-text-secondary. */
+  --color-text-muted: #6C7079;
+  --color-text-inverse: #FFFFFF;
 
-  --color-text: var(--ink-900);
-  /* #6B7280 → #575C66: 4.29 → 5.96:1 on surface-2 (cart totals at 12–13px). */
-  --color-text-secondary: var(--ink-600);
-  /* #6C7079 → #60646D: 4.41 → 5.26:1 on surface-2, 5.93:1 on surface. */
-  --color-text-muted: var(--ink-550);
-  --color-text-inverse: var(--cream-0);
+  --color-success: #5C8A5A;       /* Matcha */
+  --color-success-50: #EBF2EA;
+  --color-warning: #E8A951;       /* Honey */
+  --color-warning-50: #FBF1DF;
+  /* Foreground for text/icons on --color-warning-50. The honey --color-warning
+     itself is only ~1.8:1 on its own 50 tint, so status chips need a darker
+     amber. Theme-aware: deep amber on the light tint, light honey on the dark
+     tint. Both ≥4.5:1. Use this for any "warning" Tag / pill foreground. */
+  --color-warning-fg: #7A4E10;
+  --color-danger: #C24545;        /* Berry */
+  --color-danger-50: #F7E5E5;
+  /* Darker berry for danger TEXT on light surfaces and for solid danger FILLS
+     that carry white text. The base --color-danger (#C24545) is only ~4.4:1 as
+     text on --color-surface-2 (fails AA) and ~5:1 as a white-text fill; this
+     deeper berry reads ≥5.4:1 as text on every light surface and ≥6.6:1 with
+     white text. Mirrors the --color-warning-fg pattern. */
+  --color-danger-fg: #A83232;
+  --color-danger-strong: #A83232;
+  --color-info: #4A6FA5;
+  --color-info-50: #E5ECF5;
 
-  --color-success: var(--green-500);         /* Matcha — icons/borders */
-  --color-success-50: var(--green-50);
-  /* Success TEXT: 5.46:1 on success-50, 6.23:1 on surface. */
-  --color-success-fg: var(--green-700);
-  /* Success FILL carrying white text: 5.34:1 (white on #5C8A5A is only 4.01). */
-  --color-success-strong: var(--green-600);
-  --color-warning: var(--honey-500);         /* Honey — fills/icons */
-  --color-warning-50: var(--honey-50);
-  /* Warning TEXT on warning-50: 6.41:1 light / 7.89:1 dark. */
-  --color-warning-fg: var(--honey-800);
-  --color-danger: var(--berry-500);          /* Berry — icons/borders */
-  --color-danger-50: var(--berry-50);
-  /* Danger TEXT (5.46:1 on danger-50) and danger FILL with white text (6.63:1). */
-  --color-danger-fg: var(--berry-700);
-  --color-danger-strong: var(--berry-700);
-  --color-info: var(--blue-500);             /* fill: white on it 5.11:1 */
-  --color-info-50: var(--blue-50);
-  /* Info TEXT: --color-info on info-50 is only 4.30:1 → deeper blue, 5.89:1. */
-  --color-info-fg: var(--blue-700);
-  /* KDS status NEW = --color-status-new (alias of --color-info, declared with
-     the component tokens) so status never shares a hue with urgency
-     (urgency = warning / danger). */
-
-  --color-border: var(--cream-200);          /* dividers only (1.32:1) */
-  --color-border-strong: var(--cream-300);
-  /* WCAG 1.4.11 boundary for inputs / steppers / outline buttons: 3.64:1 on
-     surface, 3.29:1 on bg, 3.23:1 on surface-2. (Spec proposed #958B7A, which
-     dips to 2.98:1 on surface-2; nudged one step darker.) */
-  --color-border-input: var(--cream-500);
+  --color-border: #E5E0D5;
+  --color-border-strong: #C9C2B2;
 
   /* Ink for text/icons sitting ON the caramel --color-accent fill (buttons,
-     chips). --color-accent is the same caramel in both themes, so this near-black
-     espresso ink is theme-agnostic and reads 8.17:1 on it (8.85:1 on honey). */
-  --color-on-accent: var(--brown-925);
-  /* Ink on the solid status fills (danger-strong / success-strong). These fills
-     stay deep in both themes, so the ink stays white. (--color-on-primary, which
-     flips with the theme, is declared with the component tokens below.) */
-  --color-on-strong: var(--cream-0);
-  --color-on-info: var(--cream-0);           /* white on info 5.11:1 */
-  /* Ink on the always-dark espresso surfaces (.surface-inverse: sidebar in dark
-     mode, KDS). Theme-independent; use with color-mix alpha for quiet states. */
-  --color-on-inverse: var(--brown-50);
+     chips). --color-accent is the same #D4A574 in both themes, so this near-black
+     espresso ink is theme-agnostic and reads ≥8:1 on it. Avoids the dark-mode
+     bug where --color-primary-700 inverts to a light tone (~1.7:1 on accent). */
+  --color-on-accent: #1C140D;
 
-  /* Keyboard focus ring colour. The caramel accent is only ~2.2:1 on white
-     (fails WCAG 1.4.11), so light mode uses a deep amber (5.25:1+ on every light
-     surface). Dark mode and .surface-inverse override it back to caramel. */
-  --color-focus-ring: var(--caramel-800);
-
-  /* Scrim behind modals and sheets (espresso-tinted, never pure black). */
-  --color-scrim: oklch(19.66% 0.0151 66.76 / 0.45);
+  /* Keyboard focus ring colour. The global outline lands on light app surfaces
+     here; the caramel --color-accent is only ~2.2:1 on white (fails WCAG 1.4.11),
+     so light mode uses a deep amber (≥5:1 on every light surface). Dark mode and
+     the always-dark .surface-inverse override it back to caramel (≥7:1 there). */
+  --color-focus-ring: #8A5A14;
 
   /* ---------- Sidebar (theme-aware) ----------
      The left nav is a LIGHT greige panel in light mode (matches the app's warm
@@ -164,7 +70,7 @@
   --sb-border: #DAD1BF;
   --sb-text: #4E4030;                /* nav labels (8.2:1) */
   --sb-text-strong: #2A1A0F;         /* logo title, user name */
-  --sb-text-muted: #66573F;          /* store name, role, P1 (5.6:1 on --sb-bg, 5.1:1 on the user-card tint) */
+  --sb-text-muted: #70614A;          /* store name, role, P1 (4.8:1) */
   --sb-hover: rgba(61,40,23,0.06);
   --sb-press: rgba(61,40,23,0.12);
   --sb-active-bg: #FCFAF6;            /* raised light pill (matches ref) */
@@ -191,17 +97,12 @@
   --font-sans: var(--font-anuphan), "Inter", "Sukhumvit Set", "IBM Plex Sans Thai", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-num: "Inter", "SF Mono", ui-monospace, monospace;
 
-  /* Floor: nothing below 12px. POS/KDS secondary text ≥13px, item names ≥15px. */
   --fs-12: 12px;
-  --fs-13: 13px;
   --fs-14: 14px;
-  --fs-15: 15px;
   --fs-16: 16px;
   --fs-20: 20px;
   --fs-24: 24px;
-  --fs-28: 28px;   /* change due */
-  --fs-32: 32px;   /* cart total */
-  --fs-40: 40px;   /* payment total */
+  --fs-32: 32px;
   --fs-48: 48px;
 
   --fw-regular: 400;
@@ -235,142 +136,11 @@
   --shadow-lg: 0 16px 40px rgba(61, 40, 23, 0.12), 0 4px 8px rgba(61, 40, 23, 0.06);
   --shadow-focus: 0 0 0 3px rgba(212, 165, 116, 0.35);
 
-  /* ---------- Motion (spec §8: motion confirms, never delays) ---------- */
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);      /* entrances */
-  --ease-in: cubic-bezier(0.4, 0, 1, 1);           /* exits */
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1);     /* press, state changes */
-  --dur-instant: 80ms;   /* press-in */
-  --dur-fast: 120ms;     /* press-out, exits, screen switch */
-  --dur-base: 180ms;     /* modal enter, cross-fades */
-  --dur-slow: 240ms;     /* was 280 — success tick, phone sheet ≈ 220–240 */
-}
-
-/* ---------- 3. Component tokens ----------
-   Declared on every theme island as well as :root. A custom property that
-   references another one is resolved where it is DECLARED and then inherited as
-   a value, so --btn-primary-bg set only on :root would ignore the re-pointed
-   --color-primary inside .surface-paper / .surface-inverse. Re-declaring here
-   makes each island compute its own component values. Aliases between semantic
-   tokens (--color-on-primary, --color-status-new) live here for the same reason. */
-:root,
-.surface-inverse,
-.surface-paper {
-  --color-on-primary: var(--color-text-inverse);
-  --color-status-new: var(--color-info);
-
-  /* Touch targets (spec §4.3). */
-  --tap-min: 44px;   /* every interactive element */
-  --tap-pos: 56px;   /* POS secondary actions, chips, steppers on touch */
-  --tap-pay: 64px;   /* Charge, payment confirm, "next order" */
-  --tap-pin: 72px;   /* PIN keys ≥768px */
-
-  /* Button */
-  --btn-h-sm: 36px;  /* desktop admin only; gets a 44px hit area */
-  --btn-h-md: var(--tap-min);
-  --btn-h-lg: var(--tap-pos);
-  --btn-h-xl: var(--tap-pay);
-  --btn-radius: var(--radius-md);
-  --btn-primary-bg: var(--color-primary);
-  --btn-primary-bg-hover: var(--color-primary-700);
-  --btn-primary-fg: var(--color-on-primary);
-  --btn-secondary-bg: var(--color-surface);
-  --btn-secondary-bg-hover: var(--color-surface-2);
-  --btn-secondary-fg: var(--color-text);
-  --btn-secondary-border: var(--color-border-input);
-  --btn-ghost-fg: var(--color-text);
-  --btn-ghost-bg-hover: var(--color-surface-2);
-  --btn-danger-bg: var(--color-danger-strong);
-  --btn-danger-fg: var(--color-on-strong);
-  --btn-accent-bg: var(--color-accent);
-  --btn-accent-bg-hover: var(--color-accent-600);
-  --btn-accent-fg: var(--color-on-accent);
-  --press-scale: 0.97;
-
-  /* Pay actions */
-  --pay-charge-h: var(--tap-pay);
-  --pay-method-h: var(--tap-pos);
-
-  /* Inputs */
-  --input-h-md: var(--tap-min);
-  --input-h-lg: var(--tap-pos);
-  --input-bg: var(--color-surface);
-  --input-fg: var(--color-text);
-  --input-border: var(--color-border-input);
-  --input-border-invalid: var(--color-danger-fg);
-  --input-placeholder: var(--color-text-muted);
-
-  /* Keypad */
-  --key-cash: var(--tap-pay);
-  --key-pin: var(--tap-pay);  /* 72 at ≥768, below */
-
-  /* Overlays */
-  --modal-w-sm: 400px;
-  --modal-w-md: 560px;
-  --modal-w-lg: 640px;
-  --sheet-w-side: 440px;
-
-  /* POS layout */
-  --cart-w: 352px;            /* 1024–1439; 320 at 768–1023; 400 at ≥1440 */
-  --menu-card-min: 132px;     /* 140 at ≥1440 */
-  --menu-tile-h: 72px;
-
-  /* KDS: urgency is a timer chip + edge, status is label + icon (never one hue). */
-  --kds-ticket-border-urgent: var(--color-danger);
-  --kds-ticket-border-warn: var(--color-warning);
-  --kds-status-new: var(--color-status-new);
-}
-@media (min-width: 768px) {
-  :root, .surface-inverse, .surface-paper { --key-pin: var(--tap-pin); }
-}
-@media (min-width: 768px) and (max-width: 1023px) {
-  :root, .surface-inverse, .surface-paper { --cart-w: 320px; }
-}
-@media (min-width: 1440px) {
-  :root, .surface-inverse, .surface-paper { --cart-w: 400px; --menu-card-min: 140px; }
-}
-
-/* Tailwind v4 bridge: utilities (bg-surface, text-text-secondary, border-border-input,
-   duration-fast, ease-standard …) resolve to the SAME runtime variables as the
-   inline var() reads, so they follow the theme. `inline` makes each utility emit
-   var(--color-…) rather than a frozen value. */
-@theme inline {
-  --color-primary: var(--color-primary);
-  --color-primary-700: var(--color-primary-700);
-  --color-primary-50: var(--color-primary-50);
-  --color-accent: var(--color-accent);
-  --color-accent-50: var(--color-accent-50);
-  --color-accent-fg: var(--color-accent-fg);
-  --color-bg: var(--color-bg);
-  --color-surface: var(--color-surface);
-  --color-surface-2: var(--color-surface-2);
-  --color-text: var(--color-text);
-  --color-text-secondary: var(--color-text-secondary);
-  --color-text-muted: var(--color-text-muted);
-  --color-text-inverse: var(--color-text-inverse);
-  --color-success: var(--color-success);
-  --color-success-50: var(--color-success-50);
-  --color-success-fg: var(--color-success-fg);
-  --color-warning: var(--color-warning);
-  --color-warning-50: var(--color-warning-50);
-  --color-warning-fg: var(--color-warning-fg);
-  --color-danger: var(--color-danger);
-  --color-danger-50: var(--color-danger-50);
-  --color-danger-fg: var(--color-danger-fg);
-  --color-info: var(--color-info);
-  --color-info-50: var(--color-info-50);
-  --color-info-fg: var(--color-info-fg);
-  --color-border: var(--color-border);
-  --color-border-strong: var(--color-border-strong);
-  --color-border-input: var(--color-border-input);
-  --color-focus-ring: var(--color-focus-ring);
-  --color-on-accent: var(--color-on-accent);
-  --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
-  --radius-xl: var(--radius-xl);
-  --ease-out: var(--ease-out);
-  --ease-in: var(--ease-in);
-  --ease-standard: var(--ease-standard);
+  /* ---------- Motion ---------- */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 280ms;
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -387,58 +157,48 @@
   /* Brand — note: in dark mode the *primary* ramp inverts (light caramel on
      dark) so primary-as-text reads on dark surfaces. Surfaces that must stay
      dark (sidebar, KDS) use .surface-inverse instead of these tokens. */
-  --color-primary: var(--brown-200);          /* dark text on it 10.74:1 */
-  --color-primary-700: var(--brown-150);
-  --color-primary-50: var(--brown-800);
+  --color-primary: #E0C29A;
+  --color-primary-700: #F0DCC0;
+  --color-primary-50: #2E241A;
 
-  --color-accent: var(--caramel-500);
-  --color-accent-600: var(--caramel-300);
-  --color-accent-50: var(--brown-800);
-  --color-accent-fg: var(--caramel-300);      /* 8.54:1 on surface-2 */
+  --color-accent: #D4A574;
+  --color-accent-600: #E2BC8E;
+  --color-accent-50: #2E241A;
 
-  --color-bg: var(--brown-950);
-  --color-surface: var(--brown-900);
-  --color-surface-2: var(--brown-800);
+  --color-bg: #1A140E;
+  --color-surface: #241B13;
+  --color-surface-2: #2E241A;
 
-  --color-text: var(--brown-50);              /* 14.81:1 on surface */
-  --color-text-secondary: var(--brown-300);   /* 6.81:1 on surface-2 */
-  /* #968A78 → #A39682: 4.48 → 5.23:1 on surface-2. */
-  --color-text-muted: var(--brown-400);
-  --color-text-inverse: var(--brown-950);
+  --color-text: #F5EFE7;
+  --color-text-secondary: #B8AC9C;
+  --color-text-muted: #968A78;
+  --color-text-inverse: #1A140E;
 
-  --color-success: var(--green-300);
-  --color-success-50: var(--green-950);
-  --color-success-fg: var(--green-300);       /* 5.58:1 on success-50, 6.08 on surface-2 */
-  --color-success-strong: var(--green-700);   /* white on it 6.23:1 */
-  --color-warning: var(--honey-400);
-  --color-warning-50: var(--honey-950);
-  /* Light honey on the dark warning tint — the deep amber would only be
-     ~3.1:1 here, so dark mode lifts it to 7.89:1. */
-  --color-warning-fg: var(--honey-400);
-  --color-danger: var(--berry-300);
-  --color-danger-50: var(--berry-950);
-  /* Danger TEXT on dark surfaces stays the light berry (5.14:1 on danger-50,
-     5.23:1 on surface-2). Danger FILLS with white text use the deeper berry
-     (6.63:1; the light #E07A7A would only be ~2.9:1). */
-  --color-danger-fg: var(--berry-300);
-  --color-danger-strong: var(--berry-700);
-  --color-info: var(--blue-300);              /* dark ink on it 6.79:1 */
-  --color-info-50: var(--blue-950);
-  --color-info-fg: var(--blue-300);           /* 5.39:1 on info-50 */
+  --color-success: #7FB07D;
+  --color-success-50: #21301F;
+  --color-warning: #E8B86A;
+  --color-warning-50: #332817;
+  /* Light honey on the dark warning tint — #7A4E10 (light fg) would only be
+     ~3.1:1 here, so dark mode lifts it to ~7.9:1. */
+  --color-warning-fg: #E8B86A;
+  --color-danger: #E07A7A;
+  --color-danger-50: #3A2020;
+  /* Danger TEXT on dark surfaces stays the light berry (≥5.2:1 on surface-2);
+     a deep berry would vanish here. Danger FILLS with white text use the deeper
+     berry so white reads ≥6.6:1 (the light #E07A7A would only be ~2.9:1). */
+  --color-danger-fg: #E07A7A;
+  --color-danger-strong: #A83232;
+  --color-info: #7AA0D4;
+  --color-info-50: #1E2A3A;
 
-  --color-border: var(--brown-750);
-  --color-border-strong: var(--brown-650);
-  /* Input boundary: 3.30:1 on surface-2, 3.68 on surface, 3.97 on bg. */
-  --color-border-input: var(--brown-550);
+  --color-border: #3A2E22;
+  --color-border-strong: #4D3F30;
 
   /* On dark surfaces the caramel accent already reads ≥7:1, so the focus ring
      stays caramel here (a deep amber would vanish on the dark background). */
-  --color-focus-ring: var(--caramel-500);
-  /* --color-on-accent stays brown-925: accent fill is the same caramel in both
-     themes, so the espresso ink keeps its 8.17:1 contrast.
-     --color-on-strong stays white: the strong fills stay deep in both themes. */
-  --color-scrim: oklch(12% 0.01 66 / 0.6);
-  --color-on-info: var(--brown-950);
+  --color-focus-ring: #D4A574;
+  /* --color-on-accent stays #1C140D: accent fill is the same caramel in both
+     themes, so the espresso ink keeps its ≥8:1 contrast. */
 
   /* Sidebar stays the espresso dark surface in dark mode (identical to before
      the light-mode redesign) — light-on-dark chrome, caramel-tinted active. */
@@ -491,18 +251,16 @@
    surface so every descendant reads identically in light AND dark. */
 .surface-inverse,
 :root[data-theme='dark'] .surface-inverse {
-  --color-primary: var(--brown-700);
-  --color-primary-700: var(--brown-850);
-  --color-primary-50: var(--brown-50);
-  --color-accent: var(--caramel-500);
-  --color-accent-600: var(--caramel-600);
-  --color-accent-50: var(--caramel-50);
-  /* Caramel TEXT directly on the espresso surface needs the light caramel. */
-  --color-accent-fg: var(--caramel-300);
+  --color-primary: #3D2817;
+  --color-primary-700: #2A1A0F;
+  --color-primary-50: #F5EFE7;
+  --color-accent: #D4A574;
+  --color-accent-600: #B8895A;
+  --color-accent-50: #FBF3E8;
   /* This surface is dark in BOTH themes, so its focus ring must be the caramel
      accent (≥7:1 on the espresso bg) rather than the light-mode deep amber
      (~1.9:1 here). Pin it regardless of the active theme. */
-  --color-focus-ring: var(--caramel-500);
+  --color-focus-ring: #D4A574;
 }
 
 /* A "paper" island that stays light in both themes (e.g. KDS order tickets sit
@@ -511,46 +269,38 @@
    never flip and lose contrast under [data-theme='dark']. */
 .surface-paper,
 :root[data-theme='dark'] .surface-paper {
-  --color-bg: var(--cream-50);
-  --color-surface: var(--cream-0);
-  --color-surface-2: var(--cream-150);
-  --color-text: var(--ink-900);
-  /* Same AA-fixed light values as :root (the old pins #6B7280 / #9CA3AF were
-     4.29:1 and 2.5:1 on surface-2). */
-  --color-text-secondary: var(--ink-600);
-  --color-text-muted: var(--ink-550);
-  --color-text-inverse: var(--cream-0);
-  --color-border: var(--cream-200);
-  --color-border-strong: var(--cream-300);
-  --color-border-input: var(--cream-500);
-  --color-primary: var(--brown-700);
-  --color-primary-700: var(--brown-850);
-  --color-primary-50: var(--brown-50);
-  --color-accent: var(--caramel-500);
-  --color-accent-600: var(--caramel-600);
-  --color-accent-50: var(--caramel-50);
-  --color-accent-fg: var(--caramel-700);
-  --color-success: var(--green-500);
-  --color-success-50: var(--green-50);
-  --color-success-fg: var(--green-700);
-  --color-success-strong: var(--green-600);
-  --color-warning: var(--honey-500);
-  --color-warning-50: var(--honey-50);
-  --color-warning-fg: var(--honey-800);
-  --color-danger: var(--berry-500);
-  --color-danger-50: var(--berry-50);
+  --color-bg: #FAF7F2;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F5F1E9;
+  --color-text: #1A1A1A;
+  --color-text-secondary: #6B7280;
+  --color-text-muted: #9CA3AF;
+  --color-text-inverse: #FFFFFF;
+  --color-border: #E5E0D5;
+  --color-border-strong: #C9C2B2;
+  --color-primary: #3D2817;
+  --color-primary-700: #2A1A0F;
+  --color-primary-50: #F5EFE7;
+  --color-accent: #D4A574;
+  --color-accent-600: #B8895A;
+  --color-accent-50: #FBF3E8;
+  --color-success: #5C8A5A;
+  --color-success-50: #EBF2EA;
+  --color-warning: #E8A951;
+  --color-warning-50: #FBF1DF;
+  --color-warning-fg: #7A4E10;
+  --color-danger: #C24545;
+  --color-danger-50: #F7E5E5;
   /* Paper stays light in both themes, so pin the deep-berry danger text/fill
-     tokens to their light-theme values (the dark-theme light berry would only be
+     tokens to their light-theme values (the dark-theme #E07A7A would only be
      ~2.5:1 as text on this paper). */
-  --color-danger-fg: var(--berry-700);
-  --color-danger-strong: var(--berry-700);
-  --color-info: var(--blue-500);
-  --color-info-50: var(--blue-50);
-  --color-info-fg: var(--blue-700);
-  --color-on-info: var(--cream-0);
+  --color-danger-fg: #A83232;
+  --color-danger-strong: #A83232;
+  --color-info: #4A6FA5;
+  --color-info-50: #E5ECF5;
   /* Light island, so revert the focus ring to the light-mode deep amber even
      when the app is in dark mode — caramel would only be ~2.2:1 on white here. */
-  --color-focus-ring: var(--caramel-800);
+  --color-focus-ring: #8A5A14;
   color: var(--color-text);
 }
 
@@ -595,7 +345,6 @@ input, textarea, select { font-family: inherit; color: inherit; }
      --z-modal    .modal-backdrop default (portaled dialogs sit above the screen area)
      --z-sheet    phone nav sheet (above screen overlays, below Select menus)
      --z-popover  portaled Select / row menus
-     --z-snackbar undo snackbar (below toasts, above menus)
      --z-toast    toasts — never covered or blurred by a popup's backdrop
      --z-sysbar   offline / update strip — "offline" matters most mid-payment
    A bar that a screen pins to the bottom edge with position:fixed must offset
@@ -606,12 +355,35 @@ input, textarea, select { font-family: inherit; color: inherit; }
   --z-modal: 50;
   --z-sheet: 1900;
   --z-popover: 2000;
-  --z-snackbar: 2050;
   --z-toast: 2100;
   --z-sysbar: 2200;
 }
 
-/* Toast styles live with the component: src/components/ui/ui.css (.ui-toast*). */
+/* ---------- Toast ---------- */
+/* Above every modal/overlay (receipt modal 300, confirm 320, lightbox 1000,
+   Select menu 2000, …) so toasts are never covered or blurred by an open
+   popup's backdrop-filter. */
+.toast-stack { position: fixed; right: 24px; bottom: 24px; z-index: var(--z-toast); display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast {
+  pointer-events: auto;
+  min-width: 280px; max-width: 380px;
+  padding: 12px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--fs-14);
+  display: flex; gap: 10px; align-items: flex-start;
+  animation: toast-in 240ms var(--ease-out);
+}
+.toast.success { border-left-color: var(--color-success); }
+.toast.warning { border-left-color: var(--color-warning); }
+.toast.danger  { border-left-color: var(--color-danger); }
+.toast .t-icon { width: 20px; height: 20px; flex-shrink: 0; margin-top: 1px; }
+.toast .t-title { font-weight: 600; }
+.toast .t-msg { color: var(--color-text-secondary); font-size: 13px; margin-top: 2px; }
+@keyframes toast-in { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
 /* ---------- Modal backdrop ---------- */
 .modal-backdrop {
@@ -621,8 +393,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
   display: flex; align-items: center; justify-content: center;
   animation: backdrop-in 180ms var(--ease-out);
   /* Lifted above the on-screen keyboard by use-keyboard-inset (it sets the
-     inline padding-bottom). The shift is instant: animating padding re-lays-out
-     the dialog every frame, and the keyboard slide already covers the motion. */
+     inline padding-bottom); transition makes the shift smooth. */
+  transition: padding-bottom 180ms var(--ease-out);
 }
 @keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
 .modal-card {
@@ -666,25 +438,7 @@ html[data-kb-open] .modal-card {
 .btn-lg { padding: 14px 18px; font-size: var(--fs-16); }
 .btn-xl { padding: 18px 20px; font-size: var(--fs-16); min-height: 64px; }
 
-/* ---------- Skip link (WCAG 2.4.1) ---------- */
-.skip-link {
-  position: fixed; top: 8px; left: 8px; z-index: 2300;
-  min-height: 44px; padding: 0 var(--space-4);
-  background: var(--color-primary); color: var(--color-on-primary);
-  border-radius: var(--radius-md); font: inherit; font-weight: 600; font-size: var(--fs-14);
-  transform: translateY(-200%);
-}
-.skip-link:focus-visible {
-  transform: none;
-  outline: 2px solid var(--color-focus-ring); outline-offset: 2px;
-}
-
 /* ---------- Mobile touch targets ---------- */
-/* Pinch-zoom stays enabled (no maximum-scale), but rapid double-taps on controls
-   must not trigger double-tap zoom. */
-button, [role="button"], a, input, select, textarea, label, summary {
-  touch-action: manipulation;
-}
 @media (max-width: 767px) {
   button, [role="button"], a {
     min-height: 44px;
@@ -954,8 +708,7 @@ label:focus-visible {
 }
 .sb-logout:hover { background: var(--sb-logout-hover-bg); color: var(--sb-logout-hover-fg); border-color: var(--sb-logout-hover-border); }
 
-/* Sidebar labels fade in on expand (opacity only). The width change itself is
-   instant — no layout animation (UI-SPEC §8). */
+/* Sidebar labels fade in on expand — same beat as the width transition */
 .sb-fade { animation: fade-in var(--dur-slow) var(--ease-out) both; }
 
 /* ---------- Entrances ---------- */
@@ -1192,6 +945,19 @@ label:focus-visible {
 .navsheet-logout:active { background: var(--sb-logout-hover-bg); color: var(--sb-logout-hover-fg); border-color: var(--sb-logout-hover-border); }
 
 @media (max-width: 767px) {
+  /* ---------- Toasts: full width minus gutters, above the tab bar ---------- */
+  .toast-stack {
+    left: max(12px, env(safe-area-inset-left, 0px));
+    right: max(12px, env(safe-area-inset-right, 0px));
+    /* Above the tab bar; when the keyboard is up the bar is gone (--tabbar-h: 0)
+       and --kb-inset lifts the stack clear of the keyboard instead. */
+    bottom: calc(max(var(--tabbar-h), env(safe-area-inset-bottom, 0px)) + var(--kb-inset, 0px) + 12px);
+  }
+  .toast { min-width: 0; max-width: none; width: 100%; animation-name: toast-in-up; }
+  /* Full-width on a phone, the 3px status stripe reads as a heavy coloured edge;
+     the status icon already carries the kind, so the edge goes back to a hairline. */
+  .toast-stack .toast { border-left: 1px solid var(--color-border); }
+
   /* ---------- Modals: never wider or taller than the visible screen ----------
      Applies to every .modal-backdrop / .modal-card. Cards that already manage an
      inner scroll area + pinned footer are unaffected (their body shrinks first);
@@ -1207,6 +973,9 @@ label:focus-visible {
     overscroll-behavior: contain;
   }
 }
+/* Phones: rise from below rather than slide in from the side (a sideways offset
+   on a full-width toast would poke past the viewport edge). */
+@keyframes toast-in-up { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ── Responsive toolkit ──────────────────────────────────────────────
    Shared building blocks for phone layouts (< 768px). How they work:

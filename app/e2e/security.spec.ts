@@ -145,7 +145,9 @@ test.describe('real login through the BFF (fake upstream)', () => {
     expect(res.headers()['cache-control']).toContain('no-store');
 
     // App is up (the shell renders even though the fake upstream has no catalogue).
-    await expect(page.getByRole('heading', { name: 'หน้าขาย (POS)' })).toBeVisible();
+    // (Legacy shell: the PIN pad is gone and the app navigation is up.)
+    await expect(page.locator('[aria-label="แป้น PIN"]')).toHaveCount(0);
+    await expect(page.getByRole('navigation').first()).toBeVisible();
 
     // Cookies: access + refresh are HttpOnly, SameSite=Strict; the flag cookie is readable but holds no secret.
     const cookies = await context.cookies();

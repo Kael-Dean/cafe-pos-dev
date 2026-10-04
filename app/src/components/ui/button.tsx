@@ -1,8 +1,9 @@
 'use client';
 
 import { useId } from 'react';
+import './tokens.css';
+import './ui.css';
 import { cn } from './cn';
-import { Kbd } from './kbd';
 import { Spinner } from './spinner';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent';
@@ -22,13 +23,6 @@ export interface ButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonE
   /** Shows a spinner, locks the width, sets aria-busy and ignores clicks. */
   loading?: boolean;
   /**
-   * Hotkey hint rendered as a `<Kbd>` at ≥1024px with a fine pointer, e.g. "F12".
-   * Also exposed as aria-keyshortcuts (pass the ARIA form via `keyShortcuts` if it differs).
-   */
-  kbd?: string;
-  /** ARIA keyshortcuts value, e.g. "F12 Control+Enter". Defaults to `kbd`. */
-  keyShortcuts?: string;
-  /**
    * Why the button cannot be used right now ("ออฟไลน์ — รับเงินไม่ได้"). When set
    * together with `disabled`, the button stays focusable (aria-disabled) so the
    * reason is reachable by keyboard and screen readers, and is shown as a tooltip.
@@ -38,9 +32,9 @@ export interface ButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonE
 }
 
 /**
- * The one button. Replaces `.btn*` classes and POS `PayButton`.
+ * Design-system button. Only the login screen uses it; the legacy screens keep `.btn*`.
  *
- *   <Button variant="primary" size="xl" fullWidth kbd="F12" loading={paying}>รับเงินสด</Button>
+ *   <Button variant="primary" size="lg" fullWidth loading={busy}>ถัดไป</Button>
  *
  * States: hover (pointer devices only), pressed scale(.97), focus-visible ring,
  * disabled / aria-disabled with reason, loading.
@@ -53,8 +47,6 @@ export function Button({
   icon,
   trailing,
   loading = false,
-  kbd,
-  keyShortcuts,
   disabled = false,
   disabledReason,
   type = 'button',
@@ -86,7 +78,6 @@ export function Button({
       disabled={disabled && !softDisabled}
       aria-disabled={softDisabled || undefined}
       aria-busy={loading || undefined}
-      aria-keyshortcuts={keyShortcuts ?? kbd}
       aria-describedby={cn(describedBy, softDisabled && reasonId) || undefined}
       title={softDisabled ? disabledReason : title}
       onClick={(e) => {
@@ -98,7 +89,6 @@ export function Button({
       <span className="ui-btn__label" data-hidden={loading && !icon ? '' : undefined}>{children}</span>
       {loading && !icon && <span className="ui-btn__spinner-overlay"><Spinner /></span>}
       {trailing}
-      {kbd && <span className="ui-btn__kbd" aria-hidden="true"><Kbd>{kbd}</Kbd></span>}
       {softDisabled && <span id={reasonId} className="sr-only">{disabledReason}</span>}
     </button>
   );

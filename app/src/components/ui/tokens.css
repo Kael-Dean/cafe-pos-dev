@@ -1,0 +1,175 @@
+/* ════════════════════════════════════════════════════════════════
+   Design-system tokens for the primitives in src/components/ui (and the
+   login screen, the only screen that uses them).
+
+   Imported by the primitives themselves, NOT by app/globals.css. Every name
+   is prefixed `--ds-` so nothing here can collide with, or re-point, a token
+   the legacy app/globals.css defines (--color-*, --space-*, --radius-* …).
+   No other screen reads a `--ds-` token, so this file cannot change how any
+   other screen looks.
+
+   Values are the redesign tokens (OKLCH, sRGB source in the comment) so the
+   login screen renders exactly as it did on top of the redesigned globals.
+   ════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ---------- Primitives (only the ones the semantic layer below needs) ---------- */
+  --ds-brown-950: oklch(19.66% 0.0151 66.76);  /* #1A140E */
+  --ds-brown-925: oklch(19.90% 0.0187 62.62);  /* #1C140D */
+  --ds-brown-900: oklch(23.04% 0.0204 63.17);  /* #241B13 */
+  --ds-brown-850: oklch(23.54% 0.0322 54.99);  /* #2A1A0F */
+  --ds-brown-800: oklch(26.87% 0.0232 66.57);  /* #2E241A */
+  --ds-brown-750: oklch(31.09% 0.0269 66.57);  /* #3A2E22 */
+  --ds-brown-700: oklch(29.80% 0.0421 59.19);  /* #3D2817 */
+  --ds-brown-550: oklch(56.41% 0.0338 73.58);  /* #827360 */
+  --ds-brown-400: oklch(67.89% 0.0324 78.68);  /* #A39682 */
+  --ds-brown-300: oklch(75.01% 0.0263 75.20);  /* #B8AC9C */
+  --ds-brown-200: oklch(82.98% 0.0631 74.70);  /* #E0C29A */
+  --ds-brown-150: oklch(90.35% 0.0432 76.33);  /* #F0DCC0 */
+  --ds-brown-50:  oklch(95.46% 0.0125 75.37);  /* #F5EFE7 */
+  --ds-caramel-50:  oklch(96.74% 0.0169 76.11); /* #FBF3E8 */
+  --ds-caramel-300: oklch(81.75% 0.0747 71.81); /* #E2BC8E */
+  --ds-caramel-500: oklch(75.41% 0.0853 67.10); /* #D4A574 */
+  --ds-caramel-600: oklch(66.51% 0.0853 65.46); /* #B8895A */
+  --ds-caramel-700: oklch(51.07% 0.0888 62.82); /* #8A5A2B */
+  --ds-caramel-800: oklch(50.87% 0.1017 70.44); /* #8A5A14 */
+  --ds-cream-0:   oklch(100% 0 0);              /* #FFFFFF */
+  --ds-cream-100: oklch(96.53% 0.0102 81.80);   /* #F7F3EC */
+  --ds-cream-150: oklch(95.90% 0.0115 84.58);   /* #F5F1E9 */
+  --ds-cream-200: oklch(90.76% 0.0157 86.43);   /* #E5E0D5 */
+  --ds-cream-500: oklch(62.07% 0.0276 81.05);   /* #8F8574 */
+  --ds-ink-900: oklch(21.78% 0 0);              /* #1A1A1A */
+  --ds-ink-600: oklch(47.39% 0.0173 264.40);    /* #575C66 */
+  --ds-ink-550: oklch(50.29% 0.0151 266.59);    /* #60646D */
+  --ds-honey-50:  oklch(96.12% 0.0261 82.39);   /* #FBF1DF */
+  --ds-honey-400: oklch(80.97% 0.1110 78.31);   /* #E8B86A */
+  --ds-honey-800: oklch(46.32% 0.0934 69.37);   /* #7A4E10 */
+  --ds-honey-950: oklch(28.46% 0.0327 77.75);   /* #332817 */
+  --ds-berry-50:  oklch(93.63% 0.0197 17.51);   /* #F7E5E5 */
+  --ds-berry-300: oklch(69.32% 0.1268 20.85);   /* #E07A7A */
+  --ds-berry-700: oklch(49.53% 0.1543 24.76);   /* #A83232 */
+  --ds-berry-950: oklch(27.79% 0.0405 19.96);   /* #3A2020 */
+  --ds-blue-50:  oklch(94.04% 0.0143 254.61);   /* #E5ECF5 */
+  --ds-blue-300: oklch(69.79% 0.0876 256.38);   /* #7AA0D4 */
+  --ds-blue-700: oklch(46.46% 0.0843 257.47);   /* #3A5A88 */
+  --ds-blue-950: oklch(28.16% 0.0340 255.80);   /* #1E2A3A */
+
+  /* ---------- Semantic colours (light) ---------- */
+  --ds-color-primary: var(--ds-brown-700);
+  --ds-color-primary-700: var(--ds-brown-850);
+  --ds-color-accent: var(--ds-caramel-500);
+  --ds-color-accent-600: var(--ds-caramel-600);
+  --ds-color-accent-50: var(--ds-caramel-50);
+  --ds-color-accent-fg: var(--ds-caramel-700);
+  --ds-color-bg: var(--ds-cream-100);
+  --ds-color-surface: var(--ds-cream-0);
+  --ds-color-surface-2: var(--ds-cream-150);
+  --ds-color-text: var(--ds-ink-900);
+  --ds-color-text-secondary: var(--ds-ink-600);
+  --ds-color-text-muted: var(--ds-ink-550);
+  --ds-color-text-inverse: var(--ds-cream-0);
+  --ds-color-warning-50: var(--ds-honey-50);
+  --ds-color-warning-fg: var(--ds-honey-800);
+  --ds-color-danger-50: var(--ds-berry-50);
+  --ds-color-danger-fg: var(--ds-berry-700);
+  --ds-color-danger-strong: var(--ds-berry-700);
+  --ds-color-info-50: var(--ds-blue-50);
+  --ds-color-info-fg: var(--ds-blue-700);
+  --ds-color-border: var(--ds-cream-200);
+  --ds-color-border-input: var(--ds-cream-500);
+  --ds-color-on-accent: var(--ds-brown-925);
+  --ds-color-on-strong: var(--ds-cream-0);
+  --ds-color-focus-ring: var(--ds-caramel-800);
+
+  /* ---------- Type, spacing, radii, elevation, motion ---------- */
+  --ds-font-num: "Inter", "SF Mono", ui-monospace, monospace;
+  --ds-fs-13: 13px;
+  --ds-fs-14: 14px;
+  --ds-fs-15: 15px;
+  --ds-fs-16: 16px;
+  --ds-fs-20: 20px;
+  --ds-fs-24: 24px;
+  --ds-fw-semibold: 600;
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 20px;
+  --ds-space-6: 24px;
+  --ds-radius-md: 8px;
+  --ds-radius-lg: 12px;
+  --ds-radius-xl: 16px;
+  --ds-radius-pill: 999px;
+  --ds-shadow-md: 0 6px 16px rgba(61, 40, 23, 0.08), 0 2px 4px rgba(61, 40, 23, 0.04);
+  --ds-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ds-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ds-dur-instant: 80ms;
+  --ds-dur-fast: 120ms;
+
+  /* ---------- Component tokens ---------- */
+  --ds-color-on-primary: var(--ds-color-text-inverse);
+  --ds-tap-min: 44px;
+  --ds-tap-pos: 56px;
+  --ds-tap-pay: 64px;
+  --ds-tap-pin: 72px;
+  --ds-btn-h-sm: 36px;
+  --ds-btn-h-md: var(--ds-tap-min);
+  --ds-btn-h-lg: var(--ds-tap-pos);
+  --ds-btn-h-xl: var(--ds-tap-pay);
+  --ds-btn-radius: var(--ds-radius-md);
+  --ds-btn-primary-bg: var(--ds-color-primary);
+  --ds-btn-primary-bg-hover: var(--ds-color-primary-700);
+  --ds-btn-primary-fg: var(--ds-color-on-primary);
+  --ds-btn-secondary-bg: var(--ds-color-surface);
+  --ds-btn-secondary-bg-hover: var(--ds-color-surface-2);
+  --ds-btn-secondary-fg: var(--ds-color-text);
+  --ds-btn-secondary-border: var(--ds-color-border-input);
+  --ds-btn-ghost-fg: var(--ds-color-text);
+  --ds-btn-ghost-bg-hover: var(--ds-color-surface-2);
+  --ds-btn-danger-bg: var(--ds-color-danger-strong);
+  --ds-btn-danger-fg: var(--ds-color-on-strong);
+  --ds-btn-accent-bg: var(--ds-color-accent);
+  --ds-btn-accent-bg-hover: var(--ds-color-accent-600);
+  --ds-btn-accent-fg: var(--ds-color-on-accent);
+  --ds-press-scale: 0.97;
+  --ds-input-h-md: var(--ds-tap-min);
+  --ds-input-h-lg: var(--ds-tap-pos);
+  --ds-input-bg: var(--ds-color-surface);
+  --ds-input-fg: var(--ds-color-text);
+  --ds-input-border: var(--ds-color-border-input);
+  --ds-input-border-invalid: var(--ds-color-danger-fg);
+  --ds-input-placeholder: var(--ds-color-text-muted);
+  --ds-key-cash: var(--ds-tap-pay);
+  --ds-key-pin: var(--ds-tap-pay);  /* 72 at ≥768, below */
+}
+@media (min-width: 768px) {
+  :root { --ds-key-pin: var(--ds-tap-pin); }
+}
+
+/* Dark theme (<html data-theme="dark">, stamped by layout.tsx) — colours + shadow only. */
+:root[data-theme='dark'] {
+  --ds-color-primary: var(--ds-brown-200);
+  --ds-color-primary-700: var(--ds-brown-150);
+  --ds-color-accent: var(--ds-caramel-500);
+  --ds-color-accent-600: var(--ds-caramel-300);
+  --ds-color-accent-50: var(--ds-brown-800);
+  --ds-color-accent-fg: var(--ds-caramel-300);
+  --ds-color-bg: var(--ds-brown-950);
+  --ds-color-surface: var(--ds-brown-900);
+  --ds-color-surface-2: var(--ds-brown-800);
+  --ds-color-text: var(--ds-brown-50);
+  --ds-color-text-secondary: var(--ds-brown-300);
+  --ds-color-text-muted: var(--ds-brown-400);
+  --ds-color-text-inverse: var(--ds-brown-950);
+  --ds-color-warning-50: var(--ds-honey-950);
+  --ds-color-warning-fg: var(--ds-honey-400);
+  --ds-color-danger-50: var(--ds-berry-950);
+  --ds-color-danger-fg: var(--ds-berry-300);
+  --ds-color-danger-strong: var(--ds-berry-700);
+  --ds-color-info-50: var(--ds-blue-950);
+  --ds-color-info-fg: var(--ds-blue-300);
+  --ds-color-border: var(--ds-brown-750);
+  --ds-color-border-input: var(--ds-brown-550);
+  --ds-color-focus-ring: var(--ds-caramel-500);
+  --ds-shadow-md: 0 6px 16px rgba(0, 0, 0, 0.50);
+}

@@ -6,7 +6,7 @@ import { useIsPhone } from '@/hooks/use-media-query';
 import Icon from '../icons';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useFadeRise } from '@/lib/motion';
-import { useToast } from '../ui/toast';
+import { useToast } from '../app-common';
 import { ReceiptPaper, type ReceiptData, type StoreInfo } from './receipt-modal';
 import { fetchStatus, fetchConfig, saveConfig, listPrinters } from '@/lib/printer-bridge';
 import { usePrinter } from '@/hooks/use-printer';

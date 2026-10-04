@@ -1,60 +1,63 @@
-/* Login / PIN lock screen. */
+/* Login / PIN lock screen.
+   Reads only the design-system `--ds-*` tokens (components/ui/tokens.css, loaded
+   with the ui primitives) plus the runtime layout var --app-h, so it renders the
+   same whatever the legacy app/globals.css tokens are. */
 
 .screen {
   /* 100% (not 100vw); safe-area insets keep the pad clear of a notch / home bar. */
   height: var(--app-h, 100dvh); width: 100%;
   padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
-  background: var(--color-bg);
+  background: var(--ds-color-bg);
   /* Centred via the child's auto margins so a short phone scrolls from the top. */
   display: grid; overflow-y: auto;
 }
 .column {
   width: 100%; max-width: 400px; margin: auto;
-  padding: var(--space-6) var(--space-5);
-  display: flex; flex-direction: column; gap: var(--space-5);
+  padding: var(--ds-space-6) var(--ds-space-5);
+  display: flex; flex-direction: column; gap: var(--ds-space-5);
 }
 
 .brand { display: flex; flex-direction: column; align-items: center; text-align: center; }
 .logo {
-  width: 64px; height: 64px; margin-bottom: var(--space-3);
+  width: 64px; height: 64px; margin-bottom: var(--ds-space-3);
   display: grid; place-items: center;
-  border-radius: var(--radius-xl);
-  background: var(--color-primary); color: var(--color-text-inverse);
-  box-shadow: var(--shadow-md);
+  border-radius: var(--ds-radius-xl);
+  background: var(--ds-color-primary); color: var(--ds-color-text-inverse);
+  box-shadow: var(--ds-shadow-md);
 }
-.title { margin: 0; font-size: var(--fs-24); font-weight: 800; letter-spacing: -0.02em; color: var(--color-text); }
-.subtitle { margin: var(--space-1) 0 0; font-size: var(--fs-14); color: var(--color-text-secondary); }
+.title { margin: 0; font-size: var(--ds-fs-24); font-weight: 800; letter-spacing: -0.02em; color: var(--ds-color-text); }
+.subtitle { margin: var(--ds-space-1) 0 0; font-size: var(--ds-fs-14); color: var(--ds-color-text-secondary); }
 
-.storeForm { display: flex; flex-direction: column; gap: var(--space-3); }
+.storeForm { display: flex; flex-direction: column; gap: var(--ds-space-3); }
 
 .storeChip {
-  display: flex; align-items: center; gap: var(--space-2);
-  padding: 0 var(--space-1) 0 var(--space-4);
-  min-height: var(--tap-pos);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
+  display: flex; align-items: center; gap: var(--ds-space-2);
+  padding: 0 var(--ds-space-1) 0 var(--ds-space-4);
+  min-height: var(--ds-tap-pos);
+  border: 1px solid var(--ds-color-border);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-color-surface);
+  color: var(--ds-color-text-secondary);
 }
 .storeName {
   flex: 1; min-width: 0;
-  font-size: var(--fs-15); font-weight: var(--fw-semibold); color: var(--color-text);
+  font-size: var(--ds-fs-15); font-weight: var(--ds-fw-semibold); color: var(--ds-color-text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 .pinBlock:focus { outline: none; }
-.pinBlock { display: flex; flex-direction: column; align-items: center; gap: var(--space-4); }
+.pinBlock { display: flex; flex-direction: column; align-items: center; gap: var(--ds-space-4); }
 
-.dots { display: flex; gap: var(--space-4); padding: var(--space-2) 0; }
+.dots { display: flex; gap: var(--ds-space-4); padding: var(--ds-space-2) 0; }
 .dot {
-  width: 16px; height: 16px; border-radius: var(--radius-pill);
-  border: 2px solid var(--color-border-input);
-  transition: transform var(--dur-fast) var(--ease-out);
+  width: 16px; height: 16px; border-radius: var(--ds-radius-pill);
+  border: 2px solid var(--ds-color-border-input);
+  transition: transform var(--ds-dur-fast) var(--ds-ease-out);
 }
-.dot[data-filled] { background: var(--color-primary); border-color: var(--color-primary); transform: scale(1.1); }
+.dot[data-filled] { background: var(--ds-color-primary); border-color: var(--ds-color-primary); transform: scale(1.1); }
 
 /* One shake on a wrong PIN; removed under reduced motion (spec §2.1, §8). */
-.shake { animation: pin-shake 320ms var(--ease-out) 1; }
+.shake { animation: pin-shake 320ms var(--ds-ease-out) 1; }
 @keyframes pin-shake {
   20% { transform: translateX(-8px); }
   40% { transform: translateX(7px); }
@@ -63,11 +66,11 @@
 }
 
 .feedback { min-height: 44px; display: grid; place-items: center; text-align: center; }
-.hint { font-size: var(--fs-13); line-height: 1.5; color: var(--color-text-secondary); text-wrap: balance; }
-.error { font-size: var(--fs-14); font-weight: var(--fw-semibold); line-height: 1.5; color: var(--color-danger-fg); text-wrap: balance; }
-.loading { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--fs-14); color: var(--color-text-secondary); }
+.hint { font-size: var(--ds-fs-13); line-height: 1.5; color: var(--ds-color-text-secondary); text-wrap: balance; }
+.error { font-size: var(--ds-fs-14); font-weight: var(--ds-fw-semibold); line-height: 1.5; color: var(--ds-color-danger-fg); text-wrap: balance; }
+.loading { display: inline-flex; align-items: center; gap: var(--ds-space-2); font-size: var(--ds-fs-14); color: var(--ds-color-text-secondary); }
 
-.pad { margin-top: var(--space-1); }
+.pad { margin-top: var(--ds-space-1); }
 
 @media (prefers-reduced-motion: reduce) {
   .shake { animation: none; }

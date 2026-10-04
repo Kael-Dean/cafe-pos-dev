@@ -13,7 +13,6 @@ import Icon from './icons';
 import { useVisibleNav, groupOfScreen, type NavItem, type NavSection } from './app-common';
 import { useIsPhone } from '@/hooks/use-media-query';
 import { useModalA11y } from '@/hooks/use-modal-a11y';
-import { useOverlayHistory } from './use-overlay-history';
 import { useI18n, type Lang } from '@/lib/i18n';
 import { useTheme, type Theme } from '@/lib/theme';
 
@@ -169,9 +168,6 @@ function NavSheet({ current, onClose, onNavigate, onLogout }: NavSheetProps) {
   const { theme, setTheme } = useTheme();
   const { sections, me, initial, roleLabel, navLabel, sectionLabel } = useVisibleNav();
   const dialogRef = useModalA11y(onClose);
-  // Back closes the sheet instead of leaving the screen (UI-SPEC §2.5): the sheet
-  // owns a history entry for as long as it is mounted.
-  useOverlayHistory(true, onClose);
   const bodyRef = useRef<HTMLDivElement>(null);
   const currentGroupId = groupOfScreen(current);
 

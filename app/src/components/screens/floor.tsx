@@ -1,18 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Icon from '../icons';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
+import { useFadeRise } from '@/lib/motion';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useBoardgameEnabled } from '@/hooks/use-features';
 import { useFloorTables, type FloorTable } from '@/hooks/use-floor';
 import { useTableSessions, useBillingPreview, type TableSession } from '@/hooks/use-table-sessions';
-import { useOnlineStatus } from '@/components/pwa/offline-indicator';
 import { bahtStr, clockTime, formatMinutes, minutesSince } from '@/lib/money';
-import { useI18n } from '@/lib/i18n';
-import { Badge, Banner, Button, Card, EmptyState, IconButton, Skeleton, cn } from '@/components/ui';
 import OpenSessionModal, { SessionDetailModal } from './table-session-modal';
 import SettleModal from './settle-modal';
-import s from './floor.module.css';
 
 export interface ActiveTableSession {
   sessionId: string;
@@ -26,255 +24,166 @@ interface Props {
   onNavigate?: (screen: string) => void;
 }
 
-/** Floor and sessions are re-read on this cadence while the tab is visible (UI-SPEC §4.2: poll, no pull-to-refresh). */
-const POLL_MS = 30_000;
-/** Older than this (two missed polls + slack) and the board says so. */
-const STALE_MS = 75_000;
-const JUMP_RESET_MS = 900;
-
-const hhmm = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+const ZONE_FALLBACK = 'ไม่ระบุโซน';
 
 export default function Floor({ onOrderForSession, onNavigate }: Props) {
-  const { t } = useI18n();
   const { data: me } = useCurrentUser();
   const admin = isAdmin(me?.role);
-  const online = useOnlineStatus();
   const { enabled: boardgame, isLoading: featureLoading } = useBoardgameEnabled();
 
   const tablesQ = useFloorTables(false, boardgame);
   const sessionsQ = useTableSessions('OPEN', boardgame);
-  const { refetch: refetchTables } = tablesQ;
-  const { refetch: refetchSessions } = sessionsQ;
-  const refresh = useCallback(() => { void refetchTables(); void refetchSessions(); }, [refetchTables, refetchSessions]);
 
-  // ── Dialog state. Each dialog stays mounted while it fades out, so the data it
-  // shows is kept separately from whether it is open.
-  const [openTarget, setOpenTarget] = useState<FloorTable | null>(null);
-  const [openShown, setOpenShown] = useState(false);
-  const [openKey, setOpenKey] = useState(0);
-  const [detailId, setDetailId] = useState<string | null>(null);
-  const [detailShown, setDetailShown] = useState(false);
+  const [openFor, setOpenFor] = useState<FloorTable | null>(null);
+  const [detailFor, setDetailFor] = useState<string | null>(null);
   const [settleFor, setSettleFor] = useState<string | null>(null);
 
-  // Display clock for elapsed time + staleness. Every baht figure comes from the server.
+  // Clock tick for the "time elapsed" readout on each card. This is a display
+  // clock only — every baht figure comes from the billing-preview endpoint.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 15_000);
+    const id = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(id);
   }, []);
-
-  // Poll while visible. Sessions change all shift long; tables rarely, but a
-  // re-read is cheap and keeps "free" honest across devices.
-  useEffect(() => {
-    if (!boardgame) return;
-    const id = setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, POLL_MS);
-    return () => clearInterval(id);
-  }, [boardgame, refresh]);
 
   const tables = useMemo(() => tablesQ.data ?? [], [tablesQ.data]);
   const sessions = useMemo(() => sessionsQ.data ?? [], [sessionsQ.data]);
 
   const sessionByTable = useMemo(() => {
     const m = new Map<string, TableSession>();
-    for (const x of sessions) m.set(x.tableId, x);
+    for (const s of sessions) m.set(s.tableId, s);
     return m;
   }, [sessions]);
 
   const zones = useMemo(() => {
     const groups = new Map<string, FloorTable[]>();
-    for (const tb of tables) {
-      const key = tb.zone?.trim() || t.floor.zoneFallback;
+    for (const t of tables) {
+      const key = t.zone?.trim() || ZONE_FALLBACK;
       const list = groups.get(key);
-      if (list) list.push(tb); else groups.set(key, [tb]);
+      if (list) list.push(t); else groups.set(key, [t]);
     }
     return [...groups.entries()];
-  }, [tables, t.floor.zoneFallback]);
+  }, [tables]);
 
-  const tableById = useMemo(() => new Map(tables.map((tb) => [tb.id, tb])), [tables]);
-
-  // Keep the last seen session so the detail dialog has content while it fades out
-  // (or after the session was closed from another device).
-  const liveDetail = detailId ? sessions.find((x) => x.id === detailId) ?? null : null;
-  const [lastDetail, setLastDetail] = useState<TableSession | null>(null);
-  if (liveDetail && liveDetail !== lastDetail) setLastDetail(liveDetail);
-  const detailSession = liveDetail ?? lastDetail;
-  if (detailShown && detailId && !liveDetail && sessionsQ.isSuccess && !sessionsQ.isFetching) setDetailShown(false);
-  const settleSession = settleFor ? sessions.find((x) => x.id === settleFor) ?? null : null;
+  const tableById = useMemo(() => new Map(tables.map((t) => [t.id, t])), [tables]);
+  const detailSession = detailFor ? sessions.find((s) => s.id === detailFor) ?? null : null;
+  const settleSession = settleFor ? sessions.find((s) => s.id === settleFor) ?? null : null;
 
   const occupied = sessionByTable.size;
   const free = Math.max(0, tables.length - occupied);
-  const overCount = sessions.filter((x) => minutesSince(x.openedAt, now) > x.rateSnapshot.maxOpenMinutes).length;
 
-  const openTable = (table: FloorTable) => {
-    const x = sessionByTable.get(table.id);
-    if (x) { setDetailId(x.id); setDetailShown(true); return; }
-    setOpenTarget(table);
-    setOpenKey((k) => k + 1);
-    setOpenShown(true);
-  };
-
-  // ── Type a table name to jump to it (UI-SPEC §4.1, scope floor) ─────────────
-  const [jump, setJump] = useState('');
-  const jumpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const tablesRef = useRef(tables);
-  useEffect(() => { tablesRef.current = tables; }, [tables]);
-  useEffect(() => {
-    let buffer = '';
-    const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1 || e.key === ' ') return;
-      const el = document.activeElement;
-      if (el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
-      if (document.querySelector('[aria-modal="true"]')) return;
-      buffer += e.key.toLowerCase();
-      const hit = tablesRef.current.find((tb) => tb.name.toLowerCase().startsWith(buffer));
-      if (hit) document.querySelector<HTMLElement>(`[data-table-id="${CSS.escape(hit.id)}"]`)?.focus();
-      setJump(buffer);
-      if (jumpTimer.current) clearTimeout(jumpTimer.current);
-      jumpTimer.current = setTimeout(() => { buffer = ''; setJump(''); }, JUMP_RESET_MS);
-    };
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      if (jumpTimer.current) clearTimeout(jumpTimer.current);
-    };
-  }, []);
+  const contentRef = useFadeRise();
 
   // ── Feature gate: the add-on is invisible, not forbidden ────────────────────
-  if (featureLoading) return <FloorSkeleton label={t.floor.loading} withHeader />;
-
-  if (!boardgame) {
+  if (featureLoading) {
     return (
-      <div className={s.root}>
-        <EmptyState icon="info" title={t.floor.notEnabledTitle} body={t.floor.notEnabledBody} headingLevel={2} />
+      <div className="screen-pad-lg" style={{ padding: 'var(--space-8)' }} aria-busy="true">
+        <span className="sr-only">กำลังโหลดผังโต๊ะ…</span>
+        <Skeleton height={28} width={220} radius="var(--radius-md)" style={{ marginBottom: 'var(--space-6)' }} />
+        <div className="cols-2-phone floor-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} height={132} radius="var(--radius-lg)" />)}
+        </div>
       </div>
     );
   }
 
+  if (!boardgame) {
+    return (
+      <EmptyState
+        icon="info"
+        title="ร้านนี้ยังไม่ได้เปิดใช้ระบบโต๊ะ"
+        body="แพ็กเกจบอร์ดเกม (vertical.boardgame) ยังไม่ได้เปิดให้ร้านนี้ — ติดต่อผู้ดูแลระบบเพื่อเปิดใช้งาน"
+      />
+    );
+  }
+
   const loading = tablesQ.isLoading || sessionsQ.isLoading;
-  const hasData = !!tablesQ.data && !!sessionsQ.data;
-  const loadFailed = !hasData && (tablesQ.isError || sessionsQ.isError);
-  const lastOk = Math.min(tablesQ.dataUpdatedAt || now, sessionsQ.dataUpdatedAt || now);
-  const stale = hasData && (!online || tablesQ.isError || sessionsQ.isError || now - lastOk > STALE_MS);
-  const fetching = tablesQ.isFetching || sessionsQ.isFetching;
 
   return (
-    <div className={cn(s.root, 'screen-pad-lg')}>
-      <header className={s.head}>
-        <h1 className={s.title}>
-          <Icon name="park" size={22} />
-          {t.floor.title}
+    <div ref={contentRef} className="screen-pad-lg" style={{ padding: 'var(--space-8)', maxWidth: 1200, margin: '0 auto' }}>
+      <style>{FLOOR_PHONE_CSS}</style>
+      <div className="floor-head" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flexWrap: 'wrap', marginBottom: 'var(--space-6)' }}>
+        <h1 className="text-balance floor-title" style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>
+          <Icon name="park" size={20} style={{ marginRight: 8 }} />
+          ผังโต๊ะ
         </h1>
-        {hasData && tables.length > 0 && (
-          <div className={s.summary} role="group" aria-label={t.floor.summaryLabel}>
-            <span className={s.count}><Icon name="check" size={16} />{t.floor.free} <strong>{free}</strong></span>
-            <span className={s.count}><Icon name="user" size={16} />{t.floor.busy} <strong>{occupied}</strong></span>
-            {overCount > 0 && (
-              <span className={cn(s.count, s.countOver)}><Icon name="warning" size={16} />{t.floor.overtime} <strong>{overCount}</strong></span>
-            )}
-          </div>
-        )}
-        <div className={s.sync}>
-          {jump && <span className={s.jump} aria-live="polite"><Icon name="search" size={14} />{jump}</span>}
-          {hasData && !stale && <span>{t.floor.updatedAt(hhmm(lastOk))}</span>}
-          <IconButton
-            icon={<Icon name="refresh" size={18} />}
-            label={t.floor.refresh}
-            variant="outline"
-            loading={fetching && !loading}
-            onClick={refresh}
-          />
+        <div className="floor-chips" style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          <SummaryChip label="ว่าง" value={free} tone="success" />
+          <SummaryChip label="กำลังใช้" value={occupied} tone="primary" />
         </div>
-      </header>
+        <button
+          onClick={() => { void tablesQ.refetch(); void sessionsQ.refetch(); }}
+          className="btn btn-ghost"
+          style={{ marginLeft: 'auto' }}
+        >
+          <Icon name="refresh" size={16} /> รีเฟรช
+        </button>
+      </div>
 
-      {stale && (
-        <Banner
-          className={s.banner}
-          tone="warning"
-          icon={online ? 'clock' : 'wifiOff'}
-          title={online ? t.floor.staleTitle : t.floor.offlineTitle}
-          detail={t.floor.updatedAt(hhmm(lastOk))}
-          action={<Button size="sm" variant="secondary" loading={fetching} onClick={refresh}>{t.floor.retry}</Button>}
-        />
+      {loading && (
+        <div aria-busy="true" className="cols-2-phone floor-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+          <span className="sr-only">กำลังโหลดผังโต๊ะ…</span>
+          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} height={132} radius="var(--radius-lg)" />)}
+        </div>
       )}
 
-      {loading && <FloorSkeleton label={t.floor.loading} />}
-
-      {loadFailed && !loading && (
-        <EmptyState
-          tone="danger"
-          title={t.floor.loadErrorTitle}
-          body={t.floor.loadErrorBody}
-          headingLevel={2}
-          action={<Button variant="secondary" loading={fetching} onClick={refresh}>{t.floor.retry}</Button>}
-        />
-      )}
-
-      {hasData && tables.length === 0 && (
+      {!loading && tables.length === 0 && (
         <EmptyState
           icon="park"
-          title={t.floor.emptyTitle}
-          body={admin ? t.floor.emptyBodyAdmin : t.floor.emptyBodyStaff}
-          headingLevel={2}
-          action={admin && onNavigate
-            ? <Button onClick={() => onNavigate('table-setup')}>{t.floor.goSetup}</Button>
-            : undefined}
+          title="ยังไม่มีโต๊ะในร้าน"
+          body={admin ? 'สร้างโต๊ะและแพ็กเกจเวลาก่อน แล้วค่อยกลับมาเปิดโต๊ะที่หน้านี้' : 'ให้ผู้จัดการสร้างโต๊ะที่หน้า “ตั้งค่าโต๊ะ” ก่อน'}
+          action={admin && onNavigate ? { label: 'ไปตั้งค่าโต๊ะ', onClick: () => onNavigate('table-setup') } : undefined}
         />
       )}
 
-      {hasData && zones.map(([zone, list], zi) => {
-        const busyInZone = list.filter((tb) => sessionByTable.has(tb.id)).length;
-        return (
-          <section key={zone} className={s.zone} aria-labelledby={`floor-zone-${zi}`}>
-            <h2 id={`floor-zone-${zi}`} className={s.zoneHead}>
-              {zone}
-              <span className={s.zoneMeta}>{busyInZone}/{list.length}</span>
-            </h2>
-            <div className={cn(s.grid, 'cols-2-phone')}>
-              {list.map((table) => (
-                <TableCard
-                  key={table.id}
-                  table={table}
-                  session={sessionByTable.get(table.id) ?? null}
-                  now={now}
-                  onOpen={() => openTable(table)}
-                />
-              ))}
-            </div>
-          </section>
-        );
-      })}
+      {!loading && zones.map(([zone, list]) => (
+        <section key={zone} className="floor-zone" style={{ marginBottom: 'var(--space-8)' }}>
+          <h2 style={{
+            fontSize: 13, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase',
+            color: 'var(--color-text-secondary)', margin: '0 0 var(--space-3)',
+          }}>
+            {zone}
+          </h2>
+          <div className="cols-2-phone floor-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
+            {list.map((table) => (
+              <TableCard
+                key={table.id}
+                table={table}
+                session={sessionByTable.get(table.id) ?? null}
+                now={now}
+                onClick={() => {
+                  const s = sessionByTable.get(table.id);
+                  if (s) setDetailFor(s.id); else setOpenFor(table);
+                }}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
 
-      {openTarget && (
+      {openFor && (
         <OpenSessionModal
-          key={openKey}
-          open={openShown}
-          table={openTarget}
-          onClose={() => setOpenShown(false)}
-          onGoSetup={onNavigate ? () => { setOpenShown(false); onNavigate('table-setup'); } : undefined}
-          onOpened={(session, andOrder) => {
-            setOpenShown(false);
-            if (andOrder && onOrderForSession) onOrderForSession({ sessionId: session.id, tableName: openTarget.name });
-          }}
-          canOrder={!!onOrderForSession}
+          table={openFor}
+          onClose={() => setOpenFor(null)}
+          onGoSetup={onNavigate ? () => { setOpenFor(null); onNavigate('table-setup'); } : undefined}
         />
       )}
 
       {detailSession && (
         <SessionDetailModal
-          open={detailShown}
           session={detailSession}
           table={tableById.get(detailSession.tableId) ?? null}
           tables={tables}
           canVoid={admin}
-          onClose={() => setDetailShown(false)}
+          onClose={() => setDetailFor(null)}
           onOrder={onOrderForSession
             ? () => {
                 const name = tableById.get(detailSession.tableId)?.name ?? '';
-                setDetailShown(false);
+                setDetailFor(null);
                 onOrderForSession({ sessionId: detailSession.id, tableName: name });
               }
             : undefined}
-          onSettle={() => { setDetailShown(false); setSettleFor(detailSession.id); }}
+          onSettle={() => { setDetailFor(null); setSettleFor(detailSession.id); }}
         />
       )}
 
@@ -290,13 +199,12 @@ export default function Floor({ onOrderForSession, onNavigate }: Props) {
 }
 
 // ── Table card ────────────────────────────────────────────────────────────────
-function TableCard({ table, session, now, onOpen }: {
+function TableCard({ table, session, now, onClick }: {
   table: FloorTable;
   session: TableSession | null;
   now: number;
-  onOpen: () => void;
+  onClick: () => void;
 }) {
-  const { t } = useI18n();
   // Running total for an occupied table. The server owns this number: grace,
   // rounding, minimum charge, per-head multiplication and the daily cap all live
   // there, so the card only ever prints what came back.
@@ -306,76 +214,135 @@ function TableCard({ table, session, now, onOpen }: {
   const overtime = !!session && elapsed > session.rateSnapshot.maxOpenMinutes;
   const busy = !!session;
 
-  // Cross-fade the content only when the state actually flips (not on first paint).
-  const [seenBusy, setSeenBusy] = useState(busy);
-  const [flips, setFlips] = useState(0);
-  if (seenBusy !== busy) { setSeenBusy(busy); setFlips((n) => n + 1); }
-
   return (
-    <Card
-      onClick={onOpen}
-      data-table-id={table.id}
-      className={cn(s.card, busy && s.busy, overtime && s.over)}
+    <button
+      onClick={onClick}
+      className="pressable floor-card"
       aria-label={busy
-        ? t.floor.cardAriaBusy(table.name, session.partySize, formatMinutes(elapsed), overtime)
-        : t.floor.cardAriaFree(table.name)}
+        ? `โต๊ะ ${table.name} กำลังใช้ ${session.partySize} คน ${formatMinutes(elapsed)}`
+        : `โต๊ะ ${table.name} ว่าง`}
+      style={{
+        textAlign: 'left', width: '100%', minHeight: 132,
+        display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
+        padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)',
+        background: busy ? 'var(--color-primary-50, var(--color-surface-2))' : 'var(--color-surface)',
+        border: `1px solid ${busy ? 'var(--color-primary)' : 'var(--color-border)'}`,
+        color: 'var(--color-text)',
+      }}
     >
-      <div key={flips} className={cn(s.cardBody, flips > 0 && s.swap)}>
-        <div className={s.cardHead}>
-          <span className={s.name} title={table.name}>{table.name}</span>
-          <span className={s.status}>
-            {overtime
-              ? <Badge tone="danger"><Icon name="warning" size={12} strokeWidth={2} />{t.floor.overtime}</Badge>
-              : busy
-                ? <Badge tone="accent"><Icon name="user" size={12} strokeWidth={2} />{t.floor.busy}</Badge>
-                : <Badge tone="success"><Icon name="check" size={12} strokeWidth={2} />{t.floor.free}</Badge>}
-          </span>
-        </div>
-
-        {!session && (
-          <>
-            <div className={s.meta}><span>{t.floor.seats(table.capacity)}</span></div>
-            <div className={s.hint}>{t.floor.tapToOpen}</div>
-          </>
-        )}
-
-        {session && (
-          <>
-            <div className={s.meta}>
-              <span><Icon name="user" size={14} />{t.floor.people(session.partySize)}<span className={s.seats}>/ {t.floor.seats(table.capacity)}</span></span>
-              <span><Icon name="clock" size={14} />{formatMinutes(elapsed)}</span>
-              <span>{t.floor.openedAt(clockTime(session.openedAt))}</span>
-            </div>
-            <div className={s.foot}>
-              <span className={s.amount}>
-                {preview.isLoading || !preview.data ? '—' : bahtStr(preview.data.amount)}
-              </span>
-              {(preview.data?.withinGrace || preview.data?.capApplied) && (
-                <span className={s.badges}>
-                  {preview.data?.withinGrace && <Badge tone="info">{t.floor.withinGrace}</Badge>}
-                  {preview.data?.capApplied && <Badge tone="neutral">{t.floor.capApplied}</Badge>}
-                </span>
-              )}
-            </div>
-          </>
-        )}
+      <div className="floor-card-head" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <span className="floor-card-name" style={{ fontSize: 18, fontWeight: 700 }}>{table.name}</span>
+        <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{table.capacity} ที่</span>
+        <span style={{
+          marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+          background: busy ? 'var(--color-primary)' : 'var(--color-success-50, var(--color-surface-2))',
+          color: busy ? 'var(--color-text-inverse)' : 'var(--color-success)',
+        }}>
+          {busy ? 'กำลังใช้' : 'ว่าง'}
+        </span>
       </div>
-    </Card>
+
+      {!session && (
+        <div style={{ marginTop: 'auto', fontSize: 13, color: 'var(--color-text-secondary)' }}>
+          แตะเพื่อเปิดโต๊ะ
+        </div>
+      )}
+
+      {session && (
+        <>
+          <div className="floor-card-meta" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', fontSize: 13, color: 'var(--color-text-secondary)' }}>
+            <span><Icon name="user" size={13} style={{ marginRight: 4 }} />{session.partySize} คน</span>
+            <span className="num"><Icon name="clock" size={13} style={{ marginRight: 4 }} />{formatMinutes(elapsed)}</span>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>เปิด {clockTime(session.openedAt)}</div>
+
+          <div className="floor-card-foot" style={{ marginTop: 'auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+            <span className="num" style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+              {preview.isLoading || !preview.data ? '—' : bahtStr(preview.data.amount)}
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+              {preview.data?.withinGrace && <MiniBadge tone="info">ยังไม่คิดเงิน</MiniBadge>}
+              {preview.data?.capApplied && <MiniBadge tone="success">ถึงเพดานวัน</MiniBadge>}
+              {overtime && <MiniBadge tone="warning">เกินเวลาที่ตั้งไว้</MiniBadge>}
+            </div>
+          </div>
+        </>
+      )}
+    </button>
   );
 }
 
-function FloorSkeleton({ label, withHeader = false }: { label: string; withHeader?: boolean }) {
-  const grid = (
-    <div className={cn(s.grid, 'cols-2-phone')} aria-hidden="true">
-      {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} height={120} radius="var(--radius-lg)" />)}
-    </div>
-  );
-  if (!withHeader) return <div aria-busy="true"><span className="sr-only">{label}</span>{grid}</div>;
+/**
+ * Phones (< 768px): two table cards per row (one 200px column wasted half the
+ * screen), so each card is ~160px wide — the name row and the amount row wrap
+ * instead of pushing the status pill / badges out of the card.
+ */
+const FLOOR_PHONE_CSS = `
+@media (max-width: 767px) {
+  /* title + refresh on the first row, the two counters underneath */
+  .floor-head { gap: 10px 12px !important; margin-bottom: 16px !important; }
+  .floor-title { flex: 1; min-width: 0; display: flex; align-items: center; font-size: 20px !important; }
+  .floor-chips { order: 3; flex: 1 0 100%; }
+  .floor-card-meta { flex-wrap: wrap; row-gap: 2px; }
+  .floor-card-meta > span { display: inline-flex; align-items: center; white-space: nowrap; }
+  .floor-zone { margin-bottom: 20px !important; }
+  .floor-grid { gap: 10px !important; }
+  .floor-card { padding: 12px !important; min-height: 120px !important; min-width: 0; }
+  .floor-card-head { flex-wrap: wrap; row-gap: 2px; }
+  .floor-card-name { min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
+  .floor-card-foot { flex-wrap: wrap; }
+}
+`;
+
+// ── Small shared bits ─────────────────────────────────────────────────────────
+function MiniBadge({ children, tone }: { children: React.ReactNode; tone: 'info' | 'success' | 'warning' }) {
+  const color = tone === 'warning' ? 'var(--color-warning)' : tone === 'success' ? 'var(--color-success)' : 'var(--color-info)';
   return (
-    <div className={cn(s.root, 'screen-pad-lg')} aria-busy="true">
-      <span className="sr-only">{label}</span>
-      <div className={s.head}><Skeleton height={28} width={220} radius="var(--radius-md)" /></div>
-      {grid}
+    <span style={{
+      fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 999,
+      border: `1px solid ${color}`, color,
+    }}>
+      {children}
+    </span>
+  );
+}
+
+function SummaryChip({ label, value, tone }: { label: string; value: number; tone: 'success' | 'primary' }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999,
+      background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', fontSize: 13,
+    }}>
+      <span style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
+      <strong className="num" style={{ color: tone === 'success' ? 'var(--color-success)' : 'var(--color-primary)' }}>{value}</strong>
+    </span>
+  );
+}
+
+export function EmptyState({ icon, title, body, action }: {
+  icon: string;
+  title: string;
+  body: string;
+  action?: { label: string; onClick: () => void };
+}) {
+  return (
+    <div style={{
+      padding: 'var(--space-8)', maxWidth: 520, margin: '0 auto', textAlign: 'center',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-3)',
+    }}>
+      <div style={{
+        width: 56, height: 56, borderRadius: 'var(--radius-lg)', display: 'grid', placeItems: 'center',
+        background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)',
+      }}>
+        <Icon name={icon} size={26} />
+      </div>
+      <div style={{ fontSize: 17, fontWeight: 700 }}>{title}</div>
+      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: 'var(--color-text-secondary)' }}>{body}</p>
+      {action && (
+        <button onClick={action.onClick} className="btn btn-primary btn-lg" style={{ minHeight: 44, marginTop: 'var(--space-2)' }}>
+          {action.label}
+        </button>
+      )}
     </div>
   );
 }

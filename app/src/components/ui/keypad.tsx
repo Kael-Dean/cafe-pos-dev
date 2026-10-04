@@ -1,10 +1,19 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import './tokens.css';
+import './ui.css';
 import Icon from '../icons';
 import { useI18n } from '@/lib/i18n';
 import { cn } from './cn';
-import { useLatest } from './overlay';
+
+
+/** Ref that always holds the latest value (read from listeners without re-subscribing). */
+function useLatest<T>(value: T) {
+  const ref = useRef(value);
+  useEffect(() => { ref.current = value; });
+  return ref;
+}
 
 export type KeypadKey = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '.' | '00' | 'back' | 'clear' | 'enter';
 

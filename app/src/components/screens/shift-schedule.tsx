@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import Icon from '../icons';
-import { ModalShell } from '../app-common';
-import { useToast } from '../ui/toast';
+import { useToast, ModalShell } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { useCountUp } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';

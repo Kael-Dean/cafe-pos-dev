@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Icon from '../icons';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tag } from '../app-common';
-import { useToast } from '../ui/toast';
+import { useToast, Tag } from '../app-common';
 import {
   useLookupMember,
   useRegisterMember,
@@ -238,9 +237,9 @@ export default function MembershipModal({ onClose, onSelectMember, initialPhase 
           {phase === 'lookup' && (
             <div style={{ display: 'flex', gap: 6, background: 'var(--color-surface-2)', padding: 4, borderRadius: 10, marginBottom: 14, width: 'fit-content' }}>
               {([['phone', 'เบอร์โทร'], ['name', 'ชื่อ']] as const).map(([m, label]) => (
-                <button key={m} type="button" aria-pressed={searchMode === m} onClick={() => switchMode(m)}
+                <button key={m} onClick={() => switchMode(m)}
                   style={{
-                    padding: '6px 18px', minHeight: 44, borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none',
+                    padding: '6px 18px', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none',
                     background: searchMode === m ? 'var(--color-surface)' : 'transparent',
                     color: searchMode === m ? 'var(--color-text)' : 'var(--color-text-secondary)',
                     boxShadow: searchMode === m ? 'var(--shadow-xs)' : 'none',

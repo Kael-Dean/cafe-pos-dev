@@ -1,62 +1,30 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Icon from '../icons';
-import { useToast } from '../ui/toast';
+import { useToast, Tag, ModalShell } from '../app-common';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useI18n } from '@/lib/i18n';
 import { useKDSOrders, useUpdateOrderStatus, useVoidOrder, type KDSTicket } from '@/hooks/use-orders';
 import { ApiError } from '@/lib/api-client';
 import { useAllProducts } from '@/hooks/use-products';
 import { useModifierGroups } from '@/hooks/use-modifier-groups';
 import { useCookingSteps } from '@/hooks/use-cooking-steps';
-import { useCurrentUser } from '@/hooks/use-current-user';
-import { useOnlineStatus } from '@/components/pwa/offline-indicator';
-import { Banner, Button, IconButton, Modal, Skeleton, Snackbar, Timer, cn } from '@/components/ui';
 import CancelOrderModal from './cancel-order-modal';
-import { useOverlayHistory } from '../use-overlay-history';
-import s from './kds.module.css';
 
-type Status = KDSTicket['status'];
-type Next = 'progress' | 'ready' | 'done';
-
-const STATUS_RANK: Record<Status, number> = { new: 0, progress: 1, ready: 2 };
-const NEXT: Record<Status, Next> = { new: 'progress', progress: 'ready', ready: 'done' };
-const API_STATUS: Record<Next, string> = { progress: 'IN_PROGRESS', ready: 'READY', done: 'COMPLETED' };
-/** A double tap on the same ticket inside this window is ignored (never skips a status). */
+const STATUS_RANK: Record<KDSTicket['status'], number> = { new: 0, progress: 1, ready: 2 };
 const ACTION_COOLDOWN_MS = 600;
-/** Undo window (UI-SPEC §2.4). The status change is only sent to the server after it. */
-const UNDO_MS = 5000;
-/** Grid slot is held (faded) this long after "served" so a second tap can't land on the next card. */
-const LEAVE_MS = 180;
-/** Last good poll older than this → the stale bar (polling is every 15s). */
-const STALE_MS = 25_000;
-const WARN_MIN = 5;
-const LATE_MIN = 10;
-
-type Recent = { status: Next; at: number; pending?: boolean };
-type Pending = { ticket: KDSTicket; to: Next; prevRecent?: Recent; timer: ReturnType<typeof setTimeout> };
-type UndoState = { orderId: string; queue: string; to: Next; key: number };
-
-const hhmm = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-const isTyping = () => {
-  const el = document.activeElement;
-  return el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
-};
 
 export default function KDS() {
   const toast = useToast();
   const { t } = useI18n();
-  const online = useOnlineStatus();
-  const { data: me } = useCurrentUser();
-  const kdsQ = useKDSOrders();
-  const { data: serverTickets, isLoading, isError, dataUpdatedAt, isFetching, refetch } = kdsQ;
+  const { data: serverTickets, isLoading } = useKDSOrders();
   const updateStatus = useUpdateOrderStatus();
   const voidOrder = useVoidOrder();
   const [cancelTarget, setCancelTarget] = useState<KDSTicket | null>(null);
   const [localTickets, setLocalTickets] = useState<KDSTicket[]>([]);
-  const [stepsFor, setStepsFor] = useState<{ productId: string; productName: string } | null>(null);
-  const [stepsOpen, setStepsOpen] = useState(false);
-  const [undo, setUndo] = useState<UndoState | null>(null);
+  const [tick, setTick] = useState(0);
+  const [stepsModal, setStepsModal] = useState<{ productId: string; productName: string } | null>(null);
   const { data: allProducts } = useAllProducts();
   const nameToId = useMemo(() => {
     const m = new Map<string, string>();
@@ -72,33 +40,26 @@ export default function KDS() {
     return m;
   }, [modGroupList]);
 
-  // Display clock: elapsed minutes (urgency frame) + staleness. Timer chips tick on their own.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 5000);
-    return () => clearInterval(id);
-  }, []);
-
-  // Local actions the server has not caught up with: a stale poll must not revert a
-  // status we already advanced, or resurrect a ticket we already served. Entries for
-  // bumps still inside their undo window are `pending` and never expire on their own.
-  const recentActions = useRef(new Map<string, Recent>());
-  const pending = useRef(new Map<string, Pending>());
+  // Recent local actions: stale poll results must not revert a status we already
+  // advanced (or resurrect a ticket we already delivered) while the PATCH is in flight
+  const recentActions = useRef(new Map<string, { status: 'progress' | 'ready' | 'done'; at: number }>());
   const [leaving, setLeaving] = useState<Set<string>>(new Set());
-  const leaveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const leaveTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => () => { leaveTimers.current.forEach(clearTimeout); }, []);
 
-  // Merge a fresh server list with in-flight local actions.
+  // Merge a fresh server list with in-flight local actions: optimistic status bumps
+  // the server hasn't caught up to, and tickets we just delivered (filtered out).
   const mergeServer = (tickets: KDSTicket[]) => {
-    const at = Date.now();
+    const now = Date.now();
     const recent = recentActions.current;
-    for (const [id, a] of recent) if (!a.pending && at - a.at > 30000) recent.delete(id);
+    for (const [id, a] of recent) if (now - a.at > 30000) recent.delete(id);
     return tickets
-      .filter(tk => recent.get(tk.orderId)?.status !== 'done')
-      .map(tk => {
-        const a = recent.get(tk.orderId);
-        return a && a.status !== 'done' && STATUS_RANK[a.status] > STATUS_RANK[tk.status]
-          ? { ...tk, status: a.status }
-          : tk;
+      .filter(t => recent.get(t.orderId)?.status !== 'done')
+      .map(t => {
+        const a = recent.get(t.orderId);
+        return a && a.status !== 'done' && STATUS_RANK[a.status] > STATUS_RANK[t.status]
+          ? { ...t, status: a.status }
+          : t;
       });
   };
 
@@ -112,260 +73,182 @@ export default function KDS() {
     setLocalTickets(mergeServer(serverTickets));
   }
 
-  // Entrance policy: only tickets that appear AFTER the first render pulse once. On
-  // open, the screen's own fade already covers the cards.
+  // Entrance policy: only tickets that appear AFTER the first render slide in. On
+  // open, the screen's own fade already covers the cards; replaying a per-card
+  // .rise-in once the screen-switch fade releases its suppression read as a blink.
+  // Now initial cards just fade with the screen, and only new orders animate.
   const knownIds = useRef<Set<string> | null>(null);
   useEffect(() => {
-    // Seeded only once real data is on screen, so the first load never pulses.
-    if (serverTickets) knownIds.current = new Set(localTickets.map(tk => tk.orderId));
+    knownIds.current = new Set(localTickets.map(t => t.orderId));
   });
   const isNew = (orderId: string) => knownIds.current !== null && !knownIds.current.has(orderId);
 
-  // ── Removal / restore helpers ───────────────────────────────────────────────
-  const dropLeaving = (id: string) => setLeaving(cur => { if (!cur.has(id)) return cur; const n = new Set(cur); n.delete(id); return n; });
-  const scheduleRemoval = (id: string) => {
-    setLeaving(cur => new Set(cur).add(id));
-    const prev = leaveTimers.current.get(id);
-    if (prev) clearTimeout(prev);
-    leaveTimers.current.set(id, setTimeout(() => {
-      leaveTimers.current.delete(id);
-      setLocalTickets(cur => cur.filter(tk => tk.orderId !== id));
-      dropLeaving(id);
-    }, LEAVE_MS));
-  };
-  const restore = (ticket: KDSTicket) => {
-    const id = ticket.orderId;
-    const timer = leaveTimers.current.get(id);
-    if (timer) { clearTimeout(timer); leaveTimers.current.delete(id); }
-    dropLeaving(id);
-    setLocalTickets(cur => cur.some(tk => tk.orderId === id)
-      ? cur.map(tk => (tk.orderId === id ? ticket : tk))
-      : [...cur, ticket]);
-  };
-
-  const restoreRef = useRef(restore);
-  useEffect(() => { restoreRef.current = restore; });
-
-  // ── Deferred commit: a bump is local for UNDO_MS, then goes to the server ──
-  // The backend only moves forward (PAID→IN_PROGRESS→READY→COMPLETED), so undo works
-  // by not sending the change until the undo window has passed.
-  const mutateRef = useRef(updateStatus.mutateAsync);
-  useEffect(() => { mutateRef.current = updateStatus.mutateAsync; });
-  const failMsg = t.kds.statusUpdateFailed;
-  const commit = useCallback((orderId: string) => {
-    const p = pending.current.get(orderId);
-    if (!p) return;
-    clearTimeout(p.timer);
-    pending.current.delete(orderId);
-    recentActions.current.set(orderId, { status: p.to, at: Date.now() });
-    mutateRef.current({ orderId, status: API_STATUS[p.to] }).catch(() => {
-      recentActions.current.delete(orderId);
-      restoreRef.current(p.ticket);
-      toast({ kind: 'danger', title: failMsg });
-    });
-  }, [toast, failMsg]);
-  // Leaving the screen (or the page) sends every bump still waiting out its undo window.
+  // Re-render every 30s so elapsed times update
   useEffect(() => {
-    const flush = () => { for (const id of [...pending.current.keys()]) commit(id); };
-    const timers = leaveTimers.current;
-    window.addEventListener('pagehide', flush);
-    return () => {
-      window.removeEventListener('pagehide', flush);
-      flush();
-      timers.forEach(clearTimeout);
-    };
-  }, [commit]);
+    const t = setInterval(() => setTick(x => x + 1), 30000);
+    return () => clearInterval(t);
+  }, []);
+  void tick;
 
+  const elapsed = (placedAt: number) => Math.floor((Date.now() - placedAt) / 60000);
+
+  // Ignore repeat taps on the same ticket within the cooldown — prevents a double-tap
+  // from skipping a status (เริ่มทำ → เสร็จแล้ว in one go)
   const tooSoon = (orderId: string) => {
     const a = recentActions.current.get(orderId);
     return !!a && Date.now() - a.at < ACTION_COOLDOWN_MS;
   };
 
-  const bump = (ticket: KDSTicket) => {
-    const id = ticket.orderId;
-    if (tooSoon(id) || leaving.has(id)) return;
-    // A previous step still in its undo window goes to the server now.
-    if (pending.current.has(id)) commit(id);
-    const to = NEXT[ticket.status];
-    const prevRecent = recentActions.current.get(id);
-    recentActions.current.set(id, { status: to, at: Date.now(), pending: true });
-    if (to === 'done') scheduleRemoval(id);
-    else setLocalTickets(cur => cur.map(tk => (tk.orderId === id ? { ...tk, status: to } : tk)));
-    const timer = setTimeout(() => commit(id), UNDO_MS);
-    pending.current.set(id, { ticket, to, prevRecent, timer });
-    setUndo({ orderId: id, queue: String(ticket.queue), to, key: Date.now() });
+  const onBump = (ticket: KDSTicket) => {
+    if (tooSoon(ticket.orderId)) return;
+    recentActions.current.set(ticket.orderId, { status: 'progress', at: Date.now() });
+    setLocalTickets(cur => cur.map(t => t.orderId === ticket.orderId ? { ...t, status: 'progress' as const } : t));
+    updateStatus.mutateAsync({ orderId: ticket.orderId, status: 'IN_PROGRESS' })
+      .catch(() => {
+        recentActions.current.delete(ticket.orderId);
+        toast({ kind: 'danger', title: t.kds.statusUpdateFailed });
+      });
+    toast({ kind: 'info', title: t.kds.orderStarted(ticket.id), duration: 1600 });
   };
 
-  const undoRef = useRef(undo);
-  useEffect(() => { undoRef.current = undo; });
-  const doUndo = useCallback(() => {
-    const u = undoRef.current;
-    if (!u) return;
-    const p = pending.current.get(u.orderId);
-    setUndo(null);
-    if (!p) return;
-    clearTimeout(p.timer);
-    pending.current.delete(u.orderId);
-    if (p.prevRecent) recentActions.current.set(u.orderId, p.prevRecent);
-    else recentActions.current.delete(u.orderId);
-    restoreRef.current(p.ticket);
-  }, []);
+  const onDone = (ticket: KDSTicket) => {
+    if (tooSoon(ticket.orderId)) return;
+    if (ticket.status === 'progress') {
+      recentActions.current.set(ticket.orderId, { status: 'ready', at: Date.now() });
+      setLocalTickets(cur => cur.map(t => t.orderId === ticket.orderId ? { ...t, status: 'ready' as const } : t));
+      updateStatus.mutateAsync({ orderId: ticket.orderId, status: 'READY' })
+        .catch(() => {
+          recentActions.current.delete(ticket.orderId);
+          toast({ kind: 'danger', title: t.kds.statusUpdateFailed });
+        });
+    } else {
+      recentActions.current.set(ticket.orderId, { status: 'done', at: Date.now() });
+      // Card holds its grid slot (faded, unclickable) briefly before removal so a
+      // rapid second tap can't land on the card that slides into its place
+      setLeaving(cur => new Set(cur).add(ticket.orderId));
+      leaveTimers.current.push(setTimeout(() => {
+        setLocalTickets(cur => cur.filter(t => t.orderId !== ticket.orderId));
+        setLeaving(cur => { const n = new Set(cur); n.delete(ticket.orderId); return n; });
+      }, 220));
+      updateStatus.mutateAsync({ orderId: ticket.orderId, status: 'COMPLETED' })
+        .then(() => toast({ kind: 'success', title: t.kds.orderDone(ticket.id), msg: t.kds.deliver, duration: 1800 }))
+        .catch(() => {
+          recentActions.current.delete(ticket.orderId);
+          setLeaving(cur => { const n = new Set(cur); n.delete(ticket.orderId); return n; });
+          toast({ kind: 'danger', title: t.kds.statusUpdateFailed });
+        });
+    }
+  };
 
-  // Cancel ("ยกเลิก"): the card leaves its slot, the VOID call reverts stock/money
-  // server-side. On failure the ticket comes back; a 409 means it was already
-  // canceled, so it stays gone.
+  // Cancel ("ยกเลิก"): mirrors onDone's deliver/done removal path — the card
+  // fades out of its slot, the ticket is dropped locally, and the VOID call
+  // reverts stock/money server-side (excluded from the next poll). On failure we
+  // restore the ticket; a 409 means it was already canceled, so we keep it gone.
   const handleCancel = async (reason: string, restock: boolean) => {
     const ticket = cancelTarget;
     if (!ticket) return;
     const { orderId } = ticket;
-    const p = pending.current.get(orderId);
-    if (p) { clearTimeout(p.timer); pending.current.delete(orderId); }
-    if (undoRef.current?.orderId === orderId) setUndo(null);
     recentActions.current.set(orderId, { status: 'done', at: Date.now() });
-    scheduleRemoval(orderId);
+    setLeaving(cur => new Set(cur).add(orderId));
+    leaveTimers.current.push(setTimeout(() => {
+      setLocalTickets(cur => cur.filter(t => t.orderId !== orderId));
+      setLeaving(cur => { const n = new Set(cur); n.delete(orderId); return n; });
+    }, 220));
     setCancelTarget(null);
     try {
       await voidOrder.mutateAsync({ orderId, reason, restock });
       toast({ kind: 'success', title: t.kds.cancelDone(ticket.id), duration: 1800 });
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
+        // already canceled — keep it removed, let invalidate run, soft info toast
         toast({ kind: 'info', title: t.kds.cancelAlready, duration: 1800 });
       } else {
+        // restore the ticket (the 220ms timer may have already removed it)
         recentActions.current.delete(orderId);
-        restore(ticket);
+        setLeaving(cur => { const n = new Set(cur); n.delete(orderId); return n; });
+        setLocalTickets(cur => cur.some(t => t.orderId === orderId) ? cur : [...cur, ticket]);
         toast({ kind: 'danger', title: t.kds.cancelFailed });
       }
     }
   };
 
   // FIFO by order time — positions stay put when a status changes, so rapid taps
-  // never land on a different card that jumped into the slot.
+  // never land on a different card that jumped into the slot
   const sorted = [...localTickets].sort((a, b) => a.placedAt - b.placedAt);
+
   const counts = {
-    new:      localTickets.filter(tk => tk.status === 'new').length,
-    progress: localTickets.filter(tk => tk.status === 'progress').length,
-    ready:    localTickets.filter(tk => tk.status === 'ready').length,
+    new:      localTickets.filter(t => t.status === 'new').length,
+    progress: localTickets.filter(t => t.status === 'progress').length,
+    ready:    localTickets.filter(t => t.status === 'ready').length,
   };
-
-  // ── Keyboard: arrows move across tickets, Space advances, U undoes (§4.1) ───
-  const gridRef = useRef<HTMLDivElement>(null);
-  const onGridKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const card = e.target as HTMLElement;
-    if (!card.dataset.ticketId) return; // a button inside the ticket keeps its own keys
-    const cards = Array.from(gridRef.current?.querySelectorAll<HTMLElement>('[data-ticket-id]') ?? []);
-    const i = cards.indexOf(card);
-    if (i < 0) return;
-    const top = cards[0]?.offsetTop ?? 0;
-    const cols = Math.max(1, cards.filter(c => c.offsetTop === top).length);
-    const step: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols };
-    if (e.code in step) {
-      e.preventDefault();
-      cards[Math.min(cards.length - 1, Math.max(0, i + step[e.code]))]?.focus();
-      return;
-    }
-    if (e.code === 'Space') {
-      e.preventDefault();
-      const tk = sorted.find(x => x.orderId === card.dataset.ticketId);
-      if (tk) bump(tk);
-    }
-  };
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'KeyU' || e.ctrlKey || e.metaKey || e.altKey || isTyping()) return;
-      if (document.querySelector('[aria-modal="true"]')) return;
-      e.preventDefault();
-      doUndo();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [doUndo]);
-
-  const loadFailed = !serverTickets && isError;
-  const stale = !!serverTickets && (!online || isError || now - dataUpdatedAt > STALE_MS);
-  const statusLabel: Record<Next, string> = { progress: t.kds.badge.progress, ready: t.kds.badge.ready, done: t.kds.completed };
-  const sub = [me?.store_name, t.kds.station].filter(Boolean).join(' · ');
 
   return (
     <>
-    <div className={cn('surface-inverse', s.root)}>
-      <header className={s.head}>
-        <div className={s.titleBlock}>
-          <h1 className={s.title}>{t.kds.title}</h1>
-          <div className={s.sub}>{sub}</div>
+    <div className="surface-inverse" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <style>{KDS_PHONE_CSS}</style>
+      <div className="kds-head" style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 24, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div className="kds-head-title">
+          <div className="kds-title" style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em' }}>{t.kds.title}</div>
+          <div className="kds-sub" style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>Sukhumvit 49 • {t.kds.station}</div>
         </div>
-        <div className={s.stats}>
-          <StatChip className={s.statNew} icon="bell" label={t.kds.statNew} count={counts.new} />
-          <StatChip className={s.statProgress} icon="pot" label={t.kds.statProgress} count={counts.progress} />
-          <StatChip className={s.statReady} icon="check" label={t.kds.statReady} count={counts.ready} />
+        <div className="kds-head-stats" style={{ flex: 1, display: 'flex', gap: 12 }}>
+          <KDSStatChip label={t.kds.statNew} count={counts.new} color="var(--color-warning)" />
+          <KDSStatChip label={t.kds.statProgress} count={counts.progress} color="var(--color-accent)" />
+          <KDSStatChip label={t.kds.statReady} count={counts.ready} color="var(--color-success)" />
         </div>
-        <div className={s.clock}><Clock /></div>
-      </header>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }} className="num">
+          <Clock />
+        </div>
+      </div>
 
-      {stale && (
-        <Banner
-          tone="warning"
-          icon={online ? 'clock' : 'wifiOff'}
-          title={online ? t.kds.staleTitle : t.kds.offlineTitle}
-          detail={t.kds.updatedAt(hhmm(dataUpdatedAt))}
-          action={<Button size="sm" variant="secondary" loading={isFetching} onClick={() => { void refetch(); }}>{t.kds.retry}</Button>}
-        />
-      )}
-
-      <div className={cn(s.body, 'scroll')}>
+      <div className="scroll screen-pad" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 24 }}>
         {isLoading && localTickets.length === 0 ? (
-          <div className={s.grid} aria-busy="true">
+          /* Skeleton ticket grid mirrors the real card layout (no layout shift when
+             orders arrive). Built with white-on-dark fills because the KDS root is
+             .surface-inverse — pinned dark in BOTH themes, so the global light
+             skeleton sweep would be invisible here. */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-busy="true">
             <span className="sr-only">{t.kds.loadingOrders}</span>
-            {Array.from({ length: 6 }).map((_, i) => <div key={i} className={cn(s.skel, 'skeleton')} aria-hidden />)}
-          </div>
-        ) : loadFailed ? (
-          <div className={s.empty} role="alert">
-            <div className={s.emptyIcon}><Icon name="warning" size={36} /></div>
-            <h2 className={s.emptyTitle}>{t.kds.loadErrorTitle}</h2>
-            <p className={s.emptyBody}>{t.kds.loadErrorBody}</p>
-            <Button variant="accent" loading={isFetching} onClick={() => { void refetch(); }}>{t.kds.retry}</Button>
+            {Array.from({ length: 6 }).map((_, i) => <TicketSkeleton key={i} />)}
           </div>
         ) : sorted.length === 0 ? (
-          <div className={cn(s.empty, 'fade-in')}>
-            <div className={s.emptyIcon}><Icon name="check" size={36} /></div>
-            <h2 className={s.emptyTitle}>{t.kds.allClear}</h2>
-            <p className={s.emptyBody}>{t.kds.allClearHint}</p>
+          <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 300, color: 'rgba(255,255,255,0.55)', textAlign: 'center' }}>
+            <div style={{
+              width: 80, height: 80, borderRadius: 'var(--radius-pill)',
+              background: 'rgba(92,138,90,0.18)', color: 'var(--color-success)',
+              display: 'grid', placeItems: 'center', marginBottom: 'var(--space-4)',
+            }}>
+              <Icon name="check" size={40} />
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, color: 'rgba(255,255,255,0.85)' }}>{t.kds.allClear}</div>
+            <div>{t.kds.allClearHint}</div>
           </div>
         ) : (
-          <div ref={gridRef} className={s.grid} role="list" aria-label={t.kds.boardLabel} onKeyDown={onGridKey}>
-            {sorted.map(tk => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {sorted.map(t => (
               <OrderTicket
-                key={tk.orderId}
-                ticket={tk}
-                leaving={leaving.has(tk.orderId)}
-                arrive={isNew(tk.orderId)}
-                mins={Math.max(0, Math.floor((now - tk.placedAt) / 60000))}
+                key={t.orderId}
+                ticket={t}
+                leaving={leaving.has(t.orderId)}
+                animateIn={isNew(t.orderId)}
+                mins={elapsed(t.placedAt)}
                 nameToId={nameToId}
                 modGroup={modGroup}
-                onBump={() => bump(tk)}
-                onCancel={() => setCancelTarget(tk)}
-                onStepsClick={(productId, productName) => { setStepsFor({ productId, productName }); setStepsOpen(true); }}
+                onBump={() => onBump(t)}
+                onDone={() => onDone(t)}
+                onCancel={() => setCancelTarget(t)}
+                onStepsClick={(productId, productName) => setStepsModal({ productId, productName })}
               />
             ))}
           </div>
         )}
       </div>
-      <p className={s.keyHint}>{t.kds.keyHint}</p>
     </div>
-
-    <Snackbar
-      open={!!undo}
-      message={undo ? t.kds.bumped(undo.queue, statusLabel[undo.to]) : ''}
-      onAction={doUndo}
-      onClose={() => setUndo(null)}
-      duration={UNDO_MS}
-      resetKey={undo?.key}
-    />
-    {stepsFor && (
+    {stepsModal && (
       <CookingStepsModal
-        open={stepsOpen}
-        productId={stepsFor.productId}
-        productName={stepsFor.productName}
-        onClose={() => setStepsOpen(false)}
+        productId={stepsModal.productId}
+        productName={stepsModal.productName}
+        onClose={() => setStepsModal(null)}
       />
     )}
     {cancelTarget && (
@@ -383,173 +266,225 @@ const Clock = () => {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
     setNow(new Date());
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
   }, []);
   if (!now) return null;
   const pad = (n: number) => String(n).padStart(2, '0');
   return <span>{pad(now.getHours())}:{pad(now.getMinutes())}:{pad(now.getSeconds())}</span>;
 };
 
-const StatChip = ({ className, icon, label, count }: { className: string; icon: string; label: string; count: number }) => (
-  <div className={cn(s.stat, className)}>
-    <span className={s.statIcon}><Icon name={icon} size={14} strokeWidth={2.2} /></span>
-    <span>{label}</span>
-    <strong>{count}</strong>
+const KDSStatChip = ({ label, count, color }: { label: string; count: number; color: string }) => (
+  <div className="kds-stat" style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+    <span style={{ width: 8, height: 8, borderRadius: 999, background: color }} />
+    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{label}</span>
+    <span className="num" style={{ fontSize: 16, fontWeight: 700, color }}>{count}</span>
   </div>
 );
 
-const STATUS_ICON: Record<Status, string> = { new: 'bell', progress: 'pot', ready: 'check' };
-const STATUS_CLASS: Record<Status, string> = { new: s.statusNew, progress: s.statusProgress, ready: s.statusReady };
-const TYPE_ICON: Record<string, string> = { 'Dine-in': 'coffee', 'Takeaway': 'cart', 'Delivery': 'park' };
+/* A single shimmer block tuned for the dark KDS surface. The global .skeleton's
+   dark variant keys off [data-theme='dark']; KDS is .surface-inverse (dark in
+   BOTH themes), so the placeholder fills are spelled out here in white-on-dark. */
+const DarkBar = ({ w, h = 12, r = 'var(--radius-sm)' }: { w: number | string; h?: number; r?: string }) => (
+  <div className="skeleton" aria-hidden style={{
+    width: typeof w === 'number' ? `${w}px` : w, height: h, borderRadius: r,
+    background: 'rgba(255,255,255,0.08)',
+  }} />
+);
 
-const OrderTicket = ({ ticket, leaving, arrive, mins, nameToId, modGroup, onBump, onCancel, onStepsClick }: {
+/* Placeholder ticket — mirrors OrderTicket's three bands (header / items / action). */
+const TicketSkeleton = () => (
+  <div aria-hidden style={{
+    minHeight: 120, borderRadius: 'var(--radius-lg)',
+    borderTop: '4px solid rgba(255,255,255,0.12)',
+    background: 'rgba(255,255,255,0.04)',
+    display: 'flex', flexDirection: 'column', overflow: 'hidden',
+  }}>
+    <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <DarkBar w={40} h={26} r="var(--radius-md)" />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <DarkBar w="55%" h={11} />
+        <DarkBar w={64} h={18} r="var(--radius-pill)" />
+      </div>
+      <DarkBar w={48} h={20} r="var(--radius-pill)" />
+    </div>
+    <div style={{ padding: '12px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <DarkBar w="80%" h={15} />
+      <DarkBar w="60%" h={13} />
+    </div>
+    <div style={{ padding: 12, background: 'rgba(255,255,255,0.03)' }}>
+      <DarkBar w="100%" h={36} r="var(--radius-md)" />
+    </div>
+  </div>
+);
+
+const OrderTicket = ({ ticket, leaving, animateIn, mins, nameToId, modGroup, onBump, onDone, onCancel, onStepsClick }: {
   ticket: KDSTicket;
   leaving: boolean;
-  arrive: boolean;
+  animateIn: boolean;
   mins: number;
   nameToId: Map<string, string>;
   modGroup: Map<string, string>;
   onBump: () => void;
+  onDone: () => void;
   onCancel: () => void;
   onStepsClick: (productId: string, productName: string) => void;
 }) => {
   const { t } = useI18n();
-  const urgency = mins >= LATE_MIN ? 'late' : mins >= WARN_MIN ? 'warn' : 'normal';
+  const urgency = mins >= 10 ? 'red' : mins >= 5 ? 'yellow' : 'normal';
+  const accent = urgency === 'red' ? 'var(--color-danger)' : urgency === 'yellow' ? 'var(--color-warning)' : 'var(--color-accent)';
+  const typeIconMap: Record<string, string> = { 'Dine-in': 'cake', 'Takeaway': 'cart', 'Delivery': 'park' };
+  const statusStyle = {
+    new:      { bg: 'var(--color-warning)', color: 'var(--color-on-accent)' },
+    progress: { bg: 'var(--color-accent)',  color: 'var(--color-on-accent)' },
+    ready:    { bg: 'var(--color-success)', color: 'var(--color-on-accent)' },
+  }[ticket.status] || { bg: '', color: '' };
   const statusLabel = t.kds.badge[ticket.status];
   const typeLabel = (t.kds.orderType as Record<string, string>)[ticket.type] ?? ticket.type;
-  const queue = String(ticket.queue);
-
-  const action = {
-    new:      { label: t.kds.start,   icon: 'pot',     variant: 'primary' as const },
-    progress: { label: t.kds.done,    icon: 'check',   variant: 'accent' as const },
-    ready:    { label: t.kds.deliver, icon: 'success', variant: 'secondary' as const },
-  }[ticket.status];
 
   return (
-    /* .card-out holds the slot (faded) while the ticket leaves. */
-    <div
-      role="listitem"
-      tabIndex={0}
-      data-ticket-id={ticket.orderId}
-      aria-label={t.kds.ticketAria(queue, statusLabel, mins, urgency === 'late')}
-      className={cn(
-        'surface-paper', s.ticket,
-        urgency === 'warn' && s.warn, urgency === 'late' && s.late,
-        arrive && s.arrive, leaving && 'card-out',
-      )}
-    >
-      <div className={s.ticketHead}>
-        <div className={s.queue}>#{queue}</div>
-        <div className={s.headMid}>
-          <div className={s.type}><Icon name={TYPE_ICON[ticket.type] ?? 'cart'} size={14} />{typeLabel}</div>
-          <div className={s.timerRow}>
-            <Timer since={ticket.placedAt} warnAfter={WARN_MIN} dangerAfter={LATE_MIN} />
-            {urgency === 'late' && <span className={s.lateTag}>{t.kds.late}</span>}
+    /* .rise-in only for tickets that arrive after open (initial cards fade with the
+       screen — no replay blink); .card-out holds the slot (faded) while delivering */
+    <div className={`surface-paper min-h-[120px]${animateIn ? ' rise-in' : ''}${leaving ? ' card-out' : ''}`} style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', borderTop: `4px solid ${accent}`, color: 'var(--color-text)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--color-border)' }}>
+        <div className="num" style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.01em' }}>#{ticket.queue}</div>
+        <div style={{ flex: 1 }}>
+          <div className="text-xs" style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--color-text-secondary)' }}>
+            <Icon name={typeIconMap[ticket.type] || 'cart'} size={12} /> {typeLabel}
           </div>
+          <Tag tone={urgency === 'red' ? 'danger' : urgency === 'yellow' ? 'warning' : 'accent'}>
+            <Icon name="clock" size={10} /> {t.kds.minutes(mins)}
+          </Tag>
         </div>
-        <span className={cn(s.status, STATUS_CLASS[ticket.status])}>
-          <Icon name={STATUS_ICON[ticket.status]} size={14} strokeWidth={2.2} />
-          {statusLabel}
-        </span>
+        <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 999, background: statusStyle.bg, color: statusStyle.color }}>{statusLabel}</span>
       </div>
 
-      <div className={s.items}>
-        {ticket.items.map((it, i) => {
-          const productId = nameToId.get(it.name);
-          return (
-            <div key={i}>
-              <div className={s.itemRow}>
-                <div className={s.itemName}>
-                  <span>{it.name}</span>
-                  {productId && (
-                    <IconButton
-                      size="sm"
-                      icon={<Icon name="info" size={16} />}
-                      label={t.kds.howToAria(it.name)}
-                      onClick={() => onStepsClick(productId, it.name)}
-                    />
-                  )}
-                </div>
-                <div className={s.qty}>×{it.qty}</div>
+      <div style={{ padding: '12px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {ticket.items.map((it, i) => (
+          <div key={i}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div className="text-base" style={{ fontWeight: 600, lineHeight: 1.3 }}>{it.name}</div>
+                {nameToId.has(it.name) && (
+                  <button
+                    onClick={() => onStepsClick(nameToId.get(it.name)!, it.name)}
+                    title={t.kds.howTo}
+                    aria-label={t.kds.howToAria(it.name)}
+                    className="help-badge hit-44"
+                    style={{ width: 22, height: 22, minHeight: 22, borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}
+                  >?</button>
+                )}
               </div>
-              {it.mods.length > 0 && (
-                <div className={s.mods}>
-                  {it.mods.map((m, k) => {
-                    const isSpecial = m.name.startsWith('+') || m.name.includes('นมโอ๊ต') || m.name.includes('นมอัลมอนด์');
-                    const group = modGroup.get(m.id);
-                    return (
-                      <span key={k} className={isSpecial ? s.special : undefined}>
-                        {group && <span className={s.modGroup}>{group} </span>}
-                        {m.name}{k < it.mods.length - 1 ? ' • ' : ''}
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
+              <div className="num" style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-primary)' }}>×{it.qty}</div>
             </div>
-          );
-        })}
+            {it.mods.length > 0 && (
+              <div className="text-sm" style={{ color: 'var(--color-text-secondary)', marginTop: 2, lineHeight: 1.5 }}>
+                {it.mods.map((m, k) => {
+                  const isSpecial = m.name.startsWith('+') || m.name.includes('นมโอ๊ต') || m.name.includes('นมอัลมอนด์');
+                  const group = modGroup.get(m.id);
+                  return (
+                    <span key={k} style={{ fontWeight: isSpecial ? 700 : 400, color: isSpecial ? 'var(--color-primary)' : 'inherit' }}>
+                      {group && <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>{group} </span>}
+                      {m.name}{k < it.mods.length - 1 ? ' • ' : ''}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
 
-      <div className={s.actions}>
-        <Button
-          variant={action.variant}
-          size="lg"
-          fullWidth
-          icon={<Icon name={action.icon} size={18} />}
-          onClick={onBump}
-          keyShortcuts="Space"
-        >
-          {action.label}
-        </Button>
-        {/* "ยกเลิก" sits on its own row, right-aligned, so a mis-tap on the primary
-            action above is much harder. It opens a confirm dialog (no direct void). */}
-        <div className={s.cancelRow}>
-          <Button variant="ghost" className={s.cancel} icon={<Icon name="trash" size={16} />} onClick={onCancel}>
-            {t.kds.cancel}
-          </Button>
+      <div style={{ padding: 12, background: 'var(--color-surface-2)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {ticket.status === 'new' && (
+          <button onClick={onBump} className="btn btn-primary min-h-[52px]" style={{ width: '100%', fontSize: 15 }}>
+            <Icon name="coffee" size={16} /> {t.kds.start}
+          </button>
+        )}
+        {ticket.status === 'progress' && (
+          <button onClick={onDone} className="btn btn-accent min-h-[52px]" style={{ width: '100%', fontSize: 15 }}>
+            <Icon name="check" size={16} /> {t.kds.done}
+          </button>
+        )}
+        {ticket.status === 'ready' && (
+          <button onClick={onDone} className="btn btn-primary min-h-[52px]" style={{ width: '100%', fontSize: 15, background: 'var(--color-success)', borderColor: 'var(--color-success)' }}>
+            <Icon name="check" size={16} /> {t.kds.deliver}
+          </button>
+        )}
+        {/* "ยกเลิก" — own row, compact + right-aligned so a mis-tap on the primary
+            action above is much harder. Click opens a confirm dialog (no direct void). */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            className="btn btn-ghost kds-cancel"
+            style={{ padding: '4px 10px', fontSize: 12, color: 'var(--color-danger-fg)' }}
+          >
+            <Icon name="trash" size={12} /> {t.kds.cancel}
+          </button>
         </div>
       </div>
     </div>
   );
 };
 
-const CookingStepsModal = ({ open, productId, productName, onClose }: {
-  open: boolean;
+const CookingStepsModal = ({ productId, productName, onClose }: {
   productId: string;
   productName: string;
   onClose: () => void;
 }) => {
   const { t } = useI18n();
   const { data: steps, isLoading } = useCookingSteps(productId);
-  useOverlayHistory(open, onClose);
 
+  // Shared ModalShell: capped to the visible screen, body scrolls, Escape / focus
+  // trap / focus restore built in, portaled above the phone tab bar.
   return (
-    <Modal open={open} onClose={onClose} size="sm" title={productName} description={t.kds.howTo}>
-      <ol className="m-0 flex list-none flex-col gap-3 p-0">
+    <ModalShell title={productName} subtitle={t.kds.howTo} onClose={onClose} width={420}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {isLoading ? (
-          <li aria-busy="true" className="flex flex-col gap-3">
+          /* Step placeholders mirror the numbered-step rows below so the modal
+             body doesn't jump when the real steps land. */
+          <div aria-busy="true" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <span className="sr-only">{t.common.loading}</span>
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex items-start gap-3">
+              <div key={i} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
                 <Skeleton width={28} height={28} radius="var(--radius-pill)" />
-                <div className="flex flex-1 flex-col gap-1.5 pt-1">
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 4 }}>
                   <Skeleton width="92%" height={13} />
                   <Skeleton width="64%" height={13} />
                 </div>
               </div>
             ))}
-          </li>
+          </div>
         ) : !steps || steps.length === 0 ? (
-          <li className="p-8 text-center text-sm text-text-secondary">{t.kds.noSteps}</li>
+          <div style={{ textAlign: 'center', padding: 32, color: 'var(--color-text-secondary)', fontSize: 14 }}>{t.kds.noSteps}</div>
         ) : steps.map((step, idx) => (
-          <li key={step.id} className="flex items-start gap-3">
-            <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent text-xs font-extrabold text-on-accent tabular-nums">{idx + 1}</span>
-            <span className="pt-0.5 text-[15px] leading-relaxed">{step.instruction}</span>
-          </li>
+          <div key={step.id} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+            <div className="num" style={{ width: 28, height: 28, borderRadius: 999, background: 'var(--color-accent)', color: 'var(--color-on-accent)', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>{idx + 1}</div>
+            <div style={{ fontSize: 15, lineHeight: 1.6, paddingTop: 4 }}>{step.instruction}</div>
+          </div>
         ))}
-      </ol>
-    </Modal>
+      </div>
+    </ModalShell>
   );
 };
+
+/**
+ * Phone layout (< 768px): the header wraps to title + clock over a row of three
+ * equal stat chips (it was one ~540px row that pushed the page sideways).
+ * .kds-cancel keeps its compact 32px on tablet / desktop as a class instead of an
+ * inline minHeight, so the 44px phone tap-target rule in globals.css can apply.
+ */
+const KDS_PHONE_CSS = `
+.kds-cancel { min-height: 32px; }
+@media (max-width: 767px) {
+  .kds-head { flex-wrap: wrap; padding: 10px 12px !important; gap: 8px 12px !important; }
+  .kds-head-title { flex: 1; min-width: 0; }
+  .kds-title { font-size: 17px !important; }
+  .kds-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kds-head-stats { order: 3; flex: 1 0 100% !important; gap: 6px !important; }
+  .kds-stat { flex: 1 1 0; min-width: 0; justify-content: center; padding: 6px 8px !important; gap: 6px !important; }
+  .kds-stat > span:first-child { flex-shrink: 0; }
+  .kds-stat > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kds-cancel { min-height: 44px; padding: 4px 12px !important; font-size: 13px !important; }
+}
+`;

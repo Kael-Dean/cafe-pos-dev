@@ -1,14 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../icons';
-import { Banner, Button, IconButton, Input, Modal } from '@/components/ui';
 import { bahtText } from '@/lib/baht-text';
 import { makeInvoiceNo } from '@/lib/receipt-number';
-import { useI18n } from '@/lib/i18n';
-import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
-import { useAutoPrintPref, printerPaired, shouldAutoPrint } from './payment/auto-print';
-import s from './payment/receipt.module.css';
+import { useModalA11y } from '@/hooks/use-modal-a11y';
 
 /**
  * The preview reproduces a physical 80mm thermal slip, which is light paper
@@ -18,6 +15,7 @@ import s from './payment/receipt.module.css';
  * hue rather than pure #fff / #000, per the no-pure-black/white design rule.
  */
 const PAPER = '#FFFEFB';
+const PAPER_TRAY = '#EFE9E0';
 const PAPER_BORDER = '#E5E0D5';
 const INK = '#1C140D';
 const INK_MUTED = '#7A6E60';
@@ -79,20 +77,13 @@ interface Props {
   issuedAt?: Date;
   /** Render as a duplicate ("สำเนา") instead of the original. */
   copy?: boolean;
-  /** Reverts the sale (stock + money) via the order-cancel flow. Shown to managers only. */
+  /** When provided, shows a danger "ยกเลิกใบเสร็จ" action in the footer that
+   *  reverts the sale (stock + money) via the order-cancel flow. */
   onCancel?: () => void;
-  /** Backdates the order on the server ("YYYY-MM-DD"; resolves once persisted). Managers only. */
+  /** When provided, shows a date picker that backdates the order on the server
+   *  (for entering past sales). Receives "YYYY-MM-DD"; resolves once persisted. */
   onSaveDate?: (businessDateISO: string) => Promise<void>;
-  /**
-   * `sale` (just paid): primary is "ออเดอร์ถัดไป" and the device auto-print setting
-   * applies. `reprint` (receipt copies): primary is "ปิด", never auto-prints.
-   * Default: `reprint` when `copy` or `onCancel` is given (the receipt-copies
-   * screen), otherwise `sale` (the POS after payment).
-   */
-  context?: 'sale' | 'reprint';
 }
-
-type PrintState = { kind: 'idle' } | { kind: 'printing' } | { kind: 'printed' } | { kind: 'failed'; msg: string };
 
 /** Local calendar day as "YYYY-MM-DD" (matches <input type="date">). */
 function toYMD(d: Date): string {
@@ -113,24 +104,9 @@ export const DEFAULT_STORE: StoreInfo = {
   phone: '062-334-5526',
 };
 
-const money = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const bahtShort = (n: number) =>
-  `฿${n.toLocaleString('en-US', Number.isInteger(n) ? undefined : { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, onCancel, onSaveDate, context }: Props) {
-  const { t } = useI18n();
-  const { data: me } = useCurrentUser();
-  const manager = isAdmin(me?.role);
-  const mode = context ?? (copy || onCancel ? 'reprint' : 'sale');
-
-  const [print, setPrint] = useState<PrintState>({ kind: 'idle' });
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [autoPref, setAutoPref] = useAutoPrintPref();
-  const [paired, setPaired] = useState(false);
-  const markerRef = useRef<HTMLDivElement>(null);
-  const alive = useRef(true);
-  // Re-armed on mount: StrictMode runs mount → cleanup → mount in development.
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, onCancel, onSaveDate }: Props) {
+  const [isPrinting, setIsPrinting] = useState(false);
+  const dialogRef = useModalA11y(onClose);
 
   // Fallback timestamp must be stable across re-renders — a bare new Date()
   // here would regenerate the fallback invoice no. and header date every render.
@@ -138,241 +114,239 @@ export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, o
   const now = issuedAt ?? mountedAt;
   const invoiceNo = data.receiptNo ?? makeInvoiceNo(String(data.orderNumber), now);
 
-  // ── Backdating (manager only): pick a day, persist to the server ──
-  const canBackdate = manager && !!onSaveDate;
-  const canCancel = manager && !!onCancel;
+  // ── Backdating: pick a day, persist to the server (for past-sale entry) ──
   const originalDate = toYMD(now);
   const [pickedDate, setPickedDate] = useState(originalDate);
   const [savingDate, setSavingDate] = useState(false);
-  const shownDate = canBackdate ? combineDateTime(pickedDate, now) : now;
+  // The slip + header reflect the chosen day (with the original time-of-day) so
+  // the preview matches before printing; the server receipt no. updates on save.
+  const shownDate = onSaveDate ? combineDateTime(pickedDate, now) : now;
   const dateStr = shownDate.toLocaleString('th-TH');
-  const dateChanged = canBackdate && pickedDate !== originalDate;
+  const todayYMD = toYMD(new Date());
+  const dateChanged = onSaveDate != null && pickedDate !== originalDate;
 
   const handleSaveDate = useCallback(async () => {
     if (!onSaveDate || savingDate || pickedDate === originalDate) return;
     setSavingDate(true);
     try { await onSaveDate(pickedDate); }
-    catch { /* the caller surfaces the error */ }
-    finally { if (alive.current) setSavingDate(false); }
+    catch { /* parent surfaces the error toast */ }
+    finally { setSavingDate(false); }
   }, [onSaveDate, savingDate, pickedDate, originalDate]);
 
   const formatDate = (d: Date) => d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
   const formatTime = (d: Date) => d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const printing = print.kind === 'printing';
   const handlePrint = useCallback(async () => {
-    if (!alive.current) return;
-    setPrint({ kind: 'printing' });
+    setIsPrinting(true);
     try {
       await onPrint();
-      if (alive.current) setPrint({ kind: 'printed' });
-    } catch (e: unknown) {
-      if (alive.current) setPrint({ kind: 'failed', msg: e instanceof Error && e.message ? e.message : t.receipt.printFailed });
+    } finally {
+      setIsPrinting(false);
     }
-  }, [onPrint, t]);
+  }, [onPrint]);
 
   const handleBrowserPrint = () => window.print();
 
-  // ── Auto-print once for a fresh sale (per-device setting; default = printer paired) ──
-  const autoStarted = useRef(false);
-  useEffect(() => {
-    if (mode !== 'sale' || autoStarted.current) return;
-    autoStarted.current = true;
-    void shouldAutoPrint().then((yes) => { if (yes) void handlePrint(); });
-  }, [mode, handlePrint]);
-
-  // The switch shows the effective value; probe the bridge only to render the default.
-  useEffect(() => {
-    if (autoPref !== 'default' || !moreOpen) return;
-    void printerPaired().then((p) => { if (alive.current) setPaired(p); });
-  }, [autoPref, moreOpen]);
-  const autoOn = autoPref === 'on' || (autoPref === 'default' && paired);
-
-  // ── Keys (spec §4.1 "receipt"): Enter / N next order · P print. e.code → Thai layout safe.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
-      const dialog = markerRef.current?.closest('[aria-modal="true"]');
-      const stack = document.querySelectorAll('[aria-modal="true"]');
-      if (!dialog || stack[stack.length - 1] !== dialog) return; // not topmost
-      const target = e.target instanceof Element ? e.target : null;
-      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
-      if (e.code === 'KeyP') {
-        e.preventDefault();
-        if (!printing) void handlePrint();
-      } else if (e.code === 'KeyN' || (e.key === 'Enter' && !target?.closest('button, a, [role="button"]'))) {
-        if (e.repeat) return;
-        e.preventDefault();
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [printing, handlePrint, onClose]);
-
-  const change = data.cashGiven != null ? Math.max(0, data.cashGiven - data.total) : 0;
-  const printLabel = printing ? t.receipt.printing : print.kind === 'printed' ? t.receipt.printed : t.receipt.print;
-
-  return (
+  // Portal to <body>: screen roots animate in via GSAP (useFadeRise), which
+  // leaves an inline `transform` on the ancestor. A non-none transform makes it
+  // the containing block for `position: fixed`, trapping this overlay inside the
+  // page column instead of the viewport. Portaling escapes that — and also makes
+  // `.receipt-print-root` a direct child of <body> so the @media print rule
+  // (`body > *:not(.receipt-print-root)`) actually isolates the slip.
+  const overlay = (
     <>
-      <style>{PRINT_CSS}</style>
-      <Modal
-        open
-        onClose={onClose}
-        size="sm"
-        closeOnBackdrop={false}
-        title={copy ? t.receipt.titleCopy : t.receipt.title}
-        description={t.receipt.meta(data.orderNumber, `${formatDate(shownDate)} ${formatTime(shownDate)}`)}
-        className={`receipt-print-root ${s.dialog}`}
-        footer={
-          <div className={`receipt-no-print ${s.foot}`}>
-            <Button
-              variant="secondary"
-              size="lg"
-              onClick={() => { void handlePrint(); }}
-              loading={printing}
-              kbd="P"
-              icon={<Icon name={print.kind === 'printed' ? 'check' : 'printer'} size={18} />}
-              className={s.printBtn}
-            >
-              {printLabel}
-            </Button>
-            <IconButton
-              size="lg"
-              variant="outline"
-              icon={<Icon name="dots" size={20} />}
-              label={t.receipt.more}
-              aria-expanded={moreOpen}
-              aria-controls="receipt-more"
-              onClick={() => setMoreOpen((o) => !o)}
-            />
-            <Button
-              variant="primary"
-              size="xl"
-              fullWidth
-              kbd="Enter"
-              onClick={onClose}
-              className={s.nextBtn}
-              icon={mode === 'sale' ? <Icon name="plus" size={20} /> : undefined}
-            >
-              {mode === 'sale' ? t.receipt.nextOrder : t.receipt.close}
-            </Button>
-          </div>
+      <style>{`
+        @media print {
+          body > *:not(.receipt-print-root) { display: none !important; }
+          .receipt-print-root { position: fixed; inset: 0; display: block !important; overflow: visible; background: white; }
+          .receipt-print-root .receipt-modal-shell { all: unset; display: block; }
+          .receipt-print-root .receipt-no-print { display: none !important; }
+          .receipt-print-root .receipt-scroll { max-height: none !important; overflow: visible !important; padding: 0 !important; background: white !important; }
+          .receipt-print-root .receipt-paper { box-shadow: none !important; border: none !important; margin: 0 !important; border-radius: 0 !important; max-height: none !important; overflow: visible !important; }
+          .receipt-print-root .receipt-edit-input { border: none !important; padding: 0 !important; background: transparent !important; }
         }
+        /* Phones (< 768px): tighter gutters, 44px controls, and a two-row footer —
+           secondary actions on top, "close" + the primary print button at the thumb. */
+        @media (max-width: 767px) {
+          .receipt-print-root { padding: 12px !important; padding-top: calc(var(--top-inset) + 12px) !important; }
+          .receipt-modal-shell { max-height: calc(var(--app-h, 100dvh) - 24px) !important; }
+          .receipt-bar { padding: 10px 12px 10px 16px !important; }
+          .receipt-backdate { padding: 10px 16px !important; gap: 8px !important; }
+          .receipt-backdate-label { flex: 1 0 100% !important; }
+          .receipt-date { flex: 1 1 0; min-width: 0; min-height: 44px !important; font-size: 16px !important; }
+          .receipt-date-save { min-height: 44px !important; }
+          .receipt-scroll { padding: 12px !important; }
+          .receipt-foot { padding: 10px 12px !important; }
+          .receipt-foot > button { flex: 1 1 0; min-width: 0; justify-content: center; padding-left: 8px !important; padding-right: 8px !important; white-space: nowrap; }
+          .receipt-foot-break { flex: 0 0 100% !important; height: 0; }
+          .receipt-foot > .receipt-foot-print { flex: 2 1 0; }
+        }
+      `}</style>
+
+      <div
+        className="receipt-print-root"
+        style={{
+          position: 'fixed', inset: 0, zIndex: 300,
+          background: 'var(--color-scrim, rgba(26, 16, 8, 0.55))',
+          backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 'var(--space-4)',
+          paddingTop: 'calc(var(--top-inset, 0px) + var(--space-4))',
+          overflowY: 'auto',
+        }}
+        onClick={onClose}
       >
-        <div ref={markerRef} className={s.marker} aria-hidden="true" />
-
-        {moreOpen && (
-          <section id="receipt-more" className={`receipt-no-print ${s.more}`} aria-label={t.receipt.more}>
-            {mode === 'sale' && (
-              <label className={s.switchRow}>
-                <input
-                  type="checkbox"
-                  role="switch"
-                  className={s.switch}
-                  checked={autoOn}
-                  onChange={(e) => setAutoPref(e.target.checked)}
-                />
-                <span className={s.switchText}>
-                  <span className={s.switchTitle}>{t.receipt.autoPrint}</span>
-                  <span className={s.switchHint}>{t.receipt.autoPrintHint}</span>
-                </span>
-              </label>
-            )}
-            <Button variant="ghost" size="md" icon={<Icon name="print" size={18} />} onClick={handleBrowserPrint}>
-              {t.receipt.browserPrint}
-            </Button>
-
-            {(canBackdate || canCancel) && (
-              <div className={s.manager}>
-                <p className={s.managerTitle}>{t.receipt.managerSection}</p>
-                {canBackdate && (
-                  <div className={s.dateRow}>
-                    <Input
-                      type="date"
-                      label={t.receipt.backdate}
-                      hint={t.receipt.backdateHint}
-                      value={pickedDate}
-                      max={toYMD(new Date())}
-                      onChange={(e) => setPickedDate(e.target.value)}
-                      className={s.dateInput}
-                    />
-                    <Button
-                      variant="secondary"
-                      size="md"
-                      onClick={() => { void handleSaveDate(); }}
-                      loading={savingDate}
-                      disabled={!dateChanged}
-                      className={s.dateSave}
-                    >
-                      {t.receipt.saveDate}
-                    </Button>
-                  </div>
-                )}
-                {canCancel && (
-                  <Button variant="danger" size="md" icon={<Icon name="trash" size={18} />} onClick={onCancel} disabled={printing}>
-                    {t.receipt.cancelBill}
-                  </Button>
-                )}
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={copy ? 'สำเนาใบเสร็จรับเงิน' : 'ใบเสร็จรับเงิน'}
+          aria-busy={isPrinting || undefined}
+          className="receipt-modal-shell"
+          onClick={e => e.stopPropagation()}
+          style={{
+            width: '100%', maxWidth: 460,
+            maxHeight: 'calc(var(--app-h, 100dvh) - (var(--space-4) * 2))',
+            background: 'var(--color-surface)',
+            borderRadius: 'var(--radius-xl)',
+            boxShadow: 'var(--shadow-lg)',
+            display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden',
+            animation: 'modal-in var(--dur-slow) var(--ease-out)',
+          }}
+        >
+          {/* ── Toolbar ── */}
+          <div className="receipt-no-print receipt-bar" style={{
+            padding: '14px 20px', flexShrink: 0,
+            display: 'flex', alignItems: 'center', gap: 10,
+            borderBottom: '1px solid var(--color-border)',
+          }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: 8, flexShrink: 0,
+              background: 'var(--color-primary-50)', color: 'var(--color-primary)',
+              display: 'grid', placeItems: 'center',
+            }}>
+              <Icon name="printer" size={17} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>ใบเสร็จรับเงิน</div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
+                ออเดอร์ #{data.orderNumber} · {formatDate(shownDate)} {formatTime(shownDate)}
               </div>
-            )}
-          </section>
-        )}
-
-        {change > 0 && (
-          <div className={`receipt-no-print ${s.change}`}>
-            <span className={s.changeLabel}>{t.receipt.changeDue}</span>
-            <span className={`num ${s.changeValue}`}>{bahtShort(change)}</span>
+            </div>
+            <button onClick={onClose} aria-label="ปิด" className="icon-btn hit-44" style={{
+              width: 30, height: 30, borderRadius: 6, display: 'grid', placeItems: 'center',
+              color: 'var(--color-text-secondary)',
+            }}>
+              <Icon name="x" size={15} />
+            </button>
           </div>
-        )}
 
-        {print.kind === 'failed' && (
-          <Banner
-            tone="danger"
-            icon="printer"
-            live="alert"
-            title={t.receipt.printFailed}
-            detail={print.msg}
-            className="receipt-no-print"
-            action={
-              <span className={s.failActions}>
-                <Button size="sm" variant="secondary" onClick={() => { void handlePrint(); }}>{t.receipt.printRetry}</Button>
-                <Button size="sm" variant="ghost" onClick={handleBrowserPrint}>{t.receipt.browserPrint}</Button>
-              </span>
-            }
-          />
-        )}
+          {/* ── Backdate editor (server-persisted; for keying past sales) ── */}
+          {onSaveDate && (
+            <div className="receipt-no-print receipt-backdate" style={{
+              padding: 'var(--space-3) var(--space-5)', flexShrink: 0,
+              borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
+              display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap',
+            }}>
+              <div className="receipt-backdate-label" style={{ flex: 1, minWidth: 120 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text)' }}>วันที่ใบเสร็จ</div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>แก้เพื่อคีย์ขายย้อนหลัง</div>
+              </div>
+              <input
+                type="date"
+                aria-label="วันที่ใบเสร็จ"
+                value={pickedDate}
+                max={todayYMD}
+                onChange={e => setPickedDate(e.target.value)}
+                className="input-std receipt-date"
+                style={{
+                  padding: '8px var(--space-3)', minHeight: 40, borderRadius: 'var(--radius-md)', fontSize: 14,
+                  border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)',
+                }}
+              />
+              <button
+                onClick={handleSaveDate}
+                disabled={!dateChanged || savingDate}
+                aria-busy={savingDate || undefined}
+                className="pressable receipt-date-save"
+                style={{
+                  padding: '9px var(--space-4)', minHeight: 40, borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                  background: (!dateChanged || savingDate) ? 'var(--color-border)' : 'var(--color-primary)',
+                  color: (!dateChanged || savingDate) ? 'var(--color-text-muted)' : 'var(--color-text-inverse)',
+                  cursor: (!dateChanged || savingDate) ? 'default' : 'pointer',
+                }}
+              >
+                {savingDate
+                  ? <span className="spinner" aria-hidden style={{ width: 14, height: 14 }} />
+                  : <Icon name="check" size={14} />}
+                บันทึกวันที่
+              </button>
+            </div>
+          )}
 
-        {/* Receipt preview (tinted paper tray; stays light in both themes) */}
-        <div className={`receipt-scroll ${s.tray}`}>
-          <ReceiptPaper
-            data={data}
-            invoiceNo={invoiceNo} now={shownDate} copy={copy}
-            dateStr={dateStr}
-            fmt={money} formatDate={formatDate} formatTime={formatTime}
-            storeInfo={DEFAULT_STORE}
-          />
+          {/* ── Receipt preview (tinted paper tray; stays light in both themes) ── */}
+          <div className="receipt-scroll" style={{ padding: 'var(--space-5)', overflowY: 'auto', flex: 1, minHeight: 0, background: PAPER_TRAY }}>
+            <ReceiptPaper
+              data={data}
+              invoiceNo={invoiceNo} now={shownDate} copy={copy}
+              dateStr={dateStr}
+              fmt={fmt} formatDate={formatDate} formatTime={formatTime}
+              storeInfo={DEFAULT_STORE}
+            />
+          </div>
+
+          {/* ── Footer actions ── */}
+          <div className="receipt-no-print receipt-foot" style={{
+            padding: 'var(--space-3) var(--space-5)', flexShrink: 0, borderTop: '1px solid var(--color-border)',
+            display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap', rowGap: 'var(--space-2)',
+          }}>
+            {onCancel && (
+              <button onClick={onCancel} disabled={isPrinting} className="icon-btn pressable" style={{
+                padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 13, minHeight: 44,
+                border: '1px solid var(--color-danger)',
+                display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                color: 'var(--color-danger)', background: 'var(--color-danger-50)',
+                opacity: isPrinting ? 0.5 : 1,
+              }}>
+                <Icon name="trash" size={14} /> ยกเลิกใบเสร็จ
+              </button>
+            )}
+            <button onClick={handleBrowserPrint} disabled={isPrinting} className="icon-btn pressable" style={{
+              padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 13, minHeight: 44,
+              border: '1px solid var(--color-border)',
+              display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+              color: 'var(--color-text-secondary)',
+              opacity: isPrinting ? 0.5 : 1,
+            }}>
+              <Icon name="print" size={14} /> บันทึก PDF
+            </button>
+            {/* spacer on tablet / desktop; a full-width line break on phones */}
+            <div className="receipt-foot-break" style={{ flex: 1 }} />
+            <button onClick={onClose} className="icon-btn receipt-foot-close" style={{
+              padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 13, minHeight: 44,
+              color: 'var(--color-text-secondary)',
+            }}>ปิด</button>
+            <button onClick={handlePrint} disabled={isPrinting} aria-busy={isPrinting || undefined} className="pressable receipt-foot-print" style={{
+              padding: '9px 22px', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 700, minHeight: 44,
+              background: isPrinting ? 'var(--color-surface-2)' : 'var(--color-primary)',
+              color: isPrinting ? 'var(--color-text-secondary)' : 'var(--color-text-inverse)',
+              display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+              opacity: isPrinting ? 0.85 : 1,
+              cursor: isPrinting ? 'wait' : 'pointer',
+            }}>
+              {isPrinting ? <span className="spinner" aria-hidden /> : <Icon name="printer" size={16} />}
+              {isPrinting ? 'กำลังพิมพ์...' : 'พิมพ์ใบเสร็จ'}
+            </button>
+          </div>
         </div>
-      </Modal>
+      </div>
     </>
   );
-}
 
-/**
- * Print isolation. The Modal portals `.ui-overlay` straight into <body>, so every
- * other body child is hidden and the overlay is flattened down to the slip.
- */
-const PRINT_CSS = `
-@media print {
-  body > *:not(:has(.receipt-print-root)) { display: none !important; }
-  body > :has(.receipt-print-root) { position: static !important; display: block !important; padding: 0 !important; background: none !important; animation: none !important; }
-  .receipt-print-root { all: unset; display: block !important; }
-  .receipt-print-root > .ui-dialog__head, .receipt-print-root > .ui-dialog__foot, .receipt-print-root .receipt-no-print { display: none !important; }
-  .receipt-print-root .ui-dialog__body { overflow: visible !important; padding: 0 !important; max-height: none !important; display: block !important; }
-  .receipt-print-root .receipt-scroll { padding: 0 !important; background: white !important; }
-  .receipt-print-root .receipt-paper { box-shadow: none !important; border: none !important; margin: 0 !important; border-radius: 0 !important; }
+  return typeof document !== 'undefined' ? createPortal(overlay, document.body) : null;
 }
-`;
 
 /* ─── Faithful thermal-receipt preview ──────────────────────────────
    Mirrors bridge/server.mjs buildESCPOS() line-for-line so the on-screen

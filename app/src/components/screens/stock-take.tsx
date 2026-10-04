@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Icon from '../icons';
-import { useToast } from '../ui/toast';
+import { useToast } from '../app-common';
 import { useStagger } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { useIsPhone } from '@/hooks/use-media-query';
