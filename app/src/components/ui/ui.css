@@ -72,7 +72,8 @@
 .ui-btn[aria-busy='true'] { cursor: progress; opacity: 1; }
 /* Loading with no leading icon: the label keeps its box (width locked) and the
    spinner sits over it. */
-.ui-btn__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* line-height 1.4 (not the button's 1.25): the label clips overflow, and Thai tone marks / upper vowels sit above a 1.25 line box. */
+.ui-btn__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 1.4; }
 .ui-btn__label[data-hidden] { visibility: hidden; }
 .ui-btn__spinner-overlay { position: absolute; inset: 0; display: grid; place-items: center; }
 .ui-btn__kbd { margin-inline-start: var(--space-1); }
@@ -261,6 +262,10 @@
   color: var(--color-text-secondary); white-space: nowrap; cursor: pointer;
 }
 .ui-seg--lg .ui-seg__item { min-height: calc(var(--tap-pos) - 6px); font-size: var(--fs-15); }
+/* The item is 6px shorter than its track (2px padding + 1px border each side); the
+   pseudo lifts the hit area to the full track height without changing the visual. */
+.ui-seg__item { position: relative; }
+.ui-seg__item::after { content: ''; position: absolute; inset: -3px 0; }
 .ui-seg__item[aria-checked='true'] {
   background: var(--color-surface); color: var(--color-text);
   font-weight: var(--fw-semibold); box-shadow: var(--shadow-xs);

@@ -1,7 +1,8 @@
 'use client';
 
 import './pos.css';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useQueryClient } from '@tanstack/react-query';
 import Icon from '../../icons';
 import { baht } from '../../app-common';
@@ -25,15 +26,13 @@ import {
   type Bill, type CartLine, type NewCartLine,
 } from '@/stores/cart-store';
 import PaymentModal, { PaymentNotice, type PaymentDetails } from '../payment-modal';
-import ReceiptModal, { type ReceiptData } from '../receipt-modal';
-import MembershipModal from '../membership-modal';
+import type { ReceiptData } from '../receipt-modal';
 import { SearchBar } from './SearchBar';
 import { CategoryBar, CAT_ALL, CAT_HOT, categoryOrder } from './CategoryBar';
 import { ProductGrid } from './ProductGrid';
 import { Cart } from './Cart';
 import type { Totals } from './TotalBlock';
 import { ModifierSheet, type ModifierTarget } from './ModifierSheet';
-import { DiscountSheet } from './DiscountSheet';
 import { HotkeyCheatSheet } from './HotkeyCheatSheet';
 import { ParkedBillsSheet } from './ParkedBillsSheet';
 import { useDensity } from './use-density';
@@ -44,6 +43,18 @@ import {
 } from './model';
 
 export type { POSTableSession } from './model';
+
+// Rare-path overlays are split out of the initial POS chunk. They are prefetched on
+// idle right after first paint (see the effect in POSTerminal), so opening one is
+// still instant; payment stays static because it is the hot path.
+const ReceiptModal = dynamic(() => import('../receipt-modal'), { ssr: false });
+const MembershipModal = dynamic(() => import('../membership-modal'), { ssr: false });
+const DiscountSheet = dynamic(() => import('./DiscountSheet').then((m) => m.DiscountSheet), { ssr: false });
+const prefetchOverlays = () => {
+  void import('../receipt-modal');
+  void import('../membership-modal');
+  void import('./DiscountSheet');
+};
 
 interface POSTerminalProps {
   /**
@@ -118,17 +129,24 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
   const [search, setSearch] = useState('');
   const [hi, setHi] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
-  const searching = search.trim() !== '';
+  // The input stays on the urgent `search`; the grid follows `deferredSearch` so a
+  // keystroke / clear never waits on re-rendering every tile (interruptible).
+  const deferredSearch = useDeferredValue(search);
+  const searching = deferredSearch.trim() !== '';
+  const matchSearch = (q: string) => {
+    const s = q.trim().toLowerCase();
+    return products.filter((m) => m.name.toLowerCase().includes(s) || m.nameEn.toLowerCase().includes(s));
+  };
 
   const visible = useMemo(() => {
     if (searching) {
-      const s = search.trim().toLowerCase();
+      const s = deferredSearch.trim().toLowerCase();
       return products.filter((m) => m.name.toLowerCase().includes(s) || m.nameEn.toLowerCase().includes(s));
     }
     if (activeCategory === CAT_HOT) return products.filter((m) => m.hot);
     if (activeCategory === CAT_ALL) return products;
     return products.filter((m) => m.cat === activeCategory);
-  }, [products, activeCategory, search, searching]);
+  }, [products, activeCategory, deferredSearch, searching]);
   const highlightedId = searching ? (visible[Math.min(hi, visible.length - 1)]?.id ?? null) : null;
 
   // Warm the modifier cache for what is on screen so taps add instantly.
@@ -168,6 +186,16 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
     if (!el) return;
     el.focus({ preventScroll: true });
     if (select) el.select();
+  }, []);
+
+  useEffect(() => {
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (h: number) => void };
+    if (w.requestIdleCallback) {
+      const h = w.requestIdleCallback(prefetchOverlays, { timeout: 4000 });
+      return () => w.cancelIdleCallback?.(h);
+    }
+    const h = window.setTimeout(prefetchOverlays, 2000);
+    return () => window.clearTimeout(h);
   }, []);
 
   // Desktop: land in the search box, ready to type.
@@ -355,8 +383,11 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
   // ── Search ────────────────────────────────────────────────────────────────
   const onSearchChange = (v: string) => { setSearch(v); setHi(0); };
   const onSearchSubmit = () => {
-    if (!searching) return;
-    const target = visible.length === 1 ? visible[0] : visible[Math.min(hi, visible.length - 1)];
+    // Resolve against the live input, not the deferred grid, so a fast "type + Enter"
+    // can never add a product from a stale result list.
+    if (search.trim() === '') return;
+    const live = deferredSearch === search ? visible : matchSearch(search);
+    const target = live.length === 1 ? live[0] : live[Math.min(hi, live.length - 1)];
     if (!target) return;
     onAdd(target);
     setSearch('');
@@ -602,6 +633,7 @@ export default function POSTerminal({ session = null, onClearSession }: POSTermi
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="pos" data-density={density}>
+      <h1 className="sr-only">{t.nav.pos}</h1>
       {session && (
         <Banner
           tone="accent"

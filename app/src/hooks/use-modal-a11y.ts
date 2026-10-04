@@ -55,7 +55,17 @@ export function useModalA11y(onClose: () => void): RefObject<HTMLDivElement | nu
       const at = openStack.indexOf(token);
       if (at >= 0) openStack.splice(at, 1);
       document.removeEventListener('keydown', onKey);
-      opener?.focus?.({ preventScroll: true });
+      // A dialog that hands over to another one (detail -> settle) stays mounted for
+      // its exit fade, so this cleanup can run AFTER the next dialog took focus. Do not
+      // pull focus out of a different open dialog back to the page behind it.
+      const ae = document.activeElement as HTMLElement | null;
+      const inOtherDialog = !!ae && ae !== document.body && !node?.contains(ae) && !!ae.closest('[aria-modal="true"]');
+      if (!inOtherDialog) {
+        // Opener gone (it lived inside the dialog we handed over from): land on <main>
+        // rather than <body> so the next Tab starts inside the screen, not the sidebar.
+        if (opener && opener.isConnected) opener.focus({ preventScroll: true });
+        else document.getElementById('main-content')?.focus({ preventScroll: true });
+      }
     };
     // onClose identity is stable for the modal's lifetime in practice; we only
     // want this to run once on mount/unmount.

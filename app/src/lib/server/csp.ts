@@ -16,17 +16,18 @@ export interface CspOptions {
 }
 
 export function r2ImageOrigins(env: Record<string, string | undefined> = process.env): string[] {
-  const out = new Set<string>(['https://*.r2.dev']);
+  // Pinned to the exact bucket/domain when configured; the managed-host
+  // wildcard is only the fallback while R2_PUBLIC_URL is unset.
   const base = env.R2_PUBLIC_URL || env.NEXT_PUBLIC_R2_PUBLIC_URL;
   if (base) {
     try {
       const u = new URL(base);
-      if (u.protocol === 'https:') out.add(u.origin);
+      if (u.protocol === 'https:') return [u.origin];
     } catch {
-      /* malformed env — ignore */
+      /* malformed env — fall back to the wildcard */
     }
   }
-  return [...out];
+  return ['https://*.r2.dev'];
 }
 
 export function buildCsp({ nonce, isDev, imageOrigins = [] }: CspOptions): string {

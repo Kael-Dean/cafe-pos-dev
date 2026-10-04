@@ -9,6 +9,7 @@ export const en: Messages = {
     save: 'Save',
     cancel: 'Cancel',
     close: 'Close',
+    skipToMain: 'Skip to main content',
     confirm: 'Confirm',
     delete: 'Delete',
     remove: 'Remove',

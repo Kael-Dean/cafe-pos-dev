@@ -82,6 +82,24 @@ const EMPTY_PARKED: ParkedBill[] = [];
 export const lineKeyOf = (l: Pick<CartLine, 'menuId' | 'modKey' | 'note'>) =>
   `${l.menuId}|${l.modKey}|${l.note.trim()}`;
 
+/**
+ * The cart is written to localStorage and outlives logout, so member PII
+ * (phone, date of birth) must not be persisted — only what the POS needs to
+ * keep showing the member and to build the order.
+ */
+const redactMember = (m: MemberInfo | null): MemberInfo | null =>
+  m ? { ...m, account: { ...m.account, phone: null, date_of_birth: null } } : null;
+
+const redactBill = (b: Bill): Bill => (b.member ? { ...b, member: redactMember(b.member) } : b);
+
+const redactScopes = (byScope: Record<string, ScopeState>): Record<string, ScopeState> =>
+  Object.fromEntries(
+    Object.entries(byScope).map(([k, s]) => [
+      k,
+      { ...s, bill: redactBill(s.bill), parked: s.parked.map((p) => ({ ...p, bill: redactBill(p.bill) })) },
+    ]),
+  );
+
 interface CartStore {
   scope: string;
   byScope: Record<string, ScopeState>;
@@ -234,7 +252,7 @@ export const useCartStore = create<CartStore>()(
       name: 'pos-cart-v1',
       version: 1,
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ scope: s.scope, byScope: s.byScope }),
+      partialize: (s) => ({ scope: s.scope, byScope: redactScopes(s.byScope) }),
       skipHydration: true,
     },
   ),

@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useI18n } from '@/lib/i18n';
 import { useModalA11y } from '@/hooks/use-modal-a11y';
 import { cn } from './cn';
-import { DialogHead, useBackdropDismiss, useHistoryOverlay, useLatest, usePresence } from './overlay';
+import { DialogHead, useBackdropDismiss, useHistoryOverlay, useLatest, usePresence, useScrollableBodyFocus } from './overlay';
 
 export interface SheetProps {
   open: boolean;
@@ -69,6 +69,7 @@ function SheetSurface({
   const descId = useId();
   const canClose = dismissible && !closing;
   const latest = useLatest({ onClose, dismissible: canClose });
+  const bodyRef = useScrollableBodyFocus(titleId);
   const dialogRef = useModalA11y(() => { if (latest.current.dismissible) latest.current.onClose(); });
   useHistoryOverlay(historyAware, latest);
   const backdrop = useBackdropDismiss(canClose && closeOnBackdrop, onClose);
@@ -137,7 +138,7 @@ function SheetSurface({
           closeDisabled={!dismissible}
           onClose={onClose}
         />
-        {children != null && <div className="ui-dialog__body scroll">{children}</div>}
+        {children != null && <div ref={bodyRef} className="ui-dialog__body scroll">{children}</div>}
         {footer != null && <div className="ui-dialog__foot">{footer}</div>}
       </div>
     </div>

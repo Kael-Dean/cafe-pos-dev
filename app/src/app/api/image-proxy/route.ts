@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { hasValidSession } from '@/lib/server/session';
+
+export const runtime = 'nodejs';
 
 // Same-origin proxy for menu photos stored on Cloudflare R2.
 //
@@ -8,25 +11,32 @@ import { NextRequest, NextResponse } from 'next/server';
 // browser. This route fetches the image server-side (no CORS in play) and streams
 // the bytes back from our own origin, so the client canvas can read them freely.
 //
-// SSRF guard: only R2 hosts are allowed — the managed `*.r2.dev` / S3
-// `*.r2.cloudflarestorage.com` endpoints, plus the configured public base
-// (R2_PUBLIC_URL, for custom domains). The response must itself be an image.
+// Security (audit m1): staff session required, SSRF guard on the host (pinned to
+// R2_PUBLIC_URL once it is set; the managed `*.r2.dev` / `*.r2.cloudflarestorage.com`
+// hosts are only the fallback while it is unset), redirects never followed, raster
+// images only (no SVG), 10 MB cap.
+
+const MAX_BYTES = 10 * 1024 * 1024;
+const IMAGE_TYPE = /^image\/(png|jpe?g|webp|gif|avif)(;|$)/i;
 
 function allowedHost(host: string): boolean {
   const h = host.toLowerCase();
-  if (h.endsWith('.r2.dev') || h.endsWith('.r2.cloudflarestorage.com')) return true;
   const base = process.env.R2_PUBLIC_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
   if (base) {
     try {
-      if (new URL(base).host.toLowerCase() === h) return true;
+      return new URL(base).host.toLowerCase() === h;
     } catch {
-      /* malformed env — ignore */
+      /* malformed env — fall back to the managed hosts */
     }
   }
-  return false;
+  return h.endsWith('.r2.dev') || h.endsWith('.r2.cloudflarestorage.com');
 }
 
 export async function GET(req: NextRequest) {
+  if (!(await hasValidSession(req))) {
+    return NextResponse.json({ error: 'unauthenticated' }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
+  }
+
   const raw = req.nextUrl.searchParams.get('url');
   if (!raw) return NextResponse.json({ error: 'missing url' }, { status: 400 });
 
@@ -45,21 +55,29 @@ export async function GET(req: NextRequest) {
   try {
     // Never follow redirects: a 3xx could point outside the R2 allowlist (SSRF).
     // With 'manual' a redirect is not `ok`, so it is rejected just below.
-    upstream = await fetch(target.toString(), { redirect: 'manual' });
+    upstream = await fetch(target.toString(), { redirect: 'manual', signal: AbortSignal.timeout(10_000) });
   } catch {
     return NextResponse.json({ error: 'fetch failed' }, { status: 502 });
   }
 
   const contentType = upstream.headers.get('content-type') ?? '';
-  if (!upstream.ok || !contentType.startsWith('image/')) {
+  if (!upstream.ok || !IMAGE_TYPE.test(contentType)) {
     return NextResponse.json({ error: 'not an image' }, { status: 502 });
   }
+  if (Number(upstream.headers.get('content-length') ?? '0') > MAX_BYTES) {
+    return NextResponse.json({ error: 'too large' }, { status: 413 });
+  }
+  const bytes = await upstream.arrayBuffer().catch(() => null);
+  if (!bytes || bytes.byteLength > MAX_BYTES) {
+    return NextResponse.json({ error: 'too large' }, { status: 413 });
+  }
 
-  return new NextResponse(upstream.body, {
+  return new NextResponse(bytes, {
     status: 200,
     headers: {
       'Content-Type': contentType,
       'Cache-Control': 'private, max-age=300',
+      'X-Content-Type-Options': 'nosniff',
     },
   });
 }

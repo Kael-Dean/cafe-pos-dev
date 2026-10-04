@@ -104,7 +104,8 @@ function toTIS620(text) {
   for (const ch of text) {
     const cp = ch.charCodeAt(0);
     if (cp >= 0x0e00 && cp <= 0x0e7f) bytes.push(cp - 0x0e00 + 0xa0);
-    else if (cp < 0x80) bytes.push(cp);
+    else if (cp >= 0x20 && cp < 0x7f) bytes.push(cp);
+    else if (cp < 0x80) bytes.push(0x20); // C0 controls (ESC/GS/DLE...) and DEL never reach the printer as commands
     else bytes.push(0x3f);
   }
   return Buffer.from(bytes);

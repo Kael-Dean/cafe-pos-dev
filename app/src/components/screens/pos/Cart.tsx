@@ -104,7 +104,7 @@ export function Cart(p: CartProps) {
         )}
       </div>
 
-      <div ref={listRef} className="pos-cart__lines scroll" role="list" aria-label={t.pos.linesAria(totals.count)}>
+      <div ref={listRef} className="pos-cart__lines scroll" {...(empty ? {} : { role: "list", "aria-label": t.pos.linesAria(totals.count) })}>
         {empty ? (
           <EmptyState
             icon="cart"

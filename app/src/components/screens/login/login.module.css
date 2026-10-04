@@ -42,6 +42,7 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+.pinBlock:focus { outline: none; }
 .pinBlock { display: flex; flex-direction: column; align-items: center; gap: var(--space-4); }
 
 .dots { display: flex; gap: var(--space-4); padding: var(--space-2) 0; }

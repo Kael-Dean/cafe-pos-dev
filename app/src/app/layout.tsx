@@ -48,7 +48,8 @@ export const viewport: Viewport = {
   ],
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
+  // No maximumScale: pinch-zoom must stay available (WCAG 1.4.4). Inputs are 16px on
+  // phones, so iOS focus-zoom is already avoided without locking the scale.
   // Extend under the notch / home indicator so env(safe-area-inset-*) resolves to
   // real values (the bottom tab bar and modal sheets rely on it). Without this the
   // insets are 0 on notched iPhones/iPads and fixed UI sits under the home bar.
@@ -63,7 +64,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // the route dynamic, which nonces require (a static page has no request).
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
-    <html lang="th" className={`h-full ${anuphan.variable}`}>
+    // suppressHydrationWarning: the no-flash script below stamps data-theme on
+    // <html> before React hydrates, so the attribute never matches server HTML.
+    <html lang="th" className={`h-full ${anuphan.variable}`} suppressHydrationWarning>
       <head>
         {/* No-flash theme: runs before first paint, so the page never renders in
             the wrong theme. Reads the saved preference, falling back to the OS

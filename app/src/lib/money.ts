@@ -14,7 +14,8 @@ export function bahtStr(value: string | null | undefined): string {
   const [rawInt = '0', rawFrac = ''] = raw.replace(/^[-+]/, '').split('.');
   const int = (rawInt || '0').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   // Keep decimals only when they carry value — "240.00" reads better as ฿240.
-  const frac = /[1-9]/.test(rawFrac) ? `.${rawFrac.replace(/0+$/, '')}` : '';
+  // ...and when they do, show at least satang: "1234.50" -> ฿1,234.50, never ฿1,234.5.
+  const frac = /[1-9]/.test(rawFrac) ? `.${rawFrac.replace(/0+$/, '').padEnd(2, '0')}` : '';
   return `${neg ? '-' : ''}฿${int}${frac}`;
 }
 

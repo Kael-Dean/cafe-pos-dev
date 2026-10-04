@@ -32,6 +32,39 @@ export function usePresence(open: boolean) {
   return { mounted, closing };
 }
 
+/**
+ * WCAG 2.1.1 (axe: scrollable-region-focusable). A dialog body that scrolls but holds
+ * no focusable control (receipt preview, shortcut list) cannot be scrolled from the
+ * keyboard, so it becomes a focusable labelled region while that is true.
+ */
+export function useScrollableBodyFocus(titleId: string) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select,textarea,[tabindex]:not([tabindex="-1"])';
+    const update = () => {
+      const needs = el.scrollHeight > el.clientHeight + 1 && !el.querySelector(FOCUSABLE);
+      if (needs) {
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('role', 'region');
+        el.setAttribute('aria-labelledby', titleId);
+      } else {
+        el.removeAttribute('tabindex');
+        el.removeAttribute('role');
+        el.removeAttribute('aria-labelledby');
+      }
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    const mo = new MutationObserver(update);
+    mo.observe(el, { childList: true, subtree: true });
+    return () => { ro.disconnect(); mo.disconnect(); };
+  }, [titleId]);
+  return ref;
+}
+
 /** A ref that always holds the latest value — for handlers bound once on mount. */
 export function useLatest<T>(value: T) {
   const ref = useRef(value);

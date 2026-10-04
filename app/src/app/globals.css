@@ -164,7 +164,7 @@
   --sb-border: #DAD1BF;
   --sb-text: #4E4030;                /* nav labels (8.2:1) */
   --sb-text-strong: #2A1A0F;         /* logo title, user name */
-  --sb-text-muted: #70614A;          /* store name, role, P1 (4.8:1) */
+  --sb-text-muted: #66573F;          /* store name, role, P1 (5.6:1 on --sb-bg, 5.1:1 on the user-card tint) */
   --sb-hover: rgba(61,40,23,0.06);
   --sb-press: rgba(61,40,23,0.12);
   --sb-active-bg: #FCFAF6;            /* raised light pill (matches ref) */
@@ -666,7 +666,25 @@ html[data-kb-open] .modal-card {
 .btn-lg { padding: 14px 18px; font-size: var(--fs-16); }
 .btn-xl { padding: 18px 20px; font-size: var(--fs-16); min-height: 64px; }
 
+/* ---------- Skip link (WCAG 2.4.1) ---------- */
+.skip-link {
+  position: fixed; top: 8px; left: 8px; z-index: 2300;
+  min-height: 44px; padding: 0 var(--space-4);
+  background: var(--color-primary); color: var(--color-on-primary);
+  border-radius: var(--radius-md); font: inherit; font-weight: 600; font-size: var(--fs-14);
+  transform: translateY(-200%);
+}
+.skip-link:focus-visible {
+  transform: none;
+  outline: 2px solid var(--color-focus-ring); outline-offset: 2px;
+}
+
 /* ---------- Mobile touch targets ---------- */
+/* Pinch-zoom stays enabled (no maximum-scale), but rapid double-taps on controls
+   must not trigger double-tap zoom. */
+button, [role="button"], a, input, select, textarea, label, summary {
+  touch-action: manipulation;
+}
 @media (max-width: 767px) {
   button, [role="button"], a {
     min-height: 44px;

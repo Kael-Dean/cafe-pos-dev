@@ -78,6 +78,7 @@ export default function LoginScreen({ onLogin }: Props) {
   const [expiredNotice, setExpiredNotice] = useState(() => consumeLogoutReason() === 'expired');
   const [cooldown, setCooldown] = useState(0);
   const storeInputRef = useRef<HTMLInputElement>(null);
+  const pinBlockRef = useRef<HTMLDivElement>(null);
 
   // One calm entrance for the first screen of the day (reduced-motion aware).
   const cardRef = useFadeRise({ y: 12, duration: 0.34 });
@@ -139,6 +140,9 @@ export default function LoginScreen({ onLogin }: Props) {
     setStoreSlug(slug);
     setEditingStore(false);
     setError('');
+    // The store field unmounts here; park focus on the PIN block so keyboard / screen-reader
+    // users are not dropped on <body> (WCAG 2.4.3). Digits still work from the physical keys.
+    window.setTimeout(() => pinBlockRef.current?.focus({ preventScroll: true }), 0);
   };
 
   const changeStore = () => {
@@ -191,7 +195,7 @@ export default function LoginScreen({ onLogin }: Props) {
               <Button variant="ghost" size="md" onClick={changeStore} disabled={loading}>{t.login.storeChange}</Button>
             </div>
 
-            <div className={s.pinBlock}>
+            <div ref={pinBlockRef} tabIndex={-1} className={s.pinBlock}>
               <span id="login-pin-label" className="sr-only">{t.login.pinLabel}</span>
               <div
                 key={shakeKey}

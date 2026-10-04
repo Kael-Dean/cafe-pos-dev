@@ -13,6 +13,7 @@ export const th = {
     save: 'บันทึก',
     cancel: 'ยกเลิก',
     close: 'ปิด',
+    skipToMain: 'ข้ามไปเนื้อหาหลัก',
     confirm: 'ยืนยัน',
     delete: 'ลบ',
     remove: 'นำออก',

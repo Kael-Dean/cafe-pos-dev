@@ -428,7 +428,7 @@ const OrderTicket = ({ ticket, leaving, arrive, mins, nameToId, modGroup, onBump
 
   return (
     /* .card-out holds the slot (faded) while the ticket leaves. */
-    <article
+    <div
       role="listitem"
       tabIndex={0}
       data-ticket-id={ticket.orderId}
@@ -511,7 +511,7 @@ const OrderTicket = ({ ticket, leaving, arrive, mins, nameToId, modGroup, onBump
           </Button>
         </div>
       </div>
-    </article>
+    </div>
   );
 };
 

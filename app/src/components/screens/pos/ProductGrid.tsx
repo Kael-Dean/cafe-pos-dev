@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Button, EmptyState, Skeleton } from '@/components/ui';
 import { useI18n } from '@/lib/i18n';
 import { useStagger } from '@/lib/motion';
@@ -27,13 +28,31 @@ interface ProductGridProps {
   animateKey: string;
 }
 
+/**
+ * Progressive mount: the first screenful of tiles renders at once, the rest follow in
+ * small slices between frames. Mounting 150+ tiles in one commit froze low-end
+ * tablets (~1.1s on a 4x-throttled CPU when clearing a search); this keeps the
+ * first paint + input responsive and finishes in a few frames.
+ */
+const FIRST_SLICE = 30;
+const NEXT_SLICE = 40;
+
 export function ProductGrid(p: ProductGridProps) {
   const { t } = useI18n();
+  const total = p.items.length;
+  const [shown, setShown] = useState(FIRST_SLICE);
+  const [seenItems, setSeenItems] = useState(p.items);
+  if (seenItems !== p.items) { setSeenItems(p.items); setShown(FIRST_SLICE); }
+  useEffect(() => {
+    if (shown >= total) return;
+    const id = window.setTimeout(() => setShown((n) => n + NEXT_SLICE), 16);
+    return () => window.clearTimeout(id);
+  }, [shown, total]);
 
   if (p.error) {
     return (
       <EmptyState
-        tone="danger"
+        tone="danger" headingLevel={2}
         title={t.pos.loadMenuErrorTitle}
         body={t.pos.loadMenuError}
         action={<Button variant="secondary" size="lg" onClick={p.onRetry}>{t.pos.retry}</Button>}
@@ -61,17 +80,17 @@ export function ProductGrid(p: ProductGridProps) {
   if (p.items.length === 0) {
     return p.searching ? (
       <EmptyState
-        tone="search"
+        tone="search" headingLevel={2}
         title={t.pos.noSearchResults}
         body={t.pos.noSearchHint}
         action={<Button variant="secondary" onClick={p.onClearSearch}>{t.pos.clearSearch}</Button>}
       />
     ) : (
-      <EmptyState icon="coffee" title={t.pos.emptyCategory} body={t.pos.emptyCategoryHint} />
+      <EmptyState headingLevel={2} icon="coffee" title={t.pos.emptyCategory} body={t.pos.emptyCategoryHint} />
     );
   }
 
-  const tiles = p.items.map((m, i) => (
+  const tiles = p.items.slice(0, shown).map((m, i) => (
     <ProductTile
       key={m.id}
       item={m}

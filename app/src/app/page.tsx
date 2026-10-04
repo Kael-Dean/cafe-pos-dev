@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { useFeatures } from '@/hooks/use-features';
 import { useMediaQuery } from '@/hooks/use-media-query';
+import { useI18n } from '@/lib/i18n';
 // Login + POS stay static: login is the gate and POS is the default screen, so both
 // belong in the first chunk. Every other screen is code-split below.
 import LoginScreen from '@/components/screens/login';
@@ -156,6 +157,7 @@ export default function POS() {
 
 /** The logged-in app: screen router, nav, toasts. Mounted only with a token, so its user queries never run logged out. */
 function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [screen, setScreen] = useState<Screen>(screenFromUrl);
   const screenRef = useRef(screen);
@@ -301,9 +303,12 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
       {/* .app-shell (globals.css): flex row, height --app-h = 100dvh minus the system
           bar / top safe-area inset, side safe-area insets as padding. */}
       <div className="app-shell">
+        {/* WCAG 2.4.1: lets keyboard users skip the sidebar tab stops. A button (not an
+            #hash link) so it never touches the ?screen= history entry. */}
+        <button type="button" className="skip-link" onClick={() => document.getElementById('main-content')?.focus()}>{t.common.skipToMain}</button>
         {/* ≥ 768px. Below that it is display:none and <MobileNav> is the nav. */}
         <Sidebar current={active} onNavigate={go} onLogout={() => { void handleLogout(); }} collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
-        <main className="app-main relative min-w-0 flex-1 overflow-auto">
+        <main id="main-content" tabIndex={-1} className="app-main relative min-w-0 flex-1 overflow-auto" style={{ outline: 'none' }}>
           {/* key remounts on navigation so the screen fade (.screen-enter, opacity
               only) plays once per switch. ScreenFrame also tags itself
               .screen-switching for the duration of that fade, which suppresses the
