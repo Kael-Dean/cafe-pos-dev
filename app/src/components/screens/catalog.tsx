@@ -194,6 +194,8 @@ export default function CatalogAdmin() {
 
 // ── Products Tab ──────────────────────────────────────────────────────────────
 
+const NO_CATEGORY = '__none__';
+
 function ProductsTab() {
   const toast = useToast();
   const { data: products, isLoading } = useProductsAdmin();
@@ -206,6 +208,14 @@ function ProductsTab() {
   const [formCatId, setFormCatId]   = useState('');
   const [formDesc, setFormDesc]     = useState('');
   const [formActive, setFormActive] = useState(true);
+  // '' = all products, NO_CATEGORY = products without a category, else a category id.
+  const [catFilter, setCatFilter]   = useState('');
+
+  const visibleProducts = (products ?? []).filter(p =>
+    !catFilter ? true :
+    catFilter === NO_CATEGORY ? !p.category_id :
+    p.category_id === catFilter,
+  );
 
   const openEdit = (p: ProductReadAdmin) => {
     setEditTarget(p);
@@ -248,8 +258,24 @@ function ProductsTab() {
   return (
     <>
       <div className="cat-table-wrap" style={{ background: 'var(--color-surface)', borderRadius: 12, border: '1px solid var(--color-border)', overflow: 'hidden' }}>
-        <div className="cat-table-head" style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)' }}>
-          <span style={{ fontWeight: 600, fontSize: 14 }}>สินค้าทั้งหมด ({products?.length ?? 0})</span>
+        <div className="cat-table-head stack-phone" style={{ padding: '10px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span style={{ fontWeight: 600, fontSize: 14 }}>
+            {catFilter
+              ? `แสดง ${visibleProducts.length} จาก ${products?.length ?? 0} รายการ`
+              : `สินค้าทั้งหมด (${products?.length ?? 0})`}
+          </span>
+          <div className="full-phone" style={{ width: 220 }}>
+            <Select
+              value={catFilter}
+              onChange={setCatFilter}
+              ariaLabel="กรองตามหมวดหมู่"
+              options={[
+                { value: '', label: 'ทุกหมวดหมู่' },
+                ...(categories ?? []).map(c => ({ value: c.id, label: c.name })),
+                { value: NO_CATEGORY, label: 'ไม่มีหมวดหมู่' },
+              ]}
+            />
+          </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
         <table className="row-cards cat-prod" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
@@ -263,7 +289,7 @@ function ProductsTab() {
             </tr>
           </thead>
           <tbody>
-            {(products ?? []).map(p => {
+            {visibleProducts.map(p => {
               const cat = categories?.find(c => c.id === p.category_id);
               // The table-time charge is looked up by this exact name every time a
               // board-game session closes: renaming or retiring it silently breaks
@@ -313,10 +339,10 @@ function ProductsTab() {
                 </tr>
               );
             })}
-            {!products?.length && (
+            {!visibleProducts.length && (
               <tr>
                 <td colSpan={5} style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)' }}>
-                  ยังไม่มีสินค้า
+                  {products?.length ? 'ไม่มีสินค้าในหมวดหมู่นี้' : 'ยังไม่มีสินค้า'}
                 </td>
               </tr>
             )}
