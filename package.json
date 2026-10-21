@@ -1,8 +1,32 @@
 {
-  "name": "cafe-pos",
+  "name": "pos-editions",
   "private": true,
   "version": "0.0.0",
+  "description": "Kafé OS POS frontend — one core (@pos/core), two sellable editions (apps/cafe, apps/boardgame). See docs/EDITIONS.md.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "packageManager": "npm@11.12.1",
+  "engines": {
+    "node": ">=20.9"
+  },
+  "scripts": {
+    "dev:cafe": "npm run dev -w @pos/cafe",
+    "dev:boardgame": "npm run dev -w @pos/boardgame",
+    "build": "turbo run build",
+    "build:cafe": "turbo run build --filter=@pos/cafe",
+    "build:boardgame": "turbo run build --filter=@pos/boardgame",
+    "start:cafe": "npm run start -w @pos/cafe",
+    "start:boardgame": "npm run start -w @pos/boardgame",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:e2e:cafe": "npm run test:e2e -w @pos/cafe",
+    "check": "turbo run typecheck lint test build"
+  },
   "devDependencies": {
-    "next": "16.3.8"
+    "next": "16.3.8",
+    "turbo": "^2.5.0"
   }
 }
