@@ -37,6 +37,9 @@ interface ProductDetailRead {
   recipe: RecipeItemRead[];
   modifier_groups: ModifierGroupSummary[];
   estimated_unit_cost?: string | number; // Decimal — per-unit ingredient cost (COMPONENT/PRODUCED)
+  // Present on the duplicate response (ProductDetail in duplicate-product/api-handoff.md).
+  product_type?: 'MADE_TO_ORDER' | 'PRODUCED' | 'COMPONENT';
+  finished_goods_item_id?: string | null;
 }
 
 // ── Frontend shapes ───────────────────────────────────────────────────────────
@@ -134,6 +137,31 @@ export function useLinkModifierGroups() {
       }),
     onSuccess: (_data, { productId }) => {
       qc.invalidateQueries({ queryKey: ['product-detail', productId] });
+    },
+  });
+}
+
+/**
+ * POST /api/v1/products/{id}/duplicate — server-side atomic clone (handoff
+ * duplicate-product/api-handoff.md): all fields, recipe items, modifier-group links and
+ * cooking steps; name "Copy of {original}" (≤ 120 chars); is_active copied; a PRODUCED
+ * clone gets its own finished-goods inventory item. MANAGER / OWNER only (BARISTA 403);
+ * unknown or other-store id 404. Not idempotent — N calls make N copies.
+ */
+export function useDuplicateProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (productId: string) =>
+      api.post<ProductDetailRead>(`/api/v1/products/${encodeURIComponent(productId)}/duplicate`, undefined),
+    onSuccess: (created) => {
+      // The response is the full ProductDetail — seed the editor's cache so opening the
+      // copy needs no extra round trip, then refresh every product list.
+      qc.setQueryData(['product-detail', created.id], mapDetail(created));
+      qc.invalidateQueries({ queryKey: ['products'] });
+      // A PRODUCED clone adds a finished-goods inventory item.
+      if (created.product_type === 'PRODUCED' || created.finished_goods_item_id) {
+        qc.invalidateQueries({ queryKey: ['inventory'] });
+      }
     },
   });
 }

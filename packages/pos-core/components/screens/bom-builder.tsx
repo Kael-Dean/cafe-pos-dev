@@ -11,12 +11,12 @@ import { Skeleton, SkeletonTable } from '@pos/core/components/ui/skeleton';
 import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, useUpdateProduct, useUploadProductImage, useDeleteProductImage, type MenuItem, type Category } from '@pos/core/hooks/use-products';
 import { useProductRules } from '@pos/core/edition/context';
 import { useInventory, useItemLots, useSetInUseLot, type InventoryItem, type StockLot } from '@pos/core/hooks/use-inventory';
-import { useProductDetail, useUpdateRecipe, useLinkModifierGroups, type RecipeItem } from '@pos/core/hooks/use-bom';
+import { useProductDetail, useUpdateRecipe, useLinkModifierGroups, useDuplicateProduct, type RecipeItem } from '@pos/core/hooks/use-bom';
 import { useModifierGroups, useModifierGroupsAdmin, useAddModifier, useUpdateModifier, useDeleteModifier, useModifierRecipeItems, useReplaceModifierRecipeItems, type ModifierGroup, type ModifierGroupRead, type ModifierRead, type ModifierRecipeItemInput } from '@pos/core/hooks/use-modifier-groups';
 import { useCookingSteps, useReplaceCookingSteps, type CookingStepRead } from '@pos/core/hooks/use-cooking-steps';
 import { useCurrentUser, isAdmin } from '@pos/core/hooks/use-current-user';
 import { useI18n } from '@pos/core/lib/i18n';
-import { api } from '@pos/core/lib/api-client';
+import { ApiError } from '@pos/core/lib/api-client';
 import { setNavGuard } from '@pos/core/lib/nav-guard';
 import ImageCropModal from './image-crop-modal';
 
@@ -118,8 +118,9 @@ export default function BOMBuilder() {
   const [picker, setPicker] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<MenuItem | null>(null);
-  const [duplicating, setDuplicating] = useState(false);
-  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  // Product whose name field opens in edit mode once — the fresh copy, so staff can
+  // rename "Copy of …" straight away (handoff integration note).
+  const [renameOnOpenId, setRenameOnOpenId] = useState<string | null>(null);
 
   const [editedRecipe, setEditedRecipe] = useState<RecipeItem[]>([]);
   const [editedPrice, setEditedPrice] = useState(0);
@@ -137,9 +138,13 @@ export default function BOMBuilder() {
   const createProduct = useCreateProduct();
   const deleteProduct = useDeleteProduct();
   const linkModifierGroups = useLinkModifierGroups();
+  const duplicateProduct = useDuplicateProduct();
+  const duplicating = duplicateProduct.isPending;
+  const duplicatingId = duplicating ? duplicateProduct.variables ?? null : null;
   const { data: modifierGroups } = useModifierGroups();          // mapped — for the group picker
   const { data: adminModifierGroups } = useModifierGroupsAdmin(); // raw — for inline editing
   const { data: currentUser } = useCurrentUser();
+  const canDuplicate = isAdmin(currentUser?.role);
   const { data: stepsData } = useCookingSteps(selectedId);
   const replaceSteps = useReplaceCookingSteps();
   const [editedSteps, setEditedSteps] = useState<CookingStepRead[]>([]);
@@ -324,57 +329,28 @@ export default function BOMBuilder() {
     }
   };
 
-  // Build a copy name that collides with neither an existing product NOR an
-  // inventory item. PRODUCED products mirror their name into a finished-goods
-  // inventory item (unique per store), so a fixed "(สำเนา)" suffix clashes on the
-  // 2nd copy → backend 409 "Resource conflict". Bump a counter until it's free.
-  const makeUniqueCopyName = (baseName: string) => {
-    const taken = new Set<string>([
-      ...(products ?? []).map(p => p.name),
-      ...(inventoryItems ?? []).map(i => i.name),
-    ]);
-    const first = `${baseName} (สำเนา)`;
-    if (!taken.has(first)) return first;
-    let n = 2;
-    while (taken.has(`${baseName} (สำเนา ${n})`)) n++;
-    return `${baseName} (สำเนา ${n})`;
-  };
-
-  // Copy any product (by id, not just the selected one) into a new "(สำเนา)" entry,
-  // carrying over recipe (BOM), linked modifier groups, and cooking steps. Detail and
-  // steps are fetched on demand so the sidebar copy icon works on any row.
+  // Duplicate via the backend (POST /products/{id}/duplicate): one atomic call clones the
+  // fields, recipe, modifier-group links and cooking steps and names it "Copy of …".
+  // MANAGER / OWNER only — the buttons are hidden for other roles.
   const duplicateProductById = async (target: MenuItem) => {
-    if (duplicating) return;
-    setDuplicating(true);
-    setDuplicatingId(target.id);
+    if (duplicating || !canDuplicate) return;
+    if (isDirty && !(await confirmDiscard())) return;
     try {
-      const apiType = target.productType; // 'MADE_TO_ORDER' | 'PRODUCED' | 'COMPONENT'
-      const isComp = apiType === 'COMPONENT';
-      const [detail, steps] = await Promise.all([
-        api.get<{ recipe: { inventory_item_id: string; quantity: string | number }[]; modifier_groups: { id: string }[] }>(`/api/v1/products/${target.id}`),
-        api.get<CookingStepRead[]>(`/api/v1/products/${target.id}/steps`).catch(() => [] as CookingStepRead[]),
-      ]);
-      const newProduct = await createProduct.mutateAsync({
-        name: makeUniqueCopyName(target.name),
-        category_id: isComp ? undefined : (target.cat || undefined),
-        price: isComp ? undefined : target.price,
-        product_type: apiType,
-        servings_per_batch: (isComp || apiType === 'PRODUCED') ? Math.max(1, target.servingsPerBatch) : undefined,
-      });
-      const recipeItems = (detail.recipe ?? []).map(r => ({ invId: r.inventory_item_id, qty: Number(r.quantity) }));
-      const groupIds = (detail.modifier_groups ?? []).map(g => g.id);
-      await Promise.all([
-        recipeItems.length > 0 ? updateRecipe.mutateAsync({ productId: newProduct.id, items: recipeItems }) : Promise.resolve(),
-        groupIds.length > 0 ? linkModifierGroups.mutateAsync({ productId: newProduct.id, groupIds }) : Promise.resolve(),
-        steps.length > 0 ? replaceSteps.mutateAsync({ productId: newProduct.id, steps: steps.map((s, i) => ({ instruction: s.instruction, sort_order: i })) }) : Promise.resolve(),
-      ]);
-      setSelectedId(newProduct.id);
-      toast({ kind: 'success', title: 'คัดลอกเมนูแล้ว', msg: newProduct.name });
+      const copy = await duplicateProduct.mutateAsync(target.id);
+      setIsDirty(false);
+      setSelectedId(copy.id);
+      setRenameOnOpenId(copy.id);
+      toast({ kind: 'success', title: 'คัดลอกเมนูแล้ว', msg: `${copy.name} · แก้ชื่อได้เลย` });
     } catch (err) {
-      toast({ kind: 'warning', title: 'คัดลอกไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
-    } finally {
-      setDuplicating(false);
-      setDuplicatingId(null);
+      const status = err instanceof ApiError ? err.status : null;
+      toast({
+        kind: 'warning',
+        title: 'คัดลอกไม่สำเร็จ',
+        msg: status === 403 ? 'เฉพาะผู้จัดการหรือเจ้าของร้านเท่านั้นที่คัดลอกเมนูได้'
+          : status === 404 ? `ไม่พบ "${target.name}" แล้ว อาจถูกลบไปก่อนหน้า`
+            : status === 409 ? 'ชื่อสำเนาซ้ำกับรายการที่มีอยู่ เปลี่ยนชื่อสำเนาเดิมก่อนแล้วลองใหม่'
+              : err instanceof Error ? err.message : 'กรุณาลองใหม่',
+      });
     }
   };
 
@@ -479,9 +455,10 @@ export default function BOMBuilder() {
                     </div>
                   </div>
                 </button>
-                <button
-                  onClick={() => duplicateProductById(m)}
+                {canDuplicate && <button
+                  onClick={() => { void duplicateProductById(m); }}
                   disabled={duplicating}
+                  aria-busy={duplicatingId === m.id || undefined}
                   title="คัดลอกเมนู"
                   aria-label={`คัดลอก ${m.name}`}
                   className="hit-44"
@@ -495,7 +472,7 @@ export default function BOMBuilder() {
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}
                 >
                   <Icon name="copy" size={14} />
-                </button>
+                </button>}
                 <button
                   onClick={() => setDeleteTarget(m)}
                   title="ลบเมนู"
@@ -566,8 +543,10 @@ export default function BOMBuilder() {
             onSave={saveRecipe}
             saving={updateRecipe.isPending || updateProduct.isPending}
             onDeleteRequest={() => setDeleteTarget(selectedProduct)}
-            onDuplicate={() => duplicateProductById(selectedProduct)}
+            onDuplicate={canDuplicate ? () => { void duplicateProductById(selectedProduct); } : undefined}
             onRename={handleRename}
+            renameOnOpen={renameOnOpenId === selectedProduct.id}
+            onRenameOpened={() => setRenameOnOpenId(null)}
             duplicating={duplicating}
             linkedGroupIds={productDetail?.modifierGroupIds ?? []}
             allModifierGroups={adminModifierGroups ?? []}
@@ -681,7 +660,10 @@ interface RightPanelProps {
   onSave: () => void;
   saving: boolean;
   onDeleteRequest: () => void;
-  onDuplicate: () => void;
+  /** Absent for roles that may not duplicate (BARISTA → 403). */
+  onDuplicate?: () => void;
+  renameOnOpen: boolean;
+  onRenameOpened: () => void;
   onRename: (name: string) => void;
   duplicating: boolean;
   linkedGroupIds: string[];
@@ -691,10 +673,15 @@ interface RightPanelProps {
 
 // Menu title with an explicit "เปลี่ยนชื่อ" button. Clicking the button (or the
 // title) swaps in an input with clear save/cancel buttons. Enter saves, Esc cancels.
-const EditableMenuName = ({ name, onRename }: { name: string; onRename: (n: string) => void }) => {
-  const [editing, setEditing] = useState(false);
+const EditableMenuName = ({ name, onRename, startEditing = false, onStarted }: { name: string; onRename: (n: string) => void; startEditing?: boolean; onStarted?: () => void }) => {
+  // Keyed by product id by the caller, so a fresh copy mounts straight into edit mode.
+  const [editing, setEditing] = useState(startEditing);
   const [draft, setDraft] = useState(name);
-  useEffect(() => { setDraft(name); setEditing(false); }, [name]);
+  useEffect(() => { if (startEditing) onStarted?.(); }, [startEditing, onStarted]);
+  // Reset when the name changes underneath (saved rename / other product) — during
+  // render, not in an effect, so the mount does not cancel `startEditing`.
+  const [shownName, setShownName] = useState(name);
+  if (name !== shownName) { setShownName(name); setDraft(name); setEditing(false); }
 
   if (editing) {
     const commit = () => {
@@ -772,13 +759,13 @@ const StepButtons = ({ value, step, min, max, onChange }: { value: number; step:
   );
 };
 
-const RightPanel = ({ product, isComponent, recipe, editedPrice, editedCategoryId, categories, inventoryItems, totalCost, isProduced, batchSize, editedServingsPerBatch, onServingsPerBatchChange, costPerUnit, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onCategoryChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, onDuplicate, onRename, duplicating, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen }: RightPanelProps) => (
+const RightPanel = ({ product, isComponent, recipe, editedPrice, editedCategoryId, categories, inventoryItems, totalCost, isProduced, batchSize, editedServingsPerBatch, onServingsPerBatchChange, costPerUnit, margin, marginPct, marginToneOf, marginColorOf, onPriceChange, onCategoryChange, onQtyChange, onRemove, onPickerOpen, onSave, saving, onDeleteRequest, onDuplicate, onRename, renameOnOpen, onRenameOpened, duplicating, linkedGroupIds, allModifierGroups, onModifierGroupPickerOpen }: RightPanelProps) => (
   <>
     <div className="bom-head" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
       <ProductImageControl product={product} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500 }}>{product.nameEn}</div>
-        <EditableMenuName name={product.name} onRename={onRename} />
+        <EditableMenuName key={product.id} name={product.name} onRename={onRename} startEditing={renameOnOpen} onStarted={onRenameOpened} />
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <Tag tone={isComponent ? 'accent' : 'info'}>{isComponent ? 'ส่วนผสมทำเอง' : 'เมนูขาย'}</Tag>
           {product.productType === 'PRODUCED' && <Tag tone="accent">ผลิตล่วงหน้า</Tag>}
@@ -920,9 +907,9 @@ const RightPanel = ({ product, isComponent, recipe, editedPrice, editedCategoryI
 
     <div className="bom-actions" style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'space-between', alignItems: 'center' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button onClick={onDuplicate} disabled={duplicating} title="คัดลอกเมนูนี้ พร้อมสูตร ตัวเลือก และขั้นตอนทำ" style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: duplicating ? 'not-allowed' : 'pointer', opacity: duplicating ? 0.6 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, minWidth: 132, whiteSpace: 'nowrap', fontFamily: 'inherit', transition: 'background-color 150ms var(--ease-out)' }} onMouseEnter={e => { if (!duplicating) e.currentTarget.style.background = 'var(--color-surface-2)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+        {onDuplicate && <button onClick={onDuplicate} disabled={duplicating} aria-busy={duplicating || undefined} title="คัดลอกเมนูนี้ พร้อมสูตร ตัวเลือก และขั้นตอนทำ" style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-text)', border: '1px solid var(--color-border)', borderRadius: 8, cursor: duplicating ? 'not-allowed' : 'pointer', opacity: duplicating ? 0.6 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, minWidth: 132, whiteSpace: 'nowrap', fontFamily: 'inherit', transition: 'background-color 150ms var(--ease-out)' }} onMouseEnter={e => { if (!duplicating) e.currentTarget.style.background = 'var(--color-surface-2)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
           <Icon name="copy" size={14} /> {duplicating ? 'กำลังคัดลอก...' : 'คัดลอก'}
-        </button>
+        </button>}
         <button onClick={onDeleteRequest} style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', color: 'var(--color-danger)', border: '1px solid var(--color-danger)', borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', transition: 'all 150ms var(--ease-out)' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-danger-50)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
           <Icon name="trash" size={14} /> ลบเมนูนี้
         </button>
