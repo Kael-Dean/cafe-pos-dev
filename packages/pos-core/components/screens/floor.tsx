@@ -5,7 +5,7 @@ import Icon from '../icons';
 import { useCurrentUser, isAdmin } from '@pos/core/hooks/use-current-user';
 import { useFadeRise } from '@pos/core/lib/motion';
 import { Skeleton } from '@pos/core/components/ui/skeleton';
-import { useTablesEnabled } from '@pos/core/hooks/use-features';
+import { useFeatures, useTablesEnabled, FEATURE_BOARDGAME, FEATURE_SELF_ORDERING } from '@pos/core/hooks/use-features';
 import { useTableTab, type TableTab } from '@pos/core/hooks/use-table-tab';
 import type { ScreenProps } from '@pos/core/edition/types';
 import { useFloorTables, type FloorTable } from '@pos/core/hooks/use-floor';
@@ -13,6 +13,7 @@ import { useTableSessions, useBillingPreview, type TableSession } from '@pos/cor
 import { bahtStr, clockTime, formatMinutes, minutesSince } from '@pos/core/lib/money';
 import OpenSessionModal, { SessionDetailModal } from './table-session-modal';
 import SettleModal from './settle-modal';
+import BarFloor from '../bar/bar-floor';
 
 /** @deprecated use `TableTab` from `@pos/core/hooks/use-table-tab`. */
 export type ActiveTableSession = TableTab;
@@ -20,6 +21,15 @@ export type ActiveTableSession = TableTab;
 const ZONE_FALLBACK = 'ไม่ระบุโซน';
 
 export default function Floor({ navigate }: ScreenProps) {
+  const { data: features } = useFeatures();
+  // Bar-style self ordering (mr.bar) without the board-game add-on: tabs per guest,
+  // no time billing — a different floor built on /floor/live.
+  const barMode = !!features?.includes(FEATURE_SELF_ORDERING) && !features.includes(FEATURE_BOARDGAME);
+  if (barMode) return <BarFloor navigate={navigate} />;
+  return <TimeFloor navigate={navigate} />;
+}
+
+function TimeFloor({ navigate }: ScreenProps) {
   const { data: me } = useCurrentUser();
   const admin = isAdmin(me?.role);
   // Core table system: on for any table entitlement (see TABLE_FEATURES).

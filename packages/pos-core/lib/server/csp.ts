@@ -13,6 +13,8 @@ export interface CspOptions {
   isDev: boolean;
   /** Extra image hosts (exact https origins, e.g. the R2 public bucket). */
   imageOrigins?: readonly string[];
+  /** Extra connect-src origins (e.g. the Pusher socket host, see realtimeOrigins). */
+  connectOrigins?: readonly string[];
 }
 
 export function r2ImageOrigins(env: Record<string, string | undefined> = process.env): string[] {
@@ -30,7 +32,19 @@ export function r2ImageOrigins(env: Record<string, string | undefined> = process
   return ['https://*.r2.dev'];
 }
 
-export function buildCsp({ nonce, isDev, imageOrigins = [] }: CspOptions): string {
+/**
+ * Pusher socket host for the bar screen's realtime board (lib/realtime/pusher-socket.ts).
+ * Only when NEXT_PUBLIC_PUSHER_KEY is set; the cluster is validated so env text can
+ * never inject another source into the policy.
+ */
+export function realtimeOrigins(env: Record<string, string | undefined> = process.env): string[] {
+  if (!env.NEXT_PUBLIC_PUSHER_KEY?.trim()) return [];
+  const cluster = env.NEXT_PUBLIC_PUSHER_CLUSTER?.trim() || 'ap1';
+  if (!/^[a-z0-9-]+$/i.test(cluster)) return [];
+  return [`wss://ws-${cluster.toLowerCase()}.pusher.com`];
+}
+
+export function buildCsp({ nonce, isDev, imageOrigins = [], connectOrigins = [] }: CspOptions): string {
   const directives: Record<string, string[]> = {
     'default-src': ["'self'"],
     // strict-dynamic: nonce'd Next/React bootstrap may load its own chunks.
@@ -42,8 +56,8 @@ export function buildCsp({ nonce, isDev, imageOrigins = [] }: CspOptions): strin
     // data: PromptPay QR (qr_image_base64), blob: image crop / XLSX export.
     'img-src': ["'self'", 'data:', 'blob:', ...imageOrigins],
     'font-src': ["'self'"],
-    // Local print bridge on the POS PC. Dev adds ws: for HMR.
-    'connect-src': ["'self'", PRINT_BRIDGE_ORIGIN, ...(isDev ? ['ws:'] : [])],
+    // Local print bridge on the POS PC (+ the Pusher socket when configured). Dev adds ws: for HMR.
+    'connect-src': ["'self'", PRINT_BRIDGE_ORIGIN, ...connectOrigins, ...(isDev ? ['ws:'] : [])],
     'worker-src': ["'self'"],
     'manifest-src': ["'self'"],
     'frame-src': ["'none'"],

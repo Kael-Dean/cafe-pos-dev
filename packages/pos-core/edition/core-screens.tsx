@@ -35,6 +35,7 @@ export const CORE_SCREENS: ScreenRegistry = {
   pos:        POSTerminal,
   floor:      lazyScreen(() => import('@pos/core/components/screens/floor')),
   'table-setup': lazyScreen(() => import('@pos/core/components/screens/table-setup')),
+  'guest-orders': lazyScreen(() => import('@pos/core/components/screens/guest-orders')),
   kds:        lazyScreen(() => import('@pos/core/components/screens/kds')),
   dashboard:  lazyScreen(() => import('@pos/core/components/screens/dashboard')),
   bom:        lazyScreen(() => import('@pos/core/components/screens/bom-builder')),

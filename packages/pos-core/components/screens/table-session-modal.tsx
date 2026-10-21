@@ -7,7 +7,7 @@ import { Select, useToast, NumberInput } from '../app-common';
 import { useModalA11y } from '@pos/core/hooks/use-modal-a11y';
 import { useI18n } from '@pos/core/lib/i18n';
 import { useLookupMember } from '@pos/core/hooks/use-membership';
-import { useOpenSessionBilling } from '@pos/core/edition/context';
+import { useEdition, useOpenSessionBilling } from '@pos/core/edition/context';
 import { useFloorTables, type FloorTable } from '@pos/core/hooks/use-floor';
 import {
   useBillingPreview, useMoveTableSession, useOpenTableSession, useTableSessions,
@@ -209,6 +209,8 @@ export default function OpenSessionModal({ table, onClose, onGoSetup }: {
   // Edition billing slot (board-game edition: rate-plan picker). Without one the
   // backend picks the plan (or rejects with 422 if the store needs one).
   const billing = useOpenSessionBilling({ onGoSetup });
+  // No billing plugin = plain tab (café edition / bar): nothing is timed.
+  const timeBilled = !!useEdition().tables?.useOpenSessionBilling;
   const openSession = useOpenTableSession();
 
   const [partySize, setPartySize] = useState(2);
@@ -253,14 +255,14 @@ export default function OpenSessionModal({ table, onClose, onGoSetup }: {
           >
             {openSession.isPending
               ? <span className="spinner" style={{ width: 18, height: 18 }} aria-hidden />
-              : <><Icon name="clock" size={20} /> เริ่มจับเวลา</>}
+              : timeBilled ? <><Icon name="clock" size={20} /> เริ่มจับเวลา</> : <><Icon name="check" size={20} /> เปิดโต๊ะ</>}
           </button>
         </>
       }
     >
       {billing.notice}
 
-      <Field label="จำนวนคน" hint="ใช้คิดค่าเวลาแบบต่อหัว และมีผลกับทั้งช่วงเวลาที่นั่ง">
+      <Field label="จำนวนคน" hint={timeBilled ? 'ใช้คิดค่าเวลาแบบต่อหัว และมีผลกับทั้งช่วงเวลาที่นั่ง' : undefined}>
         <NumberInput value={partySize} onChange={setPartySize} min={1} max={100} integer style={inputStyle} aria-label="จำนวนคน" />
       </Field>
 

@@ -40,6 +40,7 @@ export const th = {
   // ── Navigation (sidebar) — keyed by screen id ─────────────────────────────
   nav: {
     pos: 'หน้าขาย (POS)',
+    'guest-orders': 'ออเดอร์จากโต๊ะ (QR)',
     kds: 'ครัว (KDS)',
     dashboard: 'แดชบอร์ด',
     bom: 'สร้างเมนู',
@@ -80,6 +81,7 @@ export const th = {
   tabs: {
     // Same short names as the tablet rail (touchPos.navShort).
     pos: 'ขาย',
+    'guest-orders': 'บาร์',
     kds: 'ครัว',
     inventory: 'คลัง',
     dashboard: 'ภาพรวม',
@@ -718,6 +720,7 @@ export const th = {
     // Labels under the icons in the tablet rail (≤ 6 Thai chars, one line).
     navShort: {
       pos: 'ขาย',
+      'guest-orders': 'บาร์',
       kds: 'ครัว',
       dashboard: 'ภาพรวม',
       bom: 'สูตร',

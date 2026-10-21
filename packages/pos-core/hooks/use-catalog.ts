@@ -7,6 +7,10 @@ export interface CategoryRead {
   id: string;
   store_id: string;
   name: string;
+  /** Guest-menu fields (handoff Part C). Older backends omit them. */
+  name_en?: string | null;
+  description?: string | null;
+  description_en?: string | null;
   sort_order: number;
   is_active: boolean;
   created_at: string;
@@ -71,10 +75,20 @@ export function useCreateCategory() {
   });
 }
 
+/** PATCH body. `name_en` ≤80, `description*` ≤500; `null` clears a field. */
+export interface CategoryUpdatePayload {
+  id: string;
+  name?: string;
+  sort_order?: number;
+  name_en?: string | null;
+  description?: string | null;
+  description_en?: string | null;
+}
+
 export function useUpdateCategory() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...payload }: { id: string; name?: string; sort_order?: number }) =>
+    mutationFn: ({ id, ...payload }: CategoryUpdatePayload) =>
       api.patch<CategoryRead>(`/api/v1/categories/${id}`, payload),
     // Invalidate the whole 'categories' prefix so both the admin list (['categories','admin'])
     // and the POS dropdown (['categories']) refetch — the latter now has a 5-min staleTime.

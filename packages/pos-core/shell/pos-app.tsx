@@ -11,6 +11,7 @@ import { canLeave } from '@pos/core/lib/nav-guard';
 import LoginScreen from '@pos/core/components/screens/login';
 import { EditionProvider } from '@pos/core/edition/context';
 import { TableTabProvider } from '@pos/core/hooks/use-table-tab';
+import { BarWatcher } from '@pos/core/components/bar/bar-watcher';
 import type { EditionConfig } from '@pos/core/edition/types';
 
 /**
@@ -111,6 +112,8 @@ function Shell({ edition, screen, setScreen, onLoggedOut }: {
           so the unsaved-changes guard applies. .app-main reserves its height
           (--tabbar-h) so no screen content sits behind it. */}
       <MobileNav current={screen} onNavigate={go} onLogout={() => { void handleLogout(); }} />
+      {/* Self-ordering stores only: new guest order alert + banner on every screen. */}
+      <BarWatcher screen={screen} navigate={go} />
     </ToastProvider>
   );
 }

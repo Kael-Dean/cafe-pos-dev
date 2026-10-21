@@ -22,8 +22,9 @@ const PRIMARY_TAB_COUNT = 4;
 // Order of preference for the primary tabs. Each id is used only if the role can
 // actually see that screen; gaps are filled from the rest of the visible nav.
 const TAB_PREFERENCE = {
-  admin: ['pos', 'kds', 'dashboard', 'inventory'],
-  staff: ['pos', 'kds', 'inventory', 'protocols'],
+  // 'guest-orders' is only visible to self-ordering stores (the bar's main screen).
+  admin: ['pos', 'guest-orders', 'kds', 'dashboard', 'inventory'],
+  staff: ['pos', 'guest-orders', 'kds', 'inventory', 'protocols'],
 } as const;
 
 /** The screens that get their own tab for this role — always a subset of the visible nav. */

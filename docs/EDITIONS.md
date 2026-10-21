@@ -167,6 +167,7 @@ Nothing changes until this branch is merged. Then:
 | `BRIDGE_TOKEN` | print-bridge shared secret (per shop) |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | menu images |
 | `NEXT_PUBLIC_APP_NAME` | not read by the code today; product names live in `src/edition/brand.ts` |
+| `NEXT_PUBLIC_PUSHER_KEY`, `NEXT_PUBLIC_PUSHER_CLUSTER` | optional, self-ordering bar board: live updates on `kds-store-{store_id}` (adds the socket host to CSP `connect-src`); unset = polling only |
 
 **Store provisioning**: a board-game store must have `vertical.boardgame` in its
 `feature_keys` (backend) and should be pointed at the board-game deployment. See §8.
@@ -214,9 +215,16 @@ Recommended once the editions branch is merged to dev `main` and verified on a p
   which behaves exactly like the pre-split app for them (verified: same table-setup sections).
   Opening a table on the café edition sends `rate_plan_id: null`; the backend currently
   rejects that with 422 when the store has no default plan.
-- **`self_ordering`** is reserved: the backend does not issue it yet, so nobody sees a change.
-  When it ships, those stores get the core floor; the backend must allow sessions without a
-  rate plan and the floor endpoints must not be gated on `vertical.boardgame` only.
+- **`self_ordering`** (mr.bar-style QR self ordering, handoff
+  `D:\พี่เสือ\docs\table-ordering\api-handoff.md`): those stores get, in core —
+  the order board `guest-orders` (`components/screens/guest-orders.tsx`; loud Web Audio alert,
+  wake lock, NEW TABLE badge, accept / ready / served / reject), a bar floor built on
+  `/floor/live` (`components/bar/bar-floor.tsx`: guests, request-bill highlight, split pay per
+  guest, rest of the table + close, walk-up reassign; no time UI), table QR view / reissue /
+  print sheet in table setup, a one-tap ฿0 "Bar tab" default plan (café edition only, which has
+  no rate-plan editor), and the bilingual + tags fields in the catalogue forms. A global
+  `BarWatcher` (mounted by the shell) keeps polling and alerting on every screen.
+  A store with both `self_ordering` and `vertical.boardgame` keeps the time-billing floor.
 - The table tab now clears on any logout (including token expiry), not only on the logout
   button — a tab can no longer survive into the next user's session.
 - Sidebar header text "Kafé OS" is unchanged in both editions (umbrella brand); the login

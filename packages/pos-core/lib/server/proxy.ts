@@ -11,7 +11,7 @@
  *    for the inline theme script.
  */
 import { NextResponse, type NextRequest } from 'next/server';
-import { CSP_REPORT_GROUP, CSP_REPORT_PATH, buildCsp, makeNonce, r2ImageOrigins } from '@pos/core/lib/server/csp';
+import { CSP_REPORT_GROUP, CSP_REPORT_PATH, buildCsp, makeNonce, r2ImageOrigins, realtimeOrigins } from '@pos/core/lib/server/csp';
 import { originGuard } from '@pos/core/lib/server/session';
 
 const CSP_HEADER = 'Content-Security-Policy-Report-Only';
@@ -31,6 +31,7 @@ export function proxy(request: NextRequest) {
     nonce,
     isDev: process.env.NODE_ENV === 'development',
     imageOrigins: r2ImageOrigins(),
+    connectOrigins: realtimeOrigins(),
   });
 
   const requestHeaders = new Headers(request.headers);

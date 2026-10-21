@@ -26,6 +26,15 @@ import {
 } from '@pos/core/hooks/use-products';
 import { ApiError } from '@pos/core/lib/api-client';
 import { useIsPhone } from '@pos/core/hooks/use-media-query';
+import { useHasFeature, FEATURE_SELF_ORDERING } from '@pos/core/hooks/use-features';
+import { TagInput } from '../bar/tag-input';
+import { normalizeTags, tagsPatch } from '@pos/core/lib/table-ordering/tags';
+
+/** Trimmed text → PATCH value: unchanged = undefined (omitted), blank = null (clears). */
+function textPatch(before: string | null | undefined, after: string): string | null | undefined {
+  const next = after.trim() || null;
+  return next === (before ?? null) ? undefined : next;
+}
 
 // Dialogs use the shared <ModalShell> (portaled to <body>, capped to the visible
 // screen, scrollable body + pinned footer, focus trap / Esc / focus restore).
@@ -209,6 +218,11 @@ function ProductsTab() {
   const [formCatId, setFormCatId]   = useState('');
   const [formDesc, setFormDesc]     = useState('');
   const [formActive, setFormActive] = useState(true);
+  // Guest-menu fields — only for stores that sell through the QR menu.
+  const { enabled: guestMenu } = useHasFeature(FEATURE_SELF_ORDERING);
+  const [formNameEn, setFormNameEn] = useState('');
+  const [formDescEn, setFormDescEn] = useState('');
+  const [formTags, setFormTags]     = useState<string[]>([]);
   // '' = all products, NO_CATEGORY = products without a category, else a category id.
   const [catFilter, setCatFilter]   = useState('');
 
@@ -225,6 +239,9 @@ function ProductsTab() {
     setFormCatId(p.category_id ?? '');
     setFormDesc(p.description ?? '');
     setFormActive(p.is_active);
+    setFormNameEn(p.name_en ?? '');
+    setFormDescEn(p.description_en ?? '');
+    setFormTags(normalizeTags(p.tags ?? []));
   };
 
   const handleSave = async () => {
@@ -238,6 +255,15 @@ function ProductsTab() {
     const desc = formDesc.trim() || null;
     if (desc !== editTarget.description) patch.description = desc;
     if (formActive !== editTarget.is_active) patch.is_active = formActive;
+    if (guestMenu) {
+      const nameEn = textPatch(editTarget.name_en, formNameEn);
+      if (nameEn !== undefined) patch.name_en = nameEn;
+      const descEn = textPatch(editTarget.description_en, formDescEn);
+      if (descEn !== undefined) patch.description_en = descEn;
+      const tags = tagsPatch(editTarget.tags, formTags);
+      if (tags !== undefined) patch.tags = tags;
+    }
+    if (Object.keys(patch).length === 0) { setEditTarget(null); return; }
 
     try {
       await updateProduct.mutateAsync({ productId: editTarget.id, ...patch });
@@ -358,7 +384,7 @@ function ProductsTab() {
           title="แก้ไขสินค้า"
           subtitle={editTarget.name}
           onClose={() => setEditTarget(null)}
-          width={460}
+          width={guestMenu ? 560 : 460}
           busy={updateProduct.isPending}
           footer={<>
             <button onClick={() => setEditTarget(null)} style={{ ...btnSm('ghost'), minHeight: 44 }}>ยกเลิก</button>
@@ -376,6 +402,12 @@ function ProductsTab() {
                 <label htmlFor="prod-name" style={labelCss}>ชื่อสินค้า</label>
                 <input id="prod-name" value={formName} onChange={e => setFormName(e.target.value)} style={inputCss} />
               </div>
+              {guestMenu && (
+                <div>
+                  <label htmlFor="prod-name-en" style={labelCss}>ชื่อภาษาอังกฤษ (เมนูลูกค้า)</label>
+                  <input id="prod-name-en" value={formNameEn} maxLength={120} onChange={e => setFormNameEn(e.target.value)} placeholder="ไม่ใส่ = ใช้ชื่อไทย" style={inputCss} lang="en" />
+                </div>
+              )}
               <div className="form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                 <div>
                   <label htmlFor="prod-price" style={labelCss}>ราคา (฿)</label>
@@ -412,6 +444,18 @@ function ProductsTab() {
                   style={{ ...inputCss, resize: 'vertical' }}
                 />
               </div>
+              {guestMenu && (
+                <>
+                  <div>
+                    <label htmlFor="prod-desc-en" style={labelCss}>คำอธิบายภาษาอังกฤษ</label>
+                    <textarea id="prod-desc-en" value={formDescEn} maxLength={500} onChange={e => setFormDescEn(e.target.value)} rows={2} placeholder="ไม่ใส่ = ใช้คำอธิบายภาษาไทย" style={{ ...inputCss, resize: 'vertical' }} lang="en" />
+                  </div>
+                  <div>
+                    <label htmlFor="prod-tags" style={labelCss}>แท็กบนเมนูลูกค้า</label>
+                    <TagInput id="prod-tags" value={formTags} onChange={setFormTags} />
+                  </div>
+                </>
+              )}
               <div className="cat-check" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input
                   type="checkbox" id="prod-active-chk"
@@ -444,6 +488,9 @@ function CategoriesTab() {
   const [editingId, setEditingId]     = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<CategoryRead | null>(null);
+  // QR-menu stores edit the bilingual fields in a dialog; others keep inline rename.
+  const { enabled: guestMenu } = useHasFeature(FEATURE_SELF_ORDERING);
+  const [detailTarget, setDetailTarget] = useState<CategoryRead | null>(null);
 
   const rawMax = categories?.length ? Math.max(...categories.map(c => c.sort_order ?? 0)) : 0;
   const maxOrder = Number.isFinite(rawMax) ? rawMax : 0;
@@ -572,7 +619,7 @@ function CategoriesTab() {
                   <button onClick={() => handleMoveDown(idx)} disabled={idx === (categories?.length ?? 0) - 1 || updateCategory.isPending} style={btnIcon()} title="ลง" aria-label={`เลื่อน ${cat.name} ลง`}>↓</button>
                 </td>
                 <td className="c-act" style={{ padding: '10px 12px', width: 120, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <button onClick={() => { setEditingId(cat.id); setEditingName(cat.name); }} aria-label={`แก้ไข ${cat.name}`} style={btnSm('ghost')}>แก้ไข</button>
+                  <button onClick={() => { if (guestMenu) setDetailTarget(cat); else { setEditingId(cat.id); setEditingName(cat.name); } }} aria-label={`แก้ไข ${cat.name}`} style={btnSm('ghost')}>แก้ไข</button>
                   <button onClick={() => setDeleteTarget(cat)} aria-label={`ลบ ${cat.name}`} style={{ ...btnSm('ghost'), marginLeft: 6, color: 'var(--color-danger)' }}>ลบ</button>
                 </td>
               </tr>
@@ -612,6 +659,8 @@ function CategoriesTab() {
         </div>
       </div>
 
+      {detailTarget && <CategoryEditModal category={detailTarget} onClose={() => setDetailTarget(null)} />}
+
       {/* Delete confirm */}
       {deleteTarget && (
         <ModalShell
@@ -630,6 +679,72 @@ function CategoriesTab() {
         </ModalShell>
       )}
     </>
+  );
+}
+
+// ── Category edit (bilingual guest-menu fields) ──────────────────────────────
+
+function CategoryEditModal({ category, onClose }: { category: CategoryRead; onClose: () => void }) {
+  const toast = useToast();
+  const update = useUpdateCategory();
+  const [name, setName] = useState(category.name);
+  const [nameEn, setNameEn] = useState(category.name_en ?? '');
+  const [desc, setDesc] = useState(category.description ?? '');
+  const [descEn, setDescEn] = useState(category.description_en ?? '');
+
+  const save = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const patch: Parameters<typeof update.mutateAsync>[0] = { id: category.id };
+    if (trimmed !== category.name) patch.name = trimmed;
+    const ne = textPatch(category.name_en, nameEn); if (ne !== undefined) patch.name_en = ne;
+    const d = textPatch(category.description, desc); if (d !== undefined) patch.description = d;
+    const de = textPatch(category.description_en, descEn); if (de !== undefined) patch.description_en = de;
+    if (Object.keys(patch).length === 1) { onClose(); return; }
+    try {
+      await update.mutateAsync(patch);
+      toast({ kind: 'success', title: 'บันทึกหมวดหมู่แล้ว' });
+      onClose();
+    } catch (err) {
+      toast({ kind: 'danger', title: 'บันทึกไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+    }
+  };
+
+  return (
+    <ModalShell
+      title="แก้ไขหมวดหมู่"
+      subtitle={category.name}
+      onClose={onClose}
+      width={520}
+      busy={update.isPending}
+      footer={<>
+        <button onClick={onClose} style={{ ...btnSm('ghost'), minHeight: 44 }}>ยกเลิก</button>
+        <button onClick={() => { void save(); }} disabled={!name.trim() || update.isPending} style={{ ...btnSm('primary'), minHeight: 44, opacity: !name.trim() || update.isPending ? 0.55 : 1 }}>
+          {update.isPending ? 'กำลังบันทึก…' : 'บันทึก'}
+        </button>
+      </>}
+    >
+      <div className="cat-form" style={{ display: 'grid', gap: 14 }}>
+        <div className="form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div>
+            <label htmlFor="cat-name" style={labelCss}>ชื่อหมวดหมู่</label>
+            <input id="cat-name" value={name} onChange={e => setName(e.target.value)} style={inputCss} />
+          </div>
+          <div>
+            <label htmlFor="cat-name-en" style={labelCss}>ชื่อภาษาอังกฤษ</label>
+            <input id="cat-name-en" value={nameEn} maxLength={80} onChange={e => setNameEn(e.target.value)} placeholder="ไม่ใส่ = ใช้ชื่อไทย" style={inputCss} lang="en" />
+          </div>
+        </div>
+        <div>
+          <label htmlFor="cat-desc" style={labelCss}>คำอธิบาย (แสดงบนเมนูลูกค้า)</label>
+          <textarea id="cat-desc" value={desc} maxLength={500} onChange={e => setDesc(e.target.value)} rows={2} placeholder="ไม่บังคับ" style={{ ...inputCss, resize: 'vertical' }} />
+        </div>
+        <div>
+          <label htmlFor="cat-desc-en" style={labelCss}>คำอธิบายภาษาอังกฤษ</label>
+          <textarea id="cat-desc-en" value={descEn} maxLength={500} onChange={e => setDescEn(e.target.value)} rows={2} placeholder="ไม่บังคับ" style={{ ...inputCss, resize: 'vertical' }} lang="en" />
+        </div>
+      </div>
+    </ModalShell>
   );
 }
 

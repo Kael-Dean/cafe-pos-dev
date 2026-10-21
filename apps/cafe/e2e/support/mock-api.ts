@@ -42,6 +42,12 @@ export interface MockOrder {
   items: { product_name: string; quantity: number; modifiers_json: Record<string, unknown> | null }[];
   idempotency_key?: string;
   session_id?: string | null;
+  // ── Table QR self ordering (table-qr-bar.spec.ts / bar-seed.ts) ──
+  guest_id?: string | null;
+  customer_note?: string | null;
+  created_by_id?: string | null;
+  /** Mock-only: settled through a table bill (GUEST / TABLE scope). */
+  bill_paid?: boolean;
 }
 
 const STORE_ID = 'store-e2e-1';

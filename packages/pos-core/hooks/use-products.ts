@@ -15,8 +15,11 @@ interface ProductRead {
   id: string;
   store_id: string;
   category_id: string | null;
-  name: string;            // single name field (no name_th / name_en)
+  name: string;            // Thai / primary name
+  name_en?: string | null; // guest menu (self ordering); null = fall back to `name`
   description: string | null;
+  description_en?: string | null;
+  tags?: string[];         // free display chips on the guest menu
   price: string | number;  // Decimal serialised as string
   is_active: boolean;
   product_type: 'MADE_TO_ORDER' | 'PRODUCED' | 'COMPONENT';
@@ -29,7 +32,7 @@ interface ProductRead {
 export interface MenuItem {
   id: string;
   name: string;
-  nameEn: string;       // same as name (no separate English field in API)
+  nameEn: string;       // name_en when set, else the Thai name
   price: number;
   cat: string;          // category_id UUID
   hot: boolean;         // always false (no is_featured in API)
@@ -63,7 +66,7 @@ function mapProduct(p: ProductRead): MenuItem {
   return {
     id: p.id,
     name: p.name,
-    nameEn: p.name,
+    nameEn: p.name_en?.trim() ? p.name_en : p.name,
     price: Number(p.price),
     cat: p.category_id ?? '',
     hot: false,
@@ -192,7 +195,11 @@ export interface ProductReadAdmin {
   store_id: string;
   category_id: string | null;
   name: string;
+  /** Guest-menu fields (handoff Part C). Older backends omit them. */
+  name_en?: string | null;
   description: string | null;
+  description_en?: string | null;
+  tags?: string[] | null;
   price: string;
   is_active: boolean;
   created_at: string;
@@ -202,7 +209,13 @@ export interface ProductReadAdmin {
 export interface ProductUpdateAdminPayload {
   category_id?: string | null;
   name?: string;
+  /** ≤120. `null` clears. */
+  name_en?: string | null;
   description?: string | null;
+  /** ≤500. `null` clears. */
+  description_en?: string | null;
+  /** Trimmed, case-insensitive unique, ≤10 × ≤30 chars. `null` clears. */
+  tags?: string[] | null;
   price?: string;
   is_active?: boolean;
 }

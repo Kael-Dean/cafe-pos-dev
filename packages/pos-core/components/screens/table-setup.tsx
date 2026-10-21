@@ -6,16 +6,22 @@ import { useToast, NumberInput } from '../app-common';
 import { useCurrentUser, isAdmin } from '@pos/core/hooks/use-current-user';
 import { useFadeRise } from '@pos/core/lib/motion';
 import { Skeleton } from '@pos/core/components/ui/skeleton';
-import { useTablesEnabled } from '@pos/core/hooks/use-features';
+import { useTablesEnabled, useHasFeature, FEATURE_SELF_ORDERING } from '@pos/core/hooks/use-features';
 import { useEdition } from '@pos/core/edition/context';
 import {
   useCreateTable, useDeleteTable, useFloorTables, useUpdateTable, type FloorTable,
 } from '@pos/core/hooks/use-floor';
 import { Field, ModalShell, errMsg, inputStyle } from './table-session-modal';
+import { QrPrintSheet, TableQrModal } from '../bar/table-qr';
+import BarTabPlanSection from '../bar/bar-tab-plan';
 
-/** Decimal string with at most 2 places, greater than zero — mirrors the API rule. */
-export function isMoney(s: string): boolean {
-  return /^\d+(\.\d{1,2})?$/.test(s.trim()) && Number(s) > 0;
+/**
+ * Decimal string with at most 2 places, greater than zero — mirrors the API rule.
+ * `allowZero` for the hourly rate: a ฿0 plan is how a bar tab charges no time.
+ */
+export function isMoney(s: string, opts: { allowZero?: boolean } = {}): boolean {
+  if (!/^\d+(\.\d{1,2})?$/.test(s.trim())) return false;
+  return opts.allowZero ? true : /[1-9]/.test(s);
 }
 
 export default function TableSetup() {
@@ -25,7 +31,11 @@ export default function TableSetup() {
   const { enabled: boardgame, isLoading: featureLoading } = useTablesEnabled();
   // Edition billing slot (board-game edition: rate plans) — rendered above the tables.
   const BillingSection = useEdition().tables?.SetupSection;
+  // QR stickers (and, without an edition billing section, the ฿0 bar-tab plan).
+  const { enabled: selfOrdering } = useHasFeature(FEATURE_SELF_ORDERING);
   const contentRef = useFadeRise();
+  const [qrFor, setQrFor] = useState<FloorTable | null>(null);
+  const [printing, setPrinting] = useState(false);
 
   const [showInactive, setShowInactive] = useState(false);
   const tablesQ = useFloorTables(showInactive, boardgame && admin);
@@ -56,11 +66,13 @@ export default function TableSetup() {
     <div ref={contentRef} className="screen-pad-lg" style={{ padding: 'var(--space-8)', maxWidth: 900, margin: '0 auto' }}>
       <h1 className="text-balance max-md:flex max-md:items-center" style={{ fontSize: 22, fontWeight: 700, marginBottom: 'var(--space-6)', color: 'var(--color-text)' }}>
         <Icon name="settings" size={20} style={{ marginRight: 8 }} />
-        ตั้งค่าโต๊ะ & ค่าเวลา
+        {BillingSection ? 'ตั้งค่าโต๊ะ & ค่าเวลา' : 'ตั้งค่าโต๊ะ'}
       </h1>
 
       {/* Edition billing (board-game edition: rate plans / time billing). */}
       {BillingSection && <BillingSection />}
+      {/* Bar tab (self ordering on an edition without time billing): one ฿0 default plan. */}
+      {!BillingSection && selfOrdering && <BarTabPlanSection />}
 
       {/* ── Tables ─────────────────────────────────────────────────────────── */}
       <section>
@@ -69,6 +81,12 @@ export default function TableSetup() {
           hint="ปิดใช้งานโต๊ะได้ ประวัติยังอยู่ครบ · โต๊ะที่มีคนนั่งอยู่ปิดไม่ได้"
           action={{ label: 'เพิ่มโต๊ะ', onClick: () => setNewTable(true) }}
         />
+
+        {selfOrdering && tables.some((t) => t.isActive) && (
+          <button onClick={() => setPrinting(true)} className="btn btn-ghost tap-std" style={{ marginBottom: 'var(--space-3)', marginRight: 'var(--space-3)' }}>
+            <Icon name="print" size={16} /> พิมพ์ QR ทุกโต๊ะ
+          </button>
+        )}
 
         <label className="max-md:min-h-[44px]" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 'var(--space-3)', cursor: 'pointer' }}>
           <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
@@ -91,7 +109,12 @@ export default function TableSetup() {
                 <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t.zone?.trim() || 'ไม่ระบุโซน'}</span>
                 <span className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t.capacity} ที่</span>
                 {!t.isActive && <Chip tone="muted">ปิดใช้งาน</Chip>}
-                <span style={{ marginLeft: 'auto' }}>
+                <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 'var(--tap-gap)' }}>
+                  {selfOrdering && t.isActive && (
+                    <button onClick={() => setQrFor(t)} className="btn btn-ghost" aria-label={`QR โต๊ะ ${t.name}`}>
+                      <Icon name="qr" size={15} /> QR
+                    </button>
+                  )}
                   <button onClick={() => setEditTable(t)} className="btn btn-ghost" aria-label={`แก้ไขโต๊ะ ${t.name}`}>
                     <Icon name="pencil" size={15} /> แก้ไข
                   </button>
@@ -108,6 +131,9 @@ export default function TableSetup() {
           onClose={() => { setNewTable(false); setEditTable(null); }}
         />
       )}
+
+      {qrFor && <TableQrModal table={qrFor} canReissue={admin} onClose={() => setQrFor(null)} />}
+      {printing && <QrPrintSheet tables={tables.filter((t) => t.isActive)} onClose={() => setPrinting(false)} />}
 
     </div>
   );

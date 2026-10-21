@@ -109,7 +109,7 @@ function RatePlanModal({ plan, onClose }: { plan: RatePlan | null; onClose: () =
 
   const busy = create.isPending || update.isPending;
   const capValid = cap.trim() === '' || isMoney(cap);
-  const valid = name.trim().length >= 1 && isMoney(rate) && rounding >= 1 && grace >= 0
+  const valid = name.trim().length >= 1 && isMoney(rate, { allowZero: true }) && rounding >= 1 && grace >= 0
     && minCharge >= 0 && maxOpen >= 60 && capValid;
 
   const submit = async () => {
@@ -170,14 +170,14 @@ function RatePlanModal({ plan, onClose }: { plan: RatePlan | null; onClose: () =
         />
       </Field>
 
-      <Field label="ราคาต่อชั่วโมง (฿)" hint="ทศนิยมไม่เกิน 2 ตำแหน่ง เช่น 40.00">
+      <Field label="ราคาต่อชั่วโมง (฿)" hint="ทศนิยมไม่เกิน 2 ตำแหน่ง เช่น 40.00 · ใส่ 0 = ไม่คิดค่าเวลา (บิลโต๊ะแบบบาร์)">
         <input
           value={rate}
           onChange={(e) => setRate(e.target.value)}
           inputMode="decimal"
           placeholder="40.00"
           aria-label="ราคาต่อชั่วโมง"
-          style={{ ...inputStyle, borderColor: rate && !isMoney(rate) ? 'var(--color-danger)' : 'var(--color-border)' }}
+          style={{ ...inputStyle, borderColor: rate && !isMoney(rate, { allowZero: true }) ? 'var(--color-danger)' : 'var(--color-border)' }}
         />
       </Field>
 

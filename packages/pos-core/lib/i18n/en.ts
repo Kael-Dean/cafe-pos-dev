@@ -35,6 +35,7 @@ export const en: Messages = {
 
   nav: {
     pos: 'POS Terminal',
+    'guest-orders': 'Table orders (QR)',
     kds: 'Kitchen (KDS)',
     dashboard: 'Dashboard',
     bom: 'BOM Builder',
@@ -73,6 +74,7 @@ export const en: Messages = {
   tabs: {
     // Same short names as the tablet rail (touchPos.navShort).
     pos: 'POS',
+    'guest-orders': 'Bar',
     kds: 'KDS',
     inventory: 'Inventory',
     dashboard: 'Overview',
@@ -674,6 +676,7 @@ export const en: Messages = {
   touchPos: {
     navShort: {
       pos: 'POS',
+      'guest-orders': 'Bar',
       kds: 'KDS',
       dashboard: 'Overview',
       bom: 'Recipes',

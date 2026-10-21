@@ -18,8 +18,9 @@ import type { Lang } from '@pos/core/lib/i18n';
 export const FEATURE_BOARDGAME = 'vertical.boardgame';
 /**
  * Store entitlement for bar-style self ordering (mr.bar): tables + guest ordering
- * without time billing. Reserved — the backend registry does not issue it yet, so no
- * store has it today.
+ * from a QR sticker, without time billing. Turns on the core floor / table setup
+ * and the guest order board; the board-game-only items (lending, reservations,
+ * board-game report) stay hidden — their endpoints answer 404 for these stores.
  */
 export const FEATURE_SELF_ORDERING = 'self_ordering';
 /** Any of these turns on the core table / session / bill system. */
@@ -54,6 +55,8 @@ export const CORE_NAV: readonly NavItem[] = [
   // is opened/closed every day, so it sits above the occasional receipt reprint.
   { id: 'sec-service', header: true, icon: 'coffee' },
   { id: 'pos',       icon: 'pos' },
+  // Bar order board for QR self-ordering stores — the owner's main screen there.
+  { id: 'guest-orders', icon: 'bell', feature: FEATURE_SELF_ORDERING },
   { id: 'kds',       icon: 'kds' },
   { id: 'pre-orders',    icon: 'calendar' },
   { id: 'cash',      icon: 'cash',     adminOnly: true },
