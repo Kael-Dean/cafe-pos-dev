@@ -20,15 +20,20 @@ import { useAddToShoppingList } from '@pos/core/hooks/use-shopping-list';
 import { useAllProducts, type MenuItem } from '@pos/core/hooks/use-products';
 import { useInventory, type InventoryItem } from '@pos/core/hooks/use-inventory';
 import { PHONE_QUERY } from '@pos/core/hooks/use-media-query';
+import { isIsoDate, isoToLocalDate, localIsoDate } from '@pos/core/lib/pre-order-dates';
 
 // ── Phone layout (< 768px) — phone-only rules; nothing here applies at ≥ 768px ──
 // Dialogs are portaled to <body> by ModalShell, so their rules hang off .po-form
 // rather than the screen root.
 const PO_CSS = `
+/* Native date inputs have a wide intrinsic size; let them shrink inside the range row. */
+.po-range input { min-width: 0; }
 @media (max-width: 767px) {
   .po-form input:not([type="checkbox"]), .po-form textarea, .po-add input { font-size: 16px !important; min-height: 44px; }
   .po-list-head { padding: 12px var(--screen-pad) 10px !important; }
   .po-pills > button { min-height: 44px !important; }
+  .po-range input { font-size: 16px !important; min-height: 44px !important; }
+  .po-range-clear { min-height: 44px !important; }
   .po-detail { padding: 16px var(--screen-pad) !important; }
   .po-tabs > button { flex: 1 1 0; }
   .po-threshold { min-height: 44px; }
@@ -118,10 +123,11 @@ const STATUS_COLORS: Record<PreOrderStatus, { color: string; bg: string }> = {
   CANCELLED:   { color: 'var(--color-text-secondary)', bg: 'var(--color-surface-2)' },
 };
 
-const todayIso = () => new Date().toISOString().split('T')[0];
+// Local calendar date — toISOString() is UTC and gave yesterday before 07:00 in Bangkok.
+const todayIso = () => localIsoDate();
 
 const fmtDate = (d: string) =>
-  new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+  (isIsoDate(d) ? isoToLocalDate(d) : new Date(d)).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
 
 const fmtMoney = (v: string | null) => (v ? Number(v).toFixed(2) : '—');
 
@@ -154,6 +160,9 @@ export default function PreOrders() {
 
   // List/selection state
   const [statusFilter, setStatusFilter] = useState<PreOrderStatus | undefined>(undefined);
+  // Due-date range filter (inclusive YYYY-MM-DD; either bound may be empty).
+  const [dueFrom, setDueFrom] = useState('');
+  const [dueTo, setDueTo] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Detail state
@@ -196,7 +205,13 @@ export default function PreOrders() {
   const [confirmStart, setConfirmStart] = useState(false);
 
   // Queries
-  const { data: listData, isLoading: listLoading } = usePreOrders(statusFilter);
+  const { data: listData, isLoading: listLoading } = usePreOrders({
+    status: statusFilter,
+    dueDateFrom: dueFrom || undefined,
+    dueDateTo: dueTo || undefined,
+  });
+  const rangeActive = !!(dueFrom || dueTo);
+  const rangeReversed = !!(dueFrom && dueTo && dueFrom > dueTo);
   const { data: detail, isLoading: detailLoading } = usePreOrder(selectedId);
   const { data: ingredients } = usePreOrderIngredients(
     detailTab === 'ingredients' ? selectedId : null,
@@ -452,9 +467,38 @@ export default function PreOrders() {
               );
             })}
           </div>
+          <fieldset className="po-range" style={{ border: 'none', margin: '12px 0 0', padding: 0, display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+            <legend className="sr-only">กรองตามวันส่งของ</legend>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <label htmlFor="po-due-from" style={labelStyle}>ส่งตั้งแต่</label>
+              <input id="po-due-from" type="date" value={dueFrom} max={dueTo || undefined}
+                onChange={e => { setDueFrom(e.target.value); setSelectedId(null); }}
+                style={{ ...inputStyle, minHeight: 40 }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <label htmlFor="po-due-to" style={labelStyle}>ถึง</label>
+              <input id="po-due-to" type="date" value={dueTo} min={dueFrom || undefined}
+                onChange={e => { setDueTo(e.target.value); setSelectedId(null); }}
+                style={{ ...inputStyle, minHeight: 40 }} />
+            </div>
+          </fieldset>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
+          {!listLoading && listData && (rangeActive || listData.total > listItems.length) && (
+            <div className="po-count" aria-live="polite" style={{ padding: '8px 16px', fontSize: 12, color: 'var(--color-text-secondary)', borderBottom: '1px solid var(--color-border)', fontVariantNumeric: 'tabular-nums' }}>
+              {listData.total > listItems.length
+                ? `แสดง ${listItems.length} จาก ${listData.total} รายการ`
+                : `พบ ${listData.total} รายการ`}
+              {rangeActive && ` · ส่ง${dueFrom ? ` ตั้งแต่ ${fmtDate(rangeReversed ? dueTo : dueFrom)}` : ''}${dueTo ? ` ถึง ${fmtDate(rangeReversed ? dueFrom : dueTo)}` : ''}`}
+              {rangeActive && (
+                <button type="button" onClick={() => { setDueFrom(''); setDueTo(''); }} className="po-range-clear"
+                  style={{ marginLeft: 8, padding: '2px 8px', border: 'none', background: 'transparent', color: 'var(--color-primary)', fontSize: 12, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  ล้างช่วงวันที่
+                </button>
+              )}
+            </div>
+          )}
           {listLoading ? (
             <div aria-busy="true" style={{ display: 'flex', flexDirection: 'column' }}>
               <span className="sr-only">กำลังโหลดรายการ Pre-Order…</span>
@@ -469,7 +513,9 @@ export default function PreOrders() {
               ))}
             </div>
           ) : listItems.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-secondary)', fontSize: 13 }}>ไม่มี Pre-Order</div>
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-secondary)', fontSize: 13 }}>
+              {rangeActive ? 'ไม่มี Pre-Order ที่ครบกำหนดส่งในช่วงนี้' : 'ไม่มี Pre-Order'}
+            </div>
           ) : (
             listItems.map(item => (
               <PreOrderListRow

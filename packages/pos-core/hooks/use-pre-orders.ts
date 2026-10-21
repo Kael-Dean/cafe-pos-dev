@@ -1,5 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { api } from '@pos/core/lib/api-client';
+import { buildPreOrderListQuery, normalizePreOrderFilters, type PreOrderListFilters } from '@pos/core/lib/pre-order-dates';
 
 // ── Enums & backend shapes ────────────────────────────────────────────────────
 export type PreOrderStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
@@ -194,17 +195,28 @@ function mapIngredientLine(i: IngredientLineRead): IngredientLine {
 }
 
 // ── Read hooks ────────────────────────────────────────────────────────────────
-export function usePreOrders(status?: PreOrderStatus, page = 1, limit = 50) {
+export type { PreOrderListFilters };
+
+/**
+ * GET /api/v1/pre-orders — summary list, sorted by due_date ascending by the API.
+ * Filters (all optional, they stack): `status` (one value), `dueDateFrom` / `dueDateTo`
+ * (inclusive YYYY-MM-DD), `page` (≥ 1), `limit` (1–200). `total` is the filtered count.
+ */
+export function usePreOrders(
+  filters: PreOrderListFilters = {},
+  opts: { refetchInterval?: number; staleTime?: number } = {},
+) {
+  const f = normalizePreOrderFilters(filters);
   return useQuery<{ items: PreOrderListItem[]; total: number }>({
-    queryKey: ['pre-orders', status, page, limit],
+    queryKey: ['pre-orders', f],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (status) params.set('status', status);
-      params.set('page', String(page));
-      params.set('limit', String(limit));
-      const data = await api.get<PreOrdersPageRead>(`/api/v1/pre-orders?${params}`);
+      const data = await api.get<PreOrdersPageRead>(`/api/v1/pre-orders?${buildPreOrderListQuery(f)}`);
       return { items: data.items.map(mapListItem), total: data.total };
     },
+    refetchInterval: opts.refetchInterval,
+    staleTime: opts.staleTime,
+    // Keep the previous week / range on screen while the next one loads.
+    placeholderData: keepPreviousData,
   });
 }
 

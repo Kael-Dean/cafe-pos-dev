@@ -7,7 +7,10 @@ import { useCurrentUser, isAdmin } from '@pos/core/hooks/use-current-user';
 import { useCountUp } from '@pos/core/lib/motion';
 import { Skeleton, SkeletonTable } from '@pos/core/components/ui/skeleton';
 import { useStaffList, useWeeklySchedule, useAssignShift, type ShiftAssignment } from '@pos/core/hooks/use-hr';
-import { usePreOrders, usePreOrder, type PreOrderStatus, type PreOrderListItem } from '@pos/core/hooks/use-pre-orders';
+import { usePreOrders, usePreOrder, type PreOrderStatus } from '@pos/core/hooks/use-pre-orders';
+import {
+  addDaysIso, groupByDueDate, isoToLocalDate, localIsoDate, mondayOf, preOrderCustomerLabel, weekDays, weekRange, weekdayMon0,
+} from '@pos/core/lib/pre-order-dates';
 import { useIsPhone } from '@pos/core/hooks/use-media-query';
 
 // Phone-only rules (< 768px). The 8-column week table is replaced on phones by a
@@ -37,6 +40,8 @@ const SHIFT_PHONE_CSS = `
   .shift-days-w { font-size: 12px; font-weight: 500; }
   .shift-days-d { font-size: 17px; font-weight: 700; line-height: 1.2; }
   .shift-days-n { font-size: 11px; font-weight: 500; opacity: 0.85; }
+  .shift-days > button { position: relative; }
+  .shift-days-po { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--color-warning); }
 
   .shift-day-title { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
   .shift-day-sub { font-size: 13px; font-weight: 500; color: var(--color-text-secondary); }
@@ -86,33 +91,18 @@ const thStyle: React.CSSProperties = {
   padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)',
 };
 
+// All calendar dates are local "YYYY-MM-DD" strings (lib/pre-order-dates). The week
+// used to be derived with toISOString(), which is UTC: east of Greenwich the "Monday"
+// came out as Sunday and the desktop columns were labelled one weekday off.
 function fmtDateTh(s: string): string {
-  return new Date(s).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+  return isoToLocalDate(s).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function preOrderLabel(po: { customerName: string | null; customerPhone: string | null }): string {
-  return po.customerName || po.customerPhone || 'ลูกค้า';
-}
-
-function getMondayOfWeek(d: Date): Date {
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(d.getFullYear(), d.getMonth(), diff);
-}
-
-function addDays(d: Date, n: number): Date {
-  return new Date(d.getTime() + n * 86400000);
-}
-
-function dateStr(d: Date): string {
-  return d.toISOString().split('T')[0];
-}
+const preOrderLabel = preOrderCustomerLabel;
 
 // Weekday (Monday = 0) and day-of-month read from the "YYYY-MM-DD" string itself, so
-// the phone day picker labels each date with its real weekday in every timezone.
-function dowOf(ds: string): number {
-  return (new Date(`${ds}T00:00:00Z`).getUTCDay() + 6) % 7;
-}
+// each date is labelled with its real weekday in every timezone.
+const dowOf = weekdayMon0;
 function domOf(ds: string): number {
   return Number(ds.slice(8, 10));
 }
@@ -138,12 +128,14 @@ export default function ShiftSchedule() {
   const { data: me } = useCurrentUser();
   const admin = isAdmin(me?.role);
 
-  const [weekStart, setWeekStart] = useState(() => dateStr(getMondayOfWeek(new Date())));
+  const [weekStart, setWeekStart] = useState(() => mondayOf(localIsoDate()));
   const [editingCell, setEditingCell] = useState<{ userId: string; date: string } | null>(null);
   const [editStart, setEditStart] = useState('08:00');
   const [editEnd, setEditEnd] = useState('16:00');
   const [selectedPreOrderId, setSelectedPreOrderId] = useState<string | null>(null);
   const [showCancelled, setShowCancelled] = useState(false);
+  // Desktop grid: the day whose pre-order cell is expanded past the first three.
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
   // Phones: one day at a time (team) or my own week, instead of the week table.
   const isPhone = useIsPhone();
   const [phoneDay, setPhoneDay] = useState<string | null>(null);
@@ -152,39 +144,35 @@ export default function ShiftSchedule() {
   const { data: staff, isLoading: staffLoading } = useStaffList();
   const { data: shifts, isLoading: shiftsLoading, refetch: refetchShifts } = useWeeklySchedule(weekStart);
   const assignShift = useAssignShift();
-  // Pre-orders: fetch all statuses (first 200, due_date asc) and filter to the
-  // visible week client-side — no backend date-range param needed.
-  const { data: preOrdersPage } = usePreOrders(undefined, 1, 200);
+  // Pre-orders due in the visible week only (due_date_from / due_date_to, all statuses,
+  // limit 200 — the handoff's calendar pattern). Refetched on week change; polled every
+  // 60 s because the backend sends no realtime events for pre-orders.
+  const {
+    data: preOrdersPage, isLoading: preOrdersLoading, isError: preOrdersError,
+    isPlaceholderData: preOrdersStale, refetch: refetchPreOrders,
+  } = usePreOrders({ ...weekRange(weekStart), limit: 200 }, { refetchInterval: 60_000, staleTime: 30_000 });
 
-  const prevWeek = () => setWeekStart(dateStr(addDays(new Date(weekStart), -7)));
-  const nextWeek = () => setWeekStart(dateStr(addDays(new Date(weekStart), 7)));
-  const goToday  = () => setWeekStart(dateStr(getMondayOfWeek(new Date())));
+  const prevWeek = () => { setWeekStart(addDaysIso(weekStart, -7)); setExpandedDay(null); };
+  const nextWeek = () => { setWeekStart(addDaysIso(weekStart, 7)); setExpandedDay(null); };
+  const goToday  = () => { setWeekStart(mondayOf(localIsoDate())); setExpandedDay(null); };
 
   const shiftMap: Record<string, ShiftAssignment> = {};
   (shifts ?? []).forEach(s => { shiftMap[`${s.user_id}:${s.assignment_date}`] = s; });
 
-  const weekDates = Array.from({ length: 7 }, (_, i) => addDays(new Date(weekStart), i));
-  const today = dateStr(new Date());
+  const weekStrs = weekDays(weekStart);
+  const today = localIsoDate();
   const staffList = staff ?? [];
 
   // Phone day picker: the tapped day while it is in the visible week, else today, else Monday.
-  const weekStrs = weekDates.map(dateStr);
   const selDay = phoneDay && weekStrs.includes(phoneDay) ? phoneDay : weekStrs.includes(today) ? today : weekStrs[0];
 
   const shiftsToday = staffList.filter(s => !!shiftMap[`${s.id}:${today}`]).length;
   const noShiftToday = staffList.length - shiftsToday;
 
-  // Group pre-orders by their due date (YYYY-MM-DD string matches dateStr(weekDate)).
-  const preOrdersByDate: Record<string, PreOrderListItem[]> = {};
-  (preOrdersPage?.items ?? []).forEach(po => {
-    if (po.status === 'CANCELLED' && !showCancelled) return;
-    if (!preOrdersByDate[po.dueDate]) preOrdersByDate[po.dueDate] = [];
-    preOrdersByDate[po.dueDate].push(po);
-  });
-  const weekPreOrderCount = weekDates.reduce((sum, d) => {
-    const list = preOrdersByDate[dateStr(d)] ?? [];
-    return sum + list.filter(p => p.status !== 'CANCELLED').length;
-  }, 0);
+  // Group by due date; cancelled ones only when "แสดงที่ยกเลิก" is on (struck through).
+  const preOrdersByDate = groupByDueDate(preOrdersPage?.items ?? [], showCancelled);
+  const weekPreOrderCount = (preOrdersPage?.items ?? []).filter(p => p.status !== 'CANCELLED').length;
+  const preOrdersTruncated = !!preOrdersPage && preOrdersPage.total > preOrdersPage.items.length;
 
   const openEditor = (userId: string, date: string) => {
     const existing = shiftMap[`${userId}:${date}`];
@@ -261,7 +249,7 @@ export default function ShiftSchedule() {
           <Icon name="chevronRight" size={15} style={{ transform: 'rotate(180deg)' }} />
         </button>
         <div className="shift-nav-label" style={{ flex: 1, textAlign: 'center', fontWeight: 600, fontSize: 15 }}>
-          {new Date(weekStart).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} – {addDays(new Date(weekStart), 6).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+          {isoToLocalDate(weekStart).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} – {isoToLocalDate(addDaysIso(weekStart, 6)).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
         </div>
         <button onClick={nextWeek} aria-label="สัปดาห์ถัดไป" className="hit-44 pressable" style={{ minHeight: 38, padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
           <Icon name="chevronRight" size={15} />
@@ -309,12 +297,14 @@ export default function ShiftSchedule() {
                 <div className="shift-days" role="group" aria-label="เลือกวัน">
                   {weekStrs.map(ds => {
                     const n = staffList.filter(s => !!shiftMap[`${s.id}:${ds}`]).length;
+                    const po = (preOrdersByDate[ds] ?? []).filter(p => p.status !== 'CANCELLED').length;
                     return (
                       <button key={ds} type="button" aria-pressed={ds === selDay} data-today={ds === today ? '' : undefined}
-                        aria-label={`วัน${DAY_FULL[dowOf(ds)]}ที่ ${domOf(ds)} มีกะ ${n} คน`} onClick={() => setPhoneDay(ds)}>
+                        aria-label={`วัน${DAY_FULL[dowOf(ds)]}ที่ ${domOf(ds)} มีกะ ${n} คน${po ? ` พรีออเดอร์ ${po} รายการ` : ''}`} onClick={() => setPhoneDay(ds)}>
                         <span className="shift-days-w">{DAY_SHORT[dowOf(ds)]}</span>
                         <span className="shift-days-d">{domOf(ds)}</span>
                         <span className="shift-days-n">{n} คน</span>
+                        {po > 0 && <span className="shift-days-po" aria-hidden="true" />}
                       </button>
                     );
                   })}
@@ -353,7 +343,14 @@ export default function ShiftSchedule() {
                 {admin && <div className="shift-note">แตะชื่อพนักงานเพื่อกำหนดเวลาเข้า–ออกงาน</div>}
 
                 <h3 className="shift-section">พรีออเดอร์ที่ต้องส่ง ({dayPreOrders.length})</h3>
-                {dayPreOrders.length === 0 ? (
+                {preOrdersLoading ? (
+                  <Skeleton height={56} radius="var(--radius-lg)" />
+                ) : preOrdersError ? (
+                  <div className="shift-note" role="alert" style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    โหลดพรีออเดอร์ไม่สำเร็จ
+                    <button type="button" onClick={() => void refetchPreOrders()} style={{ padding: '6px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: 13, fontWeight: 600 }}>ลองใหม่</button>
+                  </div>
+                ) : dayPreOrders.length === 0 ? (
                   <div className="shift-note" style={{ marginTop: 0 }}>ไม่มีพรีออเดอร์ในวันนี้</div>
                 ) : (
                   <ul className="shift-list">
@@ -420,13 +417,12 @@ export default function ShiftSchedule() {
           <thead>
             <tr style={{ background: 'var(--color-surface-2)' }}>
               <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 600, width: 160, borderBottom: '1px solid var(--color-border)' }}>พนักงาน</th>
-              {weekDates.map((d, i) => {
-                const ds = dateStr(d);
+              {weekStrs.map(ds => {
                 const isToday = ds === today;
                 return (
                   <th key={ds} style={{ padding: '10px 8px', fontSize: 12, fontWeight: isToday ? 700 : 500, textAlign: 'center', borderBottom: '1px solid var(--color-border)', borderLeft: '1px solid var(--color-border)', background: isToday ? 'var(--color-accent-50)' : 'transparent', color: isToday ? 'var(--color-accent-600)' : 'var(--color-text-secondary)', minWidth: 80 }}>
-                    <div style={{ fontSize: 11 }}>{DAY_SHORT[i]}</div>
-                    <div style={{ fontSize: 16, fontWeight: 700, marginTop: 1 }}>{d.getDate()}</div>
+                    <div style={{ fontSize: 11 }}>{DAY_SHORT[dowOf(ds)]}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, marginTop: 1 }}>{domOf(ds)}</div>
                     {isToday && <div style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--color-accent)', margin: '4px auto 0' }} />}
                   </th>
                 );
@@ -447,8 +443,7 @@ export default function ShiftSchedule() {
                     </div>
                   </div>
                 </td>
-                {weekDates.map(d => {
-                  const ds = dateStr(d);
+                {weekStrs.map(ds => {
                   const key = `${member.id}:${ds}`;
                   const shift = shiftMap[key];
                   const style = shiftCellStyle(shift);
@@ -483,37 +478,55 @@ export default function ShiftSchedule() {
                   <Icon name="cake" size={16} color="var(--color-accent)" />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>พรีออเดอร์</div>
-                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>ส่งของวันนี้</div>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>ครบกำหนดส่ง</div>
+                    {preOrdersError ? (
+                      <button type="button" onClick={() => void refetchPreOrders()} style={{ marginTop: 6, padding: '4px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-danger)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        โหลดไม่สำเร็จ · ลองใหม่
+                      </button>
+                    ) : preOrdersTruncated ? (
+                      <div style={{ marginTop: 4, fontSize: 11, color: 'var(--color-warning-fg)' }}>แสดง {preOrdersPage!.items.length} จาก {preOrdersPage!.total}</div>
+                    ) : null}
                   </div>
                 </div>
               </td>
-              {weekDates.map(d => {
-                const ds = dateStr(d);
+              {weekStrs.map(ds => {
                 const list = preOrdersByDate[ds] ?? [];
                 const isToday = ds === today;
-                const visible = list.slice(0, 3);
+                const expanded = expandedDay === ds;
+                const visible = expanded ? list : list.slice(0, 3);
                 const extra = list.length - visible.length;
                 return (
-                  <td key={ds} style={{ padding: 'var(--space-1)', verticalAlign: 'top', borderLeft: '1px solid var(--color-border)', background: isToday ? 'var(--color-accent-50)' : 'transparent' }}>
+                  <td key={ds} data-po-day={ds} aria-busy={preOrdersLoading || preOrdersStale || undefined} style={{ padding: 'var(--space-1)', verticalAlign: 'top', borderLeft: '1px solid var(--color-border)', background: isToday ? 'var(--color-accent-50)' : 'transparent', opacity: preOrdersStale ? 0.55 : 1, transition: 'opacity 150ms var(--ease-out)' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 38 }}>
+                      {preOrdersLoading && <Skeleton height={34} radius="var(--radius-sm)" />}
                       {visible.map(po => {
                         const c = PREORDER_STATUS_COLORS[po.status];
                         const cancelled = po.status === 'CANCELLED';
                         return (
                           <button
                             key={po.id}
+                            type="button"
+                            className="shift-po-badge"
                             onClick={() => setSelectedPreOrderId(po.id)}
+                            aria-label={`พรีออเดอร์ ${preOrderLabel(po)} · ${PREORDER_STATUS_LABELS[po.status]}${po.itemCount > 0 ? ` · ${po.itemCount} รายการ` : ''}`}
                             title={`${preOrderLabel(po)} · ${PREORDER_STATUS_LABELS[po.status]}${po.itemCount > 0 ? ` · ${po.itemCount} รายการ` : ''}`}
-                            style={{ textAlign: 'left', border: 'none', cursor: 'pointer', borderRadius: 6, padding: '4px 6px', background: c.bg, color: c.fg, fontSize: 10, fontWeight: 600, lineHeight: 1.25, textDecoration: cancelled ? 'line-through' : 'none', opacity: cancelled ? 0.7 : 1, overflow: 'hidden', fontFamily: 'inherit' }}
+                            style={{ textAlign: 'left', border: 'none', cursor: 'pointer', borderRadius: 6, padding: '5px 7px', background: c.bg, color: c.fg, fontSize: 12, fontWeight: 600, lineHeight: 1.3, textDecoration: cancelled ? 'line-through' : 'none', opacity: cancelled ? 0.7 : 1, overflow: 'hidden', fontFamily: 'inherit' }}
                           >
                             <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{preOrderLabel(po)}</div>
-                            {po.itemCount > 0 && <div style={{ fontSize: 9, fontWeight: 500, opacity: 0.8 }}>{po.itemCount} รายการ</div>}
+                            <div style={{ fontSize: 11, fontWeight: 500, opacity: 0.85, fontVariantNumeric: 'tabular-nums' }}>
+                              {po.itemCount > 0 ? `${po.itemCount} รายการ` : 'ยังไม่มีรายการ'}
+                            </div>
                           </button>
                         );
                       })}
-                      {extra > 0 && (
-                        <button onClick={() => setSelectedPreOrderId(list[3].id)} style={{ border: 'none', background: 'transparent', color: 'var(--color-text-muted)', fontSize: 10, fontWeight: 600, cursor: 'pointer', textAlign: 'left', padding: '0 6px', fontFamily: 'inherit' }}>
-                          +{extra} เพิ่มเติม
+                      {(extra > 0 || (expanded && list.length > 3)) && (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedDay(expanded ? null : ds)}
+                          aria-expanded={expanded}
+                          style={{ border: 'none', background: 'transparent', color: 'var(--color-text-secondary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', textAlign: 'left', padding: '2px 7px', fontFamily: 'inherit' }}
+                        >
+                          {expanded ? 'ย่อ' : `+${extra} เพิ่มเติม`}
                         </button>
                       )}
                     </div>
@@ -532,17 +545,17 @@ export default function ShiftSchedule() {
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: 'var(--color-text-secondary)' }}>พนักงานที่ยังไม่มีกะสัปดาห์นี้</div>
         <div className="shift-unassigned" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {staffList.map(s => {
-            const unassigned = weekDates.filter(d => !shiftMap[`${s.id}:${dateStr(d)}`]);
+            const unassigned = weekStrs.filter(ds => !shiftMap[`${s.id}:${ds}`]);
             if (unassigned.length === 0) return null;
             return (
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 12px', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-pill)' }}>
                 <div style={{ width: 22, height: 22, borderRadius: 'var(--radius-pill)', background: 'var(--color-accent-50)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 10 }}>{s.name.charAt(0)}</div>
                 <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)' }}>{s.name.split(' ')[0]}</span>
-                <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>ไม่มีกะ {unassigned.map(d => { const day = d.getDay(); return DAY_SHORT[day === 0 ? 6 : day - 1]; }).join(', ')}</span>
+                <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>ไม่มีกะ {unassigned.map(ds => DAY_SHORT[dowOf(ds)]).join(', ')}</span>
               </div>
             );
           })}
-          {staffList.length > 0 && staffList.every(s => weekDates.every(d => !!shiftMap[`${s.id}:${dateStr(d)}`])) && (
+          {staffList.length > 0 && staffList.every(s => weekStrs.every(ds => !!shiftMap[`${s.id}:${ds}`])) && (
             <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>พนักงานทุกคนมีกะครบสัปดาห์นี้</div>
           )}
         </div>
@@ -552,8 +565,7 @@ export default function ShiftSchedule() {
 
       {editingCell && admin && (() => {
         const member = staffList.find(s => s.id === editingCell.userId);
-        const d = new Date(editingCell.date);
-        const dayIdx = (d.getDay() + 6) % 7;          // Monday = 0
+        const dayIdx = dowOf(editingCell.date);          // Monday = 0
         const timeInput: React.CSSProperties = { width: '100%', minHeight: 48, padding: '11px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', color: 'var(--color-text)', fontSize: 17, fontFamily: 'inherit', boxSizing: 'border-box' };
         return (
           <ModalShell
