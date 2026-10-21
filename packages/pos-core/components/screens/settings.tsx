@@ -6,11 +6,16 @@ import { InstallCard } from '../pwa/install-app';
 import { useFadeRise } from '@pos/core/lib/motion';
 import { useI18n, type Lang } from '@pos/core/lib/i18n';
 import { useTheme, type Theme } from '@pos/core/lib/theme';
+import { useCurrentUser, isAdmin } from '@pos/core/hooks/use-current-user';
+import { PaymentGroupsSettings } from './payment-groups-settings';
 
 export default function Settings() {
   const { t, lang, setLang } = useI18n();
   const { theme, setTheme } = useTheme();
   const rootRef = useFadeRise({ y: 8, duration: 0.22 });
+  const { data: me } = useCurrentUser();
+  // Payment groups: MANAGER / OWNER only (PATCH is 403 for everyone else).
+  const admin = isAdmin(me?.role);
 
   const langOptions: { value: Lang; label: string; sub: string }[] = [
     { value: 'th', label: t.settings.thai, sub: 'ภาษาไทย' },
@@ -144,6 +149,8 @@ export default function Settings() {
           })}
         </div>
       </div>
+
+      {admin && <PaymentGroupsSettings />}
 
       {/* Install as an app (PWA) — action depends on what this browser supports */}
       <InstallCard />
