@@ -1,0 +1,470 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useQueries } from '@tanstack/react-query';
+import Icon from '../icons';
+import { Skeleton } from '@pos/core/components/ui/skeleton';
+import { useFadeRise } from '@pos/core/lib/motion';
+import { useToast, baht } from '../app-common';
+import { usePrinter } from '@pos/core/hooks/use-printer';
+import { useModalA11y } from '@pos/core/hooks/use-modal-a11y';
+import { displayOrderNo, useVoidOrder, useSetOrderDate } from '@pos/core/hooks/use-orders';
+import { useCustomerDetail, type CustomerDetail } from '@pos/core/hooks/use-customers';
+import { useMemberDetail, useMembershipProgram, type MemberRead } from '@pos/core/hooks/use-membership';
+import { ApiError, api } from '@pos/core/lib/api-client';
+import ReceiptModal from './receipt-modal';
+import CancelOrderModal from './cancel-order-modal';
+import {
+  useReceiptCopies,
+  mapOrderToReceipt,
+  mapOrderToPrintArgs,
+  computeOrderPoints,
+  paymentLabel,
+  type OrderFull,
+  type ReceiptPoints,
+} from '@pos/core/hooks/use-receipt-copies';
+
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Shared column template for the order table (header, rows, skeleton must match):
+// ออเดอร์ · เวลา · รายการ · ลูกค้า · ยอดรวม · วิธีจ่าย
+const GRID_COLS = '84px 72px 1fr 150px 112px 96px';
+
+/**
+ * Phones (< 768px): the six fixed columns need ~700px, and the card clipped the
+ * total + payment columns. Each order becomes a three-line card instead:
+ *   #no · time ........ total
+ *   items (one line, ellipsis)
+ *   customer ........ payment
+ * Everything is inside the media query, so tablet / desktop keep the table.
+ */
+const RC_PHONE_CSS = `
+@media (max-width: 767px) {
+  .rc-controls { gap: 12px !important; }
+  .rc-date { min-height: 44px !important; font-size: 16px !important; }
+  .rc-table { display: flex; flex-direction: column; gap: 8px; border: 0 !important; border-radius: 0 !important; overflow: visible !important; background: transparent !important; }
+  .rc-head { display: none !important; }
+  .rc-row {
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+    grid-template-areas: "no time total" "items items items" "cust cust pay";
+    gap: 2px 10px !important; padding: 10px 12px !important;
+    border: 1px solid var(--color-border) !important; border-radius: var(--radius-lg);
+    background: var(--color-surface) !important;
+  }
+  .rc-row > :nth-child(1) { grid-area: no; font-size: 15px; }
+  .rc-row > :nth-child(2) { grid-area: time; align-self: center; }
+  .rc-row > :nth-child(3) { grid-area: items; }
+  .rc-row > :nth-child(4) { grid-area: cust; min-width: 0; }
+  .rc-row > :nth-child(5) { grid-area: total; font-size: 15px; }
+  .rc-row > :nth-child(6) { grid-area: pay; text-align: right; white-space: nowrap; }
+}
+`;
+
+export default function ReceiptCopies() {
+  const toast = useToast();
+  const { printReceipt } = usePrinter();
+  const voidOrder = useVoidOrder();
+  const setOrderDate = useSetOrderDate();
+
+  const [date, setDate] = useState(todayISO());
+  const [selected, setSelected] = useState<OrderFull | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<OrderFull | null>(null);
+  const [confirmAll, setConfirmAll] = useState(false);
+  const [printingAll, setPrintingAll] = useState(false);
+
+  const { data: orders, isLoading, isError, error } = useReceiptCopies(date);
+  // Resolve the buyer (ลูกค้า) + salesperson (เซลส์) for the opened receipt so the
+  // copy shows the same parties block as the original bill. Member-less sales have
+  // no customer_id → nothing to resolve, nothing shown.
+  const { data: selCustomer } = useCustomerDetail(selected?.customer_id ?? undefined);
+  const selParties = { memberName: selCustomer?.name, salesName: selCustomer?.sales_name ?? undefined };
+  // Points to reprint: pulled from the member's transaction log so the copy shows
+  // the authoritative balance as of this bill (computeOrderPoints falls back to the
+  // current balance for orders older than the last-20 transaction window).
+  const { data: selMember } = useMemberDetail(selected?.member_id ?? null);
+  const { data: program } = useMembershipProgram();
+  const selPoints = useMemo(
+    () => computeOrderPoints(selected, selMember, program),
+    [selected, selMember, program],
+  );
+  const rootRef = useFadeRise({ y: 8, duration: 0.22 });
+
+  const summary = useMemo(() => {
+    const list = orders ?? [];
+    const revenue = list.reduce((sum, o) => sum + Number(o.total), 0);
+    return { count: list.length, revenue };
+  }, [orders]);
+
+  // Resolve the buyer name for every bill in the table. Names live on the linked
+  // customer (not the order), so we fan out a cheap GET per unique customer_id —
+  // same query key as useCustomerDetail, so opening a receipt reuses the cache.
+  const customerIds = useMemo(
+    () => [...new Set((orders ?? []).map(o => o.customer_id).filter((id): id is string => !!id))],
+    [orders],
+  );
+  const customerQueries = useQueries({
+    queries: customerIds.map(id => ({
+      queryKey: ['customers', 'detail', id],
+      queryFn: () => api.get<CustomerDetail>(`/api/v1/customers/${id}`),
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
+  const customerNames = useMemo(() => {
+    const map = new Map<string, string>();
+    customerQueries.forEach((q, i) => { if (q.data) map.set(customerIds[i], q.data.name); });
+    return map;
+  }, [customerQueries, customerIds]);
+
+  const printAll = async () => {
+    setConfirmAll(false);
+    if (!orders || orders.length === 0) return;
+    setPrintingAll(true);
+    let done = 0;
+    try {
+      for (const o of orders) {
+        // Resolve the buyer/sales for each bill (cheap GET; skipped for member-less
+        // sales). A lookup failure shouldn't abort the batch — just print without it.
+        let parties: { memberName?: string; salesName?: string } | undefined;
+        if (o.customer_id) {
+          try {
+            const c = await api.get<CustomerDetail>(`/api/v1/customers/${o.customer_id}`);
+            parties = { memberName: c.name, salesName: c.sales_name ?? undefined };
+          } catch { /* print without parties */ }
+        }
+        // Resolve the member's point balance for this bill (authoritative, from the
+        // transaction log). A lookup failure shouldn't abort the batch.
+        let points: ReceiptPoints | undefined;
+        if (o.member_id) {
+          try {
+            const m = await api.get<MemberRead>(`/api/v1/membership/members/${o.member_id}`);
+            points = computeOrderPoints(o, m, program);
+          } catch { /* print without points */ }
+        }
+        await printReceipt(mapOrderToPrintArgs(o, parties, points));
+        done += 1;
+      }
+      toast({ kind: 'success', title: 'พิมพ์สำเนาครบแล้ว', msg: `${done} ใบ` });
+    } catch (e: unknown) {
+      toast({
+        kind: 'danger',
+        title: `พิมพ์ไม่สำเร็จ (พิมพ์ไปแล้ว ${done}/${orders.length} ใบ)`,
+        msg: String(e instanceof Error ? e.message : e),
+      });
+    } finally {
+      setPrintingAll(false);
+    }
+  };
+
+  // Cancel a receipt: the backend reverts stock + money and flips the order to
+  // VOID. The order then drops out of this list (it only shows paid statuses)
+  // when the query re-fetches.
+  const handleCancel = async (reason: string, restock: boolean) => {
+    const order = cancelTarget;
+    if (!order) return;
+    setCancelTarget(null);
+    try {
+      await voidOrder.mutateAsync({ orderId: order.id, reason, restock });
+      toast({ kind: 'success', title: 'ยกเลิกใบเสร็จแล้ว', msg: `ออเดอร์ #${displayOrderNo(order)}` });
+    } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 409) {
+        toast({ kind: 'info', title: 'ใบเสร็จนี้ถูกยกเลิกไปแล้ว' });
+      } else {
+        toast({ kind: 'danger', title: 'ยกเลิกไม่สำเร็จ', msg: String(e instanceof Error ? e.message : e) });
+      }
+    }
+  };
+
+  const disabledPrint = !orders || orders.length === 0 || printingAll;
+
+  return (
+    <div ref={rootRef} className="screen-pad-lg" style={{ padding: 'var(--space-8)', maxWidth: 960, margin: '0 auto' }}>
+      <style>{RC_PHONE_CSS}</style>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 'var(--space-1)', color: 'var(--color-text)' }}>
+        สำเนาใบเสร็จ
+      </h1>
+      <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-6)' }}>
+        เรียกดูและพิมพ์สำเนาใบเสร็จย้อนหลังของทั้งวัน เพื่อนำไปตรวจสอบข้อมูล
+      </p>
+
+      {/* ── Controls ── */}
+      <div className="rc-controls" style={{
+        display: 'flex', alignItems: 'flex-end', gap: 'var(--space-4)', flexWrap: 'wrap',
+        marginBottom: 'var(--space-5)',
+      }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>วันที่</span>
+          <input
+            type="date"
+            value={date}
+            max={todayISO()}
+            onChange={e => setDate(e.target.value)}
+            className="input-std rc-date"
+            style={{
+              padding: '9px var(--space-3)', minHeight: 40, borderRadius: 'var(--radius-md)', fontSize: 14,
+              border: '1px solid var(--color-border)',
+              background: 'var(--color-surface)', color: 'var(--color-text)',
+            }}
+          />
+        </label>
+
+        <div style={{ display: 'flex', gap: 'var(--space-6)', padding: 'var(--space-2) 0' }}>
+          <Stat label="จำนวนใบเสร็จ" value={String(summary.count)} />
+          <Stat label="ยอดรวม" value={baht(summary.revenue)} />
+        </div>
+
+        <div className="hide-phone" style={{ flex: 1 }} />
+
+        <button
+          onClick={() => setConfirmAll(true)}
+          disabled={disabledPrint}
+          className="pressable full-phone"
+          style={{
+            padding: '10px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 700,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
+            background: disabledPrint ? 'var(--color-border)' : 'var(--color-primary)',
+            color: disabledPrint ? 'var(--color-text-muted)' : 'var(--color-text-inverse)',
+            opacity: disabledPrint ? 0.6 : 1,
+            cursor: disabledPrint ? 'default' : 'pointer',
+          }}
+        >
+          {printingAll
+            ? <span className="spinner" aria-hidden style={{ width: 16, height: 16 }} />
+            : <Icon name="printer" size={16} />}
+          {printingAll ? 'กำลังพิมพ์...' : 'พิมพ์ทั้งหมด'}
+        </button>
+      </div>
+
+      {/* ── List ── */}
+      {isLoading ? (
+        <ReceiptListSkeleton />
+      ) : isError ? (
+        <div role="alert" style={{
+          padding: 'var(--space-5)', borderRadius: 'var(--radius-lg)', color: 'var(--color-danger)',
+          background: 'var(--color-danger-50)', border: '1px solid var(--color-danger)', fontSize: 13,
+        }}>
+          โหลดข้อมูลไม่สำเร็จ: {String(error instanceof Error ? error.message : error)}
+        </div>
+      ) : !orders || orders.length === 0 ? (
+        <div style={{
+          padding: 'var(--space-12)', textAlign: 'center', color: 'var(--color-text-secondary)',
+          border: '1px dashed var(--color-border)', borderRadius: 'var(--radius-lg)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-3)',
+        }}>
+          <div style={{ width: 48, height: 48, borderRadius: 'var(--radius-lg)', background: 'var(--color-surface-2)', color: 'var(--color-text-muted)', display: 'grid', placeItems: 'center' }}>
+            <Icon name="printer" size={22} />
+          </div>
+          ไม่มีใบเสร็จในวันที่เลือก
+        </div>
+      ) : (
+        <div className="rc-table" style={{
+          border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden',
+          background: 'var(--color-surface)',
+        }}>
+          {/* Header row */}
+          <div className="rc-head" style={{
+            display: 'grid', gridTemplateColumns: GRID_COLS,
+            gap: 12, padding: '12px 16px', fontSize: 12, fontWeight: 700,
+            color: 'var(--color-text-secondary)', borderBottom: '1px solid var(--color-border)',
+            background: 'var(--color-surface-2)',
+          }}>
+            <div>ออเดอร์</div>
+            <div>เวลา</div>
+            <div>รายการ</div>
+            <div>ลูกค้า</div>
+            <div style={{ textAlign: 'right' }}>ยอดรวม</div>
+            <div>วิธีจ่าย</div>
+          </div>
+          {orders.map(o => {
+            const itemCount = o.items.reduce((n, it) => n + it.quantity, 0);
+            const preview = o.items.map(it => it.product_name).join(', ');
+            const customerName = o.customer_id ? customerNames.get(o.customer_id) : undefined;
+            return (
+              <button
+                key={o.id}
+                onClick={() => setSelected(o)}
+                className="rc-row"
+                style={{
+                  display: 'grid', gridTemplateColumns: GRID_COLS,
+                  gap: 12, padding: '12px 16px', width: '100%', textAlign: 'left',
+                  alignItems: 'center', fontSize: 13, color: 'var(--color-text)',
+                  borderBottom: '1px solid var(--color-border)', cursor: 'pointer',
+                  background: 'transparent',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-surface-2)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <div style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>#{displayOrderNo(o)}</div>
+                <div style={{ color: 'var(--color-text-secondary)', fontVariantNumeric: 'tabular-nums' }}>{formatTime(o.created_at)}</div>
+                <div style={{ color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {preview} <span style={{ opacity: 0.6 }}>({itemCount})</span>
+                </div>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {customerName ?? <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
+                </div>
+                <div style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{baht(Number(o.total))}</div>
+                <div style={{ color: 'var(--color-text-secondary)' }}>{paymentLabel(o.payment_method)}</div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Receipt copy preview ── */}
+      {selected && (
+        <ReceiptModal
+          key={selected.id}
+          data={mapOrderToReceipt(selected, selParties, selPoints)}
+          issuedAt={new Date(selected.created_at)}
+          onCancel={() => { setCancelTarget(selected); setSelected(null); }}
+          onSaveDate={async (iso: string) => {
+            try {
+              const updated = await setOrderDate.mutateAsync({ orderId: selected.id, businessDate: iso });
+              setSelected(prev => prev ? {
+                ...prev,
+                created_at: updated.created_at,
+                receipt_no: updated.receipt_no,
+                business_date: updated.business_date,
+                daily_number: updated.daily_number,
+              } : prev);
+              toast({ kind: 'success', title: 'บันทึกวันที่ใบเสร็จแล้ว', msg: `เลขที่ ${updated.receipt_no}` });
+            } catch (e: unknown) {
+              toast({ kind: 'danger', title: 'บันทึกวันที่ไม่สำเร็จ', msg: String(e instanceof Error ? e.message : e) });
+              throw e;
+            }
+          }}
+          onClose={() => setSelected(null)}
+          onPrint={async () => {
+            try {
+              await printReceipt(mapOrderToPrintArgs(selected, selParties, selPoints));
+              toast({ kind: 'success', title: 'พิมพ์สำเนาแล้ว', msg: `ออเดอร์ #${selected.order_number}` });
+            } catch (e: unknown) {
+              toast({ kind: 'danger', title: 'พิมพ์ไม่สำเร็จ', msg: String(e instanceof Error ? e.message : e) });
+            }
+          }}
+        />
+      )}
+
+      {/* ── Cancel-receipt dialog ── */}
+      {cancelTarget && (
+        <CancelOrderModal
+          orderLabel={String(displayOrderNo(cancelTarget))}
+          onClose={() => setCancelTarget(null)}
+          onConfirm={handleCancel}
+        />
+      )}
+
+      {/* ── Print-all confirm ── */}
+      {confirmAll && (
+        <ConfirmPrintAll
+          count={summary.count}
+          onCancel={() => setConfirmAll(false)}
+          onConfirm={() => void printAll()}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Skeleton mirroring the order table (header row + several order rows). */
+function ReceiptListSkeleton() {
+  return (
+    <div
+      aria-busy="true"
+      className="rc-table"
+      style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', background: 'var(--color-surface)' }}
+    >
+      <span className="sr-only">กำลังโหลดสำเนาใบเสร็จ</span>
+      <div className="rc-head" style={{
+        display: 'grid', gridTemplateColumns: GRID_COLS, gap: 'var(--space-3)', padding: '12px var(--space-4)',
+        borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
+      }}>
+        {Array.from({ length: 6 }).map((_, c) => <Skeleton key={c} width="60%" height="var(--space-3)" />)}
+      </div>
+      {Array.from({ length: 7 }).map((_, r) => (
+        <div key={r} className="rc-row" style={{
+          display: 'grid', gridTemplateColumns: GRID_COLS, gap: 'var(--space-3)', padding: '14px var(--space-4)',
+          alignItems: 'center', borderBottom: '1px solid var(--color-border)',
+        }}>
+          <Skeleton width="70%" height="var(--space-3)" />
+          <Skeleton width="60%" height="var(--space-3)" />
+          <Skeleton width="85%" height="var(--space-3)" />
+          <Skeleton width="65%" height="var(--space-3)" />
+          <Skeleton width="50%" height="var(--space-3)" style={{ justifySelf: 'end' }} />
+          <Skeleton width="55%" height="var(--space-3)" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Confirm "print all" — a centered dialog reusing the app's .modal-backdrop /
+ * .modal-card surface, with Esc-to-close, focus trap and focus restore so it
+ * matches the keyboard behaviour of the other modals.
+ */
+function ConfirmPrintAll({ count, onCancel, onConfirm }: { count: number; onCancel: () => void; onConfirm: () => void }) {
+  const ref = useModalA11y(onCancel);
+  if (typeof document === 'undefined') return null;
+
+  // Portaled to <body>: this screen's root keeps a transform from its entrance
+  // animation, which made it the containing block for the fixed backdrop — the
+  // dialog was centred in the page column and, on phones, sat under the tab bar.
+  return createPortal(
+    <div className="modal-backdrop" style={{ zIndex: 320 }} onClick={onCancel}>
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-label="ยืนยันพิมพ์สำเนาทั้งหมด"
+        className="modal-card"
+        onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 380, padding: 'var(--space-6)' }}
+      >
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 'var(--space-2)', color: 'var(--color-text)' }}>
+          พิมพ์สำเนาทั้งหมด?
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-5)', lineHeight: 1.6 }}>
+          จะพิมพ์สำเนาใบเสร็จ {count} ใบเรียงต่อกัน ใช้กระดาษพอสมควร แน่ใจหรือไม่?
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            className="pressable"
+            style={{ padding: '9px var(--space-4)', minHeight: 44, borderRadius: 'var(--radius-md)', fontSize: 13, color: 'var(--color-text-secondary)' }}
+          >
+            ยกเลิก
+          </button>
+          <button
+            onClick={onConfirm}
+            className="pressable"
+            style={{
+              padding: '9px var(--space-5)', minHeight: 44, borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 700,
+              background: 'var(--color-primary)', color: 'var(--color-text-inverse)',
+              display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+            }}
+          >
+            <Icon name="printer" size={14} /> พิมพ์ทั้งหมด
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+    </div>
+  );
+}

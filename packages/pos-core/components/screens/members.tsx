@@ -1,0 +1,589 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import Icon from '../icons';
+import { useToast, Tag, baht, Select } from '../app-common';
+import { useI18n } from '@pos/core/lib/i18n';
+import { useStagger } from '@pos/core/lib/motion';
+import { SkeletonTable } from '@pos/core/components/ui/skeleton';
+import { useCurrentUser, isAdmin } from '@pos/core/hooks/use-current-user';
+import { useCustomerDetail } from '@pos/core/hooks/use-customers';
+import { useSalespeople, useAssignSales } from '@pos/core/hooks/use-salespeople';
+import { useIsPhone } from '@pos/core/hooks/use-media-query';
+import {
+  useMembers,
+  useMemberDetail,
+  useMemberOrders,
+  useAdjustPoints,
+  useRegisterMember,
+  useDeleteMember,
+  isMemberNameTaken,
+  type MembershipTier,
+  type PointTxType,
+  type OrderStatus,
+  type AccountRead,
+} from '@pos/core/hooks/use-membership';
+
+const TIER_TONE: Record<MembershipTier, 'neutral' | 'success' | 'info' | 'accent'> = { NONE: 'neutral', BRONZE: 'success', SILVER: 'info', GOLD: 'accent' };
+const TX_TONE: Record<PointTxType, 'success' | 'info' | 'accent' | 'danger'> = { EARN: 'success', REDEEM: 'info', ADJUST: 'accent', EXPIRE: 'danger' };
+const ORDER_STATUS_TONE: Record<OrderStatus, 'neutral' | 'success' | 'info' | 'accent' | 'warning' | 'danger'> = { PENDING: 'warning', PAID: 'success', IN_PROGRESS: 'info', READY: 'accent', COMPLETED: 'neutral', VOID: 'danger' };
+
+const IS: React.CSSProperties = {
+  width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
+  border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: 14,
+};
+
+const fmtDate = (s: string) => new Date(s).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' });
+const fmtDateTime = (s: string) => new Date(s).toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+export default function MembersScreen() {
+  const { t } = useI18n();
+  const { data: me } = useCurrentUser();
+  const [searchInput, setSearchInput] = useState('');
+  const [query, setQuery] = useState<{ name?: string; phone?: string }>({});
+  const [page, setPage] = useState(1);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showRegister, setShowRegister] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<AccountRead | null>(null);
+
+  const limit = 50;
+  const { data, isLoading } = useMembers({ ...query, page, limit });
+
+  // Live search: as the user types, debounce 250ms then update the query so
+  // results appear without pressing the button. All-digits → phone, else name.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      const v = searchInput.trim();
+      setPage(1);
+      setQuery(!v ? {} : /^\d+$/.test(v) ? { phone: v } : { name: v });
+    }, 250);
+    return () => clearTimeout(id);
+  }, [searchInput]);
+
+  // Rows fade+rise in once per result set. Re-keyed on page/query so a fresh
+  // search replays the entrance; subtle (8px, 40ms apart), honors reduced-motion.
+  // Must be called before the admin early-return: `me` starts undefined and the
+  // guard flips once /me resolves — a hook after the return crashes React.
+  const rowsRef = useStagger({ selector: 'tbody tr, li[data-member-id]', each: 0.03 });
+  const isPhone = useIsPhone();
+
+  if (!isAdmin(me?.role)) {
+    return <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>{t.members.adminOnly}</div>;
+  }
+
+  const members = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  return (
+    <div className="screen-pad-lg" style={{ height: '100%', overflowY: 'auto', padding: 32 }}>
+      <MembersPhoneStyles />
+      <div className="page-header inline" style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', flexWrap: 'nowrap', gap: 16 }}>
+        <div style={{ flex: 1 }}>
+          <h1 className="page-title" style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>{t.members.title}</h1>
+          <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t.members.subtitle(total.toLocaleString())}</div>
+        </div>
+        <button onClick={() => setShowRegister(true)} className="pressable"
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', minHeight: 44, borderRadius: 8, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <Icon name="plus" size={16} /> {t.members.registerBtn}
+        </button>
+      </div>
+
+      {/* Search — live: results update as you type (debounced) */}
+      <div style={{ marginBottom: 18, maxWidth: 460 }}>
+        <div style={{ position: 'relative' }}>
+          <div className="mb-search-icon" style={{ position: 'absolute', top: 10, left: 12, color: 'var(--color-text-muted)' }}><Icon name="search" size={16} /></div>
+          <input enterKeyHint="search" aria-label={t.members.searchPlaceholder} className="mb-input" value={searchInput} onChange={e => setSearchInput(e.target.value)}
+            placeholder={t.members.searchPlaceholder} style={{ ...IS, paddingLeft: 36, paddingRight: searchInput ? 36 : 12 }} />
+          {searchInput && (
+            <button onClick={() => setSearchInput('')} aria-label={t.common.cancel} className="icon-btn hit-44"
+              style={{ position: 'absolute', top: '50%', right: 6, transform: 'translateY(-50%)', width: 28, height: 28, borderRadius: 999, display: 'grid', placeItems: 'center', color: 'var(--color-text-secondary)' }}>
+              <Icon name="x" size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* List */}
+      {isLoading ? (
+        <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 'var(--space-4) var(--space-5)' }}>
+          <SkeletonTable rows={8} cols={6} label={t.common.loading} />
+        </div>
+      ) : members.length === 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: 60, color: 'var(--color-text-muted)' }}>
+          <Icon name="customers" size={40} color="var(--color-border)" />
+          <div style={{ marginTop: 12, fontSize: 15 }}>{t.members.notFound}</div>
+        </div>
+      ) : (
+        <div key={`${page}-${query.name ?? ''}-${query.phone ?? ''}`} ref={rowsRef} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden' }}>
+          {isPhone ? (
+            // Phones: a lookup list instead of the 6-column table — name, phone and
+            // tier on the left, the points balance on the right, one tap opens the member.
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {members.map((m, i) => (
+                <li key={m.id} data-member-id={m.id} style={{ display: 'flex', alignItems: 'stretch', borderTop: i ? '1px solid var(--color-border)' : 'none' }}>
+                  <button onClick={() => setSelectedId(m.id)}
+                    style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '12px 4px 12px 14px', textAlign: 'left', color: 'inherit', fontFamily: 'inherit', cursor: 'pointer' }}>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 15, fontWeight: 600, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{m.customer_name}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '2px 8px', marginTop: 4 }}>
+                        <span className="num" style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{m.phone ?? '—'}</span>
+                        <Tag tone={TIER_TONE[m.tier]}>{t.members.tier[m.tier]}</Tag>
+                      </span>
+                    </span>
+                    <span style={{ flexShrink: 0, textAlign: 'right' }}>
+                      <span className="num" style={{ display: 'block', fontSize: 16, fontWeight: 700, lineHeight: 1.2 }}>{m.points_balance.toLocaleString()}</span>
+                      <span style={{ display: 'block', fontSize: 11, color: 'var(--color-text-secondary)' }}>{t.members.colBalance}</span>
+                    </span>
+                  </button>
+                  <button onClick={() => setDeleteTarget(m)} aria-label={`${t.members.deleteBtn} ${m.customer_name}`}
+                    className="icon-btn" style={{ flexShrink: 0, width: 44, display: 'grid', placeItems: 'center', color: 'var(--color-danger)' }}>
+                    <Icon name="trash" size={16} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+          <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <thead>
+              <tr style={{ background: 'var(--color-surface-2)', textAlign: 'left' }}>
+                <th style={thCell}>{t.members.colName}</th>
+                <th style={thCell}>{t.members.colPhone}</th>
+                <th style={{ ...thCell, textAlign: 'right' }}>{t.members.colBalance}</th>
+                <th style={{ ...thCell, textAlign: 'right' }}>{t.members.colLifetime}</th>
+                <th style={thCell}>{t.members.colTier}</th>
+                <th style={thCell}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {members.map(m => (
+                <tr key={m.id} onClick={() => setSelectedId(m.id)} style={{ borderTop: '1px solid var(--color-border)', cursor: 'pointer' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface-2)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                  <td style={{ ...td, fontWeight: 600 }}>{m.customer_name}</td>
+                  <td style={{ ...td, color: 'var(--color-text-secondary)' }} className="num">{m.phone ?? '—'}</td>
+                  <td style={{ ...td, textAlign: 'right', fontWeight: 700 }} className="num">{m.points_balance.toLocaleString()}</td>
+                  <td style={{ ...td, textAlign: 'right', color: 'var(--color-text-secondary)' }} className="num">{m.lifetime_points_earned.toLocaleString()}</td>
+                  <td style={td}><Tag tone={TIER_TONE[m.tier]}>{t.members.tier[m.tier]}</Tag></td>
+                  <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={e => { e.stopPropagation(); setDeleteTarget(m); }} aria-label={t.members.deleteBtn}
+                        className="icon-btn hit-44" title={t.members.deleteBtn}
+                        style={{ width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center', color: 'var(--color-danger)' }}>
+                        <Icon name="trash" size={16} />
+                      </button>
+                      <Icon name="chevronRight" size={16} color="var(--color-text-muted)" />
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+          )}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'center', marginTop: 18 }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={pageBtn(page <= 1)}>{t.common.prev}</button>
+          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t.common.page} {page} / {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={pageBtn(page >= totalPages)}>{t.common.next}</button>
+        </div>
+      )}
+
+      {selectedId && <MemberDetailModal accountId={selectedId} onClose={() => setSelectedId(null)} />}
+      {showRegister && (
+        <RegisterMemberModal
+          onClose={() => setShowRegister(false)}
+          onRegistered={(account) => { setShowRegister(false); setSelectedId(account.id); }}
+        />
+      )}
+      {deleteTarget && (
+        <DeleteMemberModal member={deleteTarget} onClose={() => setDeleteTarget(null)} />
+      )}
+    </div>
+  );
+}
+
+/* Phone-only rules. 14px inputs would beat the global 16px phone rule (iOS zooms
+   in on focus), and the three stat tiles cannot hold a ฿ amount at a third of a
+   phone-width modal, so they wrap two-up with a smaller figure. */
+function MembersPhoneStyles() {
+  return (
+    <style>{`
+      @media (max-width: 767px) {
+        .mb-input { font-size: 16px !important; min-height: 44px; }
+        .mb-search-icon { top: 14px !important; }
+        .mb-pad { padding-left: 16px !important; padding-right: 16px !important; }
+        .mb-stats { flex-wrap: wrap; gap: 8px !important; }
+        .mb-stat { flex: 1 1 120px !important; min-width: 0; padding: 10px 12px !important; }
+        .mb-stat-val { font-size: 18px !important; overflow-wrap: anywhere; }
+      }
+    `}</style>
+  );
+}
+
+function DeleteMemberModal({ member, onClose }: { member: AccountRead; onClose: () => void }) {
+  const toast = useToast();
+  const { t } = useI18n();
+  const del = useDeleteMember();
+
+  const submit = async () => {
+    try {
+      await del.mutateAsync(member.customer_id);
+      toast({ kind: 'success', title: t.members.memberDeleted, msg: member.customer_name });
+      onClose();
+    } catch (e: unknown) {
+      toast({ kind: 'danger', title: t.members.deleteFailed, msg: String(e instanceof Error ? e.message : e) });
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 'min(400px, 94vw)', padding: 24 }}>
+        <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700 }}>{t.members.deleteTitle}</h3>
+        <p style={{ margin: '0 0 20px', fontSize: 14, color: 'var(--color-text-secondary)' }}>
+          {t.members.deleteConfirm} <strong>{member.customer_name}</strong>?
+        </p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} className="pressable" style={{ padding: '9px 18px', minHeight: 44, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>{t.common.cancel}</button>
+          <button onClick={submit} disabled={del.isPending} className="pressable"
+            style={{ padding: '9px 18px', minHeight: 44, borderRadius: 8, background: 'var(--color-danger-strong)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: del.isPending ? 'not-allowed' : 'pointer', opacity: del.isPending ? 0.6 : 1 }}>
+            {t.common.delete}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RegisterMemberModal({ onClose, onRegistered }: { onClose: () => void; onRegistered: (account: { id: string }) => void }) {
+  const toast = useToast();
+  const { t } = useI18n();
+  const qc = useQueryClient();
+  const register = useRegisterMember();
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [dob, setDob] = useState('');
+  const [checking, setChecking] = useState(false);
+
+  const submit = async () => {
+    if (!name.trim()) { toast({ kind: 'warning', title: t.members.enterName }); return; }
+    if (!phone.trim()) { toast({ kind: 'warning', title: t.members.enterPhone }); return; }
+    try {
+      setChecking(true);
+      if (await isMemberNameTaken(name)) {
+        toast({ kind: 'warning', title: t.members.nameTaken, msg: t.members.nameTakenMsg });
+        return;
+      }
+      const account = await register.mutateAsync({ name: name.trim(), phone: phone.trim(), date_of_birth: dob || undefined });
+      await qc.invalidateQueries({ queryKey: ['membership', 'members'] });
+      toast({ kind: 'success', title: t.members.registered, msg: account.customer_name });
+      onRegistered(account);
+    } catch (e: unknown) {
+      // 409 when the phone is already a member — surfaced via ApiError.message.
+      toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) });
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 'min(440px, 94vw)', display: 'flex', flexDirection: 'column' }}>
+        <div className="mb-pad" style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--color-accent-50)', color: 'var(--color-accent-600)', display: 'grid', placeItems: 'center' }}>
+            <Icon name="user" size={22} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 17, fontWeight: 700 }}>{t.members.registerTitle}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{t.members.registerDesc}</div>
+          </div>
+          <button onClick={onClose} aria-label={t.common.cancel} className="icon-btn hit-44" style={{ width: 36, height: 36, borderRadius: 8, display: 'grid', placeItems: 'center', color: 'var(--color-text-secondary)' }}><Icon name="x" size={18} /></button>
+        </div>
+
+        <div className="mb-pad" style={{ padding: '20px 24px', display: 'grid', gap: 14 }}>
+          <div>
+            <label htmlFor="mb-reg-name" style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>{t.members.nameLabel}</label>
+            <input id="mb-reg-name" className="mb-input" autoComplete="name" value={name} onChange={e => setName(e.target.value)} style={IS} placeholder={t.members.namePlaceholder} />
+          </div>
+          <div>
+            <label htmlFor="mb-reg-phone" style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>{t.members.phoneLabel}</label>
+            <input id="mb-reg-phone" className="mb-input" type="tel" autoComplete="tel" value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" style={IS} placeholder="08XXXXXXXX"
+              onKeyDown={e => { if (e.key === 'Enter') submit(); }} />
+          </div>
+          <div>
+            <label htmlFor="mb-reg-dob" style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 4 }}>{t.members.dobLabel}</label>
+            <input id="mb-reg-dob" className="mb-input" value={dob} onChange={e => setDob(e.target.value)} type="date" style={IS} />
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>{t.members.dobHint}</div>
+          </div>
+        </div>
+
+        <div className="mb-pad" style={{ padding: '16px 24px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 10, background: 'var(--color-surface-2)' }}>
+          <button onClick={onClose} className="pressable" style={{ padding: '11px 18px', minHeight: 44, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: 14, cursor: 'pointer' }}>{t.common.cancel}</button>
+          <button onClick={submit} disabled={register.isPending || checking} className="pressable"
+            style={{ flex: 1, padding: '11px 18px', minHeight: 44, borderRadius: 8, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 700, fontSize: 14, cursor: (register.isPending || checking) ? 'not-allowed' : 'pointer', opacity: (register.isPending || checking) ? 0.6 : 1 }}>
+            {checking ? t.members.checking : register.isPending ? t.members.registering : t.members.registerBtn}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MemberDetailModal({ accountId, onClose }: { accountId: string; onClose: () => void }) {
+  const toast = useToast();
+  const { t } = useI18n();
+  const { data: member, isLoading } = useMemberDetail(accountId);
+  const { data: customer } = useCustomerDetail(member?.customer_id);
+  const { data: salespeople } = useSalespeople();
+  const assignSales = useAssignSales(member?.customer_id);
+  const adjust = useAdjustPoints();
+  const [tab, setTab] = useState<'points' | 'orders'>('points');
+  const [delta, setDelta] = useState('');
+  const [note, setNote] = useState('');
+
+  const handleAssignSales = async (salesId: string) => {
+    try {
+      await assignSales.mutateAsync(salesId || null);
+      toast({ kind: 'success', title: t.members.salesUpdated });
+    } catch (e: unknown) {
+      toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) });
+    }
+  };
+
+  const submitAdjust = async () => {
+    const d = Number(delta);
+    if (!delta.trim() || Number.isNaN(d) || d === 0) { toast({ kind: 'warning', title: t.members.enterDelta }); return; }
+    if (!note.trim()) { toast({ kind: 'warning', title: t.members.enterReason }); return; }
+    try {
+      await adjust.mutateAsync({ accountId, delta: d, note: note.trim() });
+      toast({ kind: 'success', title: t.members.adjusted });
+      setDelta(''); setNote('');
+    } catch (e: unknown) {
+      toast({ kind: 'danger', title: String(e instanceof Error ? e.message : e) });
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 'min(560px, 94vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="mb-pad" style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 17, fontWeight: 700 }}>{member?.customer_name ?? t.members.memberFallback}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }} className="num">{member?.phone ?? ''}</div>
+            {customer?.sales_name && (
+              <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                {t.members.salesLabel}: <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{customer.sales_name}</span>
+              </div>
+            )}
+          </div>
+          {member && <Tag tone={TIER_TONE[member.tier]}>{t.members.tier[member.tier]}</Tag>}
+          <button onClick={onClose} aria-label={t.common.cancel} className="icon-btn hit-44" style={{ width: 36, height: 36, borderRadius: 8, display: 'grid', placeItems: 'center', color: 'var(--color-text-secondary)' }}><Icon name="x" size={18} /></button>
+        </div>
+
+        {/* Tabs */}
+        <div className="mb-pad" style={{ display: 'flex', gap: 4, padding: '0 24px', borderBottom: '1px solid var(--color-border)' }}>
+          <TabButton active={tab === 'points'} onClick={() => setTab('points')}>{t.members.tabPoints}</TabButton>
+          <TabButton active={tab === 'orders'} onClick={() => setTab('orders')}>{t.members.tabOrders}</TabButton>
+        </div>
+
+        <div className="scroll mb-pad" style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
+          {tab === 'orders' ? (
+            <MemberOrdersTab accountId={accountId} />
+          ) : isLoading || !member ? (
+            <SkeletonTable rows={6} cols={3} header={false} label={t.common.loading} />
+          ) : (
+            <>
+              <div className="mb-stats" style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+                <Stat label={t.members.statBalance} value={member.points_balance.toLocaleString()} accent />
+                <Stat label={t.members.statLifetime} value={member.lifetime_points_earned.toLocaleString()} />
+                <Stat label={t.members.statJoined} value={fmtDate(member.joined_at)} small />
+              </div>
+
+              {/* Assign salesperson (เซลส์) — store-scoped list; clear with the first option */}
+              <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, padding: 14, marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{t.members.salesLabel}</div>
+                {salespeople && salespeople.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{t.members.salesEmpty}</div>
+                ) : (
+                  <Select
+                    value={customer?.sales_id ?? ''}
+                    onChange={handleAssignSales}
+                    disabled={assignSales.isPending}
+                    ariaLabel={t.members.salesLabel}
+                    placeholder={t.members.salesSelect}
+                    options={[
+                      { value: '', label: t.members.salesNone },
+                      ...(salespeople ?? []).map(s => ({ value: s.id, label: s.name })),
+                    ]}
+                  />
+                )}
+              </div>
+
+              {/* Adjust points */}
+              <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, padding: 14, marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{t.members.adjustTitle}</div>
+                {/* The delta keeps type="number" WITHOUT an inputMode: it must accept a
+                    minus sign, and the decimal/numeric phone keypads have no "-" key. */}
+                <div className="wrap-phone" style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <input type="number" aria-label={t.members.deltaPlaceholder} className="mb-input full-phone" value={delta} onChange={e => setDelta(e.target.value)} placeholder={t.members.deltaPlaceholder} style={{ ...IS, width: 120 }} />
+                  <input aria-label={t.members.reasonPlaceholder} className="mb-input" value={note} onChange={e => setNote(e.target.value)} placeholder={t.members.reasonPlaceholder} style={IS} />
+                </div>
+                <button onClick={submitAdjust} disabled={adjust.isPending} className="pressable full-phone"
+                  style={{ padding: '8px 18px', minHeight: 44, borderRadius: 8, background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 600, fontSize: 13, cursor: adjust.isPending ? 'not-allowed' : 'pointer', opacity: adjust.isPending ? 0.6 : 1 }}>
+                  {adjust.isPending ? t.members.savingAdjust : t.members.saveAdjust}
+                </button>
+              </div>
+
+              {/* History */}
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{t.members.historyTitle}</div>
+              {member.recent_transactions.length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{t.members.noHistory}</div>
+              ) : (
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {member.recent_transactions.map(tx => (
+                    <div key={tx.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--color-surface-2)' }}>
+                      <Tag tone={TX_TONE[tx.type]}>{t.members.tx[tx.type]}</Tag>
+                      <div style={{ flex: 1, fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                        {fmtDateTime(tx.created_at)}{tx.note ? ` · ${tx.note}` : ''}
+                      </div>
+                      <div className="num" style={{ fontWeight: 700, fontSize: 14, color: tx.delta < 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>
+                        {tx.delta > 0 ? `+${tx.delta}` : tx.delta}
+                      </div>
+                      <div className="num" style={{ fontSize: 12, color: 'var(--color-text-muted)', minWidth: 54, textAlign: 'right' }}>= {tx.balance_after.toLocaleString()}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick} style={{
+      padding: '12px 8px', fontSize: 14, fontWeight: 600, cursor: 'pointer', background: 'none', marginBottom: -1,
+      color: active ? 'var(--color-text)' : 'var(--color-text-secondary)',
+      borderBottom: active ? '2px solid var(--color-accent)' : '2px solid transparent',
+    }}>{children}</button>
+  );
+}
+
+function MemberOrdersTab({ accountId }: { accountId: string }) {
+  const { t } = useI18n();
+  const [page, setPage] = useState(1);
+  const limit = 20;
+  const { data, isLoading } = useMemberOrders(accountId, page, limit);
+
+  if (isLoading) return <SkeletonTable rows={5} cols={2} header={false} label={t.common.loading} />;
+
+  const orders = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  if (total === 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: 40, color: 'var(--color-text-muted)' }}>
+        <Icon name="cart" size={36} color="var(--color-border)" />
+        <div style={{ marginTop: 10, fontSize: 14 }}>{t.members.noOrders}</div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Lifetime summary — aggregated across ALL orders, not just this page */}
+      <div className="mb-stats" style={{ display: 'flex', gap: 12, marginBottom: 18 }}>
+        <Stat label={t.members.statTotalOrders} value={total.toLocaleString()} />
+        <Stat label={t.members.statTotalSpent} value={baht(Number(data?.total_spent ?? 0))} accent />
+        <Stat label={t.members.statTotalDiscount} value={baht(Number(data?.total_discount ?? 0))} />
+      </div>
+
+      <div style={{ display: 'grid', gap: 10 }}>
+        {orders.map(o => <OrderCard key={o.id} o={o} />)}
+      </div>
+
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'center', marginTop: 16 }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={pageBtn(page <= 1)}>{t.common.prev}</button>
+          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t.common.page} {page} / {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={pageBtn(page >= totalPages)}>{t.common.next}</button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function OrderCard({ o }: { o: import('@pos/core/hooks/use-membership').MemberOrderRead }) {
+  const { t } = useI18n();
+  const discount = Number(o.discount);
+  const earned = o.points_earned ?? 0; // null = predates membership → show as 0
+  return (
+    <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--color-surface-2)' }}>
+        <span className="num" style={{ fontWeight: 700, fontSize: 14 }}>#{o.order_number}</span>
+        <Tag tone={ORDER_STATUS_TONE[o.status]}>{t.members.orderStatus[o.status]}</Tag>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{fmtDateTime(o.created_at)}</span>
+      </div>
+      <div style={{ padding: '10px 14px' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+          <Tag tone="neutral">{(t.members.channel as Record<string, string>)[o.channel] ?? o.channel}</Tag>
+          {o.payment_method && <Tag tone="neutral">{(t.members.payment as Record<string, string>)[o.payment_method] ?? o.payment_method}</Tag>}
+          {o.reward_redeemed && <Tag tone="info">{t.members.usedReward}</Tag>}
+          {earned > 0 && <Tag tone="success">{t.members.pointsEarned(earned)}</Tag>}
+        </div>
+        <div style={{ display: 'grid', gap: 4, marginBottom: 8 }}>
+          {o.items.map((it, i) => (
+            <div key={i} style={{ display: 'flex', fontSize: 13, color: 'var(--color-text-secondary)' }}>
+              <span className="num" style={{ width: 28, color: 'var(--color-text-muted)' }}>{it.quantity}×</span>
+              <span style={{ flex: 1 }}>{it.product_name}</span>
+              <span className="num">{baht(Number(it.line_total))}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 8, display: 'grid', gap: 3, fontSize: 13 }}>
+          <Row label={t.members.subtotalRow} value={baht(Number(o.subtotal))} muted />
+          {discount > 0 && <Row label={t.members.discountRow} value={`-${baht(discount)}`} discount />}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 14 }}>
+            <span>{t.members.netRow}</span><span className="num">{baht(Number(o.total))}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value, muted, discount }: { label: string; value: string; muted?: boolean; discount?: boolean }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', color: discount ? 'var(--color-danger)' : muted ? 'var(--color-text-secondary)' : 'var(--color-text)' }}>
+      <span>{label}</span><span className="num">{value}</span>
+    </div>
+  );
+}
+
+function Stat({ label, value, accent, small }: { label: string; value: string; accent?: boolean; small?: boolean }) {
+  return (
+    <div className="mb-stat" style={{ flex: 1, background: 'var(--color-surface-2)', borderRadius: 10, padding: '12px 14px' }}>
+      <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{label}</div>
+      <div className={small ? 'num' : 'num mb-stat-val'} style={{ fontSize: small ? 15 : 22, fontWeight: 800, color: accent ? 'var(--color-accent-600)' : 'var(--color-text)' }}>{value}</div>
+    </div>
+  );
+}
+
+const thCell: React.CSSProperties = { padding: '11px 16px', fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' };
+const td: React.CSSProperties = { padding: '11px 16px' };
+const pageBtn = (disabled: boolean): React.CSSProperties => ({
+  padding: '7px 16px', minHeight: 44, borderRadius: 8, fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
+  border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+  color: disabled ? 'var(--color-text-muted)' : 'var(--color-text)', opacity: disabled ? 0.5 : 1,
+});

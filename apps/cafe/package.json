@@ -1,0 +1,42 @@
+{
+  "name": "@pos/cafe",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kafé OS — café edition. Next.js 16 app composed from @pos/core (BFF in front of the FastAPI backend).",
+  "scripts": {
+    "predev": "pos-sync-public",
+    "dev": "next dev -H 127.0.0.1",
+    "dev:lan": "pos-sync-public && next dev -H 0.0.0.0",
+    "dev:https": "pos-sync-public && next dev --experimental-https -H 0.0.0.0",
+    "prebuild": "pos-sync-public",
+    "build": "next build",
+    "start": "next start -H 127.0.0.1",
+    "start:lan": "next start -H 0.0.0.0",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium",
+    "capture:screens": "playwright test -c playwright.capture.config.ts",
+    "test:all": "vitest run && playwright test"
+  },
+  "dependencies": {
+    "@pos/core": "*",
+    "next": "16.3.8",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.8",
+    "tailwindcss": "^4",
+    "tsx": "^4.21.0",
+    "typescript": "^5",
+    "vitest": "^4.1.5"
+  }
+}

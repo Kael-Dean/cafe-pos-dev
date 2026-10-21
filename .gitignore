@@ -21,3 +21,7 @@ bridge/installer/.cache/
 *.log
 dev-server.log
 nul
+
+# monorepo build caches
+.turbo/
+.next/

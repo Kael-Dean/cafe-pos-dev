@@ -1,0 +1,528 @@
+'use client';
+
+import { useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import Icon from '../icons';
+import { bahtText } from '@pos/core/lib/baht-text';
+import { makeInvoiceNo } from '@pos/core/lib/receipt-number';
+import { useModalA11y } from '@pos/core/hooks/use-modal-a11y';
+
+/**
+ * The preview reproduces a physical 80mm thermal slip, which is light paper
+ * with dark ink in BOTH themes (it is a representation of a real printout, not
+ * app chrome). These are intentionally NOT theme tokens — they stay constant so
+ * the preview always reads as paper. They are tinted toward the espresso brand
+ * hue rather than pure #fff / #000, per the no-pure-black/white design rule.
+ */
+const PAPER = '#FFFEFB';
+const PAPER_TRAY = '#EFE9E0';
+const PAPER_BORDER = '#E5E0D5';
+const INK = '#1C140D';
+const INK_MUTED = '#7A6E60';
+const INK_SOFT = '#4A3B2C';
+const DASH = '#B6A992';
+
+export interface ReceiptItem {
+  name: string;
+  qty: number;
+  unitPrice: number;
+  mods?: string[];
+}
+
+export interface ReceiptData {
+  orderNumber: string;
+  /** Backend-generated receipt number ("เลขที่:"), printed verbatim. Falls back
+   *  to a client-computed IV string only when the backend didn't supply one. */
+  receiptNo?: string;
+  items: ReceiptItem[];
+  subtotal: number;
+  total: number;
+  paymentMethod: string;
+  paymentLabel: string;
+  cashGiven?: number;
+  // ── Membership (server-computed; present when a member was attached) ──
+  discount?: number;
+  /** Per-line discount breakdown (promotions + member reward), shown above the
+   *  total. Amounts are the cashier-side estimate; the total uses the server's
+   *  authoritative `discount`. Normally they agree. */
+  discountLines?: { label: string; amount: number }[];
+  memberName?: string;
+  salesName?: string;
+  pointsEarned?: number;
+  /** Points spent on a redemption this bill (= program.points_to_redeem). Earn
+   *  and redeem are mutually exclusive per order, so at most one of
+   *  pointsEarned / pointsRedeemed is non-zero. */
+  pointsRedeemed?: number;
+  /** What was redeemed (e.g. free-item product name), shown next to the spend. */
+  rewardLabel?: string;
+  /** Member's point balance AFTER this bill posted (client-computed:
+   *  balanceBefore + earned − redeemed). */
+  pointsBalanceAfter?: number;
+  rewardRedeemed?: boolean;
+}
+
+export interface StoreInfo {
+  name: string;
+  address?: string;
+  taxId?: string;
+  branch?: string;
+  phone?: string;
+}
+
+interface Props {
+  data: ReceiptData;
+  onClose: () => void;
+  onPrint: () => Promise<void>;
+  /** Original order date/time for reprinted copies; defaults to now. */
+  issuedAt?: Date;
+  /** Render as a duplicate ("สำเนา") instead of the original. */
+  copy?: boolean;
+  /** When provided, shows a danger "ยกเลิกใบเสร็จ" action in the footer that
+   *  reverts the sale (stock + money) via the order-cancel flow. */
+  onCancel?: () => void;
+  /** When provided, shows a date picker that backdates the order on the server
+   *  (for entering past sales). Receives "YYYY-MM-DD"; resolves once persisted. */
+  onSaveDate?: (businessDateISO: string) => Promise<void>;
+}
+
+/** Local calendar day as "YYYY-MM-DD" (matches <input type="date">). */
+function toYMD(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Combine a "YYYY-MM-DD" day with the time-of-day from another Date. */
+function combineDateTime(ymd: string, timeFrom: Date): Date {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, m - 1, d, timeFrom.getHours(), timeFrom.getMinutes(), timeFrom.getSeconds());
+}
+
+export const DEFAULT_STORE: StoreInfo = {
+  name: 'ร้านตะวันอ้อมข้าว',
+  address: '126 หมู่ 4 ตำบลตาอ็อง อำเภอเมืองสุรินทร์ จังหวัดสุรินทร์ 32000',
+  taxId: '0993000134281',
+  branch: 'สาขาที่ 00001',
+  phone: '062-334-5526',
+};
+
+export default function ReceiptModal({ data, onClose, onPrint, issuedAt, copy, onCancel, onSaveDate }: Props) {
+  const [isPrinting, setIsPrinting] = useState(false);
+  const dialogRef = useModalA11y(onClose);
+
+  // Fallback timestamp must be stable across re-renders — a bare new Date()
+  // here would regenerate the fallback invoice no. and header date every render.
+  const [mountedAt] = useState(() => new Date());
+  const now = issuedAt ?? mountedAt;
+  const invoiceNo = data.receiptNo ?? makeInvoiceNo(String(data.orderNumber), now);
+
+  // ── Backdating: pick a day, persist to the server (for past-sale entry) ──
+  const originalDate = toYMD(now);
+  const [pickedDate, setPickedDate] = useState(originalDate);
+  const [savingDate, setSavingDate] = useState(false);
+  // The slip + header reflect the chosen day (with the original time-of-day) so
+  // the preview matches before printing; the server receipt no. updates on save.
+  const shownDate = onSaveDate ? combineDateTime(pickedDate, now) : now;
+  const dateStr = shownDate.toLocaleString('th-TH');
+  const todayYMD = toYMD(new Date());
+  const dateChanged = onSaveDate != null && pickedDate !== originalDate;
+
+  const handleSaveDate = useCallback(async () => {
+    if (!onSaveDate || savingDate || pickedDate === originalDate) return;
+    setSavingDate(true);
+    try { await onSaveDate(pickedDate); }
+    catch { /* parent surfaces the error toast */ }
+    finally { setSavingDate(false); }
+  }, [onSaveDate, savingDate, pickedDate, originalDate]);
+
+  const formatDate = (d: Date) => d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+  const formatTime = (d: Date) => d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const handlePrint = useCallback(async () => {
+    setIsPrinting(true);
+    try {
+      await onPrint();
+    } finally {
+      setIsPrinting(false);
+    }
+  }, [onPrint]);
+
+  const handleBrowserPrint = () => window.print();
+
+  // Portal to <body>: screen roots animate in via GSAP (useFadeRise), which
+  // leaves an inline `transform` on the ancestor. A non-none transform makes it
+  // the containing block for `position: fixed`, trapping this overlay inside the
+  // page column instead of the viewport. Portaling escapes that — and also makes
+  // `.receipt-print-root` a direct child of <body> so the @media print rule
+  // (`body > *:not(.receipt-print-root)`) actually isolates the slip.
+  const overlay = (
+    <>
+      <style>{`
+        @media print {
+          body > *:not(.receipt-print-root) { display: none !important; }
+          .receipt-print-root { position: fixed; inset: 0; display: block !important; overflow: visible; background: white; }
+          .receipt-print-root .receipt-modal-shell { all: unset; display: block; }
+          .receipt-print-root .receipt-no-print { display: none !important; }
+          .receipt-print-root .receipt-scroll { max-height: none !important; overflow: visible !important; padding: 0 !important; background: white !important; }
+          .receipt-print-root .receipt-paper { box-shadow: none !important; border: none !important; margin: 0 !important; border-radius: 0 !important; max-height: none !important; overflow: visible !important; }
+          .receipt-print-root .receipt-edit-input { border: none !important; padding: 0 !important; background: transparent !important; }
+        }
+        /* Phones (< 768px): tighter gutters and a two-row footer —
+           secondary actions on top, "close" + the primary print button at the thumb. */
+        @media (max-width: 767px) {
+          .receipt-print-root { padding: 12px !important; padding-top: calc(var(--top-inset) + 12px) !important; }
+          .receipt-modal-shell { max-height: calc(var(--app-h, 100dvh) - 24px) !important; }
+          .receipt-bar { padding: 10px 12px 10px 16px !important; }
+          .receipt-backdate { padding: 10px 16px !important; gap: 8px !important; }
+          .receipt-backdate-label { flex: 1 0 100% !important; }
+          .receipt-date { flex: 1 1 0; min-width: 0; }
+          .receipt-scroll { padding: 12px !important; }
+          .receipt-foot { padding: 10px 12px !important; }
+          .receipt-foot > button { flex: 1 1 0; min-width: 0; justify-content: center; padding-left: 8px !important; padding-right: 8px !important; white-space: nowrap; }
+          .receipt-foot-break { flex: 0 0 100% !important; height: 0; }
+          .receipt-foot > .receipt-foot-print { flex: 2 1 0; }
+        }
+      `}</style>
+
+      <div
+        className="receipt-print-root"
+        style={{
+          position: 'fixed', inset: 0, zIndex: 300,
+          background: 'var(--color-scrim, rgba(26, 16, 8, 0.55))',
+          backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 'var(--space-4)',
+          paddingTop: 'calc(var(--top-inset, 0px) + var(--space-4))',
+          overflowY: 'auto',
+        }}
+        onClick={onClose}
+      >
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={copy ? 'สำเนาใบเสร็จรับเงิน' : 'ใบเสร็จรับเงิน'}
+          aria-busy={isPrinting || undefined}
+          className="receipt-modal-shell"
+          onClick={e => e.stopPropagation()}
+          style={{
+            width: '100%', maxWidth: 460,
+            maxHeight: 'calc(var(--app-h, 100dvh) - (var(--space-4) * 2))',
+            background: 'var(--color-surface)',
+            borderRadius: 'var(--radius-xl)',
+            boxShadow: 'var(--shadow-lg)',
+            display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden',
+            animation: 'modal-in var(--dur-slow) var(--ease-out)',
+          }}
+        >
+          {/* ── Toolbar ── */}
+          <div className="receipt-no-print receipt-bar" style={{
+            padding: '14px 20px', flexShrink: 0,
+            display: 'flex', alignItems: 'center', gap: 10,
+            borderBottom: '1px solid var(--color-border)',
+          }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: 8, flexShrink: 0,
+              background: 'var(--color-primary-50)', color: 'var(--color-primary)',
+              display: 'grid', placeItems: 'center',
+            }}>
+              <Icon name="printer" size={17} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, lineHeight: 'var(--lh-tight)' }}>ใบเสร็จรับเงิน</div>
+              <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>
+                ออเดอร์ #{data.orderNumber} · {formatDate(shownDate)} {formatTime(shownDate)}
+              </div>
+            </div>
+            {/* 48×48 visible hit (TOUCH-SPEC §3.6); negative margin keeps the bar height. */}
+            <button onClick={onClose} aria-label="ปิด" className="icon-btn tap-std tap-sq" style={{
+              margin: '-8px -8px -8px 0', borderRadius: 'var(--radius-md)', color: 'var(--color-text-secondary)',
+            }}>
+              <Icon name="x" size={20} />
+            </button>
+          </div>
+
+          {/* ── Backdate editor (server-persisted; for keying past sales) ── */}
+          {onSaveDate && (
+            <div className="receipt-no-print receipt-backdate" style={{
+              padding: 'var(--space-3) var(--space-5)', flexShrink: 0,
+              borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
+              display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap',
+            }}>
+              <div className="receipt-backdate-label" style={{ flex: 1, minWidth: 120 }}>
+                <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--color-text)' }}>วันที่ใบเสร็จ</div>
+                <div style={{ fontSize: 'var(--fs-cap)', color: 'var(--color-text-secondary)' }}>แก้เพื่อคีย์ขายย้อนหลัง</div>
+              </div>
+              <input
+                type="date"
+                aria-label="วันที่ใบเสร็จ"
+                value={pickedDate}
+                max={todayYMD}
+                onChange={e => setPickedDate(e.target.value)}
+                className="input-std receipt-date"
+                style={{
+                  padding: '8px var(--space-3)', minHeight: 'var(--tap-std)', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-lg)',
+                  border: 'var(--hairline)', background: 'var(--color-surface)', color: 'var(--color-text)',
+                }}
+              />
+              <button
+                onClick={handleSaveDate}
+                disabled={!dateChanged || savingDate}
+                aria-busy={savingDate || undefined}
+                className="tap receipt-date-save"
+                style={{
+                  padding: '0 var(--space-4)', minHeight: 'var(--tap-std)', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-body)', fontWeight: 700,
+                  display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                  background: (!dateChanged || savingDate) ? 'var(--color-border)' : 'var(--color-primary)',
+                  color: (!dateChanged || savingDate) ? 'var(--color-text-muted)' : 'var(--color-text-inverse)',
+                  cursor: (!dateChanged || savingDate) ? 'default' : 'pointer',
+                }}
+              >
+                {savingDate
+                  ? <span className="spinner" aria-hidden style={{ width: 16, height: 16 }} />
+                  : <Icon name="check" size={16} />}
+                บันทึกวันที่
+              </button>
+            </div>
+          )}
+
+          {/* ── Receipt preview (tinted paper tray; stays light in both themes) ── */}
+          {/* Focusable region so keyboard users can scroll a long receipt (WCAG 2.1.1). */}
+          <div className="receipt-scroll" tabIndex={0} role="region" aria-label="ตัวอย่างใบเสร็จ" style={{ padding: 'var(--space-5)', overflowY: 'auto', flex: 1, minHeight: 0, background: PAPER_TRAY }}>
+            <ReceiptPaper
+              data={data}
+              invoiceNo={invoiceNo} now={shownDate} copy={copy}
+              dateStr={dateStr}
+              fmt={fmt} formatDate={formatDate} formatTime={formatTime}
+              storeInfo={DEFAULT_STORE}
+            />
+          </div>
+
+          {/* ── Footer actions ── */}
+          <div className="receipt-no-print receipt-foot" style={{
+            padding: 'var(--space-3) var(--space-5)', flexShrink: 0, borderTop: '1px solid var(--color-border)',
+            display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap', rowGap: 'var(--space-2)',
+          }}>
+            {onCancel && (
+              <button onClick={onCancel} disabled={isPrinting} className="icon-btn tap" style={{
+                padding: '0 var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-body)', fontWeight: 600, minHeight: 'var(--tap-std)',
+                border: '1px solid var(--color-danger)',
+                display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                color: 'var(--color-danger-fg)', background: 'var(--color-danger-50)',
+                opacity: isPrinting ? 0.5 : 1,
+              }}>
+                <Icon name="trash" size={18} /> ยกเลิกใบเสร็จ
+              </button>
+            )}
+            <button onClick={handleBrowserPrint} disabled={isPrinting} className="icon-btn tap" style={{
+              padding: '0 var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-body)', minHeight: 'var(--tap-std)',
+              border: 'var(--hairline)',
+              display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+              color: 'var(--color-text-secondary)',
+              opacity: isPrinting ? 0.5 : 1,
+            }}>
+              <Icon name="print" size={18} /> บันทึก PDF
+            </button>
+            {/* spacer on tablet / desktop; a full-width line break on phones */}
+            <div className="receipt-foot-break" style={{ flex: 1 }} />
+            <button onClick={onClose} className="icon-btn tap receipt-foot-close" style={{
+              padding: '0 var(--space-4)', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-body)', minHeight: 'var(--tap-std)',
+              color: 'var(--color-text-secondary)',
+            }}>ปิด</button>
+            <button onClick={handlePrint} disabled={isPrinting} aria-busy={isPrinting || undefined} className="tap receipt-foot-print" style={{
+              padding: '0 22px', borderRadius: 'var(--radius-md)', fontSize: 'var(--fs-lg)', fontWeight: 700, minHeight: 'var(--tap-lg)',
+              background: isPrinting ? 'var(--color-surface-2)' : 'var(--color-primary)',
+              color: isPrinting ? 'var(--color-text-secondary)' : 'var(--color-text-inverse)',
+              display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+              opacity: isPrinting ? 0.85 : 1,
+              cursor: isPrinting ? 'wait' : 'pointer',
+            }}>
+              {isPrinting ? <span className="spinner" aria-hidden /> : <Icon name="printer" size={16} />}
+              {isPrinting ? 'กำลังพิมพ์...' : 'พิมพ์ใบเสร็จ'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  return typeof document !== 'undefined' ? createPortal(overlay, document.body) : null;
+}
+
+/* ─── Faithful thermal-receipt preview ──────────────────────────────
+   Mirrors bridge/server.mjs buildESCPOS() line-for-line so the on-screen
+   preview matches the actual 80mm printout: centered header, dashed
+   dividers, left-aligned info, right-aligned amounts, Thai baht text. */
+
+const MONO: React.CSSProperties = {
+  fontFamily: '"Courier New", ui-monospace, monospace',
+  fontVariantNumeric: 'tabular-nums',
+};
+
+function Dash() {
+  return <div aria-hidden style={{ borderTop: `1px dashed ${DASH}`, margin: '8px 0' }} />;
+}
+
+/** Paper-red for the "สำเนา" copy mark; fixed so it reads on the light slip in both themes. */
+const PAPER_COPY = '#B83A3A';
+
+function TRow({ l, r, bold, muted, indent }: {
+  l: React.ReactNode; r?: React.ReactNode; bold?: boolean; muted?: boolean; indent?: boolean;
+}) {
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline',
+      padding: '1px 0',
+      paddingLeft: indent ? 16 : 0,
+      fontWeight: bold ? 700 : 400,
+      color: muted ? INK_MUTED : INK,
+    }}>
+      <span style={{ wordBreak: 'break-word' }}>{l}</span>
+      {r != null && <span style={{ ...MONO, flexShrink: 0, fontWeight: bold ? 700 : 400 }}>{r}</span>}
+    </div>
+  );
+}
+
+export function ReceiptPaper({ data, invoiceNo, now, copy, dateStr, editableDate, onDateChange, fmt, storeInfo }: {
+  data: ReceiptData; invoiceNo: string; now: Date; copy?: boolean;
+  /** Display string for the date/time line; defaults to `now` in th-TH. */
+  dateStr?: string;
+  /** When true, the date line becomes an editable input (frontend-only). */
+  editableDate?: boolean;
+  onDateChange?: (v: string) => void;
+  fmt: (n: number) => string;
+  formatDate?: (d: Date) => string; formatTime?: (d: Date) => string;
+  storeInfo?: StoreInfo;
+}) {
+  const S = { ...DEFAULT_STORE, ...storeInfo };
+  const dateText = dateStr ?? now.toLocaleString('th-TH'); // matches the bridge's Date.toLocaleString('th-TH')
+
+  return (
+    <div className="receipt-paper" style={{
+      background: PAPER,
+      width: '100%', maxWidth: 340, margin: '0 auto',
+      border: `1px solid ${PAPER_BORDER}`, borderRadius: 4,
+      boxShadow: '0 6px 22px rgba(61,40,23,0.16)',
+      padding: '20px 18px 24px',
+      fontFamily: '"IBM Plex Sans Thai", "Sarabun", system-ui, sans-serif',
+      fontSize: 12.5, lineHeight: 1.5, color: INK,
+    }}>
+      {/* ── Header (centered, like double-height storeName on the printer) ── */}
+      <div style={{ textAlign: 'center' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/logo.svg"
+          alt=""
+          style={{ height: 64, width: 'auto', margin: '0 auto 8px', display: 'block' }}
+        />
+        <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: '0.01em' }}>{S.name}</div>
+        <div style={{ marginTop: 3 }}>ใบเสร็จรับเงิน</div>
+        {copy && <div style={{ color: PAPER_COPY, fontWeight: 700 }}>สำเนา</div>}
+      </div>
+
+      <Dash />
+
+      {/* ── Store info ── */}
+      {S.address && <div>{S.address}</div>}
+      {S.taxId && <div>ผู้เสียภาษี: <span style={MONO}>{S.taxId}</span></div>}
+      {S.branch && <div>{S.branch}</div>}
+      {S.phone && <div>โทร. {S.phone}</div>}
+
+      <Dash />
+
+      {/* ── Order meta ── */}
+      <div>เลขที่: <span style={MONO}>{invoiceNo}</span></div>
+      <div>ออเดอร์: <span style={MONO}>#{data.orderNumber}</span></div>
+      {editableDate ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input
+            className="receipt-edit-input"
+            value={dateText}
+            onChange={e => onDateChange?.(e.target.value)}
+            aria-label="แก้วันที่ในใบเสร็จ"
+            spellCheck={false}
+            style={{
+              ...MONO, flex: 1, minWidth: 0, color: INK_MUTED,
+              padding: '1px 5px', borderRadius: 4,
+              border: `1px solid ${DASH}`, background: PAPER,
+              fontSize: 'inherit', lineHeight: 'inherit',
+            }}
+          />
+        </div>
+      ) : (
+        <div style={{ color: INK_MUTED }}>{dateText}</div>
+      )}
+      {data.memberName && <div>ลูกค้า: {data.memberName}</div>}
+      {data.salesName && <div>เซลล์: {data.salesName}</div>}
+
+      <Dash />
+
+      {/* ── Items ── */}
+      <TRow l="รายการ" r="จำนวนเงิน" muted />
+      <Dash />
+      {data.items.map((item, i) => (
+        <div key={i} style={{ padding: '2px 0' }}>
+          <TRow l={item.name} r={fmt(item.qty * item.unitPrice)} />
+          <TRow indent muted l={`${item.qty} x ${fmt(item.unitPrice)}`} />
+          {item.mods?.map((mod, j) => (
+            <TRow key={j} indent muted l={`+ ${mod}`} />
+          ))}
+        </div>
+      ))}
+
+      <Dash />
+
+      {/* ── Summary ── */}
+      {data.discount != null && data.discount > 0 && (
+        <>
+          <TRow l="รวม" r={fmt(data.subtotal)} />
+          {data.discountLines && data.discountLines.length > 0 ? (
+            data.discountLines.map((d, i) => (
+              <TRow key={i} indent muted l={d.label} r={`-${fmt(d.amount)}`} />
+            ))
+          ) : (
+            <TRow muted l="ส่วนลด" r={`-${fmt(data.discount)}`} />
+          )}
+        </>
+      )}
+      <TRow bold l="รวมทั้งสิ้น (บาท)" r={fmt(data.total)} />
+      <div style={{ color: INK_SOFT }}>({bahtText(data.total)})</div>
+      <div style={{ color: INK_MUTED, fontSize: 11.5 }}>ราคารวมภาษีมูลค่าเพิ่ม 7% แล้ว (VAT included)</div>
+      <div>ชำระ: {data.paymentLabel}</div>
+      {data.cashGiven != null && (
+        <>
+          <TRow l="รับเงิน" r={fmt(data.cashGiven)} />
+          <TRow l="เงินทอน" r={fmt(data.cashGiven - data.total)} />
+        </>
+      )}
+
+      {/* ── Membership points (earn OR redeem — mutually exclusive per bill) ── */}
+      {data.memberName &&
+        (((data.pointsEarned ?? 0) > 0) ||
+          ((data.pointsRedeemed ?? 0) > 0) ||
+          data.pointsBalanceAfter != null) && (
+          <>
+            <Dash />
+            {(data.pointsRedeemed ?? 0) > 0 && (
+              <TRow
+                l={`ใช้แต้มแลก${data.rewardLabel ? `: ${data.rewardLabel}` : ''}`}
+                r={`-${data.pointsRedeemed!.toLocaleString('th-TH')} แต้ม`}
+              />
+            )}
+            {(data.pointsEarned ?? 0) > 0 && (
+              <TRow l="ได้รับแต้ม" r={`+${data.pointsEarned!.toLocaleString('th-TH')} แต้ม`} />
+            )}
+            {data.pointsBalanceAfter != null && (
+              <TRow bold l="แต้มสะสมคงเหลือ" r={`${data.pointsBalanceAfter.toLocaleString('th-TH')} แต้ม`} />
+            )}
+          </>
+        )}
+
+      <Dash />
+
+      {/* ── Footer (centered) ── */}
+      <div style={{ textAlign: 'center', marginTop: 4 }}>ลงชื่อผู้รับเงิน ......................</div>
+      <div style={{ height: 10 }} />
+      <div style={{ textAlign: 'center' }}>ขอบคุณที่ใช้บริการ</div>
+    </div>
+  );
+}
