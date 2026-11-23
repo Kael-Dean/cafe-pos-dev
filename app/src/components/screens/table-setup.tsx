@@ -6,7 +6,8 @@ import { Select, useToast, NumberInput } from '../app-common';
 import { useCurrentUser, isAdmin } from '@/hooks/use-current-user';
 import { useFadeRise } from '@/lib/motion';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useBoardgameEnabled } from '@/hooks/use-features';
+import { useSelfOrderingEnabled, useTableSystemEnabled } from '@/hooks/use-features';
+import { BAR_TAB_PLAN, hasDefaultPlan, isRateValid } from '@/lib/self-ordering';
 import {
   useCreateTable, useDeleteTable, useFloorTables, useUpdateTable, type FloorTable,
 } from '@/hooks/use-floor';
@@ -29,7 +30,11 @@ function isMoney(s: string): boolean {
 export default function TableSetup() {
   const { data: me } = useCurrentUser();
   const admin = isAdmin(me?.role);
-  const { enabled: boardgame, isLoading: featureLoading } = useBoardgameEnabled();
+  const { enabled: boardgame, isLoading: featureLoading } = useTableSystemEnabled();
+  // Table-QR bar: hourly rate 0 is legal ("Bar tab"), and a default plan is mandatory for joins.
+  const { enabled: selfOrdering } = useSelfOrderingEnabled();
+  const createPlan = useCreateRatePlan();
+  const toast = useToast();
   const contentRef = useFadeRise();
 
   const [showInactive, setShowInactive] = useState(false);
@@ -65,18 +70,42 @@ export default function TableSetup() {
     <div ref={contentRef} className="screen-pad-lg" style={{ padding: 'var(--space-8)', maxWidth: 900, margin: '0 auto' }}>
       <h1 className="text-balance max-md:flex max-md:items-center" style={{ fontSize: 22, fontWeight: 700, marginBottom: 'var(--space-6)', color: 'var(--color-text)' }}>
         <Icon name="settings" size={20} style={{ marginRight: 8 }} />
-        ตั้งค่าโต๊ะ & ค่าเวลา
+        {selfOrdering ? 'ตั้งค่าโต๊ะ' : 'ตั้งค่าโต๊ะ & ค่าเวลา'}
       </h1>
 
       {/* ── Rate plans ─────────────────────────────────────────────────────── */}
       <section style={{ marginBottom: 'var(--space-8)' }}>
         <SectionHead
-          title="แพ็กเกจเวลา"
-          hint="ต้องมีอย่างน้อย 1 แพ็กเกจถึงจะเปิดโต๊ะได้ · แก้ทีหลังไม่กระทบโต๊ะที่เปิดค้างอยู่"
+          title={selfOrdering ? 'แพ็กเกจบิล (Bar tab)' : 'แพ็กเกจเวลา'}
+          hint={selfOrdering ? 'ต้องมีแพ็กเกจค่าเริ่มต้น 1 อัน (ราคา ฿0 = ไม่คิดเวลา) ลูกค้าถึงจะสแกน QR เข้าโต๊ะได้' : 'ต้องมีอย่างน้อย 1 แพ็กเกจถึงจะเปิดโต๊ะได้ · แก้ทีหลังไม่กระทบโต๊ะที่เปิดค้างอยู่'}
           action={{ label: 'เพิ่มแพ็กเกจ', onClick: () => setNewPlan(true) }}
         />
 
         {plansQ.isLoading && <Skeleton height={120} radius="var(--radius-lg)" />}
+
+        {selfOrdering && !plansQ.isLoading && !hasDefaultPlan(plans) && (
+          <div role="alert" style={{
+            display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap', padding: 'var(--space-3) var(--space-4)',
+            borderRadius: 'var(--radius-md)', background: 'var(--color-warning-50)', color: 'var(--color-warning-fg)',
+            fontWeight: 600, marginBottom: 'var(--space-3)',
+          }}>
+            <Icon name="warning" size={20} />
+            <span style={{ flex: 1, minWidth: 220 }}>
+              ยังไม่มีแพ็กเกจค่าเริ่มต้น — ลูกค้าสแกน QR แล้วจะเข้าโต๊ะไม่ได้ (ขึ้น 409) ต้องมีแพ็กเกจ “Bar tab” ราคา ฿0 ตั้งเป็นค่าเริ่มต้น
+            </span>
+            <button
+              className="btn btn-primary tap-std"
+              disabled={createPlan.isPending}
+              onClick={() => {
+                createPlan.mutateAsync({ ...BAR_TAB_PLAN })
+                  .then(() => toast({ kind: 'success', title: 'สร้างแพ็กเกจ Bar tab แล้ว', msg: 'ตั้งเป็นค่าเริ่มต้นเรียบร้อย' }))
+                  .catch((e: unknown) => toast({ kind: 'danger', title: 'สร้างแพ็กเกจไม่สำเร็จ', msg: errMsg(e) }));
+              }}
+            >
+              {createPlan.isPending ? <span className="spinner" style={{ width: 16, height: 16 }} aria-hidden /> : 'สร้าง Bar tab (฿0) ให้เลย'}
+            </button>
+          </div>
+        )}
 
         {!plansQ.isLoading && plans.length === 0 && (
           <Card>
@@ -272,6 +301,7 @@ function TableModal({ table, onClose }: { table: FloorTable | null; onClose: () 
 // ── Rate plan create / edit ───────────────────────────────────────────────────
 function RatePlanModal({ plan, onClose }: { plan: RatePlan | null; onClose: () => void }) {
   const toast = useToast();
+  const { enabled: allowZeroRate } = useSelfOrderingEnabled();
   const create = useCreateRatePlan();
   const update = useUpdateRatePlan();
 
@@ -289,7 +319,8 @@ function RatePlanModal({ plan, onClose }: { plan: RatePlan | null; onClose: () =
 
   const busy = create.isPending || update.isPending;
   const capValid = cap.trim() === '' || isMoney(cap);
-  const valid = name.trim().length >= 1 && isMoney(rate) && rounding >= 1 && grace >= 0
+  const rateOk = isRateValid(rate, allowZeroRate);
+  const valid = name.trim().length >= 1 && rateOk && rounding >= 1 && grace >= 0
     && minCharge >= 0 && maxOpen >= 60 && capValid;
 
   const submit = async () => {
@@ -350,14 +381,14 @@ function RatePlanModal({ plan, onClose }: { plan: RatePlan | null; onClose: () =
         />
       </Field>
 
-      <Field label="ราคาต่อชั่วโมง (฿)" hint="ทศนิยมไม่เกิน 2 ตำแหน่ง เช่น 40.00">
+      <Field label="ราคาต่อชั่วโมง (฿)" hint={allowZeroRate ? 'ใส่ 0 = ไม่คิดค่าเวลา (บาร์สั่งผ่าน QR) · ทศนิยมไม่เกิน 2 ตำแหน่ง' : 'ทศนิยมไม่เกิน 2 ตำแหน่ง เช่น 40.00'}>
         <input
           value={rate}
           onChange={(e) => setRate(e.target.value)}
           inputMode="decimal"
           placeholder="40.00"
           aria-label="ราคาต่อชั่วโมง"
-          style={{ ...inputStyle, borderColor: rate && !isMoney(rate) ? 'var(--color-danger)' : 'var(--color-border)' }}
+          style={{ ...inputStyle, borderColor: rate && !rateOk ? 'var(--color-danger)' : 'var(--color-border)' }}
         />
       </Field>
 

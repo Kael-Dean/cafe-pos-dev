@@ -26,6 +26,7 @@ import {
 } from '@/hooks/use-products';
 import { ApiError } from '@/lib/api-client';
 import { useIsPhone } from '@/hooks/use-media-query';
+import { MAX_TAGS, MAX_TAG_LEN, normalizeTags, sameTags } from '@/lib/self-ordering';
 
 // Dialogs use the shared <ModalShell> (portaled to <body>, capped to the visible
 // screen, scrollable body + pinned footer, focus trap / Esc / focus restore).
@@ -216,6 +217,11 @@ function ProductsTab() {
     catFilter === NO_CATEGORY ? !p.category_id :
     p.category_id === catFilter,
   );
+  // Customer menu (table-QR site) fields
+  const [formNameEn, setFormNameEn] = useState('');
+  const [formDescEn, setFormDescEn] = useState('');
+  const [formTags, setFormTags]     = useState('');
+  const tagsParsed = normalizeTags(formTags);
 
   const openEdit = (p: ProductReadAdmin) => {
     setEditTarget(p);
@@ -224,6 +230,9 @@ function ProductsTab() {
     setFormCatId(p.category_id ?? '');
     setFormDesc(p.description ?? '');
     setFormActive(p.is_active);
+    setFormNameEn(p.name_en ?? '');
+    setFormDescEn(p.description_en ?? '');
+    setFormTags((p.tags ?? []).join(', '));
   };
 
   const handleSave = async () => {
@@ -237,6 +246,15 @@ function ProductsTab() {
     const desc = formDesc.trim() || null;
     if (desc !== editTarget.description) patch.description = desc;
     if (formActive !== editTarget.is_active) patch.is_active = formActive;
+    const nameEn = formNameEn.trim() || null;
+    if (nameEn !== (editTarget.name_en ?? null)) patch.name_en = nameEn;
+    const descEn = formDescEn.trim() || null;
+    if (descEn !== (editTarget.description_en ?? null)) patch.description_en = descEn;
+    if (tagsParsed.error) {
+      toast({ kind: 'danger', title: 'แท็กไม่ถูกต้อง', msg: tagsParsed.error });
+      return;
+    }
+    if (!sameTags(tagsParsed.tags, editTarget.tags ?? [])) patch.tags = tagsParsed.tags.length ? tagsParsed.tags : null;
 
     try {
       await updateProduct.mutateAsync({ productId: editTarget.id, ...patch });
@@ -363,8 +381,8 @@ function ProductsTab() {
             <button onClick={() => setEditTarget(null)} style={{ ...btnSm('ghost'), minHeight: 44 }}>ยกเลิก</button>
             <button
               onClick={handleSave}
-              disabled={!formName.trim() || updateProduct.isPending}
-              style={{ ...btnSm('primary'), minHeight: 44, opacity: !formName.trim() || updateProduct.isPending ? 0.55 : 1 }}
+              disabled={!formName.trim() || !!tagsParsed.error || updateProduct.isPending}
+              style={{ ...btnSm('primary'), minHeight: 44, opacity: !formName.trim() || !!tagsParsed.error || updateProduct.isPending ? 0.55 : 1 }}
             >
               {updateProduct.isPending ? 'กำลังบันทึก…' : 'บันทึก'}
             </button>
@@ -411,6 +429,30 @@ function ProductsTab() {
                   style={{ ...inputCss, resize: 'vertical' }}
                 />
               </div>
+              <fieldset style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 12px 12px', margin: 0, display: 'grid', gap: 12 }}>
+                <legend style={{ ...labelCss, padding: '0 6px', marginBottom: 0 }}>เมนูสำหรับลูกค้า (สั่งผ่าน QR)</legend>
+                <div>
+                  <label htmlFor="prod-name-en" style={labelCss}>ชื่ออังกฤษ</label>
+                  <input id="prod-name-en" value={formNameEn} maxLength={120} onChange={e => setFormNameEn(e.target.value)} placeholder="เช่น Mojito" style={inputCss} />
+                </div>
+                <div>
+                  <label htmlFor="prod-desc-en" style={labelCss}>คำอธิบายอังกฤษ</label>
+                  <textarea id="prod-desc-en" value={formDescEn} maxLength={500} onChange={e => setFormDescEn(e.target.value)} rows={2} placeholder="ไม่บังคับ" style={{ ...inputCss, resize: 'vertical' }} />
+                </div>
+                <div>
+                  <label htmlFor="prod-tags" style={labelCss}>แท็ก (คั่นด้วย , — ไม่เกิน {MAX_TAGS} อัน อันละไม่เกิน {MAX_TAG_LEN} ตัวอักษร)</label>
+                  <input
+                    id="prod-tags" value={formTags} onChange={e => setFormTags(e.target.value)}
+                    placeholder="เช่น สดชื่น, ความแรง: กลาง"
+                    aria-invalid={!!tagsParsed.error}
+                    aria-describedby="prod-tags-msg"
+                    style={{ ...inputCss, borderColor: tagsParsed.error ? 'var(--color-danger)' : 'var(--color-border)' }}
+                  />
+                  <div id="prod-tags-msg" role={tagsParsed.error ? 'alert' : undefined} style={{ fontSize: 12, marginTop: 4, color: tagsParsed.error ? 'var(--color-danger-fg)' : 'var(--color-text-secondary)' }}>
+                    {tagsParsed.error ?? `${tagsParsed.tags.length}/${MAX_TAGS} แท็ก`}
+                  </div>
+                </div>
+              </fieldset>
               <div className="cat-check" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input
                   type="checkbox" id="prod-active-chk"
@@ -443,6 +485,7 @@ function CategoriesTab() {
   const [editingId, setEditingId]     = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<CategoryRead | null>(null);
+  const [detailTarget, setDetailTarget] = useState<CategoryRead | null>(null);
 
   const rawMax = categories?.length ? Math.max(...categories.map(c => c.sort_order ?? 0)) : 0;
   const maxOrder = Number.isFinite(rawMax) ? rawMax : 0;
@@ -572,6 +615,7 @@ function CategoriesTab() {
                 </td>
                 <td className="c-act" style={{ padding: '10px 12px', width: 120, textAlign: 'right', whiteSpace: 'nowrap' }}>
                   <button onClick={() => { setEditingId(cat.id); setEditingName(cat.name); }} aria-label={`แก้ไข ${cat.name}`} style={btnSm('ghost')}>แก้ไข</button>
+                  <button onClick={() => setDetailTarget(cat)} aria-label={`รายละเอียดเมนูลูกค้า ${cat.name}`} style={{ ...btnSm('ghost'), marginLeft: 6 }}>เมนูลูกค้า</button>
                   <button onClick={() => setDeleteTarget(cat)} aria-label={`ลบ ${cat.name}`} style={{ ...btnSm('ghost'), marginLeft: 6, color: 'var(--color-danger)' }}>ลบ</button>
                 </td>
               </tr>
@@ -611,6 +655,23 @@ function CategoriesTab() {
         </div>
       </div>
 
+      {detailTarget && (
+        <CategoryDetailsModal
+          cat={detailTarget}
+          saving={updateCategory.isPending}
+          onClose={() => setDetailTarget(null)}
+          onSave={async (patch) => {
+            try {
+              await updateCategory.mutateAsync({ id: detailTarget.id, ...patch });
+              setDetailTarget(null);
+              toast({ kind: 'success', title: 'บันทึกรายละเอียดหมวดหมู่แล้ว' });
+            } catch (err) {
+              toast({ kind: 'danger', title: 'บันทึกไม่สำเร็จ', msg: err instanceof Error ? err.message : 'กรุณาลองใหม่' });
+            }
+          }}
+        />
+      )}
+
       {/* Delete confirm */}
       {deleteTarget && (
         <ModalShell
@@ -629,6 +690,61 @@ function CategoriesTab() {
         </ModalShell>
       )}
     </>
+  );
+}
+
+/** Customer-menu text of a category (name_en / description / description_en). Only changed fields are sent. */
+type CategoryTextPatch = { name_en?: string | null; description?: string | null; description_en?: string | null };
+
+function CategoryDetailsModal({ cat, saving, onClose, onSave }: {
+  cat: CategoryRead;
+  saving: boolean;
+  onClose: () => void;
+  onSave: (patch: CategoryTextPatch) => Promise<void>;
+}) {
+  const [nameEn, setNameEn] = useState(cat.name_en ?? '');
+  const [desc, setDesc] = useState(cat.description ?? '');
+  const [descEn, setDescEn] = useState(cat.description_en ?? '');
+
+  const submit = () => {
+    const patch: CategoryTextPatch = {};
+    const a = nameEn.trim() || null;
+    const b = desc.trim() || null;
+    const c = descEn.trim() || null;
+    if (a !== (cat.name_en ?? null)) patch.name_en = a;
+    if (b !== (cat.description ?? null)) patch.description = b;
+    if (c !== (cat.description_en ?? null)) patch.description_en = c;
+    if (Object.keys(patch).length === 0) { onClose(); return; }
+    void onSave(patch);
+  };
+
+  return (
+    <ModalShell
+      title="เมนูสำหรับลูกค้า"
+      subtitle={cat.name}
+      onClose={onClose}
+      width={460}
+      busy={saving}
+      footer={<>
+        <button onClick={onClose} style={{ ...btnSm('ghost'), minHeight: 44 }}>ยกเลิก</button>
+        <button onClick={submit} disabled={saving} style={{ ...btnSm('primary'), minHeight: 44, opacity: saving ? 0.55 : 1 }}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</button>
+      </>}
+    >
+      <div className="cat-form" style={{ display: 'grid', gap: 14 }}>
+        <div>
+          <label htmlFor="cat-name-en" style={labelCss}>ชื่ออังกฤษ</label>
+          <input id="cat-name-en" value={nameEn} maxLength={80} onChange={e => setNameEn(e.target.value)} placeholder="เช่น Classic" style={inputCss} />
+        </div>
+        <div>
+          <label htmlFor="cat-desc" style={labelCss}>คำอธิบาย (ไทย)</label>
+          <textarea id="cat-desc" value={desc} maxLength={500} onChange={e => setDesc(e.target.value)} rows={2} placeholder="ไม่บังคับ" style={{ ...inputCss, resize: 'vertical' }} />
+        </div>
+        <div>
+          <label htmlFor="cat-desc-en" style={labelCss}>คำอธิบาย (อังกฤษ)</label>
+          <textarea id="cat-desc-en" value={descEn} maxLength={500} onChange={e => setDescEn(e.target.value)} rows={2} placeholder="ไม่บังคับ" style={{ ...inputCss, resize: 'vertical' }} />
+        </div>
+      </div>
+    </ModalShell>
   );
 }
 

@@ -9,6 +9,7 @@ import { MobileNav } from '@/components/mobile-nav';
 import { getToken, clearToken, subscribeAuth } from '@/lib/token-store';
 import { canLeave } from '@/lib/nav-guard';
 import { Skeleton } from '@/components/ui/skeleton';
+import { SelfOrderingMount } from '@/components/self-ordering-watcher';
 // Login + POS stay static: login is the gate and POS is the default screen, so both
 // belong in the first chunk. Every other screen is code-split below.
 import LoginScreen from '@/components/screens/login';
@@ -34,10 +35,12 @@ const lazyScreen = (loader: () => Promise<{ default: ComponentType }>) =>
 
 // Floor takes props, so it is declared with `dynamic` directly — `lazyScreen`
 // erases prop types to the no-prop ComponentType the registry below expects.
-const Floor = dynamic(() => import('@/components/screens/floor'), { ssr: false, loading: ScreenLoading });
+const Floor = dynamic(() => import('@/components/screens/floor-entry'), { ssr: false, loading: ScreenLoading });
 const TableSetup = lazyScreen(() => import('@/components/screens/table-setup'));
 
 const KDS = lazyScreen(() => import('@/components/screens/kds'));
+const OrderBoard = lazyScreen(() => import('@/components/screens/order-board'));
+const TableQrPrint = lazyScreen(() => import('@/components/screens/table-qr-print'));
 const Dashboard = lazyScreen(() => import('@/components/screens/dashboard'));
 const BOMBuilder = lazyScreen(() => import('@/components/screens/bom-builder'));
 const Bakery = lazyScreen(() => import('@/components/screens/bakery'));
@@ -62,7 +65,7 @@ const ReceiptCopies = lazyScreen(() => import('@/components/screens/receipt-copi
 
 type Screen =
   | 'pos' | 'kds' | 'dashboard' | 'bom' | 'bakery' | 'inventory'
-  | 'floor' | 'table-setup'
+  | 'floor' | 'table-setup' | 'order-board' | 'table-qr'
   | 'pre-orders' | 'shopping-list' | 'stock-take'
   | 'cash' | 'receipt-copies' | 'promotions' | 'members' | 'sales' | 'protocols' | 'hr' | 'shifts'
   | 'hardware' | 'customers' | 'reports' | 'catalog' | 'recycle-bin' | 'settings';
@@ -123,6 +126,8 @@ export default function POS() {
     floor:      <Floor onOrderForSession={startTableOrder} onNavigate={(s) => { void navigate(s as Screen); }} />,
     'table-setup': <TableSetup />,
     kds:        <KDS />,
+    'order-board': <OrderBoard />,
+    'table-qr': <TableQrPrint />,
     dashboard:  <Dashboard />,
     bom:        <BOMBuilder />,
     bakery:     <Bakery />,
@@ -166,6 +171,8 @@ export default function POS() {
           screens. Goes through the same navigate() / handleLogout() as the sidebar,
           so the unsaved-changes guard applies. .app-main reserves its height
           (--tabbar-h) so no screen content sits behind it. */}
+      {/* Stores with table-QR ordering: ring + banner on EVERY screen, not just the board. */}
+      <SelfOrderingMount current={screen} onOpenBoard={() => { void navigate('order-board'); }} />
       <MobileNav current={screen} onNavigate={(s) => { void navigate(s as Screen); }} onLogout={() => { void handleLogout(); }} />
     </ToastProvider>
   );

@@ -193,6 +193,10 @@ export interface ProductReadAdmin {
   category_id: string | null;
   name: string;
   description: string | null;
+  /** Customer menu (table-QR site) fields — absent on backends without Part C. */
+  name_en?: string | null;
+  description_en?: string | null;
+  tags?: string[];
   price: string;
   is_active: boolean;
   created_at: string;
@@ -203,6 +207,9 @@ export interface ProductUpdateAdminPayload {
   category_id?: string | null;
   name?: string;
   description?: string | null;
+  name_en?: string | null;        // ≤ 120, null clears
+  description_en?: string | null; // ≤ 500, null clears
+  tags?: string[] | null;         // ≤ 10 tags, each ≤ 30; null clears
   price?: string;
   is_active?: boolean;
 }

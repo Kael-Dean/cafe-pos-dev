@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import { SessionExpiredError } from '@/lib/api-client';
+import { FEATURE_SELF_ORDERING } from '@/lib/self-ordering';
 
 /** Store entitlement that switches on the board-game add-on (floor, rate plans, sessions). */
 export const FEATURE_BOARDGAME = 'vertical.boardgame';
@@ -50,4 +51,18 @@ export function useHasFeature(key: string) {
 
 export function useBoardgameEnabled() {
   return useHasFeature(FEATURE_BOARDGAME);
+}
+
+/** Table-QR ordering (mr.bar): customers scan a sticker and order from their phone. */
+export function useSelfOrderingEnabled() {
+  return useHasFeature(FEATURE_SELF_ORDERING);
+}
+
+/**
+ * Floor / sessions / rate plans exist for either add-on (both answer 404 otherwise).
+ * Self-ordering stores get the tables but never the board-game extras.
+ */
+export function useTableSystemEnabled() {
+  const { data, isLoading } = useFeatures();
+  return { enabled: !!data && (data.includes(FEATURE_BOARDGAME) || data.includes(FEATURE_SELF_ORDERING)), isLoading };
 }

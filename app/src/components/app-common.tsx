@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import Icon from './icons';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { useFeatures, FEATURE_BOARDGAME } from '@/hooks/use-features';
+import { FEATURE_SELF_ORDERING } from '@/lib/self-ordering';
 import { displayNumber, parseNumberInput, clampNumber } from '@/lib/number-input';
 import { useI18n } from '@/lib/i18n';
 import { useMediaQuery } from '@/hooks/use-media-query';
@@ -122,6 +123,8 @@ export type NavItem = {
   divider?: boolean; header?: boolean;
   /** Store entitlement required to see this item — hidden when the add-on isn't sold. */
   feature?: string;
+  /** Any-of variant: visible when the store has at least one of these entitlements. */
+  anyFeature?: readonly string[];
 };
 
 // Grouped by working mode so each job (taking orders, kitchen/stock, CRM, running
@@ -142,8 +145,11 @@ export const NAV: NavItem[] = [
   // Board-game add-on — the whole group disappears for stores without the
   // `vertical.boardgame` entitlement (its endpoints answer 404 there).
   { id: 'sec-boardgame', header: true, icon: 'dice' },
-  { id: 'floor',       icon: 'park',     feature: FEATURE_BOARDGAME },
-  { id: 'table-setup', icon: 'table',    feature: FEATURE_BOARDGAME, adminOnly: true },
+  { id: 'floor',       icon: 'park',     anyFeature: [FEATURE_BOARDGAME, FEATURE_SELF_ORDERING] },
+  { id: 'table-setup', icon: 'table',    anyFeature: [FEATURE_BOARDGAME, FEATURE_SELF_ORDERING], adminOnly: true },
+  // Table-QR ordering (`self_ordering`): the board customers' phones feed, and the sticker sheet.
+  { id: 'order-board', icon: 'bell',     feature: FEATURE_SELF_ORDERING },
+  { id: 'table-qr',    icon: 'qr',       feature: FEATURE_SELF_ORDERING, adminOnly: true },
 
   // Kitchen & stock — the daily stock jobs first (check, count, buy), then the
   // menu-definition screens that are edited now and then (prep, recipes, catalog).
@@ -207,6 +213,8 @@ export const visibleNavSections = (role: string | undefined, features: readonly 
     if (n.adminOnly && !isAdmin) continue;
     if (n.ownerOnly && role !== 'OWNER') continue;
     if (n.feature && !features?.includes(n.feature)) continue;
+    if (n.anyFeature && !n.anyFeature.some((f) => features?.includes(f))) continue;
+    if (n.anyFeature && !n.anyFeature.some((f) => features?.includes(f))) continue;
     sections[sections.length - 1]?.items.push(n);
   }
   return sections.filter((s) => s.items.length > 0);
@@ -214,7 +222,7 @@ export const visibleNavSections = (role: string | undefined, features: readonly 
 
 /** The current user's visible nav + the bits of identity both navs display. */
 export const useVisibleNav = () => {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { data: me } = useCurrentUser();
   const { data: features } = useFeatures();
   const role = me?.role;
@@ -225,7 +233,10 @@ export const useVisibleNav = () => {
     isAdmin: role === 'OWNER' || role === 'MANAGER',
     initial: me?.name ? me.name.charAt(0).toUpperCase() : '?',
     roleLabel: role ? (t.roles as Record<string, string>)[role] ?? role : '',
-    navLabel: (id: string) => (t.nav as Record<string, string>)[id] ?? id,
+    // A table-QR bar charges no time, so its setup screen is just "tables" (no ค่าเวลา wording).
+    navLabel: (id: string) => (id === 'table-setup' && features?.includes(FEATURE_SELF_ORDERING) && !features.includes(FEATURE_BOARDGAME))
+      ? (lang === 'en' ? 'Tables' : 'ตั้งค่าโต๊ะ')
+      : (t.nav as Record<string, string>)[id] ?? id,
     sectionLabel: (id: string) => (t.navSection as Record<string, string>)[id] ?? id,
   };
 };

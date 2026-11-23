@@ -7,10 +7,21 @@ export interface CategoryRead {
   id: string;
   store_id: string;
   name: string;
+  /** Customer menu (table-QR site) fields — absent on backends without Part C. */
+  name_en?: string | null;
+  description?: string | null;
+  description_en?: string | null;
   sort_order: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+/** Optional bilingual fields shared by create / update (PATCH: null clears). */
+export interface CategoryTextFields {
+  name_en?: string | null;        // ≤ 80
+  description?: string | null;    // ≤ 500
+  description_en?: string | null; // ≤ 500
 }
 
 // ── Modifier types ────────────────────────────────────────────────────────────
@@ -63,7 +74,7 @@ export function useCategoriesAdmin() {
 export function useCreateCategory() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { name: string; sort_order?: number }) =>
+    mutationFn: (payload: { name: string; sort_order?: number } & CategoryTextFields) =>
       api.post<CategoryRead>('/api/v1/categories', payload),
     // Invalidate the whole 'categories' prefix so both the admin list (['categories','admin'])
     // and the POS dropdown (['categories']) refetch — the latter now has a 5-min staleTime.
@@ -74,7 +85,7 @@ export function useCreateCategory() {
 export function useUpdateCategory() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...payload }: { id: string; name?: string; sort_order?: number }) =>
+    mutationFn: ({ id, ...payload }: { id: string; name?: string; sort_order?: number } & CategoryTextFields) =>
       api.patch<CategoryRead>(`/api/v1/categories/${id}`, payload),
     // Invalidate the whole 'categories' prefix so both the admin list (['categories','admin'])
     // and the POS dropdown (['categories']) refetch — the latter now has a 5-min staleTime.

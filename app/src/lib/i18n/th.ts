@@ -52,6 +52,8 @@ export const th = {
     'receipt-copies': 'สำเนาใบเสร็จ',
     floor: 'ผังโต๊ะ',
     'table-setup': 'ตั้งค่าโต๊ะ & ค่าเวลา',
+    'order-board': 'ออเดอร์จากลูกค้า',
+    'table-qr': 'QR ประจำโต๊ะ',
     promotions: 'โปรโมชัน / สะสมแต้ม',
     members: 'สมาชิก',
     sales: 'เซลส์',
@@ -69,7 +71,7 @@ export const th = {
   // ── Sidebar section headers (desktop nav, grouped by working mode) ─────────
   navSection: {
     'sec-service': 'หน้าร้าน',
-    'sec-boardgame': 'โต๊ะ & บอร์ดเกม',
+    'sec-boardgame': 'โต๊ะ',
     'sec-kitchen': 'ครัว & สต็อก',
     'sec-crm': 'ลูกค้า & การตลาด',
     'sec-manage': 'จัดการ & รายงาน',
@@ -730,6 +732,8 @@ export const th = {
       'receipt-copies': 'ใบเสร็จ',
       floor: 'โต๊ะ',
       'table-setup': 'ตั้งค่าโต๊ะ',
+      'order-board': 'ออเดอร์',
+      'table-qr': 'QR โต๊ะ',
       promotions: 'โปร',
       members: 'สมาชิก',
       sales: 'เซลส์',

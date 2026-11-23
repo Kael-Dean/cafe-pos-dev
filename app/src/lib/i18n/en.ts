@@ -47,6 +47,8 @@ export const en: Messages = {
     'receipt-copies': 'Receipt Copies',
     floor: 'Floor Plan',
     'table-setup': 'Tables & Rates',
+    'order-board': 'Customer orders',
+    'table-qr': 'Table QR codes',
     promotions: 'Promotions / Loyalty',
     members: 'Members',
     sales: 'Salespeople',
@@ -63,7 +65,7 @@ export const en: Messages = {
 
   navSection: {
     'sec-service': 'Service',
-    'sec-boardgame': 'Tables & Board Games',
+    'sec-boardgame': 'Tables',
     'sec-kitchen': 'Kitchen & Stock',
     'sec-crm': 'Customers & Marketing',
     'sec-manage': 'Manage & Reports',
@@ -686,6 +688,8 @@ export const en: Messages = {
       'receipt-copies': 'Receipts',
       floor: 'Floor',
       'table-setup': 'Setup',
+      'order-board': 'Orders',
+      'table-qr': 'Table QR',
       promotions: 'Promos',
       members: 'Members',
       sales: 'Sales',
