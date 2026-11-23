@@ -140,6 +140,10 @@ interface ProductCreatePayload {
   is_active?: boolean;
   product_type?: 'MADE_TO_ORDER' | 'PRODUCED' | 'COMPONENT';
   servings_per_batch?: number;
+  // Customer-menu (table-QR self-ordering) fields
+  name_en?: string;
+  description_en?: string;
+  tags?: string[];
 }
 
 export function useCreateProduct() {

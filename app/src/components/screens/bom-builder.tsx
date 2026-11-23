@@ -9,7 +9,8 @@ import { useIsPhone } from '@/hooks/use-media-query';
 import { useStagger } from '@/lib/motion';
 import { Skeleton, SkeletonTable } from '@/components/ui/skeleton';
 import { useAllProducts, useCategories, useCreateProduct, useDeleteProduct, useUpdateProduct, useUploadProductImage, useDeleteProductImage, type MenuItem, type Category } from '@/hooks/use-products';
-import { TABLE_TIME_PRODUCT_NAME } from '@/hooks/use-features';
+import { TABLE_TIME_PRODUCT_NAME, useSelfOrderingEnabled } from '@/hooks/use-features';
+import { MAX_TAGS, MAX_TAG_LEN, normalizeTags } from '@/lib/self-ordering';
 import { useInventory, useItemLots, useSetInUseLot, type InventoryItem, type StockLot } from '@/hooks/use-inventory';
 import { useProductDetail, useUpdateRecipe, useLinkModifierGroups, type RecipeItem } from '@/hooks/use-bom';
 import { useModifierGroups, useModifierGroupsAdmin, useAddModifier, useUpdateModifier, useDeleteModifier, useModifierRecipeItems, useReplaceModifierRecipeItems, type ModifierGroup, type ModifierGroupRead, type ModifierRead, type ModifierRecipeItemInput } from '@/hooks/use-modifier-groups';
@@ -291,7 +292,7 @@ export default function BOMBuilder() {
     }
   };
 
-  const submitAddMenu = async ({ name, categoryId, price, description, type, apiProductType, servingsPerBatch }: { name: string; categoryId: string; price: number; description: string; type: ProductType; apiProductType: ApiProductType; servingsPerBatch: number }) => {
+  const submitAddMenu = async ({ name, categoryId, price, description, type, apiProductType, servingsPerBatch, nameEn, descriptionEn, tags }: AddMenuValues) => {
     try {
       const isComp = type === 'COMPONENT';
       const newProduct = await createProduct.mutateAsync({
@@ -301,6 +302,10 @@ export default function BOMBuilder() {
         description: description || undefined,
         product_type: isComp ? 'COMPONENT' : apiProductType,
         servings_per_batch: (isComp || apiProductType === 'PRODUCED') ? servingsPerBatch : undefined,
+        // Customer-menu fields: only for sellable items, only when filled in
+        ...(!isComp && nameEn ? { name_en: nameEn } : {}),
+        ...(!isComp && descriptionEn ? { description_en: descriptionEn } : {}),
+        ...(!isComp && tags.length ? { tags } : {}),
       });
       setAddMenuOpen(false);
       setSelectedId(newProduct.id);
@@ -1920,11 +1925,22 @@ const DeleteConfirmModal = ({ name, deleting, onConfirm, onClose }: {
   </BomModalShell>
 );
 
+type AddMenuValues = {
+  name: string; categoryId: string; price: number; description: string;
+  type: ProductType; apiProductType: ApiProductType; servingsPerBatch: number;
+  nameEn: string; descriptionEn: string; tags: string[];
+};
+
 const AddMenuModal = ({ categories, onClose, onSubmit }: {
   categories: import('@/hooks/use-products').Category[];
   onClose: () => void;
-  onSubmit: (v: { name: string; categoryId: string; price: number; description: string; type: ProductType; apiProductType: ApiProductType; servingsPerBatch: number }) => void;
+  onSubmit: (v: AddMenuValues) => void;
 }) => {
+  const selfOrdering = useSelfOrderingEnabled();
+  const [nameEn, setNameEn] = useState('');
+  const [descriptionEn, setDescriptionEn] = useState('');
+  const [tagsText, setTagsText] = useState('');
+  const tagsParsed = normalizeTags(tagsText);
   const [type, setType] = useState<ProductType>('MENU');
   const [apiProductType, setApiProductType] = useState<ApiProductType>('MADE_TO_ORDER');
   const [servingsPerBatch, setServingsPerBatch] = useState('24');
@@ -1936,8 +1952,19 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
   const needsServings = isComp || (type === 'MENU' && apiProductType === 'PRODUCED');
   const canSubmit = name.trim().length > 0
     && (isComp || (price !== '' && Number(price) >= 0))
-    && (!needsServings || (servingsPerBatch !== '' && Number(servingsPerBatch) >= 1));
-  const submit = () => { if (!canSubmit) return; onSubmit({ name: name.trim(), categoryId, price: Number(price), description: description.trim(), type, apiProductType, servingsPerBatch: Math.max(1, Math.floor(Number(servingsPerBatch) || 1)) }); };
+    && (!needsServings || (servingsPerBatch !== '' && Number(servingsPerBatch) >= 1))
+    && (isComp || !selfOrdering || !tagsParsed.error);
+  const submit = () => {
+    if (!canSubmit) return;
+    const withMenuText = selfOrdering && !isComp;
+    onSubmit({
+      name: name.trim(), categoryId, price: Number(price), description: description.trim(), type, apiProductType,
+      servingsPerBatch: Math.max(1, Math.floor(Number(servingsPerBatch) || 1)),
+      nameEn: withMenuText ? nameEn.trim() : '',
+      descriptionEn: withMenuText ? descriptionEn.trim() : '',
+      tags: withMenuText ? tagsParsed.tags : [],
+    });
+  };
 
   return (
     <BomModalShell title="เพิ่มรายการใหม่" subtitle="สร้างรายการในระบบ BOM" onClose={onClose} actions={<>
@@ -2006,6 +2033,26 @@ const AddMenuModal = ({ categories, onClose, onSubmit }: {
       <BomFormField label="รายละเอียด">
         <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} placeholder="ไม่บังคับ" style={{ ...bomInputStyle(), resize: 'vertical', fontFamily: 'inherit' }} />
       </BomFormField>
+
+      {selfOrdering && !isComp && (<>
+        <BomFormField label="ชื่อภาษาอังกฤษ (เมนูลูกค้า)">
+          <input type="text" value={nameEn} onChange={e => setNameEn(e.target.value)} maxLength={120} placeholder="ไม่บังคับ — เช่น Mojito" style={bomInputStyle()} />
+        </BomFormField>
+        <BomFormField label="รายละเอียดภาษาอังกฤษ">
+          <textarea value={descriptionEn} onChange={e => setDescriptionEn(e.target.value)} maxLength={500} rows={2} placeholder="ไม่บังคับ" style={{ ...bomInputStyle(), resize: 'vertical', fontFamily: 'inherit' }} />
+        </BomFormField>
+        <BomFormField label={`แท็ก (คั่นด้วย , — ไม่เกิน ${MAX_TAGS} อัน อันละไม่เกิน ${MAX_TAG_LEN} ตัวอักษร)`}>
+          <input
+            type="text" value={tagsText} onChange={e => setTagsText(e.target.value)}
+            placeholder="เช่น สดชื่น, ความแรง: กลาง"
+            aria-invalid={!!tagsParsed.error} aria-describedby="add-menu-tags-msg"
+            style={{ ...bomInputStyle(), borderColor: tagsParsed.error ? 'var(--color-danger)' : undefined }}
+          />
+          <div id="add-menu-tags-msg" role={tagsParsed.error ? 'alert' : undefined} style={{ fontSize: 12, marginTop: 4, color: tagsParsed.error ? 'var(--color-danger-fg)' : 'var(--color-text-secondary)' }}>
+            {tagsParsed.error ?? `${tagsParsed.tags.length}/${MAX_TAGS} แท็ก`}
+          </div>
+        </BomFormField>
+      </>)}
     </BomModalShell>
   );
 };
